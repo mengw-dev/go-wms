@@ -54,7 +54,11 @@ wms/
 │   │   └── task/            # 统一任务中心
 │   └── pkg/                 # 配置、JWT、事务、日志、响应等公共能力
 ├── migrations/              # DBA 审阅用初始化 SQL
+├── scripts/wms-common.ps1   # PowerShell 一键启动公共函数
 ├── scripts/k6/              # k6 压测与端到端脚本
+├── start.ps1 / start.cmd    # 一键启动
+├── stop.ps1 / stop.cmd      # 一键停止
+├── reset.ps1 / reset.cmd    # 清空数据并重新初始化
 └── web/                     # Vue 3 前端
 ```
 
@@ -93,7 +97,69 @@ npm run dev
 
 访问 `http://127.0.0.1:5173`。开发服务器会将 `/api` 代理到 `http://127.0.0.1:8080`。
 
-## Docker 全栈部署
+## Windows 一键启动
+
+只需要提前安装 [Docker Desktop](https://www.docker.com/products/docker-desktop/)。项目下载后不需要单独安装 Go、Node.js、MySQL 或 Redis。
+
+### 方式一：双击启动
+
+直接双击：
+
+```text
+start.cmd
+```
+
+### 方式二：PowerShell
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\start.ps1
+```
+
+`start.ps1` 会自动完成：
+
+1. 检查 Docker 和 Docker Compose
+2. 检查 `.env`
+3. 生成随机数据库密码
+4. 生成随机 JWT 密钥
+5. 构建并启动 MySQL、Redis、后端和前端
+6. 等待 API 和 Web 健康检查通过
+7. 自动打开浏览器
+
+默认访问地址：
+
+- Web：`http://127.0.0.1:80`
+- API：`http://127.0.0.1:8080`
+- 用户名：`admin`
+- 密码：`admin123`
+
+首次登录后请立即修改默认密码。
+
+如果 80 或 8080 端口被占用，可以先修改 `.env`：
+
+```env
+WMS_WEB_PORT=8088
+WMS_API_PORT=18080
+```
+
+然后重新运行 `start.ps1`。
+
+### 停止服务
+
+```powershell
+.\stop.ps1
+```
+
+或者双击 `stop.cmd`。停止服务不会删除数据库和上传文件。
+
+### 清空数据并重新初始化
+
+```powershell
+.\reset.ps1
+```
+
+或者双击 `reset.cmd`。该操作会删除 MySQL、Redis 和上传文件 Volume，必须输入 `RESET` 确认。
+
+### 手动 Docker 启动
 
 ```bash
 cp .env.example .env
@@ -101,18 +167,13 @@ cp .env.example .env
 docker compose -f deploy/docker-compose.yaml up -d --build
 ```
 
-启动后：
-
-- Web：`http://localhost`
-- API：`http://localhost:8080`
-- MySQL：`localhost:3306`
-- Redis：`localhost:6379`
-
-只启动 MySQL 和 Redis：
+默认情况下 MySQL 和 Redis 只在 Compose 内部网络中可用，不会暴露到宿主机公网。仅供本机 Go 开发时，可以执行：
 
 ```bash
 make compose-infra
 ```
+
+该命令使用 `deploy/docker-compose.dev.yaml`，只会把 MySQL 和 Redis 映射到 `127.0.0.1`。
 
 停止服务：
 

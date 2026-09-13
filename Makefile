@@ -23,7 +23,7 @@ compose-up:
 	docker compose -f deploy/docker-compose.yaml up -d --build
 
 compose-infra:
-	docker compose -f deploy/docker-compose.yaml up -d mysql redis
+	docker compose -f deploy/docker-compose.yaml -f deploy/docker-compose.dev.yaml up -d mysql redis
 
 compose-down:
 	docker compose -f deploy/docker-compose.yaml down

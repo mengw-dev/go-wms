@@ -7,8 +7,6 @@ services:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-gowms-root}
       MYSQL_DATABASE: ${MYSQL_DATABASE:-gowms}
       TZ: Asia/Shanghai
-    ports:
-      - "3306:3306"
     volumes:
       - mysql_data:/var/lib/mysql
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
@@ -22,8 +20,6 @@ services:
     image: redis:7-alpine
     container_name: gowms-redis
     restart: unless-stopped
-    ports:
-      - "6379:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -43,10 +39,10 @@ services:
       WMS_SERVER_NODE: ${WMS_SERVER_NODE:-1}
       WMS_MYSQL_DSN: root:${MYSQL_ROOT_PASSWORD:-gowms-root}@tcp(mysql:3306)/${MYSQL_DATABASE:-gowms}?charset=utf8mb4&parseTime=True&loc=Local
       WMS_REDIS_ADDR: redis:6379
-      WMS_JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required; copy .env.example to .env and change it}
+      WMS_JWT_SECRET: ${JWT_SECRET:-}
       WMS_UPLOAD_DIR: /app/data/uploads
     ports:
-      - "8080:8080"
+      - "${WMS_API_PORT:-8080}:8080"
     volumes:
       - upload_data:/app/data/uploads
     depends_on:
@@ -67,7 +63,7 @@ services:
     container_name: gowms-web
     restart: unless-stopped
     ports:
-      - "80:80"
+      - "${WMS_WEB_PORT:-80}:80"
     depends_on:
       wms:
         condition: service_healthy

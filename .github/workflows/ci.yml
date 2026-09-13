@@ -39,6 +39,22 @@ jobs:
         with:
           version: v2.13.2
 
+      - name: Validate PowerShell scripts
+        shell: pwsh
+        run: |
+          foreach ($file in @("start.ps1", "stop.ps1", "reset.ps1", "scripts/wms-common.ps1")) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $file), [ref]$tokens, [ref]$errors) | Out-Null
+            if ($errors.Count -gt 0) { throw "$file has PowerShell syntax errors" }
+          }
+
+      - name: Validate Docker Compose
+        env:
+          MYSQL_ROOT_PASSWORD: ci-root-password
+          JWT_SECRET: ci-jwt-secret-0123456789abcdef0123456789abcdef
+        run: docker compose -f deploy/docker-compose.yaml config --quiet
+
       - name: Build
         run: go build ./...
 
