@@ -1,13 +1,12 @@
 package handler
 
 import (
-	"strconv"
-
 	"github.com/gin-gonic/gin"
 
 	"gowms/internal/modules/basic/dto"
 	"gowms/internal/modules/basic/service"
 	"gowms/internal/pkg/errcode"
+	"gowms/internal/pkg/httpx"
 	"gowms/internal/pkg/middleware"
 	"gowms/internal/pkg/response"
 )
@@ -68,8 +67,7 @@ func (h *Handler) listWarehouses(c *gin.Context) {
 
 func (h *Handler) createWarehouse(c *gin.Context) {
 	var req dto.WarehouseReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, errcode.ParamError)
+	if !httpx.BindJSON(c, &req) {
 		return
 	}
 	if err := h.svc.CreateWarehouse(c.Request.Context(), &req); err != nil {
@@ -81,11 +79,13 @@ func (h *Handler) createWarehouse(c *gin.Context) {
 
 func (h *Handler) updateWarehouse(c *gin.Context) {
 	var req dto.WarehouseReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, errcode.ParamError)
+	if !httpx.BindJSON(c, &req) {
 		return
 	}
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	id, ok := httpx.PathID(c)
+	if !ok {
+		return
+	}
 	if err := h.svc.UpdateWarehouse(c.Request.Context(), id, &req, nil); err != nil {
 		response.Fail(c, err)
 		return
@@ -95,11 +95,13 @@ func (h *Handler) updateWarehouse(c *gin.Context) {
 
 func (h *Handler) warehouseStatus(c *gin.Context) {
 	var req dto.StatusReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, errcode.ParamError)
+	if !httpx.BindJSON(c, &req) {
 		return
 	}
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	id, ok := httpx.PathID(c)
+	if !ok {
+		return
+	}
 	if err := h.svc.UpdateWarehouse(c.Request.Context(), id, &dto.WarehouseReq{}, req.Status); err != nil {
 		response.Fail(c, err)
 		return
@@ -108,7 +110,10 @@ func (h *Handler) warehouseStatus(c *gin.Context) {
 }
 
 func (h *Handler) deleteWarehouse(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	id, ok := httpx.PathID(c)
+	if !ok {
+		return
+	}
 	if err := h.svc.DeleteWarehouse(c.Request.Context(), id); err != nil {
 		response.Fail(c, err)
 		return
@@ -134,8 +139,7 @@ func (h *Handler) listLocations(c *gin.Context) {
 
 func (h *Handler) batchCreateLocations(c *gin.Context) {
 	var req dto.LocationBatchReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, errcode.ParamError)
+	if !httpx.BindJSON(c, &req) {
 		return
 	}
 	n, err := h.svc.BatchCreateLocations(c.Request.Context(), &req)
@@ -148,11 +152,13 @@ func (h *Handler) batchCreateLocations(c *gin.Context) {
 
 func (h *Handler) locationStatus(c *gin.Context) {
 	var req dto.StatusReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, errcode.ParamError)
+	if !httpx.BindJSON(c, &req) {
 		return
 	}
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	id, ok := httpx.PathID(c)
+	if !ok {
+		return
+	}
 	if err := h.svc.UpdateLocationStatus(c.Request.Context(), id, *req.Status); err != nil {
 		response.Fail(c, err)
 		return
@@ -161,7 +167,10 @@ func (h *Handler) locationStatus(c *gin.Context) {
 }
 
 func (h *Handler) deleteLocation(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	id, ok := httpx.PathID(c)
+	if !ok {
+		return
+	}
 	if err := h.svc.DeleteLocation(c.Request.Context(), id); err != nil {
 		response.Fail(c, err)
 		return
@@ -196,8 +205,7 @@ func (h *Handler) getByBarcode(c *gin.Context) {
 
 func (h *Handler) createSKU(c *gin.Context) {
 	var req dto.SKUReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, errcode.ParamError)
+	if !httpx.BindJSON(c, &req) {
 		return
 	}
 	if err := h.svc.CreateSKU(c.Request.Context(), &req); err != nil {
@@ -209,11 +217,13 @@ func (h *Handler) createSKU(c *gin.Context) {
 
 func (h *Handler) updateSKU(c *gin.Context) {
 	var req dto.SKUReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, errcode.ParamError)
+	if !httpx.BindJSON(c, &req) {
 		return
 	}
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	id, ok := httpx.PathID(c)
+	if !ok {
+		return
+	}
 	if err := h.svc.UpdateSKU(c.Request.Context(), id, &req); err != nil {
 		response.Fail(c, err)
 		return
@@ -222,7 +232,10 @@ func (h *Handler) updateSKU(c *gin.Context) {
 }
 
 func (h *Handler) deleteSKU(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	id, ok := httpx.PathID(c)
+	if !ok {
+		return
+	}
 	if err := h.svc.DeleteSKU(c.Request.Context(), id); err != nil {
 		response.Fail(c, err)
 		return

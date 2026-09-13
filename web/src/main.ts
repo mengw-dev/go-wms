@@ -24,6 +24,7 @@ import 'element-plus/theme-chalk/dark/css-vars.css'
 
 import App from './App.vue'
 import router from './router'
+import { permission } from './directives/permission'
 import './style.css'
 import { useThemeStore } from './stores/theme'
 
@@ -32,6 +33,7 @@ const app = createApp(App)
 app.use(createPinia())
 useThemeStore().init()
 app.use(router)
+app.directive('permission', permission)
 
 const icons = {
   ArrowDown,

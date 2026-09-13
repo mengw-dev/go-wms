@@ -55,11 +55,19 @@ jobs:
           JWT_SECRET: ci-jwt-secret-0123456789abcdef0123456789abcdef
         run: docker compose -f deploy/docker-compose.yaml config --quiet
 
+      - name: Verify modules
+        run: go mod verify
+
       - name: Build
         run: go build ./...
 
-      - name: Test（并发防超卖 / FIFO / 恒等式，需要 MySQL）
-        run: go test ./internal/... -v -count=1
+      - name: Vulnerability scan
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          "$(go env GOPATH)/bin/govulncheck" ./...
+
+      - name: Test（race + MySQL 集成测试）
+        run: go test -race ./internal/... -v -count=1
 
   frontend:
     name: Frontend (build)
@@ -78,6 +86,9 @@ jobs:
 
       - run: npm ci
 
+      - name: Dependency Audit
+        run: npm audit --omit=dev
+
       - name: Lint
         run: npm run lint
 
@@ -86,3 +97,16 @@ jobs:
 
       - name: Type Check & Build
         run: npm run build
+
+  containers:
+    name: Containers (build)
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build backend image
+        run: docker build -t gowms-api:test .
+
+      - name: Build frontend image
+        run: docker build -t gowms-web:test ./web

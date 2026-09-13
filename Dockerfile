@@ -4,15 +4,20 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/wms ./cmd/wms
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/wms ./cmd/wms
 
 # ---- 运行阶段 ----
 FROM alpine:3.21
-RUN apk add --no-cache ca-certificates tzdata
+RUN apk add --no-cache ca-certificates tzdata wget \
+    && addgroup -S app \
+    && adduser -S -G app app
 ENV TZ=Asia/Shanghai
 WORKDIR /app
 COPY --from=builder /out/wms ./wms
 COPY configs ./configs
 COPY migrations ./migrations
+RUN mkdir -p /app/data/uploads && chown -R app:app /app
+USER app
 EXPOSE 8080
+HEALTHCHECK --interval=10s --timeout=3s --retries=5 CMD wget -qO- http://127.0.0.1:8080/healthz || exit 1
 ENTRYPOINT ["./wms"]

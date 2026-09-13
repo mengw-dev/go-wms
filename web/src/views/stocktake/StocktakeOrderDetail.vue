@@ -100,8 +100,8 @@ async function onCancel() {
         <div class="detail-actions">
           <el-tag :type="statusTag(data.order.status)" size="large">{{ statusText(data.order.status) }}</el-tag>
           <template v-if="data.order.status === 'DRAFT'">
-            <el-button type="success" plain @click="onApprove">审核</el-button>
-            <el-button type="danger" plain @click="onCancel">取消</el-button>
+            <el-button v-permission="'wms:stocktake:approve'" type="success" plain @click="onApprove">审核</el-button>
+            <el-button v-permission="'wms:stocktake:cancel'" type="danger" plain @click="onCancel">取消</el-button>
           </template>
         </div>
 

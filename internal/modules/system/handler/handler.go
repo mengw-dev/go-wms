@@ -1,13 +1,12 @@
 package handler
 
 import (
-	"strconv"
-
 	"github.com/gin-gonic/gin"
 
 	"gowms/internal/modules/system/dto"
 	"gowms/internal/modules/system/service"
 	"gowms/internal/pkg/errcode"
+	"gowms/internal/pkg/httpx"
 	"gowms/internal/pkg/middleware"
 	"gowms/internal/pkg/response"
 )
@@ -49,8 +48,7 @@ func (h *Handler) RegisterRoutes(pub, auth *gin.RouterGroup, checker middleware.
 
 func (h *Handler) login(c *gin.Context) {
 	var req dto.LoginReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, errcode.ParamError)
+	if !httpx.BindJSON(c, &req) {
 		return
 	}
 	resp, err := h.svc.Login(c.Request.Context(), &req, c.ClientIP())
@@ -72,8 +70,7 @@ func (h *Handler) profile(c *gin.Context) {
 
 func (h *Handler) changePassword(c *gin.Context) {
 	var req dto.ChangePwdReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, errcode.ParamError)
+	if !httpx.BindJSON(c, &req) {
 		return
 	}
 	if err := h.svc.ChangePassword(c.Request.Context(), middleware.UserID(c), &req); err != nil {
@@ -99,8 +96,7 @@ func (h *Handler) listUsers(c *gin.Context) {
 
 func (h *Handler) createUser(c *gin.Context) {
 	var req dto.UserCreateReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, errcode.ParamError)
+	if !httpx.BindJSON(c, &req) {
 		return
 	}
 	if err := h.svc.CreateUser(c.Request.Context(), &req); err != nil {
@@ -112,11 +108,13 @@ func (h *Handler) createUser(c *gin.Context) {
 
 func (h *Handler) updateUser(c *gin.Context) {
 	var req dto.UserUpdateReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, errcode.ParamError)
+	if !httpx.BindJSON(c, &req) {
 		return
 	}
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	id, ok := httpx.PathID(c)
+	if !ok {
+		return
+	}
 	if err := h.svc.UpdateUser(c.Request.Context(), id, &req); err != nil {
 		response.Fail(c, err)
 		return
@@ -126,11 +124,13 @@ func (h *Handler) updateUser(c *gin.Context) {
 
 func (h *Handler) updateUserStatus(c *gin.Context) {
 	var req dto.StatusReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, errcode.ParamError)
+	if !httpx.BindJSON(c, &req) {
 		return
 	}
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	id, ok := httpx.PathID(c)
+	if !ok {
+		return
+	}
 	if err := h.svc.UpdateUser(c.Request.Context(), id, &dto.UserUpdateReq{Status: req.Status}); err != nil {
 		response.Fail(c, err)
 		return
@@ -139,7 +139,10 @@ func (h *Handler) updateUserStatus(c *gin.Context) {
 }
 
 func (h *Handler) deleteUser(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	id, ok := httpx.PathID(c)
+	if !ok {
+		return
+	}
 	if err := h.svc.DeleteUser(c.Request.Context(), id); err != nil {
 		response.Fail(c, err)
 		return
@@ -149,11 +152,13 @@ func (h *Handler) deleteUser(c *gin.Context) {
 
 func (h *Handler) resetPassword(c *gin.Context) {
 	var req dto.ResetPwdReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, errcode.ParamError)
+	if !httpx.BindJSON(c, &req) {
 		return
 	}
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	id, ok := httpx.PathID(c)
+	if !ok {
+		return
+	}
 	if err := h.svc.ResetPassword(c.Request.Context(), id, &req); err != nil {
 		response.Fail(c, err)
 		return
@@ -186,8 +191,7 @@ func (h *Handler) listAllRoles(c *gin.Context) {
 
 func (h *Handler) createRole(c *gin.Context) {
 	var req dto.RoleCreateReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, errcode.ParamError)
+	if !httpx.BindJSON(c, &req) {
 		return
 	}
 	if err := h.svc.CreateRole(c.Request.Context(), &req); err != nil {
@@ -199,11 +203,13 @@ func (h *Handler) createRole(c *gin.Context) {
 
 func (h *Handler) updateRole(c *gin.Context) {
 	var req dto.RoleUpdateReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, errcode.ParamError)
+	if !httpx.BindJSON(c, &req) {
 		return
 	}
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	id, ok := httpx.PathID(c)
+	if !ok {
+		return
+	}
 	if err := h.svc.UpdateRole(c.Request.Context(), id, &req); err != nil {
 		response.Fail(c, err)
 		return
@@ -212,7 +218,10 @@ func (h *Handler) updateRole(c *gin.Context) {
 }
 
 func (h *Handler) deleteRole(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	id, ok := httpx.PathID(c)
+	if !ok {
+		return
+	}
 	if err := h.svc.DeleteRole(c.Request.Context(), id); err != nil {
 		response.Fail(c, err)
 		return

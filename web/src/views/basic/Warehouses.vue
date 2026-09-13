@@ -123,7 +123,7 @@ async function onDelete(row: WarehouseItem) {
 
     <div class="toolbar">
       <span />
-      <el-button type="primary" @click="openCreate">新增仓库</el-button>
+      <el-button v-permission="'wms:basic'" type="primary" @click="openCreate">新增仓库</el-button>
     </div>
 
     <el-table v-loading="loading" :data="list" border stripe>
@@ -148,8 +148,8 @@ async function onDelete(row: WarehouseItem) {
       <el-table-column label="操作" width="150" fixed="right">
         <template #default="{ row }">
           <div class="table-oper">
-            <el-button size="small" @click="openEdit(row)">编辑</el-button>
-            <el-button size="small" type="danger" plain @click="onDelete(row)">删除</el-button>
+            <el-button v-permission="'wms:basic'" size="small" @click="openEdit(row)">编辑</el-button>
+            <el-button v-permission="'wms:basic'" size="small" type="danger" plain @click="onDelete(row)">删除</el-button>
           </div>
         </template>
       </el-table-column>

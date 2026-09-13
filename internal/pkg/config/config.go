@@ -17,9 +17,16 @@ type Config struct {
 }
 
 type ServerConfig struct {
-	Port int    `mapstructure:"port"`
-	Mode string `mapstructure:"mode"` // debug / release
-	Node int64  `mapstructure:"node"` // 雪花算法节点号（0-1023），多实例部署时每实例必须唯一
+	Port                   int    `mapstructure:"port"`
+	Mode                   string `mapstructure:"mode"` // debug / release
+	Node                   int64  `mapstructure:"node"` // 雪花算法节点号（0-1023），多实例部署时每实例必须唯一
+	ReadTimeoutSeconds     int    `mapstructure:"read_timeout_seconds"`
+	WriteTimeoutSeconds    int    `mapstructure:"write_timeout_seconds"`
+	IdleTimeoutSeconds     int    `mapstructure:"idle_timeout_seconds"`
+	ShutdownTimeoutSeconds int    `mapstructure:"shutdown_timeout_seconds"`
+	BodyLimitMB            int64  `mapstructure:"body_limit_mb"`
+	CORSAllowOrigins       string `mapstructure:"cors_allow_origins"`
+	TrustedProxies         string `mapstructure:"trusted_proxies"`
 }
 
 type MySQLConfig struct {
@@ -62,6 +69,30 @@ func Load(path string) (*Config, error) {
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, err
 	}
+	if cfg.Server.Port <= 0 || cfg.Server.Port > 65535 {
+		return nil, fmt.Errorf("server.port must be between 1 and 65535")
+	}
+	if cfg.Server.Mode != "debug" && cfg.Server.Mode != "release" {
+		return nil, fmt.Errorf("server.mode must be debug or release")
+	}
+	if cfg.Server.ReadTimeoutSeconds <= 0 {
+		cfg.Server.ReadTimeoutSeconds = 15
+	}
+	if cfg.Server.WriteTimeoutSeconds <= 0 {
+		cfg.Server.WriteTimeoutSeconds = 30
+	}
+	if cfg.Server.IdleTimeoutSeconds <= 0 {
+		cfg.Server.IdleTimeoutSeconds = 60
+	}
+	if cfg.Server.ShutdownTimeoutSeconds <= 0 {
+		cfg.Server.ShutdownTimeoutSeconds = 10
+	}
+	if cfg.Server.BodyLimitMB <= 0 {
+		cfg.Server.BodyLimitMB = 10
+	}
+	if cfg.Server.CORSAllowOrigins == "" && cfg.Server.Mode == "debug" {
+		cfg.Server.CORSAllowOrigins = "http://localhost:5173,http://127.0.0.1:5173"
+	}
 	if cfg.MySQL.MaxOpenConns <= 0 {
 		cfg.MySQL.MaxOpenConns = 50
 	}
@@ -88,3 +119,17 @@ func Load(path string) (*Config, error) {
 	}
 	return &cfg, nil
 }
+
+func SplitCSV(value string) []string {
+	parts := strings.Split(value, ",")
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if item := strings.TrimSpace(part); item != "" {
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
+func (c *Config) CORSOrigins() []string       { return SplitCSV(c.Server.CORSAllowOrigins) }
+func (c *Config) TrustedProxyCIDRs() []string { return SplitCSV(c.Server.TrustedProxies) }

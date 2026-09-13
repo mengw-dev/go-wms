@@ -96,15 +96,15 @@ function canPick(task: { task_type: string; status: string }): boolean {
         <div class="detail-actions">
           <el-tag :type="statusTag(data.order.status)" size="large">{{ statusText(data.order.status) }}</el-tag>
           <template v-if="data.order.status === 'DRAFT'">
-            <el-button type="success" plain @click="onSubmit">提交</el-button>
+            <el-button v-permission="'wms:outbound:submit'" type="success" plain @click="onSubmit">提交</el-button>
           </template>
           <template v-else-if="data.order.status === 'SUBMITTED'">
-            <el-button type="success" plain @click="onApprove">审核（分配）</el-button>
-            <el-button type="danger" plain @click="onCancel">取消</el-button>
+            <el-button v-permission="'wms:outbound:approve'" type="success" plain @click="onApprove">审核（分配）</el-button>
+            <el-button v-permission="'wms:outbound:cancel'" type="danger" plain @click="onCancel">取消</el-button>
           </template>
           <template v-else-if="data.order.status === 'APPROVED' || data.order.status === 'PICKING'">
-            <el-button type="primary" plain @click="openPick()">拣货</el-button>
-            <el-button type="danger" plain @click="onCancel">取消</el-button>
+            <el-button v-permission="'wms:outbound:pick'" type="primary" plain @click="openPick()">拣货</el-button>
+            <el-button v-permission="'wms:outbound:cancel'" type="danger" plain @click="onCancel">取消</el-button>
           </template>
         </div>
 
@@ -176,7 +176,7 @@ function canPick(task: { task_type: string; status: string }): boolean {
           </el-table-column>
           <el-table-column label="操作" width="100" fixed="right">
             <template #default="{ row }">
-              <el-button v-if="canPick(row)" type="primary" size="small" plain @click="openPick(row.id)">
+              <el-button v-if="canPick(row)" v-permission="'wms:outbound:pick'" type="primary" size="small" plain @click="openPick(row.id)">
                 拣货
               </el-button>
             </template>

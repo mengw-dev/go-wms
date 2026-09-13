@@ -1,12 +1,11 @@
 package handler
 
 import (
-	"strconv"
-
 	"github.com/gin-gonic/gin"
 
 	"gowms/internal/modules/task/service"
 	"gowms/internal/pkg/errcode"
+	"gowms/internal/pkg/httpx"
 	"gowms/internal/pkg/middleware"
 	"gowms/internal/pkg/response"
 )
@@ -25,15 +24,18 @@ func (h *Handler) RegisterRoutes(auth *gin.RouterGroup, checker middleware.Perms
 }
 
 func (h *Handler) list(c *gin.Context) {
-	orderID, _ := strconv.ParseInt(c.Query("order_id"), 10, 64)
-	taskType := c.Query("task_type")
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	size, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
-	if page < 1 {
-		page = 1
+	orderID, ok := httpx.OptionalQueryID(c, "order_id")
+	if !ok {
+		return
 	}
-	if size < 1 || size > 100 {
-		size = 10
+	taskType := c.Query("task_type")
+	page, ok := httpx.QueryInt(c, "page", 1, 1, 100000)
+	if !ok {
+		return
+	}
+	size, ok := httpx.QueryInt(c, "page_size", 10, 1, 100)
+	if !ok {
+		return
 	}
 	list, total, err := h.svc.List(c.Request.Context(), orderID, taskType, page, size)
 	if err != nil {
@@ -44,7 +46,10 @@ func (h *Handler) list(c *gin.Context) {
 }
 
 func (h *Handler) get(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	id, ok := httpx.PathID(c)
+	if !ok {
+		return
+	}
 	t, err := h.svc.Get(c.Request.Context(), id)
 	if err != nil {
 		response.Fail(c, errcode.TaskNotFound)

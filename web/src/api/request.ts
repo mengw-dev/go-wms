@@ -3,8 +3,20 @@ import { ElMessage } from 'element-plus'
 import router from '@/router'
 import { useAuthStore } from '@/stores/auth'
 
+export class ApiError extends Error {
+  code?: number
+  status?: number
+
+  constructor(message: string, code?: number, status?: number) {
+    super(message)
+    this.name = 'ApiError'
+    this.code = code
+    this.status = status
+  }
+}
+
 const service = axios.create({
-  baseURL: '/api/v1',
+  baseURL: import.meta.env.VITE_API_BASE_URL || '/api/v1',
   timeout: 20000,
 })
 
@@ -28,7 +40,7 @@ service.interceptors.response.use(
       if (body.code !== 0) {
         const msg = body.msg || '操作失败'
         ElMessage.error(msg)
-        return Promise.reject(new Error(msg))
+        return Promise.reject(new ApiError(msg, body.code))
       }
       return body.data
     }
@@ -46,7 +58,13 @@ service.interceptors.response.use(
       const msg = error?.response?.data?.msg || error?.message || '网络异常'
       ElMessage.error(msg)
     }
-    return Promise.reject(error)
+    return Promise.reject(
+      new ApiError(
+        error?.response?.data?.msg || error?.message || '网络异常',
+        error?.response?.data?.code,
+        status,
+      ),
+    )
   },
 )
 

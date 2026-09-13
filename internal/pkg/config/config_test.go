@@ -17,6 +17,7 @@ func writeConfig(t *testing.T, content string) string {
 
 func TestLoadRejectsUnsafeReleaseConfig(t *testing.T) {
 	path := writeConfig(t, `server:
+  port: 8080
   mode: release
   node: 1
 jwt:
@@ -30,6 +31,7 @@ jwt:
 
 func TestLoadRejectsInvalidNode(t *testing.T) {
 	path := writeConfig(t, `server:
+  port: 8080
   mode: debug
   node: 1024
 jwt:
@@ -56,6 +58,7 @@ func TestLoadReadsEnvironmentOverrides(t *testing.T) {
 
 func TestLoadValidConfig(t *testing.T) {
 	path := writeConfig(t, `server:
+  port: 8080
   mode: release
   node: 3
 jwt:

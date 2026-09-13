@@ -1,23 +1,42 @@
 package errcode
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
 
 // Error 统一业务错误：携带错误码与展示消息。
 type Error struct {
-	Code int
-	Msg  string
+	Code  int
+	Msg   string
+	cause error
 }
 
 func (e *Error) Error() string { return fmt.Sprintf("[%d] %s", e.Code, e.Msg) }
 
+// Unwrap 保留底层错误，使 errors.Is/errors.As 可以穿透业务错误。
+func (e *Error) Unwrap() error { return e.cause }
+
 func New(code int, msg string) *Error { return &Error{Code: code, Msg: msg} }
+
+// Wrap 将底层错误包装为稳定的业务错误，同时保留原始错误链。
+func Wrap(err error, template *Error) *Error {
+	if err == nil {
+		return nil
+	}
+	if template == nil {
+		template = Internal
+	}
+	return &Error{Code: template.Code, Msg: template.Msg, cause: err}
+}
 
 // From 将任意 error 归一化为 *Error，未知错误归为 Internal。
 func From(err error) *Error {
 	if err == nil {
 		return nil
 	}
-	if e, ok := err.(*Error); ok {
+	var e *Error
+	if errors.As(err, &e) {
 		return e
 	}
 	return Internal
@@ -35,23 +54,29 @@ var conflictCodes = map[int]struct{}{
 
 // IsConflict 判断错误是否为并发冲突类（乐观锁失败、行竞争）——这类错误可以整事务重试。
 func IsConflict(err error) bool {
-	e, ok := err.(*Error)
-	if !ok {
+	var e *Error
+	if !errors.As(err, &e) {
 		return false
 	}
-	_, ok = conflictCodes[e.Code]
+	return IsConflictCode(e.Code)
+}
+
+// IsConflictCode 判断业务码是否属于可安全重试的并发冲突。
+func IsConflictCode(code int) bool {
+	_, ok := conflictCodes[code]
 	return ok
 }
 
 // 通用错误码
 var (
-	OK           = New(0, "success")
-	Internal     = New(500, "系统内部错误")
-	ParamError   = New(400, "参数错误")
-	NotFound     = New(404, "资源不存在")
-	Unauthorized = New(40100, "未登录或登录已过期")
-	Forbidden    = New(40300, "无权限执行该操作")
-	Conflict     = New(40900, "数据并发冲突，请重试")
+	OK              = New(0, "success")
+	Internal        = New(500, "系统内部错误")
+	ParamError      = New(400, "参数错误")
+	NotFound        = New(404, "资源不存在")
+	PayloadTooLarge = New(41300, "请求内容过大")
+	Unauthorized    = New(40100, "未登录或登录已过期")
+	Forbidden       = New(40300, "无权限执行该操作")
+	Conflict        = New(40900, "数据并发冲突，请重试")
 )
 
 // 系统/认证 10000+

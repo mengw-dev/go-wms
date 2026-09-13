@@ -160,7 +160,7 @@ async function submitCreate() {
 
     <div class="toolbar">
       <span />
-      <el-button type="primary" @click="openCreate">新建盘点单</el-button>
+      <el-button v-permission="'wms:stocktake:create'" type="primary" @click="openCreate">新建盘点单</el-button>
     </div>
 
     <el-table v-loading="loading" :data="list" border stripe>
@@ -192,9 +192,9 @@ async function submitCreate() {
           <div class="table-oper">
             <el-button size="small" @click="goDetail(row)">详情</el-button>
             <template v-if="row.status === 'DRAFT'">
-              <el-button size="small" type="primary" plain @click="goDetail(row)">录入实盘</el-button>
-              <el-button size="small" type="success" plain @click="onApprove(row)">审核</el-button>
-              <el-button size="small" type="danger" plain @click="onCancel(row)">取消</el-button>
+              <el-button v-permission="'wms:stocktake:stocktake'" size="small" type="primary" plain @click="goDetail(row)">录入实盘</el-button>
+              <el-button v-permission="'wms:stocktake:approve'" size="small" type="success" plain @click="onApprove(row)">审核</el-button>
+              <el-button v-permission="'wms:stocktake:cancel'" size="small" type="danger" plain @click="onCancel(row)">取消</el-button>
             </template>
           </div>
         </template>

@@ -1,4 +1,4 @@
-.PHONY: run build test test-required lint tidy compose-up compose-infra compose-down
+.PHONY: run build test test-required test-race lint tidy compose-up compose-infra compose-down
 
 run:
 	go run ./cmd/wms
@@ -11,6 +11,9 @@ test:
 
 test-required:
 	WMS_TEST_REQUIRED=1 go test ./internal/... -v -count=1
+
+test-race:
+	CGO_ENABLED=1 go test -race ./internal/... -count=1
 
 lint:
 	gofmt -l .

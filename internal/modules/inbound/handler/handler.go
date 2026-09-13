@@ -2,13 +2,15 @@ package handler
 
 import (
 	"io"
-	"strconv"
+	"path/filepath"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
 	"gowms/internal/modules/inbound/dto"
 	"gowms/internal/modules/inbound/service"
 	"gowms/internal/pkg/errcode"
+	"gowms/internal/pkg/httpx"
 	"gowms/internal/pkg/middleware"
 	"gowms/internal/pkg/response"
 )
@@ -59,7 +61,10 @@ func (h *Handler) list(c *gin.Context) {
 }
 
 func (h *Handler) get(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	id, ok := httpx.PathID(c)
+	if !ok {
+		return
+	}
 	detail, err := h.svc.Get(c.Request.Context(), id)
 	if err != nil {
 		response.Fail(c, err)
@@ -70,8 +75,7 @@ func (h *Handler) get(c *gin.Context) {
 
 func (h *Handler) create(c *gin.Context) {
 	var req dto.CreateOrderReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, errcode.ParamError)
+	if !httpx.BindJSON(c, &req) {
 		return
 	}
 	order, err := h.svc.Create(c.Request.Context(), &req, middleware.Username(c))
@@ -84,11 +88,13 @@ func (h *Handler) create(c *gin.Context) {
 
 func (h *Handler) update(c *gin.Context) {
 	var req dto.CreateOrderReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, errcode.ParamError)
+	if !httpx.BindJSON(c, &req) {
 		return
 	}
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	id, ok := httpx.PathID(c)
+	if !ok {
+		return
+	}
 	if err := h.svc.Update(c.Request.Context(), id, &req); err != nil {
 		response.Fail(c, err)
 		return
@@ -97,7 +103,10 @@ func (h *Handler) update(c *gin.Context) {
 }
 
 func (h *Handler) delete(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	id, ok := httpx.PathID(c)
+	if !ok {
+		return
+	}
 	if err := h.svc.Delete(c.Request.Context(), id); err != nil {
 		response.Fail(c, err)
 		return
@@ -106,7 +115,10 @@ func (h *Handler) delete(c *gin.Context) {
 }
 
 func (h *Handler) submit(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	id, ok := httpx.PathID(c)
+	if !ok {
+		return
+	}
 	if err := h.svc.Submit(c.Request.Context(), id); err != nil {
 		response.Fail(c, err)
 		return
@@ -115,7 +127,10 @@ func (h *Handler) submit(c *gin.Context) {
 }
 
 func (h *Handler) approve(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	id, ok := httpx.PathID(c)
+	if !ok {
+		return
+	}
 	if err := h.svc.Approve(c.Request.Context(), id, middleware.Username(c)); err != nil {
 		response.Fail(c, err)
 		return
@@ -124,7 +139,10 @@ func (h *Handler) approve(c *gin.Context) {
 }
 
 func (h *Handler) cancel(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	id, ok := httpx.PathID(c)
+	if !ok {
+		return
+	}
 	if err := h.svc.Cancel(c.Request.Context(), id); err != nil {
 		response.Fail(c, err)
 		return
@@ -134,12 +152,17 @@ func (h *Handler) cancel(c *gin.Context) {
 
 func (h *Handler) receive(c *gin.Context) {
 	var req dto.ReceiveReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, errcode.ParamError)
+	if !httpx.BindJSON(c, &req) {
 		return
 	}
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	detailID, _ := strconv.ParseInt(c.Query("detail_id"), 10, 64)
+	id, ok := httpx.PathID(c)
+	if !ok {
+		return
+	}
+	detailID, ok := httpx.QueryID(c, "detail_id")
+	if !ok {
+		return
+	}
 	if detailID == 0 {
 		detailID = req.DetailID
 	}
@@ -152,8 +175,7 @@ func (h *Handler) receive(c *gin.Context) {
 
 func (h *Handler) putaway(c *gin.Context) {
 	var req dto.PutawayReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, errcode.ParamError)
+	if !httpx.BindJSON(c, &req) {
 		return
 	}
 	if err := h.svc.Putaway(c.Request.Context(), req.TaskID, req.LocationID, req.Qty, middleware.Username(c)); err != nil {
@@ -163,9 +185,23 @@ func (h *Handler) putaway(c *gin.Context) {
 	response.OK(c, nil)
 }
 
+const maxImportFileSize = 10 << 20
+
 func (h *Handler) importExcel(c *gin.Context) {
 	file, err := c.FormFile("file")
 	if err != nil {
+		if httpx.IsBodyTooLarge(err) {
+			response.Fail(c, errcode.PayloadTooLarge)
+			return
+		}
+		response.Fail(c, errcode.ImportFileInvalid)
+		return
+	}
+	if file.Size <= 0 || file.Size > maxImportFileSize {
+		response.Fail(c, errcode.PayloadTooLarge)
+		return
+	}
+	if strings.ToLower(filepath.Ext(file.Filename)) != ".xlsx" {
 		response.Fail(c, errcode.ImportFileInvalid)
 		return
 	}
@@ -176,10 +212,19 @@ func (h *Handler) importExcel(c *gin.Context) {
 	}
 	defer f.Close()
 	data, err := io.ReadAll(f)
-	if err != nil || len(data) == 0 {
+	if err != nil {
+		if httpx.IsBodyTooLarge(err) {
+			response.Fail(c, errcode.PayloadTooLarge)
+			return
+		}
 		response.Fail(c, errcode.ImportFileInvalid)
 		return
 	}
+	if len(data) == 0 {
+		response.Fail(c, errcode.ImportFileInvalid)
+		return
+	}
+
 	resp, err := h.svc.Import(c.Request.Context(), file.Filename, data)
 	if err != nil {
 		response.Fail(c, err)

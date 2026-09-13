@@ -1,6 +1,7 @@
 package app
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -11,12 +12,21 @@ import (
 
 // NewRouter 构建路由与中间件链：
 // RequestID → CORS → Recovery → AccessLog → Auth(JWT) → OperLog(异步审计) → Permission(按路由)。
-func (a *App) NewRouter() *gin.Engine {
+func (a *App) NewRouter() (*gin.Engine, error) {
 	if a.Config.Server.Mode == "release" {
 		gin.SetMode(gin.ReleaseMode)
 	}
 	r := gin.New()
-	r.Use(middleware.RequestID(), middleware.CORS(), middleware.Recovery(), middleware.AccessLog())
+	if err := r.SetTrustedProxies(a.Config.TrustedProxyCIDRs()); err != nil {
+		return nil, fmt.Errorf("configure trusted proxies: %w", err)
+	}
+	r.Use(
+		middleware.RequestID(),
+		middleware.BodyLimit(a.Config.Server.BodyLimitMB),
+		middleware.CORS(a.Config.CORSOrigins()),
+		middleware.Recovery(),
+		middleware.AccessLog(),
+	)
 
 	// 健康检查：DB 不可用必须返回非 2xx，K8s 探针/负载均衡才能摘除故障实例
 	r.GET("/healthz", func(c *gin.Context) {
@@ -41,7 +51,7 @@ func (a *App) NewRouter() *gin.Engine {
 	a.OutboundHandler.RegisterRoutes(auth, a.SystemAPI)
 	a.StocktakeHandler.RegisterRoutes(auth, a.SystemAPI)
 
-	return r
+	return r, nil
 }
 
 // healthz 健康检查：DB 必须可用，Redis 不可用不影响健康（已降级运行）。

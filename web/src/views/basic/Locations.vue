@@ -181,7 +181,7 @@ async function onDelete(row: LocationItem) {
 
     <div class="toolbar">
       <span />
-      <el-button type="primary" @click="openBatch">批量生成库位</el-button>
+      <el-button v-permission="'wms:basic'" type="primary" @click="openBatch">批量生成库位</el-button>
     </div>
 
     <el-table v-loading="loading" :data="list" border stripe>
@@ -212,7 +212,7 @@ async function onDelete(row: LocationItem) {
       </el-table-column>
       <el-table-column label="操作" width="90" fixed="right">
         <template #default="{ row }">
-          <el-button size="small" type="danger" plain @click="onDelete(row)">删除</el-button>
+          <el-button v-permission="'wms:basic'" size="small" type="danger" plain @click="onDelete(row)">删除</el-button>
         </template>
       </el-table-column>
     </el-table>

@@ -1,13 +1,12 @@
 package handler
 
 import (
-	"strconv"
-
 	"github.com/gin-gonic/gin"
 
 	"gowms/internal/modules/stocktake/dto"
 	"gowms/internal/modules/stocktake/service"
 	"gowms/internal/pkg/errcode"
+	"gowms/internal/pkg/httpx"
 	"gowms/internal/pkg/middleware"
 	"gowms/internal/pkg/response"
 )
@@ -51,7 +50,10 @@ func (h *Handler) list(c *gin.Context) {
 }
 
 func (h *Handler) get(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	id, ok := httpx.PathID(c)
+	if !ok {
+		return
+	}
 	detail, err := h.svc.Get(c.Request.Context(), id)
 	if err != nil {
 		response.Fail(c, err)
@@ -62,8 +64,7 @@ func (h *Handler) get(c *gin.Context) {
 
 func (h *Handler) create(c *gin.Context) {
 	var req dto.CreateOrderReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, errcode.ParamError)
+	if !httpx.BindJSON(c, &req) {
 		return
 	}
 	order, err := h.svc.Create(c.Request.Context(), &req, middleware.Username(c))
@@ -76,11 +77,13 @@ func (h *Handler) create(c *gin.Context) {
 
 func (h *Handler) recordActual(c *gin.Context) {
 	var req dto.RecordActualReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, errcode.ParamError)
+	if !httpx.BindJSON(c, &req) {
 		return
 	}
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	id, ok := httpx.PathID(c)
+	if !ok {
+		return
+	}
 	if err := h.svc.RecordActual(c.Request.Context(), id, req.DetailID, req.ActualQty); err != nil {
 		response.Fail(c, err)
 		return
@@ -89,7 +92,10 @@ func (h *Handler) recordActual(c *gin.Context) {
 }
 
 func (h *Handler) approve(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	id, ok := httpx.PathID(c)
+	if !ok {
+		return
+	}
 	if err := h.svc.Approve(c.Request.Context(), id, middleware.Username(c)); err != nil {
 		response.Fail(c, err)
 		return
@@ -98,7 +104,10 @@ func (h *Handler) approve(c *gin.Context) {
 }
 
 func (h *Handler) cancel(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	id, ok := httpx.PathID(c)
+	if !ok {
+		return
+	}
 	if err := h.svc.Cancel(c.Request.Context(), id); err != nil {
 		response.Fail(c, err)
 		return

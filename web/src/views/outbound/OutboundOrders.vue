@@ -197,7 +197,7 @@ function openPick(row: OutboundOrderItem) {
 
     <div class="toolbar">
       <span />
-      <el-button type="primary" @click="openCreate">新建出库单</el-button>
+      <el-button v-permission="'wms:outbound:create'" type="primary" @click="openCreate">新建出库单</el-button>
     </div>
 
     <el-table v-loading="loading" :data="list" border stripe>
@@ -228,16 +228,16 @@ function openPick(row: OutboundOrderItem) {
           <div class="table-oper">
             <el-button size="small" @click="goDetail(row)">详情</el-button>
             <template v-if="row.status === 'DRAFT'">
-              <el-button size="small" type="success" plain @click="onSubmit(row)">提交</el-button>
-              <el-button size="small" type="danger" plain @click="onDelete(row)">删除</el-button>
+              <el-button v-permission="'wms:outbound:submit'" size="small" type="success" plain @click="onSubmit(row)">提交</el-button>
+              <el-button v-permission="'wms:outbound:create'" size="small" type="danger" plain @click="onDelete(row)">删除</el-button>
             </template>
             <template v-else-if="row.status === 'SUBMITTED'">
-              <el-button size="small" type="success" plain @click="onApprove(row)">审核</el-button>
-              <el-button size="small" type="danger" plain @click="onCancel(row)">取消</el-button>
+              <el-button v-permission="'wms:outbound:approve'" size="small" type="success" plain @click="onApprove(row)">审核</el-button>
+              <el-button v-permission="'wms:outbound:cancel'" size="small" type="danger" plain @click="onCancel(row)">取消</el-button>
             </template>
             <template v-else-if="row.status === 'APPROVED' || row.status === 'PICKING'">
-              <el-button size="small" type="primary" plain @click="openPick(row)">拣货</el-button>
-              <el-button size="small" type="danger" plain @click="onCancel(row)">取消</el-button>
+              <el-button v-permission="'wms:outbound:pick'" size="small" type="primary" plain @click="openPick(row)">拣货</el-button>
+              <el-button v-permission="'wms:outbound:cancel'" size="small" type="danger" plain @click="onCancel(row)">取消</el-button>
             </template>
           </div>
         </template>

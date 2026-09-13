@@ -102,19 +102,19 @@ function canPutaway(task: { task_type: string; status: string }): boolean {
         <div class="detail-actions">
           <el-tag :type="statusTag(data.order.status)" size="large">{{ statusText(data.order.status) }}</el-tag>
           <template v-if="data.order.status === 'DRAFT'">
-            <el-button type="success" plain @click="onSubmit">提交</el-button>
-            <el-button type="danger" plain @click="onCancel">取消</el-button>
+            <el-button v-permission="'wms:inbound:submit'" type="success" plain @click="onSubmit">提交</el-button>
+            <el-button v-permission="'wms:inbound:cancel'" type="danger" plain @click="onCancel">取消</el-button>
           </template>
           <template v-else-if="data.order.status === 'SUBMITTED'">
-            <el-button type="success" plain @click="onApprove">审核</el-button>
-            <el-button type="danger" plain @click="onCancel">取消</el-button>
+            <el-button v-permission="'wms:inbound:approve'" type="success" plain @click="onApprove">审核</el-button>
+            <el-button v-permission="'wms:inbound:cancel'" type="danger" plain @click="onCancel">取消</el-button>
           </template>
           <template v-else-if="data.order.status === 'APPROVED' || data.order.status === 'RECEIVING'">
-            <el-button type="primary" plain @click="openReceive">收货</el-button>
-            <el-button type="warning" plain @click="openPutaway()">上架</el-button>
+            <el-button v-permission="'wms:inbound:receive'" type="primary" plain @click="openReceive">收货</el-button>
+            <el-button v-permission="'wms:inbound:putaway'" type="warning" plain @click="openPutaway()">上架</el-button>
           </template>
           <template v-else-if="data.order.status === 'PUTAWAY'">
-            <el-button type="warning" plain @click="openPutaway()">上架</el-button>
+            <el-button v-permission="'wms:inbound:putaway'" type="warning" plain @click="openPutaway()">上架</el-button>
           </template>
         </div>
 
@@ -168,7 +168,7 @@ function canPutaway(task: { task_type: string; status: string }): boolean {
           </el-table-column>
           <el-table-column label="操作" width="100" fixed="right">
             <template #default="{ row }">
-              <el-button v-if="canPutaway(row)" type="warning" size="small" plain @click="openPutaway(row.id)">
+              <el-button v-if="canPutaway(row)" v-permission="'wms:inbound:putaway'" type="warning" size="small" plain @click="openPutaway(row.id)">
                 上架
               </el-button>
             </template>

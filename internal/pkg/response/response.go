@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"gowms/internal/pkg/errcode"
+	"gowms/internal/pkg/log"
 )
 
 // Body 统一响应结构 {code, msg, data}。
@@ -38,6 +39,13 @@ func Fail(c *gin.Context, err error) {
 	if !errors.As(err, &e) {
 		e = errcode.Internal
 	}
+	if e.Code == errcode.Internal.Code {
+		log.WithContext(c.Request.Context()).Error("request failed",
+			"method", c.Request.Method,
+			"path", c.Request.URL.Path,
+			"err", err,
+		)
+	}
 	c.JSON(httpStatus(e.Code), Body{Code: e.Code, Msg: e.Msg, Data: nil})
 }
 
@@ -50,10 +58,12 @@ func httpStatus(code int) int {
 		return http.StatusForbidden
 	case errcode.Internal.Code:
 		return http.StatusInternalServerError
+	case errcode.PayloadTooLarge.Code:
+		return http.StatusRequestEntityTooLarge
 	case errcode.Conflict.Code:
 		return http.StatusConflict
 	}
-	if errcode.IsConflict(&errcode.Error{Code: code}) { // 各模块乐观锁/行竞争冲突
+	if errcode.IsConflictCode(code) { // 各模块乐观锁/行竞争冲突
 		return http.StatusConflict
 	}
 	return http.StatusBadRequest

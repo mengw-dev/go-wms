@@ -190,6 +190,13 @@ make compose-down
 | `WMS_SERVER_PORT` | HTTP 端口 | `8080` |
 | `WMS_SERVER_MODE` | `debug` / `release` | `debug` |
 | `WMS_SERVER_NODE` | 雪花 ID 节点号，多实例必须唯一 | `1` |
+| `WMS_SERVER_READ_TIMEOUT_SECONDS` | HTTP 读取超时 | `15` |
+| `WMS_SERVER_WRITE_TIMEOUT_SECONDS` | HTTP 写入超时 | `30` |
+| `WMS_SERVER_IDLE_TIMEOUT_SECONDS` | HTTP 空闲连接超时 | `60` |
+| `WMS_SERVER_SHUTDOWN_TIMEOUT_SECONDS` | 优雅关停超时 | `10` |
+| `WMS_SERVER_BODY_LIMIT_MB` | 请求体大小上限 | `10` |
+| `WMS_SERVER_CORS_ALLOW_ORIGINS` | 允许跨域的 Origin，逗号分隔 | 仅开发默认 localhost |
+| `WMS_SERVER_TRUSTED_PROXIES` | 可信反向代理 CIDR，逗号分隔 | 空 |
 | `WMS_MYSQL_DSN` | MySQL DSN | 本地开发配置 |
 | `WMS_REDIS_ADDR` | Redis 地址 | `127.0.0.1:6379` |
 | `WMS_JWT_SECRET` | JWT 密钥，生产环境至少 32 字符 | 开发配置 |
@@ -227,7 +234,10 @@ wms:basic,wms:inventory,wms:task,wms:inbound:view,wms:inbound:receive
 go test ./...
 WMS_TEST_REQUIRED=1 go test ./internal/... -v -count=1
 go vet ./...
+CGO_ENABLED=1 go test -race ./internal/... -count=1
 ```
+
+Windows 本机如果没有 GCC，可以只在 Ubuntu CI 中执行 race 检测。
 
 前端：
 
@@ -263,6 +273,18 @@ Authorization: Bearer <token>
 ## 数据库与迁移
 
 应用启动时使用 GORM AutoMigrate 保证运行所需表结构，`migrations/001_init.sql` 提供可直接审阅的 MySQL 初始化脚本。生产环境建议改为版本化迁移流程，并在发布前由 DBA 审核索引和约束。
+
+## 生产级处理
+
+- JWT 使用版本号，用户禁用或修改密码后旧 Token 立即失效。
+- 登录失败按用户名和 IP 限流。
+- 操作日志对 `password`、`token`、`secret` 等字段自动脱敏。
+- HTTP Server 设置读取、写入、空闲和优雅关停超时。
+- 全局请求体大小受限，Excel 导入限制为 10 MB 且只接受 `.xlsx`。
+- CORS 使用精确 Origin 白名单，不使用 `*`。
+- 可信代理通过 CIDR 配置，避免伪造 `X-Forwarded-For`。
+- 后端和前端容器均以非 root 用户运行。
+- CI 执行 `go test -race`、`govulncheck`、前端依赖审计和 Docker 镜像构建。
 
 ## 安全建议
 

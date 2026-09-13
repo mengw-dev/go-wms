@@ -16,6 +16,7 @@ func TestHTTPStatus(t *testing.T) {
 		{errcode.Unauthorized.Code, 401},       // 40100 登录失效
 		{errcode.Forbidden.Code, 403},          // 40300 无权限
 		{errcode.Internal.Code, 500},           // 500 系统错误
+		{errcode.PayloadTooLarge.Code, 413},    // 413 请求体过大
 		{errcode.Conflict.Code, 409},           // 40900 通用并发冲突
 		{40003, 409},                           // 入库单版本冲突
 		{50003, 409},                           // 出库单版本冲突

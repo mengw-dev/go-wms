@@ -1,13 +1,12 @@
 package handler
 
 import (
-	"strconv"
-
 	"github.com/gin-gonic/gin"
 
 	"gowms/internal/modules/outbound/dto"
 	"gowms/internal/modules/outbound/service"
 	"gowms/internal/pkg/errcode"
+	"gowms/internal/pkg/httpx"
 	"gowms/internal/pkg/middleware"
 	"gowms/internal/pkg/response"
 )
@@ -54,7 +53,10 @@ func (h *Handler) list(c *gin.Context) {
 }
 
 func (h *Handler) get(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	id, ok := httpx.PathID(c)
+	if !ok {
+		return
+	}
 	detail, err := h.svc.Get(c.Request.Context(), id)
 	if err != nil {
 		response.Fail(c, err)
@@ -65,8 +67,7 @@ func (h *Handler) get(c *gin.Context) {
 
 func (h *Handler) create(c *gin.Context) {
 	var req dto.CreateOrderReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, errcode.ParamError)
+	if !httpx.BindJSON(c, &req) {
 		return
 	}
 	order, err := h.svc.Create(c.Request.Context(), &req, middleware.Username(c))
@@ -78,7 +79,10 @@ func (h *Handler) create(c *gin.Context) {
 }
 
 func (h *Handler) delete(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	id, ok := httpx.PathID(c)
+	if !ok {
+		return
+	}
 	if err := h.svc.Delete(c.Request.Context(), id); err != nil {
 		response.Fail(c, err)
 		return
@@ -87,7 +91,10 @@ func (h *Handler) delete(c *gin.Context) {
 }
 
 func (h *Handler) submit(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	id, ok := httpx.PathID(c)
+	if !ok {
+		return
+	}
 	if err := h.svc.Submit(c.Request.Context(), id); err != nil {
 		response.Fail(c, err)
 		return
@@ -96,7 +103,10 @@ func (h *Handler) submit(c *gin.Context) {
 }
 
 func (h *Handler) approve(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	id, ok := httpx.PathID(c)
+	if !ok {
+		return
+	}
 	if err := h.svc.Approve(c.Request.Context(), id, middleware.Username(c)); err != nil {
 		response.Fail(c, err)
 		return
@@ -105,7 +115,10 @@ func (h *Handler) approve(c *gin.Context) {
 }
 
 func (h *Handler) cancel(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	id, ok := httpx.PathID(c)
+	if !ok {
+		return
+	}
 	if err := h.svc.Cancel(c.Request.Context(), id, middleware.Username(c)); err != nil {
 		response.Fail(c, err)
 		return
@@ -115,8 +128,7 @@ func (h *Handler) cancel(c *gin.Context) {
 
 func (h *Handler) pick(c *gin.Context) {
 	var req dto.PickReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, errcode.ParamError)
+	if !httpx.BindJSON(c, &req) {
 		return
 	}
 	if err := h.svc.Pick(c.Request.Context(), req.TaskID, req.Qty, middleware.Username(c)); err != nil {

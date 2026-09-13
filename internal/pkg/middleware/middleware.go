@@ -27,7 +27,7 @@ const (
 
 func RequestID() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		id := c.GetHeader("X-Request-ID")
+		id := normalizeRequestID(c.GetHeader("X-Request-ID"))
 		if id == "" {
 			id = newRequestID()
 		}
@@ -180,6 +180,18 @@ type OperLogRecorder interface {
 	Record(ctx context.Context, r OperLogRecord)
 }
 
+// BodyLimit 限制请求体大小，防止超大 JSON 或上传请求耗尽内存。
+func BodyLimit(limitMB int64) gin.HandlerFunc {
+	if limitMB <= 0 {
+		return func(c *gin.Context) { c.Next() }
+	}
+	maxBytes := limitMB << 20
+	return func(c *gin.Context) {
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxBytes)
+		c.Next()
+	}
+}
+
 // OperLog 操作日志中间件：捕获请求参数与响应结果，异步落库。
 func OperLog(rec OperLogRecorder) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -197,10 +209,7 @@ func OperLog(rec OperLogRecorder) gin.HandlerFunc {
 			data, _ := io.ReadAll(c.Request.Body)
 			_ = c.Request.Body.Close()
 			if len(data) > 0 {
-				params = string(data)
-				if len(params) > 2048 { // 仅截断日志，回填用完整 data
-					params = params[:2048]
-				}
+				params = sanitizeOperLogParams(c.GetHeader("Content-Type"), string(data))
 			}
 			c.Request.Body = io.NopCloser(bytes.NewBuffer(data))
 		}
@@ -217,28 +226,58 @@ func OperLog(rec OperLogRecorder) gin.HandlerFunc {
 				IP:       c.ClientIP(),
 				CostMs:   time.Since(start).Milliseconds(),
 				Status:   bw.Status(),
-				Result:   bw.body.String(),
+				Result:   sanitizeOperLogParams("application/json", bw.body.String()),
 			}
-			if len(r.Result) > 1024 {
-				r.Result = r.Result[:1024]
-			}
-			go rec.Record(context.Background(), r)
+			rec.Record(context.Background(), r)
 		}
 	}
 }
 
-// CORS 跨域。
-func CORS() gin.HandlerFunc {
+// CORS 跨域：只允许配置中的精确 Origin，避免生产环境使用通配符。
+func CORS(allowedOrigins []string) gin.HandlerFunc {
+	allowed := make(map[string]struct{}, len(allowedOrigins))
+	for _, origin := range allowedOrigins {
+		allowed[strings.TrimRight(origin, "/")] = struct{}{}
+	}
 	return func(c *gin.Context) {
-		c.Header("Access-Control-Allow-Origin", "*")
+		origin := strings.TrimRight(c.GetHeader("Origin"), "/")
+		if origin == "" {
+			c.Next()
+			return
+		}
+		if _, ok := allowed[origin]; !ok {
+			if c.Request.Method == http.MethodOptions {
+				c.AbortWithStatus(http.StatusForbidden)
+				return
+			}
+			c.Next()
+			return
+		}
+		c.Header("Access-Control-Allow-Origin", origin)
 		c.Header("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS")
 		c.Header("Access-Control-Allow-Headers", "Authorization,Content-Type,X-Request-ID")
+		c.Header("Access-Control-Expose-Headers", "X-Request-ID")
+		c.Header("Vary", "Origin")
 		if c.Request.Method == http.MethodOptions {
 			c.AbortWithStatus(http.StatusNoContent)
 			return
 		}
 		c.Next()
 	}
+}
+
+func normalizeRequestID(id string) string {
+	id = strings.TrimSpace(id)
+	if id == "" || len(id) > 128 {
+		return ""
+	}
+	for _, r := range id {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' || r == '.' || r == ':' {
+			continue
+		}
+		return ""
+	}
+	return id
 }
 
 func newRequestID() string {
