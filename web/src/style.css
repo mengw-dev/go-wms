@@ -1,0 +1,316 @@
+/* ===========================================================
+   GoWMS 设计令牌：双主题（风格 A 深色驾驶舱 / 风格 B 浅色清新工业）
+   - :root      浅色：靛紫主色 + 纯白侧边栏 + 白卡彩色顶边
+   - html.dark  深色：翡翠绿主色 + 深空蓝黑侧边栏 + 等宽大数字
+   所有组件只引用变量，禁止硬编码颜色。
+   =========================================================== */
+
+:root {
+  /* ---- 品牌主色：靛紫 ---- */
+  --el-color-primary: #6366f1;
+  --el-color-primary-light-3: #8585f4;
+  --el-color-primary-light-5: #b1b2f8;
+  --el-color-primary-light-7: #d8d8fb;
+  --el-color-primary-light-8: #ebebfd;
+  --el-color-primary-light-9: #f4f4fe;
+  --el-color-primary-dark-2: #5153d9;
+
+  /* ---- 全局背景 / 文字 / 边框 / 填充 ---- */
+  --el-bg-color: #ffffff;
+  --el-bg-color-page: #f6f7f9;
+  --el-bg-color-overlay: #ffffff;
+  --el-text-color-primary: #1f2937;
+  --el-text-color-regular: #374151;
+  --el-text-color-secondary: #6b7280;
+  --el-text-color-placeholder: #9ca3af;
+  --el-text-color-disabled: #c0c4cc;
+  --el-border-color: #dfe2ea;
+  --el-border-color-light: #e8eaef;
+  --el-border-color-lighter: #f0f2f5;
+  --el-border-color-extra-light: #f6f7f9;
+  --el-fill-color: #f0f1f4;
+  --el-fill-color-light: #f4f5f7;
+  --el-fill-color-lighter: #f9fafb;
+  --el-fill-color-extra-light: #fcfcfd;
+  --el-fill-color-dark: #e8eaef;
+  --el-fill-color-darker: #dfe2ea;
+  --el-box-shadow: 0 4px 16px rgba(31, 41, 55, 0.06);
+  --el-box-shadow-light: 0 2px 8px rgba(31, 41, 55, 0.05);
+  --el-border-radius-base: 6px;
+
+  /* ---- 布局专用令牌 ---- */
+  --gowms-radius-card: 12px;
+  --gowms-sidebar-bg: #ffffff;
+  --gowms-sidebar-border: #e8eaef;
+  --gowms-sidebar-text: #6b7280;
+  --gowms-sidebar-hover-bg: #f3f4f6;
+  --gowms-sidebar-active-text: #4f46e5;
+  --gowms-sidebar-active-bg: #eef0fe;
+  --gowms-header-bg: #ffffff;
+  --gowms-header-border: #e8eaef;
+  --gowms-header-shadow: none;
+  --gowms-logo-gradient: linear-gradient(135deg, #6366f1, #0ea5e9);
+  --gowms-card-accent: var(--el-color-primary);
+  --gowms-num-font: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --gowms-login-brand-bg: linear-gradient(160deg, #4f46e5 0%, #6366f1 45%, #0ea5e9 100%);
+}
+
+/* ============ 深色驾驶舱（风格 A） ============ */
+html.dark {
+  /* ---- 品牌主色：翡翠绿 ---- */
+  --el-color-primary: #10b981;
+  --el-color-primary-light-3: #38c39a;
+  --el-color-primary-light-5: #66d2b4;
+  --el-color-primary-light-7: #94e1c8;
+  --el-color-primary-light-8: #afe8d5;
+  --el-color-primary-light-9: #12312a;
+  --el-color-primary-dark-2: #0da874;
+
+  /* ---- 全局背景 / 文字 / 边框 / 填充 ---- */
+  --el-bg-color: #101a2e;
+  --el-bg-color-page: #0b1220;
+  --el-bg-color-overlay: #14203a;
+  --el-text-color-primary: #e6edf7;
+  --el-text-color-regular: #cdd8e6;
+  --el-text-color-secondary: #8ca0b8;
+  --el-text-color-placeholder: #566a80;
+  --el-text-color-disabled: #46586d;
+  --el-border-color: #2a3a58;
+  --el-border-color-light: #233149;
+  --el-border-color-lighter: #1c2a44;
+  --el-border-color-extra-light: #16223a;
+  --el-fill-color: #1a2942;
+  --el-fill-color-light: #16233c;
+  --el-fill-color-lighter: #131e33;
+  --el-fill-color-extra-light: #0f1930;
+  --el-fill-color-dark: #22314e;
+  --el-fill-color-darker: #2a3a58;
+  --el-box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --el-box-shadow-light: 0 4px 12px rgba(0, 0, 0, 0.35);
+
+  /* ---- 布局专用令牌 ---- */
+  --gowms-sidebar-bg: #0d1526;
+  --gowms-sidebar-border: rgba(148, 163, 184, 0.14);
+  --gowms-sidebar-text: #8ca0b8;
+  --gowms-sidebar-hover-bg: rgba(255, 255, 255, 0.04);
+  --gowms-sidebar-active-text: #34d399;
+  --gowms-sidebar-active-bg: rgba(16, 185, 129, 0.14);
+  --gowms-header-bg: #0b1220;
+  --gowms-header-border: rgba(148, 163, 184, 0.14);
+  --gowms-header-shadow: 0 1px 0 rgba(16, 185, 129, 0.06);
+  --gowms-logo-gradient: linear-gradient(135deg, #10b981, #22d3ee);
+  --gowms-card-accent: rgba(16, 185, 129, 0.55);
+  --gowms-num-font: 'JetBrains Mono', Consolas, 'Courier New', monospace;
+  --gowms-login-brand-bg: linear-gradient(160deg, #0d1526 0%, #101a2e 55%, #0b2b26 100%);
+}
+
+/* ===========================================================
+   基础
+   =========================================================== */
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Helvetica Neue', Helvetica, 'PingFang SC', 'Hiragino Sans GB',
+    'Microsoft YaHei', Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-size: 14px;
+  color: var(--el-text-color-primary);
+  background-color: var(--el-bg-color-page);
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* ===========================================================
+   通用页面结构（所有列表页自动继承）
+   =========================================================== */
+.page-card {
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-border-color-light);
+  border-radius: var(--gowms-radius-card);
+  padding: 16px;
+  box-shadow: var(--el-box-shadow-light);
+}
+
+.query-form {
+  margin-bottom: 4px;
+}
+
+.query-form .el-form-item {
+  margin-bottom: 12px;
+}
+
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.table-oper {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.pagination {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 14px;
+}
+
+/* ===========================================================
+   Element Plus 细节统一（组件级变量，双主题自动生效）
+   =========================================================== */
+/* 表格：表头底色 + 主色 hover + 竖线弱化（统一为斑马纹视觉，去掉栅格感） */
+.el-table {
+  --el-table-header-bg-color: var(--el-fill-color-light);
+  --el-table-header-text-color: var(--el-text-color-secondary);
+  --el-table-row-hover-bg-color: var(--el-color-primary-light-9);
+  --el-table-border-color: var(--el-border-color-lighter);
+  border-radius: 8px;
+}
+
+.el-table th.el-table__cell {
+  font-weight: 600;
+}
+
+.el-table--border .el-table__cell {
+  border-right: none;
+}
+
+.el-table--border::after,
+.el-table--border::before {
+  display: none;
+}
+
+.el-table--border {
+  border: none;
+}
+
+.el-table .el-table__cell {
+  padding: 10px 0;
+}
+
+/* Tabs：激活项加粗 + 指示条加高圆角 */
+.el-tabs--top .el-tabs__item {
+  font-size: 14px;
+}
+
+.el-tabs--top .el-tabs__item.is-active {
+  font-weight: 600;
+}
+
+.el-tabs__active-bar {
+  height: 3px;
+  border-radius: 2px;
+}
+
+/* 分页器圆角 */
+.el-pagination.is-background .el-pager li,
+.el-pagination.is-background .btn-prev,
+.el-pagination.is-background .btn-next {
+  border-radius: 6px;
+}
+
+.el-pager li {
+  border-radius: 6px;
+}
+
+/* 数字列（库存三数量等）用等宽数字对齐 */
+.el-table .cell {
+  font-variant-numeric: tabular-nums;
+}
+
+/* 弹窗 / 抽屉 / 消息框圆角统一 */
+.el-dialog,
+.el-drawer,
+.el-message-box {
+  --el-dialog-border-radius: 14px;
+}
+
+.el-dialog__header,
+.el-drawer__header {
+  margin-bottom: 12px;
+  font-weight: 600;
+}
+
+.el-dialog__footer {
+  padding-top: 8px;
+}
+
+/* 描述列表（详情页用）label 底色协调 */
+.el-descriptions__label {
+  font-weight: 600;
+}
+
+/* 详情页返回头：图标主色 + 标题加粗 */
+.el-page-header__back {
+  color: var(--el-color-primary);
+}
+
+.el-page-header .header-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+
+/* 下拉/选择弹出层底色跟随主题（深色下防止白底闪烁） */
+.el-popper.is-light {
+  background: var(--el-bg-color-overlay);
+  border-color: var(--el-border-color-light);
+}
+
+/* 标签做成药丸形，状态更醒目 */
+.el-tag {
+  border-radius: 999px;
+  border: none;
+  padding: 0 10px;
+}
+
+/* 主按钮轻微上浮 */
+.el-button--primary:not(.is-link):not(.is-text) {
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.25);
+}
+
+html.dark .el-button--primary:not(.is-link):not(.is-text) {
+  box-shadow: 0 2px 12px rgba(16, 185, 129, 0.35);
+}
+
+/* 菜单（侧边栏）跟随布局令牌，替代旧的内联 background-color */
+.gowms-aside .el-menu {
+  --el-menu-bg-color: transparent;
+  --el-menu-text-color: var(--gowms-sidebar-text);
+  --el-menu-hover-bg-color: var(--gowms-sidebar-hover-bg);
+  --el-menu-active-color: var(--gowms-sidebar-active-text);
+  --el-menu-hover-text-color: var(--el-text-color-primary);
+  border-right: none;
+}
+
+/* 滚动条（深色下太亮会刺眼） */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--el-border-color);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--el-border-color-dark, var(--el-text-color-disabled));
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
