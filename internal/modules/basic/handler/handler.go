@@ -21,10 +21,11 @@ func New(svc *service.Service) *Handler { return &Handler{svc: svc} }
 func (h *Handler) RegisterRoutes(auth *gin.RouterGroup, checker middleware.PermsChecker) {
 	g := auth.Group("/basic")
 	write := middleware.Permission(checker, "wms:basic")
+	read := middleware.Permission(checker, "wms:basic")
 
 	wh := g.Group("/warehouses")
 	{
-		wh.GET("", h.listWarehouses)
+		wh.GET("", read, h.listWarehouses)
 		wh.POST("", write, h.createWarehouse)
 		wh.PUT("/:id", write, h.updateWarehouse)
 		wh.DELETE("/:id", write, h.deleteWarehouse)
@@ -33,7 +34,7 @@ func (h *Handler) RegisterRoutes(auth *gin.RouterGroup, checker middleware.Perms
 
 	loc := g.Group("/locations")
 	{
-		loc.GET("", h.listLocations)
+		loc.GET("", read, h.listLocations)
 		loc.POST("/batch", write, h.batchCreateLocations)
 		loc.PUT("/:id/status", write, h.locationStatus)
 		loc.DELETE("/:id", write, h.deleteLocation)
@@ -41,8 +42,8 @@ func (h *Handler) RegisterRoutes(auth *gin.RouterGroup, checker middleware.Perms
 
 	sku := g.Group("/skus")
 	{
-		sku.GET("", h.listSKUs)
-		sku.GET("/barcode/:barcode", h.getByBarcode)
+		sku.GET("", read, h.listSKUs)
+		sku.GET("/barcode/:barcode", read, h.getByBarcode)
 		sku.POST("", write, h.createSKU)
 		sku.PUT("/:id", write, h.updateSKU)
 		sku.DELETE("/:id", write, h.deleteSKU)

@@ -4,7 +4,7 @@ services:
     container_name: gowms-mysql
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-gowms-root}
       MYSQL_DATABASE: ${MYSQL_DATABASE:-gowms}
       TZ: Asia/Shanghai
     ports:
@@ -13,7 +13,7 @@ services:
       - mysql_data:/var/lib/mysql
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-uroot", "-p${MYSQL_ROOT_PASSWORD}"]
+      test: ["CMD-SHELL", "mysqladmin ping -uroot -p$$MYSQL_ROOT_PASSWORD"]
       interval: 5s
       timeout: 3s
       retries: 20
@@ -32,6 +32,47 @@ services:
       timeout: 3s
       retries: 20
 
+  wms:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: gowms-api
+    restart: unless-stopped
+    environment:
+      WMS_SERVER_MODE: release
+      WMS_SERVER_NODE: ${WMS_SERVER_NODE:-1}
+      WMS_MYSQL_DSN: root:${MYSQL_ROOT_PASSWORD:-gowms-root}@tcp(mysql:3306)/${MYSQL_DATABASE:-gowms}?charset=utf8mb4&parseTime=True&loc=Local
+      WMS_REDIS_ADDR: redis:6379
+      WMS_JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required; copy .env.example to .env and change it}
+      WMS_UPLOAD_DIR: /app/data/uploads
+    ports:
+      - "8080:8080"
+    volumes:
+      - upload_data:/app/data/uploads
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  web:
+    build:
+      context: ../web
+      dockerfile: Dockerfile
+    container_name: gowms-web
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      wms:
+        condition: service_healthy
+
 volumes:
   mysql_data:
   redis_data:
+  upload_data:

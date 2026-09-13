@@ -27,7 +27,7 @@ func (h *Handler) RegisterRoutes(pub, auth *gin.RouterGroup, checker middleware.
 
 	users := auth.Group("/system/users")
 	{
-		users.GET("", h.listUsers)
+		users.GET("", middleware.Permission(checker, "wms:system:user"), h.listUsers)
 		users.POST("", middleware.Permission(checker, "wms:system:user"), h.createUser)
 		users.PUT("/:id", middleware.Permission(checker, "wms:system:user"), h.updateUser)
 		users.DELETE("/:id", middleware.Permission(checker, "wms:system:user"), h.deleteUser)
@@ -37,14 +37,14 @@ func (h *Handler) RegisterRoutes(pub, auth *gin.RouterGroup, checker middleware.
 
 	roles := auth.Group("/system/roles")
 	{
-		roles.GET("/all", h.listAllRoles)
-		roles.GET("", h.listRoles)
+		roles.GET("/all", middleware.Permission(checker, "wms:system:role"), h.listAllRoles)
+		roles.GET("", middleware.Permission(checker, "wms:system:role"), h.listRoles)
 		roles.POST("", middleware.Permission(checker, "wms:system:role"), h.createRole)
 		roles.PUT("/:id", middleware.Permission(checker, "wms:system:role"), h.updateRole)
 		roles.DELETE("/:id", middleware.Permission(checker, "wms:system:role"), h.deleteRole)
 	}
 
-	auth.GET("/system/oper-logs", h.listOperLogs)
+	auth.GET("/system/oper-logs", middleware.Permission(checker, "wms:system:log"), h.listOperLogs)
 }
 
 func (h *Handler) login(c *gin.Context) {
@@ -53,7 +53,7 @@ func (h *Handler) login(c *gin.Context) {
 		response.Fail(c, errcode.ParamError)
 		return
 	}
-	resp, err := h.svc.Login(c.Request.Context(), &req)
+	resp, err := h.svc.Login(c.Request.Context(), &req, c.ClientIP())
 	if err != nil {
 		response.Fail(c, err)
 		return

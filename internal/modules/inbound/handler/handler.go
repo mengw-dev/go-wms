@@ -25,10 +25,11 @@ func (h *Handler) RegisterRoutes(auth *gin.RouterGroup, checker middleware.Perms
 		return middleware.Permission(checker, "wms:inbound:"+action)
 	}
 
+	read := perm("view")
 	orders := g.Group("/orders")
 	{
-		orders.GET("", h.list)
-		orders.GET("/:id", h.get)
+		orders.GET("", read, h.list)
+		orders.GET("/:id", read, h.get)
 		orders.POST("", perm("create"), h.create)
 		orders.PUT("/:id", perm("create"), h.update)
 		orders.DELETE("/:id", perm("create"), h.delete)
@@ -40,7 +41,7 @@ func (h *Handler) RegisterRoutes(auth *gin.RouterGroup, checker middleware.Perms
 
 	g.POST("/tasks/:id/putaway", perm("putaway"), h.putaway)
 	g.POST("/import", perm("create"), h.importExcel)
-	g.GET("/import/:taskId", h.importStatus)
+	g.GET("/import/:taskId", read, h.importStatus)
 }
 
 func (h *Handler) list(c *gin.Context) {

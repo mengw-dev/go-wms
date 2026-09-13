@@ -38,12 +38,12 @@ onMounted(async () => {
 })
 
 const shortcuts = [
-  { title: '入库单', desc: '创建 / 收货 / 上架', path: '/inbound/orders', icon: 'Download' },
-  { title: '出库单', desc: '审核分配 / 拣货', path: '/outbound/orders', icon: 'Upload' },
-  { title: '盘点单', desc: '快照 / 实盘 / 调整', path: '/stocktake/orders', icon: 'Tickets' },
-  { title: '库存查询', desc: '明细 / 汇总 / 流水', path: '/inventory', icon: 'Coin' },
-  { title: '任务中心', desc: '收货 / 上架 / 拣货', path: '/tasks', icon: 'List' },
-  { title: '货品管理', desc: 'SKU / 条码', path: '/basic/skus', icon: 'Box' },
+  { title: '入库单', desc: '创建 / 收货 / 上架', path: '/inbound/orders', icon: 'Download', perm: 'wms:inbound:view' },
+  { title: '出库单', desc: '审核分配 / 拣货', path: '/outbound/orders', icon: 'Upload', perm: 'wms:outbound:view' },
+  { title: '盘点单', desc: '快照 / 实盘 / 调整', path: '/stocktake/orders', icon: 'Tickets', perm: 'wms:stocktake:view' },
+  { title: '库存查询', desc: '明细 / 汇总 / 流水', path: '/inventory', icon: 'Coin', perm: 'wms:inventory' },
+  { title: '任务中心', desc: '收货 / 上架 / 拣货', path: '/tasks', icon: 'List', perm: 'wms:task' },
+  { title: '货品管理', desc: 'SKU / 条码', path: '/basic/skus', icon: 'Box', perm: 'wms:basic' },
 ]
 
 const highlights = [
@@ -69,7 +69,7 @@ const today = new Date().toLocaleDateString('zh-CN', {
         <h2>欢迎回来，{{ auth.displayName }}</h2>
         <p>{{ today }} · 祝你工作顺利</p>
       </div>
-      <el-button type="primary" @click="$router.push('/inbound/orders')">
+      <el-button v-if="auth.hasPerm('wms:inbound:view')" type="primary" @click="$router.push('/inbound/orders')">
         <el-icon class="btn-icon"><Plus /></el-icon>新建入库单
       </el-button>
     </div>
@@ -112,7 +112,7 @@ const today = new Date().toLocaleDateString('zh-CN', {
         <div class="card">
           <div class="card-head"><b>快捷入口</b></div>
           <div class="shortcuts">
-            <div v-for="s in shortcuts" :key="s.path" class="shortcut" @click="$router.push(s.path)">
+            <div v-for="s in shortcuts.filter((item) => auth.hasPerm(item.perm))" :key="s.path" class="shortcut" @click="$router.push(s.path)">
               <el-icon :size="22"><component :is="s.icon" /></el-icon>
               <b>{{ s.title }}</b>
               <span>{{ s.desc }}</span>

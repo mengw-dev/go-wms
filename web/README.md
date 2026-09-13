@@ -1,5 +1,13 @@
-# Vue 3 + TypeScript + Vite
+# GoWMS Web
 
-This template should help get you started developing with Vue 3 and TypeScript in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
+Vue 3 + TypeScript + Vite + Element Plus 前端。
 
-Learn more about the recommended Project Setup and IDE Support in the [Vue Docs TypeScript Guide](https://vuejs.org/guide/typescript/overview.html#project-setup).
+```bash
+npm ci
+npm run dev
+npm run lint
+npm test
+npm run build
+```
+
+开发服务器默认运行在 `http://127.0.0.1:5173`，并将 `/api` 代理到 `http://127.0.0.1:8080`。完整安装、权限和部署说明见项目根目录 [README](../README.md)。

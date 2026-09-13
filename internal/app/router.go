@@ -31,12 +31,12 @@ func (a *App) NewRouter() *gin.Engine {
 	// 登录路由：仅鉴权链路之外
 	pub := api.Group("")
 	// 需登录的路由：JWT → 操作日志审计
-	auth := api.Group("", middleware.Auth(a.Config.JWT.Secret), middleware.OperLog(a.SystemAPI))
+	auth := api.Group("", middleware.Auth(a.Config.JWT.Secret, a.SystemAPI), middleware.OperLog(a.SystemAPI))
 
 	a.SysHandler.RegisterRoutes(pub, auth, a.SystemAPI)
 	a.BasicHandler.RegisterRoutes(auth, a.SystemAPI)
-	a.InvHandler.RegisterRoutes(auth)
-	a.TaskHandler.RegisterRoutes(auth)
+	a.InvHandler.RegisterRoutes(auth, a.SystemAPI)
+	a.TaskHandler.RegisterRoutes(auth, a.SystemAPI)
 	a.InboundHandler.RegisterRoutes(auth, a.SystemAPI)
 	a.OutboundHandler.RegisterRoutes(auth, a.SystemAPI)
 	a.StocktakeHandler.RegisterRoutes(auth, a.SystemAPI)

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/spf13/viper"
@@ -70,8 +71,17 @@ func Load(path string) (*Config, error) {
 	if cfg.Server.Node <= 0 {
 		cfg.Server.Node = 1
 	}
+	if cfg.Server.Node > 1023 {
+		return nil, fmt.Errorf("server.node must be between 0 and 1023")
+	}
 	if cfg.JWT.ExpireHours <= 0 {
 		cfg.JWT.ExpireHours = 24
+	}
+	if cfg.Server.Mode == "release" {
+		secret := strings.ToLower(cfg.JWT.Secret)
+		if len(cfg.JWT.Secret) < 32 || strings.Contains(secret, "change") || strings.Contains(secret, "dev-secret") {
+			return nil, fmt.Errorf("release mode requires a random WMS_JWT_SECRET with at least 32 characters")
+		}
 	}
 	if cfg.Upload.Dir == "" {
 		cfg.Upload.Dir = "./data/uploads"

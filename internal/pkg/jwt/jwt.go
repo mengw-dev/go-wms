@@ -8,17 +8,19 @@ import (
 )
 
 type Claims struct {
-	UserID   int64  `json:"uid"`
-	Username string `json:"username"`
+	UserID       int64  `json:"uid"`
+	Username     string `json:"username"`
+	TokenVersion int    `json:"ver"`
 	jwtlib.RegisteredClaims
 }
 
 var ErrInvalidToken = errors.New("invalid token")
 
-func Generate(secret string, expire time.Duration, userID int64, username string) (string, error) {
+func Generate(secret string, expire time.Duration, userID int64, username string, tokenVersion int) (string, error) {
 	claims := Claims{
-		UserID:   userID,
-		Username: username,
+		UserID:       userID,
+		Username:     username,
+		TokenVersion: tokenVersion,
 		RegisteredClaims: jwtlib.RegisteredClaims{
 			ExpiresAt: jwtlib.NewNumericDate(time.Now().Add(expire)),
 			IssuedAt:  jwtlib.NewNumericDate(time.Now()),

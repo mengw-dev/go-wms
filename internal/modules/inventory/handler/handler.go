@@ -6,6 +6,7 @@ import (
 	"gowms/internal/modules/inventory/dto"
 	"gowms/internal/modules/inventory/service"
 	"gowms/internal/pkg/errcode"
+	"gowms/internal/pkg/middleware"
 	"gowms/internal/pkg/response"
 )
 
@@ -16,12 +17,13 @@ type Handler struct {
 func New(svc *service.Service) *Handler { return &Handler{svc: svc} }
 
 // RegisterRoutes 库存查询路由（变更操作由 inbound/outbound/stocktake 通过 API 完成）。
-func (h *Handler) RegisterRoutes(auth *gin.RouterGroup) {
+func (h *Handler) RegisterRoutes(auth *gin.RouterGroup, checker middleware.PermsChecker) {
 	g := auth.Group("/inventory")
+	read := middleware.Permission(checker, "wms:inventory")
 	{
-		g.GET("", h.list)
-		g.GET("/summary", h.summary)
-		g.GET("/trans", h.listTrans)
+		g.GET("", read, h.list)
+		g.GET("/summary", read, h.summary)
+		g.GET("/trans", read, h.listTrans)
 	}
 }
 

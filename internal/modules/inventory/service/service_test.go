@@ -39,6 +39,9 @@ func newTestService(t *testing.T) (*Service, *tx.Manager, *gorm.DB) {
 		},
 	})
 	if err != nil {
+		if os.Getenv("WMS_TEST_REQUIRED") == "1" {
+			t.Fatalf("mysql required but unavailable: %v", err)
+		}
 		t.Skipf("mysql unavailable, skip: %v", err)
 	}
 	if err := db.AutoMigrate(&model.Inventory{}, &model.InventoryTrans{}, &basicmodel.Location{}); err != nil {

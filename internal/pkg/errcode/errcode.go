@@ -67,6 +67,7 @@ var (
 	UserIDInvalid        = New(10009, "用户不存在")
 	RoleIDInvalid        = New(10010, "角色不存在")
 	ModifyAdminForbidden = New(10011, "不允许操作内置管理员账号")
+	TooManyLoginAttempts = New(10012, "登录失败次数过多，请稍后再试")
 )
 
 // 基础资料 20000+
@@ -85,6 +86,8 @@ var (
 	SKUDisabled       = New(20012, "货品已禁用")
 	// 20013 在 basic service 中内联定义（单次批量生成库位数量上限）
 	LocationWarehouseMismatch = New(20014, "库位不属于该仓库")
+	SKUHasStock               = New(20015, "货品存在库存，禁止删除")
+	WarehouseHasReferences    = New(20016, "仓库下存在库位，禁止删除")
 )
 
 // 库存 30000+

@@ -47,6 +47,8 @@ func (r *Repository) UpdateUser(ctx context.Context, id int64, nickname string, 
 		updates := map[string]any{"nickname": nickname}
 		if status != nil {
 			updates["status"] = *status
+			// 禁用再启用后旧 Token 也不能恢复有效。
+			updates["token_version"] = gorm.Expr("token_version + 1")
 		}
 		if err := tx.Model(&model.SysUser{}).Where("id = ?", id).Updates(updates).Error; err != nil {
 			return err
@@ -69,7 +71,10 @@ func (r *Repository) DeleteUser(ctx context.Context, id int64) error {
 
 func (r *Repository) UpdatePassword(ctx context.Context, id int64, hash string) error {
 	return r.db.WithContext(ctx).Model(&model.SysUser{}).Where("id = ?", id).
-		Update("password_hash", hash).Error
+		Updates(map[string]any{
+			"password_hash": hash,
+			"token_version": gorm.Expr("token_version + 1"),
+		}).Error
 }
 
 func (r *Repository) ListUsers(ctx context.Context, keyword string, page, size int) ([]*model.SysUser, int64, error) {

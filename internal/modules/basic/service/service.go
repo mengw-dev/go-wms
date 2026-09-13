@@ -61,6 +61,13 @@ func (s *Service) DeleteWarehouse(ctx context.Context, id int64) error {
 	if has {
 		return errcode.WarehouseHasStock
 	}
+	n, err := s.repo.CountLocationsByWarehouse(ctx, s.tm.DB(), id)
+	if err != nil {
+		return err
+	}
+	if n > 0 {
+		return errcode.WarehouseHasReferences
+	}
 	return s.repo.DeleteWarehouse(ctx, s.tm.DB(), id)
 }
 
@@ -72,6 +79,9 @@ func (s *Service) ListWarehouses(ctx context.Context, q *dto.WarehouseQuery) ([]
 
 // BatchCreateLocations 批量初始化库位：编码 {zone}-{row}-{col}，已存在跳过（幂等）。
 func (s *Service) BatchCreateLocations(ctx context.Context, req *dto.LocationBatchReq) (created int, err error) {
+	if err := s.ValidateWarehouse(ctx, req.WarehouseID); err != nil {
+		return 0, err
+	}
 	if req.RowTo < req.RowFrom || req.ColTo < req.ColFrom {
 		return 0, errcode.ParamError
 	}
@@ -159,6 +169,13 @@ func (s *Service) DeleteSKU(ctx context.Context, id int64) error {
 	sku, err := s.repo.GetSKU(ctx, s.tm.DB(), id)
 	if err != nil {
 		return errcode.SKUNotFound
+	}
+	has, err := s.stock.HasStockBySKU(ctx, id)
+	if err != nil {
+		return err
+	}
+	if has {
+		return errcode.SKUHasStock
 	}
 	if err := s.repo.DeleteSKU(ctx, s.tm.DB(), id); err != nil {
 		return err

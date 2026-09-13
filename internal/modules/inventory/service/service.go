@@ -253,6 +253,10 @@ func (s *Service) HasStockByLocation(ctx context.Context, locationID int64) (boo
 	return s.repo.HasStockByLocation(ctx, s.tm.DB(), locationID)
 }
 
+func (s *Service) HasStockBySKU(ctx context.Context, skuID int64) (bool, error) {
+	return s.repo.HasStockBySKU(ctx, s.tm.DB(), skuID)
+}
+
 func min(a, b int) int {
 	if a < b {
 		return a

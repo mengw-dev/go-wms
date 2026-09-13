@@ -30,6 +30,8 @@ export const useAuthStore = defineStore('auth', {
     isLoggedIn: (state) => !!state.token,
     displayName: (state) => state.user?.nickname || state.user?.username || '未知用户',
     perms: (state) => state.user?.perms ?? [],
+    hasPerm: (state) => (perm: string) =>
+      state.user?.user_id === 1 || (state.user?.perms ?? []).some((p) => p === '*' || p === perm),
   },
   actions: {
     setAuth(result: LoginResult) {

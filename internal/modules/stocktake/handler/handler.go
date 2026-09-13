@@ -24,10 +24,11 @@ func (h *Handler) RegisterRoutes(auth *gin.RouterGroup, checker middleware.Perms
 		return middleware.Permission(checker, "wms:stocktake:"+action)
 	}
 
+	read := perm("view")
 	orders := g.Group("/orders")
 	{
-		orders.GET("", h.list)
-		orders.GET("/:id", h.get)
+		orders.GET("", read, h.list)
+		orders.GET("/:id", read, h.get)
 		orders.POST("", perm("create"), h.create)
 		orders.POST("/:id/actual", perm("stocktake"), h.recordActual)
 		orders.POST("/:id/approve", perm("approve"), h.approve)

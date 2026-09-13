@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
-import { changePassword } from '@/api/auth'
+import { changePassword, getProfile } from '@/api/auth'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
 
@@ -17,6 +17,11 @@ const activeMenu = computed(() => {
 })
 
 const pageTitle = computed(() => (route.meta.title as string) || '')
+
+onMounted(async () => {
+  const profile = await getProfile().catch(() => null)
+  if (profile) auth.setProfile(profile)
+})
 
 async function onCommand(command: string) {
   if (command === 'logout') {
@@ -93,36 +98,36 @@ async function submitPassword() {
           <el-icon><Odometer /></el-icon>
           <span>仪表盘</span>
         </el-menu-item>
-        <el-sub-menu index="inbound">
+        <el-sub-menu v-if="auth.hasPerm('wms:inbound:view')" index="inbound">
           <template #title>
             <el-icon><Download /></el-icon>
             <span>入库管理</span>
           </template>
           <el-menu-item index="/inbound/orders">入库单</el-menu-item>
         </el-sub-menu>
-        <el-sub-menu index="outbound">
+        <el-sub-menu v-if="auth.hasPerm('wms:outbound:view')" index="outbound">
           <template #title>
             <el-icon><Upload /></el-icon>
             <span>出库管理</span>
           </template>
           <el-menu-item index="/outbound/orders">出库单</el-menu-item>
         </el-sub-menu>
-        <el-sub-menu index="inventory">
+        <el-sub-menu v-if="auth.hasPerm('wms:inventory') || auth.hasPerm('wms:task')" index="inventory">
           <template #title>
             <el-icon><Coin /></el-icon>
             <span>库存管理</span>
           </template>
-          <el-menu-item index="/inventory">库存查询</el-menu-item>
-          <el-menu-item index="/tasks">任务中心</el-menu-item>
+          <el-menu-item v-if="auth.hasPerm('wms:inventory')" index="/inventory">库存查询</el-menu-item>
+          <el-menu-item v-if="auth.hasPerm('wms:task')" index="/tasks">任务中心</el-menu-item>
         </el-sub-menu>
-        <el-sub-menu index="stocktake">
+        <el-sub-menu v-if="auth.hasPerm('wms:stocktake:view')" index="stocktake">
           <template #title>
             <el-icon><Tickets /></el-icon>
             <span>盘点管理</span>
           </template>
           <el-menu-item index="/stocktake/orders">盘点单</el-menu-item>
         </el-sub-menu>
-        <el-sub-menu index="basic">
+        <el-sub-menu v-if="auth.hasPerm('wms:basic')" index="basic">
           <template #title>
             <el-icon><OfficeBuilding /></el-icon>
             <span>基础数据</span>
@@ -131,14 +136,14 @@ async function submitPassword() {
           <el-menu-item index="/basic/locations">库位管理</el-menu-item>
           <el-menu-item index="/basic/skus">货品管理</el-menu-item>
         </el-sub-menu>
-        <el-sub-menu index="system">
+        <el-sub-menu v-if="auth.hasPerm('wms:system:user') || auth.hasPerm('wms:system:role') || auth.hasPerm('wms:system:log')" index="system">
           <template #title>
             <el-icon><Setting /></el-icon>
             <span>系统管理</span>
           </template>
-          <el-menu-item index="/system/users">用户管理</el-menu-item>
-          <el-menu-item index="/system/roles">角色管理</el-menu-item>
-          <el-menu-item index="/system/logs">操作日志</el-menu-item>
+          <el-menu-item v-if="auth.hasPerm('wms:system:user')" index="/system/users">用户管理</el-menu-item>
+          <el-menu-item v-if="auth.hasPerm('wms:system:role')" index="/system/roles">角色管理</el-menu-item>
+          <el-menu-item v-if="auth.hasPerm('wms:system:log')" index="/system/logs">操作日志</el-menu-item>
         </el-sub-menu>
       </el-menu>
     </el-aside>

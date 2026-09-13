@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS sys_user (
   password_hash VARCHAR(128) NOT NULL,
   nickname      VARCHAR(64)  DEFAULT '',
   status        INT          DEFAULT 1,
+  token_version INT          NOT NULL DEFAULT 1,
   created_at    DATETIME(3),
   updated_at    DATETIME(3),
   deleted_at    DATETIME(3),
@@ -171,12 +172,15 @@ CREATE TABLE IF NOT EXISTS wms_receipt_order (
   expected_qty  INT NOT NULL DEFAULT 0,
   received_qty  INT NOT NULL DEFAULT 0,
   defective_qty INT NOT NULL DEFAULT 0,
+  import_task_id VARCHAR(64) DEFAULT NULL,
+  import_row    INT NOT NULL DEFAULT 0,
   created_by    VARCHAR(64) DEFAULT '',
   version       INT DEFAULT 1,
   created_at    DATETIME(3),
   updated_at    DATETIME(3),
   deleted_at    DATETIME(3),
   UNIQUE KEY uk_receipt_no (order_no),
+  UNIQUE KEY uk_import_row (import_task_id, import_row),
   KEY idx_ro_status (status),
   KEY idx_ro_deleted (deleted_at)
 ) ENGINE=InnoDB;

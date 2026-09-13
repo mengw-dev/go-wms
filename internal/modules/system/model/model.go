@@ -24,7 +24,8 @@ type SysUser struct {
 	Username     string `json:"username" gorm:"size:64;uniqueIndex;not null"`
 	PasswordHash string `json:"-" gorm:"size:128;not null"`
 	Nickname     string `json:"nickname" gorm:"size:64"`
-	Status       int    `json:"status" gorm:"default:1"` // 1 启用 0 禁用
+	Status       int    `json:"status" gorm:"default:1"`     // 1 启用 0 禁用
+	TokenVersion int    `json:"-" gorm:"not null;default:1"` // 修改密码/禁用后使旧 Token 失效
 }
 
 func (SysUser) TableName() string { return "sys_user" }

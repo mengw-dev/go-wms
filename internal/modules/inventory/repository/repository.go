@@ -193,3 +193,9 @@ func (r *Repository) HasStockByLocation(ctx context.Context, db *gorm.DB, locati
 	err := db.WithContext(ctx).Model(&model.Inventory{}).Where("location_id = ? AND stock_quantity > 0", locationID).Count(&n).Error
 	return n > 0, err
 }
+
+func (r *Repository) HasStockBySKU(ctx context.Context, db *gorm.DB, skuID int64) (bool, error) {
+	var n int64
+	err := db.WithContext(ctx).Model(&model.Inventory{}).Where("sku_id = ? AND stock_quantity > 0", skuID).Count(&n).Error
+	return n > 0, err
+}

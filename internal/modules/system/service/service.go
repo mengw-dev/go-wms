@@ -28,7 +28,15 @@ type Service struct {
 	permMu    sync.Mutex
 	permCache map[int64]permCacheItem // 进程内权限缓存，TTL 60s；角色变更后自动过期
 
+	loginMu       sync.Mutex
+	loginAttempts map[string]loginAttempt
+
 	logCh chan *model.SysOperLog // 操作日志异步写入通道
+}
+
+type loginAttempt struct {
+	Failures int
+	ResetAt  time.Time
 }
 
 type permCacheItem struct {
@@ -36,15 +44,20 @@ type permCacheItem struct {
 	expire time.Time
 }
 
-const permCacheTTL = 60 * time.Second
+const (
+	permCacheTTL       = 60 * time.Second
+	maxLoginFailures   = 5
+	loginFailureWindow = 15 * time.Minute
+)
 
 func New(repo *repository.Repository, jwtSecret string, expireHours int) *Service {
 	s := &Service{
-		repo:      repo,
-		jwtSecret: jwtSecret,
-		jwtExpire: time.Duration(expireHours) * time.Hour,
-		permCache: make(map[int64]permCacheItem),
-		logCh:     make(chan *model.SysOperLog, 1024),
+		repo:          repo,
+		jwtSecret:     jwtSecret,
+		jwtExpire:     time.Duration(expireHours) * time.Hour,
+		permCache:     make(map[int64]permCacheItem),
+		loginAttempts: make(map[string]loginAttempt),
+		logCh:         make(chan *model.SysOperLog, 1024),
 	}
 	go s.consumeOperLogs()
 	return s
@@ -52,21 +65,29 @@ func New(repo *repository.Repository, jwtSecret string, expireHours int) *Servic
 
 // ---------- 登录/档案 ----------
 
-func (s *Service) Login(ctx context.Context, req *dto.LoginReq) (*dto.LoginResp, error) {
+func (s *Service) Login(ctx context.Context, req *dto.LoginReq, clientIP string) (*dto.LoginResp, error) {
+	attemptKey := strings.ToLower(strings.TrimSpace(req.Username)) + "|" + clientIP
+	if !s.allowLogin(attemptKey) {
+		return nil, errcode.TooManyLoginAttempts
+	}
 	u, err := s.repo.GetUserByUsername(ctx, req.Username)
 	if err != nil {
+		s.recordLoginFailure(attemptKey)
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, errcode.UserOrPwdWrong
 		}
 		return nil, err
 	}
 	if u.Status != 1 {
+		s.recordLoginFailure(attemptKey)
 		return nil, errcode.UserDisabled
 	}
 	if !checkPassword(u.PasswordHash, req.Password) {
+		s.recordLoginFailure(attemptKey)
 		return nil, errcode.UserOrPwdWrong
 	}
-	token, err := jwt.Generate(s.jwtSecret, s.jwtExpire, u.ID, u.Username)
+	s.clearLoginFailures(attemptKey)
+	token, err := jwt.Generate(s.jwtSecret, s.jwtExpire, u.ID, u.Username, u.TokenVersion)
 	if err != nil {
 		return nil, err
 	}
@@ -78,6 +99,21 @@ func (s *Service) Login(ctx context.Context, req *dto.LoginReq) (*dto.LoginResp,
 		Token: token, UserID: u.ID, Username: u.Username,
 		Nickname: u.Nickname, Roles: roles, Perms: perms,
 	}, nil
+}
+
+// ValidateToken 复核用户仍存在、启用且 Token 版本未被密码修改/禁用操作作废。
+func (s *Service) ValidateToken(ctx context.Context, userID int64, tokenVersion int) error {
+	u, err := s.repo.GetUserByID(ctx, userID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return errcode.Unauthorized
+		}
+		return errcode.Internal
+	}
+	if u.Status != 1 || u.TokenVersion != tokenVersion {
+		return errcode.Unauthorized
+	}
+	return nil
 }
 
 func (s *Service) Profile(ctx context.Context, userID int64) (*dto.ProfileResp, error) {
@@ -106,7 +142,11 @@ func (s *Service) ChangePassword(ctx context.Context, userID int64, req *dto.Cha
 	if err != nil {
 		return err
 	}
-	return s.repo.UpdatePassword(ctx, userID, hash)
+	if err := s.repo.UpdatePassword(ctx, userID, hash); err != nil {
+		return err
+	}
+	s.invalidatePermCache()
+	return nil
 }
 
 // ---------- 用户管理 ----------
@@ -128,7 +168,14 @@ func (s *Service) UpdateUser(ctx context.Context, id int64, req *dto.UserUpdateR
 	if id == 1 { // 内置管理员不允许修改角色/状态
 		return errcode.ModifyAdminForbidden
 	}
-	return s.repo.UpdateUser(ctx, id, req.Nickname, req.Status, req.RoleIDs)
+	if _, err := s.repo.GetUserByID(ctx, id); err != nil {
+		return errcode.UserIDInvalid
+	}
+	if err := s.repo.UpdateUser(ctx, id, req.Nickname, req.Status, req.RoleIDs); err != nil {
+		return err
+	}
+	s.invalidatePermCache()
+	return nil
 }
 
 func (s *Service) DeleteUser(ctx context.Context, id int64) error {
@@ -139,6 +186,9 @@ func (s *Service) DeleteUser(ctx context.Context, id int64) error {
 }
 
 func (s *Service) ResetPassword(ctx context.Context, id int64, req *dto.ResetPwdReq) error {
+	if _, err := s.repo.GetUserByID(ctx, id); err != nil {
+		return errcode.UserIDInvalid
+	}
 	hash, err := hashPassword(req.Password)
 	if err != nil {
 		return err
@@ -264,6 +314,38 @@ func expandPerms(raw []string) []string {
 		}
 	}
 	return out
+}
+
+func (s *Service) allowLogin(key string) bool {
+	s.loginMu.Lock()
+	defer s.loginMu.Unlock()
+	item, ok := s.loginAttempts[key]
+	if !ok {
+		return true
+	}
+	if time.Now().After(item.ResetAt) {
+		delete(s.loginAttempts, key)
+		return true
+	}
+	return item.Failures < maxLoginFailures
+}
+
+func (s *Service) recordLoginFailure(key string) {
+	s.loginMu.Lock()
+	defer s.loginMu.Unlock()
+	now := time.Now()
+	item := s.loginAttempts[key]
+	if now.After(item.ResetAt) {
+		item = loginAttempt{ResetAt: now.Add(loginFailureWindow)}
+	}
+	item.Failures++
+	s.loginAttempts[key] = item
+}
+
+func (s *Service) clearLoginFailures(key string) {
+	s.loginMu.Lock()
+	delete(s.loginAttempts, key)
+	s.loginMu.Unlock()
 }
 
 func (s *Service) invalidatePermCache() {

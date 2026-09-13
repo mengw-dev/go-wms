@@ -12,6 +12,7 @@ import (
 type StockChecker interface {
 	HasStockByWarehouse(ctx context.Context, warehouseID int64) (bool, error)
 	HasStockByLocation(ctx context.Context, locationID int64) (bool, error)
+	HasStockBySKU(ctx context.Context, skuID int64) (bool, error)
 }
 
 // BasicAPI basic 模块对外接口。

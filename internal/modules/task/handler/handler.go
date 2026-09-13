@@ -7,6 +7,7 @@ import (
 
 	"gowms/internal/modules/task/service"
 	"gowms/internal/pkg/errcode"
+	"gowms/internal/pkg/middleware"
 	"gowms/internal/pkg/response"
 )
 
@@ -17,9 +18,10 @@ type Handler struct {
 func New(svc *service.Service) *Handler { return &Handler{svc: svc} }
 
 // RegisterRoutes 任务查询路由（业务动作在各业务模块）。
-func (h *Handler) RegisterRoutes(auth *gin.RouterGroup) {
-	auth.GET("/tasks", h.list)
-	auth.GET("/tasks/:id", h.get)
+func (h *Handler) RegisterRoutes(auth *gin.RouterGroup, checker middleware.PermsChecker) {
+	read := middleware.Permission(checker, "wms:task")
+	auth.GET("/tasks", read, h.list)
+	auth.GET("/tasks/:id", read, h.get)
 }
 
 func (h *Handler) list(c *gin.Context) {

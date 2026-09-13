@@ -44,7 +44,13 @@ func (r *Repository) UpdateWarehouse(ctx context.Context, db *gorm.DB, id int64,
 }
 
 func (r *Repository) DeleteWarehouse(ctx context.Context, db *gorm.DB, id int64) error {
-	return db.WithContext(ctx).Delete(&model.Warehouse{}, id).Error
+	return db.WithContext(ctx).Unscoped().Delete(&model.Warehouse{}, id).Error
+}
+
+func (r *Repository) CountLocationsByWarehouse(ctx context.Context, db *gorm.DB, warehouseID int64) (int64, error) {
+	var n int64
+	err := db.WithContext(ctx).Model(&model.Location{}).Where("warehouse_id = ?", warehouseID).Count(&n).Error
+	return n, err
 }
 
 func (r *Repository) ListWarehouses(ctx context.Context, db *gorm.DB, keyword string, page, size int) ([]*model.Warehouse, int64, error) {
@@ -98,7 +104,7 @@ func (r *Repository) UpdateLocationStatusInTx(tx *gorm.DB, id int64, status int)
 }
 
 func (r *Repository) DeleteLocation(ctx context.Context, db *gorm.DB, id int64) error {
-	return db.WithContext(ctx).Delete(&model.Location{}, id).Error
+	return db.WithContext(ctx).Unscoped().Delete(&model.Location{}, id).Error
 }
 
 func (r *Repository) ListLocations(ctx context.Context, db *gorm.DB, warehouseID int64, keyword string, page, size int) ([]*model.Location, int64, error) {
@@ -171,7 +177,7 @@ func (r *Repository) UpdateSKU(ctx context.Context, db *gorm.DB, s *model.SKU) e
 }
 
 func (r *Repository) DeleteSKU(ctx context.Context, db *gorm.DB, id int64) error {
-	return db.WithContext(ctx).Delete(&model.SKU{}, id).Error
+	return db.WithContext(ctx).Unscoped().Delete(&model.SKU{}, id).Error
 }
 
 func (r *Repository) ListSKUs(ctx context.Context, db *gorm.DB, keyword string, page, size int) ([]*model.SKU, int64, error) {
