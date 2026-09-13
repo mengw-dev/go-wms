@@ -25,12 +25,13 @@ const (
 )
 
 // StatusTransitions 状态转换表：只允许单向流转，非法流转返回错误。
-// APPROVED 可直达 PUTAWAY（首次收货即收齐）；终态 COMPLETED/CANCELLED 无后继。
+// APPROVED 可直达 PUTAWAY（首次收货即收齐）；全部残品无上架作业时收齐直达 COMPLETED；
+// 终态 COMPLETED/CANCELLED 无后继。
 var StatusTransitions = map[OrderStatus][]OrderStatus{
 	OrderDraft:     {OrderSubmitted, OrderCancelled},
 	OrderSubmitted: {OrderApproved, OrderCancelled},
-	OrderApproved:  {OrderReceiving, OrderPutaway, OrderCancelled},
-	OrderReceiving: {OrderPutaway},
+	OrderApproved:  {OrderReceiving, OrderPutaway, OrderCompleted, OrderCancelled},
+	OrderReceiving: {OrderPutaway, OrderCompleted},
 	OrderPutaway:   {OrderCompleted},
 }
 
@@ -55,7 +56,11 @@ type ReceiptOrder struct {
 	ExpectedQty  int         `json:"expected_qty" gorm:"not null;default:0"`
 	ReceivedQty  int         `json:"received_qty" gorm:"not null;default:0"`
 	DefectiveQty int         `json:"defective_qty" gorm:"not null;default:0"`
-	CreatedBy    string      `json:"created_by" gorm:"size:64"`
+	// 导入幂等键（导入任务 ID + Excel 行号），补偿扫描重跑已处理行时据此去重；
+	// 手工单为 NULL，MySQL 唯一索引对 NULL 不去重，不影响手工建单。
+	ImportTaskID *string `json:"import_task_id" gorm:"size:64;uniqueIndex:uk_import_row,priority:1"`
+	ImportRow    int     `json:"import_row" gorm:"uniqueIndex:uk_import_row,priority:2"`
+	CreatedBy    string  `json:"created_by" gorm:"size:64"`
 }
 
 func (ReceiptOrder) TableName() string { return "wms_receipt_order" }

@@ -64,7 +64,8 @@ type App struct {
 
 // New 按依赖顺序组装所有模块（无循环依赖：basic→inventory，inbound/outbound→basic+inventory+task）。
 func New(cfg *config.Config, db *gorm.DB, rdb *redis.Client) (*App, error) {
-	snowflake.Init(1)
+	// 节点号来自配置（多实例部署时每实例必须配置不同的 server.node，否则会生成重复雪花 ID）
+	snowflake.Init(cfg.Server.Node)
 	tm := tx.New(db)
 	no := orderno.New(rdb)
 

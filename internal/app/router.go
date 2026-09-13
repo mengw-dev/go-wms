@@ -1,6 +1,8 @@
 package app
 
 import (
+	"net/http"
+
 	"github.com/gin-gonic/gin"
 
 	"gowms/internal/pkg/middleware"
@@ -16,9 +18,10 @@ func (a *App) NewRouter() *gin.Engine {
 	r := gin.New()
 	r.Use(middleware.RequestID(), middleware.CORS(), middleware.Recovery(), middleware.AccessLog())
 
+	// 健康检查：DB 不可用必须返回非 2xx，K8s 探针/负载均衡才能摘除故障实例
 	r.GET("/healthz", func(c *gin.Context) {
 		if err := a.healthz(); err != nil {
-			response.Fail(c, err)
+			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "down", "error": err.Error()})
 			return
 		}
 		response.OK(c, gin.H{"status": "ok"})

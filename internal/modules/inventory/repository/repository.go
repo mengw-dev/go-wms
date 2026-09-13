@@ -37,11 +37,13 @@ func (r *Repository) GetForUpdate(tx *gorm.DB, id int64) (*model.Inventory, erro
 	return &inv, nil
 }
 
-// GetByTuple 按四元组查询（仓库+库位+SKU+批次）。
-func (r *Repository) GetByTuple(tx *gorm.DB, warehouseID, locationID, skuID int64, batchNo string) (*model.Inventory, error) {
+// GetByTupleForUpdate 按四元组（仓库+库位+SKU+批次）锁定库存行（FOR UPDATE）。
+// 行锁保证并发上架时读到的是最新值，流水 Before/After 不失真。
+func (r *Repository) GetByTupleForUpdate(tx *gorm.DB, warehouseID, locationID, skuID int64, batchNo string) (*model.Inventory, error) {
 	var inv model.Inventory
-	err := tx.Where("warehouse_id = ? AND location_id = ? AND sku_id = ? AND batch_no = ?",
-		warehouseID, locationID, skuID, batchNo).First(&inv).Error
+	err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+		Where("warehouse_id = ? AND location_id = ? AND sku_id = ? AND batch_no = ?",
+			warehouseID, locationID, skuID, batchNo).First(&inv).Error
 	if err != nil {
 		return nil, err
 	}

@@ -83,6 +83,8 @@ var (
 	WarehouseDisabled = New(20010, "仓库已禁用")
 	LocationDisabled  = New(20011, "库位已禁用")
 	SKUDisabled       = New(20012, "货品已禁用")
+	// 20013 在 basic service 中内联定义（单次批量生成库位数量上限）
+	LocationWarehouseMismatch = New(20014, "库位不属于该仓库")
 )
 
 // 库存 30000+

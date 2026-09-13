@@ -18,6 +18,7 @@ type Config struct {
 type ServerConfig struct {
 	Port int    `mapstructure:"port"`
 	Mode string `mapstructure:"mode"` // debug / release
+	Node int64  `mapstructure:"node"` // 雪花算法节点号（0-1023），多实例部署时每实例必须唯一
 }
 
 type MySQLConfig struct {
@@ -65,6 +66,9 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.MySQL.MaxIdleConns <= 0 {
 		cfg.MySQL.MaxIdleConns = 10
+	}
+	if cfg.Server.Node <= 0 {
+		cfg.Server.Node = 1
 	}
 	if cfg.JWT.ExpireHours <= 0 {
 		cfg.JWT.ExpireHours = 24

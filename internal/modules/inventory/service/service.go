@@ -15,30 +15,47 @@ import (
 	sysmodel "gowms/internal/modules/system/model"
 	"gowms/internal/pkg/errcode"
 	"gowms/internal/pkg/snowflake"
-	"gowms/internal/pkg/tx"
+	pkgtx "gowms/internal/pkg/tx"
 )
 
 type Service struct {
 	repo *repository.Repository
-	tm   *tx.Manager
+	tm   *pkgtx.Manager
 }
 
-func New(repo *repository.Repository, tm *tx.Manager) *Service {
+func New(repo *repository.Repository, tm *pkgtx.Manager) *Service {
 	return &Service{repo: repo, tm: tm}
 }
 
 // Increase 上架入库：stock += N, available += N。
-// 四元组（仓库+库位+SKU+批次）存在则累加，不存在则创建；同事务写 RECEIVE 流水。
+// 四元组（仓库+库位+SKU+批次）存在则 FOR UPDATE 行锁后累加——锁内读到的是已提交最新值，
+// 流水 Before/After 不再失真；不存在则创建，四元组唯一索引（uk_inv）兜底并发创建冲突；
+// 并发创建产生死锁/冲突时由外层 TxRetry 或下方有限重试兜底。同事务写 RECEIVE 流水。
 func (s *Service) Increase(ctx context.Context, tx *gorm.DB, req *api.IncreaseReq) error {
 	if req.Quantity <= 0 {
 		return errcode.ParamError
 	}
-	// 行锁读取（存在则锁定；不存在走创建，唯一索引兜底并发创建）
-	inv, err := s.repo.GetByTuple(tx, req.WarehouseID, req.LocationID, req.SKUID, req.BatchNo)
-	if err != nil {
+	const tupleRetry = 3
+	for i := 0; i < tupleRetry; i++ {
+		// 行锁读取：并发上架在 FOR UPDATE 上串行化
+		inv, err := s.repo.GetByTupleForUpdate(tx, req.WarehouseID, req.LocationID, req.SKUID, req.BatchNo)
+		if err == nil {
+			if err := s.repo.IncreaseQty(tx, inv.ID, req.Quantity, req.Quantity); err != nil {
+				return err
+			}
+			return s.repo.InsertTrans(tx, &model.InventoryTrans{
+				ID:          snowflake.Next(),
+				InventoryID: inv.ID, TransType: model.TransReceive,
+				QuantityChange: req.Quantity,
+				BeforeQuantity: inv.StockQuantity, AfterQuantity: inv.StockQuantity + req.Quantity,
+				AvailableBefore: inv.AvailableQty, AvailableAfter: inv.AvailableQty + req.Quantity,
+				OrderNo: req.OrderNo, TaskNo: req.TaskNo, Operator: req.Operator,
+			})
+		}
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			return err
 		}
+		// 不存在 → 创建；唯一索引兜底并发创建
 		inv = &model.Inventory{
 			Base:        sysmodel.Base{ID: snowflake.Next()},
 			WarehouseID: req.WarehouseID, LocationID: req.LocationID,
@@ -46,29 +63,22 @@ func (s *Service) Increase(ctx context.Context, tx *gorm.DB, req *api.IncreaseRe
 			StockQuantity: req.Quantity, AvailableQty: req.Quantity, AllocatedQty: 0,
 			StockInTime: time.Now(), // FIFO 依据
 		}
-		if err := s.repo.Create(tx, inv); err != nil {
-			return err
+		err = s.repo.Create(tx, inv)
+		if err == nil {
+			return s.repo.InsertTrans(tx, &model.InventoryTrans{
+				ID:          snowflake.Next(),
+				InventoryID: inv.ID, TransType: model.TransReceive,
+				QuantityChange: req.Quantity, BeforeQuantity: 0, AfterQuantity: req.Quantity,
+				AvailableBefore: 0, AvailableAfter: req.Quantity,
+				OrderNo: req.OrderNo, TaskNo: req.TaskNo, Operator: req.Operator,
+			})
 		}
-		before := 0
-		return s.repo.InsertTrans(tx, &model.InventoryTrans{
-			ID:          snowflake.Next(),
-			InventoryID: inv.ID, TransType: model.TransReceive,
-			QuantityChange: req.Quantity, BeforeQuantity: before, AfterQuantity: req.Quantity,
-			AvailableBefore: 0, AvailableAfter: req.Quantity,
-			OrderNo: req.OrderNo, TaskNo: req.TaskNo, Operator: req.Operator,
-		})
+		if !pkgtx.IsDuplicateErr(err) {
+			return err // 死锁等错误交由外层 TxRetry 整事务重试
+		}
+		// 并发创建冲突：对方事务提交后重走锁读分支（未提交时 INSERT 已等待其提交才报重复）
 	}
-	if err := s.repo.IncreaseQty(tx, inv.ID, req.Quantity, req.Quantity); err != nil {
-		return err
-	}
-	return s.repo.InsertTrans(tx, &model.InventoryTrans{
-		ID:          snowflake.Next(),
-		InventoryID: inv.ID, TransType: model.TransReceive,
-		QuantityChange: req.Quantity,
-		BeforeQuantity: inv.StockQuantity, AfterQuantity: inv.StockQuantity + req.Quantity,
-		AvailableBefore: inv.AvailableQty, AvailableAfter: inv.AvailableQty + req.Quantity,
-		OrderNo: req.OrderNo, TaskNo: req.TaskNo, Operator: req.Operator,
-	})
+	return errcode.Conflict
 }
 
 // Allocate FIFO 分配：available -= N, allocated += N（stock 不变，审核即锁库）。

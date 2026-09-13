@@ -1,6 +1,7 @@
 server:
   port: 8080
   mode: debug          # debug / release
+  node: 1              # 雪花算法节点号（0-1023），多实例部署时每实例必须唯一（可用环境变量 WMS_SERVER_NODE 覆盖）
 
 mysql:
   dsn: "root:1234@tcp(127.0.0.1:3306)/gowms?charset=utf8mb4&parseTime=True&loc=Local"

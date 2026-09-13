@@ -3,6 +3,7 @@ package bootstrap
 import (
 	"context"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -20,6 +21,7 @@ import (
 	sysmodel "gowms/internal/modules/system/model"
 	taskmodel "gowms/internal/modules/task/model"
 	"gowms/internal/pkg/config"
+	"gowms/internal/pkg/log"
 )
 
 // InitDB 初始化 GORM MySQL 连接。
@@ -73,8 +75,13 @@ func Migrate(db *gorm.DB) error {
 	); err != nil {
 		return err
 	}
-	// CHECK 约束（MySQL 8.0.16+ 强制执行）；已存在时忽略错误
-	_ = db.Exec("ALTER TABLE wms_inventory ADD CONSTRAINT chk_inv_non_negative CHECK (available_quantity >= 0 AND stock_quantity >= 0)").Error
+	// CHECK 约束（MySQL 8.0.16+ 强制执行）；已存在时报 1061 duplicate，属预期可忽略
+	if err := db.Exec("ALTER TABLE wms_inventory ADD CONSTRAINT chk_inv_non_negative CHECK (available_quantity >= 0 AND stock_quantity >= 0)").Error; err != nil {
+		if !strings.Contains(strings.ToLower(err.Error()), "duplicate") &&
+			!strings.Contains(err.Error(), "1061") {
+			log.L().Warn("add inventory check constraint failed", "err", err)
+		}
+	}
 	return seed(db)
 }
 

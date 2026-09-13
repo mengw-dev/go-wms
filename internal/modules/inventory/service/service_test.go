@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -252,4 +253,85 @@ func TestShipReleaseInvariant(t *testing.T) {
 		t.Fatal("oversell ship should fail")
 	}
 	check("oversell-ship")
+}
+
+// TestConcurrentIncreaseTransFlow 并发上架流水一致性：
+// 8 个并发各向相同"仓库+库位+SKU+批次"上架 10（共 80），
+// 要求最终库存准确，且 RECEIVE 流水的 Before/After 首尾相接无缺口、无重叠（可对账）。
+func TestConcurrentIncreaseTransFlow(t *testing.T) {
+	svc, tm, db := newTestService(t)
+	ctx := context.Background()
+
+	locID := snowflake.Next()
+	if err := db.Create(&basicmodel.Location{
+		Base: sysmodel.Base{ID: locID}, WarehouseID: 1, Code: fmt.Sprintf("T-%d", locID), Status: 1,
+	}).Error; err != nil {
+		t.Fatalf("create location: %v", err)
+	}
+	skuID := snowflake.Next()
+	whID := snowflake.Next()
+
+	const goroutines, perQty = 8, 10
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	for i := 0; i < goroutines; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			<-start
+			// TxRetry：首次并发创建同四元组可能因 gap lock 死锁，整事务重试后走锁读累加
+			if err := tm.TxRetry(ctx, tx.MaxTxRetry, func(tx *gorm.DB) error {
+				return svc.Increase(ctx, tx, &api.IncreaseReq{
+					WarehouseID: whID, LocationID: locID, SKUID: skuID,
+					BatchNo: "B-CONC", Quantity: perQty,
+					OrderNo: fmt.Sprintf("RK-TEST-%d", i), Operator: "test",
+				})
+			}); err != nil {
+				t.Errorf("increase %d: %v", i, err)
+			}
+		}(i)
+	}
+	close(start)
+	done := make(chan struct{})
+	go func() { wg.Wait(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(30 * time.Second):
+		t.Fatal("concurrent increase timeout")
+	}
+
+	// 最终库存：stock = available = 80
+	var inv model.Inventory
+	if err := db.Where("warehouse_id = ? AND sku_id = ?", whID, skuID).First(&inv).Error; err != nil {
+		t.Fatalf("load inventory: %v", err)
+	}
+	total := goroutines * perQty
+	if inv.StockQuantity != total || inv.AvailableQty != total {
+		t.Fatalf("expect stock=%d available=%d, got %d/%d", total, total, inv.StockQuantity, inv.AvailableQty)
+	}
+
+	// 流水链校验：按 BeforeQuantity 排序后应首尾相接覆盖 [0, total]
+	var trans []model.InventoryTrans
+	if err := db.Where("inventory_id = ?", inv.ID).Where("trans_type = ?", model.TransReceive).Find(&trans).Error; err != nil {
+		t.Fatalf("load trans: %v", err)
+	}
+	if len(trans) != goroutines {
+		t.Fatalf("expect %d trans rows, got %d", goroutines, len(trans))
+	}
+	sort.Slice(trans, func(a, b int) bool { return trans[a].BeforeQuantity < trans[b].BeforeQuantity })
+	expect := 0
+	for _, tr := range trans {
+		if tr.BeforeQuantity != expect || tr.AfterQuantity != expect+perQty {
+			t.Fatalf("trans chain broken at before=%d: expect [%d,%d), got [%d,%d)",
+				expect, expect, expect+perQty, tr.BeforeQuantity, tr.AfterQuantity)
+		}
+		if tr.AvailableBefore != expect || tr.AvailableAfter != expect+perQty {
+			t.Fatalf("available chain broken: expect [%d,%d), got [%d,%d)",
+				expect, expect+perQty, tr.AvailableBefore, tr.AvailableAfter)
+		}
+		expect = tr.AfterQuantity
+	}
+	if expect != total {
+		t.Fatalf("trans chain total expect %d, got %d", total, expect)
+	}
 }

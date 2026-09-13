@@ -222,6 +222,22 @@ func (s *Service) ValidateLocation(ctx context.Context, id int64) error {
 	return nil
 }
 
+// ValidateLocationInWarehouse 在 ValidateLocation 基础上增加归属校验：
+// 库位必须属于指定仓库，防止把 A 仓库的单据上架到 B 仓库库位，产生跨仓库存记录。
+func (s *Service) ValidateLocationInWarehouse(ctx context.Context, warehouseID, id int64) error {
+	l, err := s.repo.GetLocation(ctx, s.tm.DB(), id)
+	if err != nil {
+		return errcode.LocationNotFound
+	}
+	if l.Status == model.LocationStatusDisabled {
+		return errcode.LocationDisabled
+	}
+	if l.WarehouseID != warehouseID {
+		return errcode.LocationWarehouseMismatch
+	}
+	return nil
+}
+
 func (s *Service) ValidateSKU(ctx context.Context, id int64) error {
 	sku, err := s.repo.GetSKU(ctx, s.tm.DB(), id)
 	if err != nil {

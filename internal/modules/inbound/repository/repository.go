@@ -38,6 +38,15 @@ func (r *Repository) GetOrderForUpdate(tx *gorm.DB, id int64) (*model.ReceiptOrd
 	return &o, nil
 }
 
+// GetByImportRow 按导入幂等键（导入任务 ID + Excel 行号）查询入库单。
+func (r *Repository) GetByImportRow(ctx context.Context, db *gorm.DB, taskID string, rowNo int) (*model.ReceiptOrder, error) {
+	var o model.ReceiptOrder
+	if err := db.WithContext(ctx).Where("import_task_id = ? AND import_row = ?", taskID, rowNo).First(&o).Error; err != nil {
+		return nil, err
+	}
+	return &o, nil
+}
+
 func (r *Repository) GetOrder(ctx context.Context, db *gorm.DB, id int64) (*model.ReceiptOrder, error) {
 	var o model.ReceiptOrder
 	if err := db.WithContext(ctx).First(&o, id).Error; err != nil {

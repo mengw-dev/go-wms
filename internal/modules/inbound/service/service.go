@@ -67,6 +67,33 @@ const compensateLockKey = "wms:import:compensate"
 
 // Create 创建入库单（RK 单号；唯一索引兜底 + 重新生成重试 3 次）。
 func (s *Service) Create(ctx context.Context, req *dto.CreateOrderReq, operator string) (*model.ReceiptOrder, error) {
+	return s.createOrder(ctx, req, operator, nil)
+}
+
+// CreateImportOrder 导入建单：以（导入任务 ID + Excel 行号）为幂等键，Source = IMPORT。
+// 补偿扫描重跑已处理过的行时直接返回已有单据，不再重复建单。
+func (s *Service) CreateImportOrder(ctx context.Context, taskID string, rowNo int, req *dto.CreateOrderReq, operator string) (*model.ReceiptOrder, error) {
+	// 幂等检查：该行已建单则直接复用（补偿重跑）
+	if o, err := s.repo.GetByImportRow(ctx, s.tm.DB(), taskID, rowNo); err == nil {
+		return o, nil
+	}
+	o, err := s.createOrder(ctx, req, operator, func(order *model.ReceiptOrder) {
+		order.Source = model.SourceImport
+		order.ImportTaskID = &taskID
+		order.ImportRow = rowNo
+	})
+	if err != nil {
+		// 幂等兜底：重跑/并发撞 uk_import_row 唯一键，回读已有单视为成功
+		if exist, gerr := s.repo.GetByImportRow(ctx, s.tm.DB(), taskID, rowNo); gerr == nil {
+			return exist, nil
+		}
+		return nil, err
+	}
+	return o, nil
+}
+
+// createOrder 建单核心：decorate 在落库前注入来源/幂等键等扩展字段（RK 单号冲突重试 3 次）。
+func (s *Service) createOrder(ctx context.Context, req *dto.CreateOrderReq, operator string, decorate func(*model.ReceiptOrder)) (*model.ReceiptOrder, error) {
 	if err := s.basic.ValidateWarehouse(ctx, req.WarehouseID); err != nil {
 		return nil, err
 	}
@@ -81,6 +108,9 @@ func (s *Service) Create(ctx context.Context, req *dto.CreateOrderReq, operator 
 			OrderNo:     s.no.Next(ctx, model.OrderNoPrefix),
 			WarehouseID: req.WarehouseID, Status: model.OrderDraft,
 			Source: model.SourceManual, Remark: req.Remark, ExpectedQty: expected, CreatedBy: operator,
+		}
+		if decorate != nil {
+			decorate(order)
 		}
 		err = s.tm.Tx(ctx, func(tx *gorm.DB) error {
 			return s.repo.CreateOrder(tx, order, details)
@@ -263,6 +293,11 @@ func (s *Service) Receive(ctx context.Context, orderID, detailID int64, req *dto
 		if err := s.repo.IncrDetailReceive(tx, d, req.Qty, req.DefectiveQty); err != nil {
 			return err
 		}
+		// 收货任务推进：完成量 = 良品 + 残品（残品同样经过收货作业）。
+		// 收齐时任务完成量恰好等于目标量，任务自动 CREATED → IN_PROGRESS → COMPLETED。
+		if err := s.taskAPI.AddProgressByDetail(ctx, tx, orderID, detailID, taskmodel.TaskReceive, req.Qty+req.DefectiveQty, operator); err != nil {
+			return err
+		}
 
 		// 重读全部明细（同事务可见原子累加后的新值）判断是否全部收齐
 		all, err := s.repo.ListDetails(tx, orderID)
@@ -277,12 +312,29 @@ func (s *Service) Receive(ctx context.Context, orderID, detailID int64, req *dto
 			}
 		}
 		var toStatus model.OrderStatus
+		var putawayTasks []*taskapi.CreateTask
 		if fullyReceived {
-			// 状态机校验：APPROVED（首次收货即收齐）或 RECEIVING → PUTAWAY
-			if !model.CanTransit(o.Status, model.OrderPutaway) {
+			// 上架任务（残品不入库，上架量 = 已收 - 残品）
+			for _, item := range all {
+				putawayQty := item.ReceivedQty - item.DefectiveQty
+				if putawayQty <= 0 {
+					continue
+				}
+				putawayTasks = append(putawayTasks, &taskapi.CreateTask{
+					TaskType: taskmodel.TaskPutaway, OrderID: o.ID, OrderNo: o.OrderNo,
+					DetailID: item.ID, SKUID: item.SKUID, WarehouseID: o.WarehouseID, TargetQty: putawayQty,
+				})
+			}
+			if len(putawayTasks) > 0 {
+				toStatus = model.OrderPutaway
+			} else {
+				// 全部残品：无上架作业，收齐即完成（否则单据永远停在 PUTAWAY）
+				toStatus = model.OrderCompleted
+			}
+			// 状态机校验：APPROVED（首次收货即收齐）或 RECEIVING → PUTAWAY/COMPLETED
+			if !model.CanTransit(o.Status, toStatus) {
 				return errcode.OrderStatusWrong
 			}
-			toStatus = model.OrderPutaway
 		} else if o.Status == model.OrderApproved {
 			// 状态机校验：首次部分收货 APPROVED → RECEIVING
 			if !model.CanTransit(o.Status, model.OrderReceiving) {
@@ -298,23 +350,10 @@ func (s *Service) Receive(ctx context.Context, orderID, detailID int64, req *dto
 		} else if n == 0 {
 			return errcode.OrderVersionBad
 		}
-		// 收齐 → 生成上架任务（残品不入库，上架量 = 已收 - 残品）
-		if fullyReceived {
-			tasks := make([]*taskapi.CreateTask, 0, len(all))
-			for _, item := range all {
-				putawayQty := item.ReceivedQty - item.DefectiveQty
-				if putawayQty <= 0 {
-					continue
-				}
-				tasks = append(tasks, &taskapi.CreateTask{
-					TaskType: taskmodel.TaskPutaway, OrderID: o.ID, OrderNo: o.OrderNo,
-					DetailID: item.ID, SKUID: item.SKUID, WarehouseID: o.WarehouseID, TargetQty: putawayQty,
-				})
-			}
-			if len(tasks) > 0 {
-				if err := s.taskAPI.Create(ctx, tx, tasks); err != nil {
-					return err
-				}
+		// 收齐 → 生成上架任务
+		if len(putawayTasks) > 0 {
+			if err := s.taskAPI.Create(ctx, tx, putawayTasks); err != nil {
+				return err
 			}
 		}
 		return nil
@@ -327,16 +366,17 @@ func (s *Service) Receive(ctx context.Context, orderID, detailID int64, req *dto
 // 全部上架任务完成后单据流转 COMPLETED。支持分多次上架。
 // 并发上架/死锁由 TxRetry 自动整事务重试。
 func (s *Service) Putaway(ctx context.Context, taskID, locationID int64, qty int, operator string) error {
-	if err := s.basic.ValidateLocation(ctx, locationID); err != nil {
-		return err
-	}
-	// 事务外只读不可变路由信息（OrderID/DetailID/SKUID/TaskType/TaskNo 建后不变）
+	// 事务外只读不可变路由信息（OrderID/DetailID/SKUID/TaskType/TaskNo/仓库 建后不变）
 	routing, err := s.taskAPI.Get(ctx, taskID)
 	if err != nil {
 		return errcode.TaskNotFound
 	}
 	if routing.TaskType != taskmodel.TaskPutaway {
 		return errcode.TaskStatusWrong
+	}
+	// 库位校验：存在、非禁用，且必须属于单据仓库，防止跨仓库上架产生不一致库存
+	if err := s.basic.ValidateLocationInWarehouse(ctx, routing.WarehouseID, locationID); err != nil {
+		return err
 	}
 	return s.tm.TxRetry(ctx, tx.MaxTxRetry, func(tx *gorm.DB) error {
 		o, err := s.repo.GetOrderForUpdate(tx, routing.OrderID)
@@ -574,11 +614,11 @@ func (s *Service) doImport(ctx context.Context, t *model.ImportTask) (total, suc
 		if len(row) > 3 {
 			remark = row[3]
 		}
-		_, err = s.Create(ctx, &dto.CreateOrderReq{
+		// 幂等建单：以（导入任务 ID + Excel 行号）为键，补偿重跑不重复建单
+		if _, err = s.CreateImportOrder(ctx, t.TaskID, i+2, &dto.CreateOrderReq{
 			WarehouseID: wh.ID, Remark: remark,
 			Details: []dto.OrderDetailItem{{SKUID: sku.ID, ExpectedQty: expectedQty}},
-		}, "import")
-		if err != nil {
+		}, "import"); err != nil {
 			fail++
 			failMsgs = append(failMsgs, fmt.Sprintf("第%d行: %v", i+2, err))
 			continue
