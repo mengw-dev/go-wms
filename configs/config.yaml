@@ -29,3 +29,8 @@ log:
 
 upload:
   dir: ./data/uploads
+
+metrics:
+  enabled: false
+  port: 9090
+  path: /metrics

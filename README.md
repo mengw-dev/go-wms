@@ -202,6 +202,9 @@ make compose-down
 | `WMS_REDIS_ADDR` | Redis 地址 | `127.0.0.1:6379` |
 | `WMS_JWT_SECRET` | JWT 密钥，生产环境至少 32 字符 | 开发配置 |
 | `WMS_UPLOAD_DIR` | Excel 上传目录 | `./data/uploads` |
+| `WMS_METRICS_ENABLED` | 是否启用 Prometheus 指标端口 | `false` |
+| `WMS_METRICS_PORT` | 指标服务端口 | `9090` |
+| `WMS_METRICS_PATH` | 指标路径 | `/metrics` |
 
 生产模式 `WMS_SERVER_MODE=release` 会拒绝过短或仍包含示例占位内容的 JWT 密钥。多实例部署时每个实例必须使用不同的 `WMS_SERVER_NODE`。
 
@@ -336,6 +339,40 @@ make migrate-down
 
 迁移版本记录保存在 MySQL 的 `schema_migrations` 表。生产发布应先备份数据库，再执行迁移，并检查 dirty 状态。
 
+## 可观测性
+
+启用 Metrics 后，服务会在独立端口提供 Prometheus 指标：
+
+```env
+WMS_METRICS_ENABLED=true
+WMS_METRICS_PORT=9090
+WMS_METRICS_PATH=/metrics
+```
+
+包含：
+
+- `wms_http_requests_total`
+- `wms_http_request_duration_seconds`
+- `wms_http_requests_in_flight`
+- `wms_db_open_connections`
+- `wms_db_in_use_connections`
+- `wms_db_wait_count_total`
+- Go/进程运行时指标
+- `wms_build_info`
+
+启动本地 Prometheus：
+
+```bash
+make compose-monitoring
+```
+
+业务接口还提供：
+
+```text
+GET /version
+GET /healthz
+```
+
 ## 生产级处理
 
 - JWT 使用版本号，用户禁用或修改密码后旧 Token 立即失效。
@@ -347,6 +384,7 @@ make migrate-down
 - 可信代理通过 CIDR 配置，避免伪造 `X-Forwarded-For`。
 - 后端和前端容器均以非 root 用户运行。
 - CI 执行 `go test -race`、`govulncheck`、前端依赖审计和 Docker 镜像构建。
+- Prometheus 指标独立端口运行，可通过 Compose monitoring profile 启动。
 
 ## 安全建议
 

@@ -15,6 +15,7 @@ import (
 	"gowms/internal/bootstrap"
 	"gowms/internal/pkg/config"
 	"gowms/internal/pkg/log"
+	"gowms/internal/pkg/observability"
 )
 
 func main() {
@@ -53,7 +54,11 @@ func main() {
 	defer rdb.Close()
 
 	// 4. 组装依赖
-	application, err := app.New(cfg, db, rdb)
+	var metrics *observability.Metrics
+	if cfg.Metrics.Enabled {
+		metrics = observability.New(db, "gowms-api")
+	}
+	application, err := app.New(cfg, db, rdb, metrics)
 	if err != nil {
 		logger.Error("assemble app failed", "err", err)
 		os.Exit(1)
@@ -86,6 +91,26 @@ func main() {
 		}
 	}()
 
+	var metricsSrv *http.Server
+	if metrics != nil {
+		mux := http.NewServeMux()
+		mux.Handle(cfg.Metrics.Path, metrics.Handler())
+		metricsSrv = &http.Server{
+			Addr:              fmt.Sprintf(":%d", cfg.Metrics.Port),
+			Handler:           mux,
+			ReadHeaderTimeout: 5 * time.Second,
+			ReadTimeout:       10 * time.Second,
+			WriteTimeout:      10 * time.Second,
+			IdleTimeout:       30 * time.Second,
+		}
+		go func() {
+			logger.Info("metrics server started", "port", cfg.Metrics.Port, "path", cfg.Metrics.Path)
+			if err := metricsSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				serverErr <- fmt.Errorf("metrics server: %w", err)
+			}
+		}()
+	}
+
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	select {
@@ -101,6 +126,11 @@ func main() {
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
 		logger.Error("shutdown failed", "err", err)
+	}
+	if metricsSrv != nil {
+		if err := metricsSrv.Shutdown(ctx); err != nil {
+			logger.Error("metrics shutdown failed", "err", err)
+		}
 	}
 	compensatorCancel() // HTTP 关停后停止补偿扫描
 	logger.Info("bye")
