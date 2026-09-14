@@ -33,6 +33,7 @@ import (
 	taskservice "gowms/internal/modules/task/service"
 	"gowms/internal/pkg/config"
 	"gowms/internal/pkg/lock"
+	"gowms/internal/pkg/observability"
 	"gowms/internal/pkg/orderno"
 	"gowms/internal/pkg/snowflake"
 	"gowms/internal/pkg/tx"
@@ -40,9 +41,10 @@ import (
 
 // App 依赖组装容器：手动构造函数注入，包间仅通过接口通信，预留按包拆分扩展点。
 type App struct {
-	Config *config.Config
-	DB     *gorm.DB
-	Redis  *redis.Client
+	Config  *config.Config
+	DB      *gorm.DB
+	Redis   *redis.Client
+	Metrics *observability.Metrics
 
 	// 模块对外接口（未来拆分微服务时的边界）
 	SystemAPI    sysapi.SystemAPI
@@ -63,7 +65,7 @@ type App struct {
 }
 
 // New 按依赖顺序组装所有模块（无循环依赖：basic→inventory，inbound/outbound→basic+inventory+task）。
-func New(cfg *config.Config, db *gorm.DB, rdb *redis.Client) (*App, error) {
+func New(cfg *config.Config, db *gorm.DB, rdb *redis.Client, metrics *observability.Metrics) (*App, error) {
 	// 节点号来自配置（多实例部署时每实例必须配置不同的 server.node，否则会生成重复雪花 ID）
 	snowflake.Init(cfg.Server.Node)
 	tm := tx.New(db)
@@ -87,9 +89,10 @@ func New(cfg *config.Config, db *gorm.DB, rdb *redis.Client) (*App, error) {
 	stocktakeSvc := stocktakeservice.New(stocktakerepo.New(), tm, no, invSvc)
 
 	return &App{
-		Config: cfg,
-		DB:     db,
-		Redis:  rdb,
+		Config:  cfg,
+		DB:      db,
+		Redis:   rdb,
+		Metrics: metrics,
 
 		SystemAPI:    sysSvc,
 		BasicAPI:     basicSvc,

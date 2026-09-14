@@ -8,12 +8,13 @@ import (
 )
 
 type Config struct {
-	Server ServerConfig `mapstructure:"server"`
-	MySQL  MySQLConfig  `mapstructure:"mysql"`
-	Redis  RedisConfig  `mapstructure:"redis"`
-	JWT    JWTConfig    `mapstructure:"jwt"`
-	Log    LogConfig    `mapstructure:"log"`
-	Upload UploadConfig `mapstructure:"upload"`
+	Server  ServerConfig  `mapstructure:"server"`
+	MySQL   MySQLConfig   `mapstructure:"mysql"`
+	Redis   RedisConfig   `mapstructure:"redis"`
+	JWT     JWTConfig     `mapstructure:"jwt"`
+	Log     LogConfig     `mapstructure:"log"`
+	Upload  UploadConfig  `mapstructure:"upload"`
+	Metrics MetricsConfig `mapstructure:"metrics"`
 }
 
 type ServerConfig struct {
@@ -52,6 +53,12 @@ type LogConfig struct {
 
 type UploadConfig struct {
 	Dir string `mapstructure:"dir"`
+}
+
+type MetricsConfig struct {
+	Enabled bool   `mapstructure:"enabled"`
+	Port    int    `mapstructure:"port"`
+	Path    string `mapstructure:"path"`
 }
 
 // Load 读取 configs/config.yaml；支持环境变量覆盖（WMS_ 前缀，. 分隔，如 WMS_MYSQL_DSN）。
@@ -116,6 +123,15 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.Upload.Dir == "" {
 		cfg.Upload.Dir = "./data/uploads"
+	}
+	if cfg.Metrics.Port <= 0 || cfg.Metrics.Port > 65535 {
+		cfg.Metrics.Port = 9090
+	}
+	if cfg.Metrics.Path == "" {
+		cfg.Metrics.Path = "/metrics"
+	}
+	if !strings.HasPrefix(cfg.Metrics.Path, "/") {
+		cfg.Metrics.Path = "/" + cfg.Metrics.Path
 	}
 	return &cfg, nil
 }

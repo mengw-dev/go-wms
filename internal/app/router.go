@@ -8,6 +8,7 @@ import (
 
 	"gowms/internal/pkg/middleware"
 	"gowms/internal/pkg/response"
+	"gowms/internal/pkg/version"
 )
 
 // NewRouter 构建路由与中间件链：
@@ -17,6 +18,9 @@ func (a *App) NewRouter() (*gin.Engine, error) {
 		gin.SetMode(gin.ReleaseMode)
 	}
 	r := gin.New()
+	if a.Metrics != nil {
+		r.Use(a.Metrics.Middleware())
+	}
 	if err := r.SetTrustedProxies(a.Config.TrustedProxyCIDRs()); err != nil {
 		return nil, fmt.Errorf("configure trusted proxies: %w", err)
 	}
@@ -27,6 +31,14 @@ func (a *App) NewRouter() (*gin.Engine, error) {
 		middleware.Recovery(),
 		middleware.AccessLog(),
 	)
+
+	r.GET("/version", func(c *gin.Context) {
+		response.OK(c, gin.H{
+			"version":    version.Version,
+			"commit":     version.Commit,
+			"build_time": version.BuildTime,
+		})
+	})
 
 	// 健康检查：DB 不可用必须返回非 2xx，K8s 探针/负载均衡才能摘除故障实例
 	r.GET("/healthz", func(c *gin.Context) {

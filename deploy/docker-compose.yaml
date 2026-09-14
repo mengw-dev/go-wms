@@ -63,6 +63,9 @@ services:
       WMS_REDIS_ADDR: redis:6379
       WMS_JWT_SECRET: ${JWT_SECRET:-}
       WMS_UPLOAD_DIR: /app/data/uploads
+      WMS_METRICS_ENABLED: "true"
+      WMS_METRICS_PORT: "9090"
+      WMS_METRICS_PATH: "/metrics"
     ports:
       - "${WMS_API_PORT:-8080}:8080"
     volumes:
@@ -92,7 +95,22 @@ services:
       wms:
         condition: service_healthy
 
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: gowms-prometheus
+    profiles: ["monitoring"]
+    restart: unless-stopped
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    depends_on:
+      wms:
+        condition: service_healthy
+
 volumes:
   mysql_data:
   redis_data:
   upload_data:
+  prometheus_data:

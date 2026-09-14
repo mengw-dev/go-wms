@@ -1,4 +1,4 @@
-.PHONY: run migrate-up migrate-down build test test-required test-race lint tidy compose-up compose-infra compose-down
+.PHONY: run migrate-up migrate-down build test test-required test-race lint tidy compose-up compose-infra compose-monitoring compose-down
 
 run:
 	go run ./cmd/wms
@@ -33,6 +33,9 @@ compose-up:
 
 compose-infra:
 	docker compose -f deploy/docker-compose.yaml -f deploy/docker-compose.dev.yaml up -d mysql redis
+
+compose-monitoring:
+	docker compose -f deploy/docker-compose.yaml --profile monitoring up -d prometheus
 
 compose-down:
 	docker compose -f deploy/docker-compose.yaml down
