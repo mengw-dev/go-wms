@@ -14,7 +14,7 @@ func (Warehouse) TableName() string { return "wms_warehouse" }
 
 type Location struct {
 	model.Base
-	WarehouseID int64  `json:"warehouse_id" gorm:"not null;uniqueIndex:uk_location_warehouse_code,priority:1"`
+	WarehouseID int64  `json:"warehouse_id,string" gorm:"not null;uniqueIndex:uk_location_warehouse_code,priority:1"`
 	Code        string `json:"code" gorm:"size:64;not null;uniqueIndex:uk_location_warehouse_code,priority:2"` // 格式 {库区}-{排}-{列}，如 A01-02-03
 	Zone        string `json:"zone" gorm:"size:32"`                                                            // 库区，取编码第一段
 	Status      int    `json:"status" gorm:"default:1"`                                                        // 1 空闲 2 占用 0 禁用

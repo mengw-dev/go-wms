@@ -2,13 +2,13 @@
 import { reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { getInboundOrder, receiveInbound } from '@/api/inbound'
-import type { InboundOrderDetailRow } from '@/api/types'
+import type { EntityID, InboundOrderDetailRow } from '@/api/types'
 
 const emit = defineEmits<{ (e: 'success'): void }>()
 
 const visible = ref(false)
 const loading = ref(false)
-const orderId = ref(0)
+const orderId = ref<EntityID>('')
 const details = ref<InboundOrderDetailRow[]>([])
 
 interface RowForm {
@@ -17,13 +17,13 @@ interface RowForm {
   batch_no: string
   submitting: boolean
 }
-const forms = reactive<Record<number, RowForm>>({})
+const forms = reactive<Record<EntityID, RowForm>>({})
 
 function remaining(row: InboundOrderDetailRow): number {
   return Math.max(row.expected_qty - row.received_qty, 0)
 }
 
-async function open(id: number) {
+async function open(id: EntityID) {
   orderId.value = id
   visible.value = true
   loading.value = true

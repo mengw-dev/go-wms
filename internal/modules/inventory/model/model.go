@@ -11,9 +11,9 @@ import (
 type Inventory struct {
 	model.Base
 	model.Versioned           // 乐观锁，配合条件更新防并发
-	WarehouseID     int64     `json:"warehouse_id" gorm:"not null;uniqueIndex:uk_inv,priority:1"`
-	LocationID      int64     `json:"location_id" gorm:"not null;uniqueIndex:uk_inv,priority:2"`
-	SKUID           int64     `json:"sku_id" gorm:"column:sku_id;not null;uniqueIndex:uk_inv,priority:3"`
+	WarehouseID     int64     `json:"warehouse_id,string" gorm:"not null;uniqueIndex:uk_inv,priority:1"`
+	LocationID      int64     `json:"location_id,string" gorm:"not null;uniqueIndex:uk_inv,priority:2"`
+	SKUID           int64     `json:"sku_id,string" gorm:"column:sku_id;not null;uniqueIndex:uk_inv,priority:3"`
 	BatchNo         string    `json:"batch_no" gorm:"size:64;not null;default:'';uniqueIndex:uk_inv,priority:4"`
 	StockQuantity   int       `json:"stock_quantity" gorm:"not null;default:0"`
 	AvailableQty    int       `json:"available_quantity" gorm:"column:available_quantity;not null;default:0"`
@@ -37,8 +37,8 @@ const (
 
 // InventoryTrans 库存流水：只增不改，每次变动同事务写入。
 type InventoryTrans struct {
-	ID              int64     `json:"id" gorm:"primaryKey"`
-	InventoryID     int64     `json:"inventory_id" gorm:"index"`
+	ID              int64     `json:"id,string" gorm:"primaryKey"`
+	InventoryID     int64     `json:"inventory_id,string" gorm:"index"`
 	TransType       TransType `json:"trans_type" gorm:"size:16;index"`
 	QuantityChange  int       `json:"quantity_change"`
 	BeforeQuantity  int       `json:"before_quantity"` // 变更前 stock_quantity

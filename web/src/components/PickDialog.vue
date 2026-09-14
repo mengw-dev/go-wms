@@ -2,17 +2,17 @@
 import { computed, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { getOutboundOrder, pickOutboundTask } from '@/api/outbound'
-import type { TaskItem } from '@/api/types'
+import type { EntityID, TaskItem } from '@/api/types'
 
 const emit = defineEmits<{ (e: 'success'): void }>()
 
 const visible = ref(false)
 const loading = ref(false)
-const orderId = ref(0)
+const orderId = ref<EntityID>('')
 const tasks = ref<TaskItem[]>([])
 
 const form = reactive({
-  task_id: undefined as number | undefined,
+  task_id: undefined as EntityID | undefined,
   qty: 1,
 })
 const submitting = ref(false)
@@ -23,7 +23,7 @@ const pendingTasks = computed(() =>
   tasks.value.filter((t) => t.task_type === 'PICK' && (t.status === 'CREATED' || t.status === 'IN_PROGRESS')),
 )
 
-async function open(id: number, task?: TaskItem) {
+async function open(id: EntityID, task?: TaskItem) {
   orderId.value = id
   visible.value = true
   loading.value = true
@@ -43,7 +43,7 @@ async function open(id: number, task?: TaskItem) {
   }
 }
 
-function onTaskChange(taskId: number) {
+function onTaskChange(taskId: EntityID) {
   form.task_id = taskId
   const task = tasks.value.find((t) => t.id === taskId)
   form.qty = task ? Math.max(task.target_qty - task.done_qty, 1) : 1

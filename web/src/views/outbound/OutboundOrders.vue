@@ -10,7 +10,7 @@ import {
   listOutboundOrders,
   submitOutboundOrder,
 } from '@/api/outbound'
-import type { OutboundOrderItem } from '@/api/types'
+import type { EntityID,  OutboundOrderItem } from '@/api/types'
 import { OUTBOUND_STATUS_OPTIONS, statusTag, statusText } from '@/constants'
 import { cleanParams, formatTime } from '@/utils'
 import { loadSkuMap, loadWarehouseOptions, toOptionMap, type IdOption } from '@/utils/options'
@@ -20,7 +20,7 @@ const router = useRouter()
 
 // ---------- 基础选项 ----------
 const warehouseOptions = ref<IdOption[]>([])
-const warehouseMap = ref<Record<number, string>>({})
+const warehouseMap = ref<Record<EntityID, string>>({})
 const skuOptions = ref<IdOption[]>([])
 
 onMounted(async () => {
@@ -28,7 +28,7 @@ onMounted(async () => {
   warehouseMap.value = toOptionMap(warehouseOptions.value)
   const map = await loadSkuMap()
   skuOptions.value = Object.entries(map).map(([id, sku]) => ({
-    id: Number(id),
+    id,
     label: `${sku.code} ${sku.name}`,
   }))
   load()
@@ -41,7 +41,7 @@ const total = ref(0)
 const query = reactive({
   page: 1,
   page_size: 10,
-  warehouse_id: '' as number | '',
+  warehouse_id: '' as EntityID | '',
   status: '',
   keyword: '',
 })
@@ -114,10 +114,10 @@ function goDetail(row: OutboundOrderItem) {
 // ---------- 新建 ----------
 const createDialog = reactive({ visible: false, loading: false })
 const createForm = reactive({
-  warehouse_id: undefined as number | undefined,
+  warehouse_id: undefined as EntityID | undefined,
   biz_order_no: '',
   remark: '',
-  details: [] as { sku_id: number | undefined; expected_qty: number }[],
+  details: [] as { sku_id: EntityID | undefined; expected_qty: number }[],
 })
 
 function openCreate() {

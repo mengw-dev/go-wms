@@ -8,18 +8,18 @@ import {
   listWarehouses,
   updateLocationStatus,
 } from '@/api/basic'
-import type { LocationItem, WarehouseItem } from '@/api/types'
+import type { EntityID,  LocationItem, WarehouseItem } from '@/api/types'
 import { COMMON_STATUS, LOCATION_STATUS, locationStatusTag, locationStatusText } from '@/constants'
 import { cleanParams, formatTime } from '@/utils'
 
 // ---------- 仓库下拉 ----------
 const warehouseOptions = ref<WarehouseItem[]>([])
-const warehouseMap = ref<Record<number, string>>({})
+const warehouseMap = ref<Record<EntityID, string>>({})
 
 async function loadWarehouses() {
   const data = await listWarehouses({ page: 1, page_size: 100, status: COMMON_STATUS.ENABLED })
   warehouseOptions.value = data.list ?? []
-  const map: Record<number, string> = {}
+  const map: Record<EntityID, string> = {}
   for (const w of warehouseOptions.value) {
     map[w.id] = `${w.code}（${w.name}）`
   }
@@ -33,7 +33,7 @@ const total = ref(0)
 const query = reactive({
   page: 1,
   page_size: 10,
-  warehouse_id: '' as number | '',
+  warehouse_id: '' as EntityID | '',
   zone: '',
   code: '',
   status: '' as number | '',
@@ -71,7 +71,7 @@ onMounted(async () => {
 const batchDialog = reactive({ visible: false, loading: false })
 const batchFormRef = ref<FormInstance>()
 const batchForm = reactive({
-  warehouse_id: undefined as number | undefined,
+  warehouse_id: undefined as EntityID | undefined,
   zone: '',
   row_from: 1,
   row_to: 1,

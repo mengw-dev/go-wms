@@ -1,5 +1,6 @@
 import { get, post } from './request'
 import type {
+  EntityID,
   PageData,
   StocktakeActualParams,
   StocktakeCreateParams,
@@ -13,7 +14,7 @@ export function listStocktakeOrders(params: StocktakeOrderListQuery) {
 }
 
 /** 详情：{ order, details } */
-export function getStocktakeOrder(id: number | string) {
+export function getStocktakeOrder(id: EntityID) {
   return get<StocktakeOrderDetail>(`/stocktake/orders/${id}`)
 }
 
@@ -23,15 +24,15 @@ export function createStocktakeOrder(data: StocktakeCreateParams) {
 }
 
 /** 录入实盘数 */
-export function submitStocktakeActual(id: number, data: StocktakeActualParams) {
+export function submitStocktakeActual(id: EntityID, data: StocktakeActualParams) {
   return post<void>(`/stocktake/orders/${id}/actual`, data)
 }
 
 /** 审核（按差异调整库存） */
-export function approveStocktakeOrder(id: number) {
+export function approveStocktakeOrder(id: EntityID) {
   return post<void>(`/stocktake/orders/${id}/approve`)
 }
 
-export function cancelStocktakeOrder(id: number) {
+export function cancelStocktakeOrder(id: EntityID) {
   return post<void>(`/stocktake/orders/${id}/cancel`)
 }

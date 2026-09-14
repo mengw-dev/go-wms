@@ -1,5 +1,6 @@
 import { del, get, post, put } from './request'
 import type {
+  EntityID,
   OperLogItem,
   OperLogListQuery,
   PageData,
@@ -22,19 +23,19 @@ export function createUser(data: UserCreateParams) {
   return post<UserItem>('/system/users', data)
 }
 
-export function updateUser(id: number, data: UserUpdateParams) {
+export function updateUser(id: EntityID, data: UserUpdateParams) {
   return put<void>(`/system/users/${id}`, data)
 }
 
-export function deleteUser(id: number) {
+export function deleteUser(id: EntityID) {
   return del<void>(`/system/users/${id}`)
 }
 
-export function updateUserStatus(id: number, status: number) {
+export function updateUserStatus(id: EntityID, status: number) {
   return put<void>(`/system/users/${id}/status`, { status })
 }
 
-export function resetUserPassword(id: number, password: string) {
+export function resetUserPassword(id: EntityID, password: string) {
   return put<void>(`/system/users/${id}/password`, { password })
 }
 
@@ -53,11 +54,11 @@ export function createRole(data: RoleParams) {
   return post<RoleItem>('/system/roles', data)
 }
 
-export function updateRole(id: number, data: RoleParams) {
+export function updateRole(id: EntityID, data: RoleParams) {
   return put<void>(`/system/roles/${id}`, data)
 }
 
-export function deleteRole(id: number) {
+export function deleteRole(id: EntityID) {
   return del<void>(`/system/roles/${id}`)
 }
 

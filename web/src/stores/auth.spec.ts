@@ -17,7 +17,7 @@ describe('auth store permissions', () => {
   it('supports explicit and wildcard permissions', () => {
     const auth = useAuthStore()
     auth.user = {
-      user_id: 2,
+      user_id: '2',
       username: 'operator',
       nickname: 'Operator',
       roles: ['operator'],
@@ -29,7 +29,7 @@ describe('auth store permissions', () => {
 
   it('always grants the built-in administrator', () => {
     const auth = useAuthStore()
-    auth.user = { user_id: 1, username: 'admin', nickname: 'Admin', roles: [], perms: [] }
+    auth.user = { user_id: '1', username: 'admin', nickname: 'Admin', roles: [], perms: [] }
     expect(auth.hasPerm('wms:any:permission')).toBe(true)
   })
 })

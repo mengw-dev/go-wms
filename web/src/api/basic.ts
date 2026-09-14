@@ -1,5 +1,6 @@
 import { del, get, post, put } from './request'
 import type {
+  EntityID,
   LocationBatchParams,
   LocationItem,
   LocationListQuery,
@@ -22,15 +23,15 @@ export function createWarehouse(data: WarehouseParams) {
   return post<WarehouseItem>('/basic/warehouses', data)
 }
 
-export function updateWarehouse(id: number, data: WarehouseParams) {
+export function updateWarehouse(id: EntityID, data: WarehouseParams) {
   return put<void>(`/basic/warehouses/${id}`, data)
 }
 
-export function deleteWarehouse(id: number) {
+export function deleteWarehouse(id: EntityID) {
   return del<void>(`/basic/warehouses/${id}`)
 }
 
-export function updateWarehouseStatus(id: number, status: number) {
+export function updateWarehouseStatus(id: EntityID, status: number) {
   return put<void>(`/basic/warehouses/${id}/status`, { status })
 }
 
@@ -44,11 +45,11 @@ export function batchCreateLocations(data: LocationBatchParams) {
   return post<void>('/basic/locations/batch', data)
 }
 
-export function updateLocationStatus(id: number, status: number) {
+export function updateLocationStatus(id: EntityID, status: number) {
   return put<void>(`/basic/locations/${id}/status`, { status })
 }
 
-export function deleteLocation(id: number) {
+export function deleteLocation(id: EntityID) {
   return del<void>(`/basic/locations/${id}`)
 }
 
@@ -62,11 +63,11 @@ export function createSku(data: SkuParams) {
   return post<SkuItem>('/basic/skus', data)
 }
 
-export function updateSku(id: number, data: SkuParams) {
+export function updateSku(id: EntityID, data: SkuParams) {
   return put<void>(`/basic/skus/${id}`, data)
 }
 
-export function deleteSku(id: number) {
+export function deleteSku(id: EntityID) {
   return del<void>(`/basic/skus/${id}`)
 }
 

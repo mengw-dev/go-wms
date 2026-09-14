@@ -2,6 +2,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { listInventory, listInventorySummary, listInventoryTrans } from '@/api/inventory'
 import type {
+  EntityID,
   InventoryItem,
   InventorySummaryItem,
   InventoryTransItem,
@@ -14,14 +15,14 @@ const activeTab = ref('detail')
 
 // ---------- 仓库下拉 / 货品映射 ----------
 const warehouseOptions = ref<IdOption[]>([])
-const warehouseMap = ref<Record<number, string>>({})
-const skuMap = ref<Record<number, string>>({})
+const warehouseMap = ref<Record<EntityID, string>>({})
+const skuMap = ref<Record<EntityID, string>>({})
 
 onMounted(async () => {
   warehouseOptions.value = await loadWarehouseOptions()
   warehouseMap.value = toOptionMap(warehouseOptions.value)
   const map = await loadSkuMap()
-  skuMap.value = Object.fromEntries(Object.entries(map).map(([k, v]) => [Number(k), v.name]))
+  skuMap.value = Object.fromEntries(Object.entries(map).map(([k, v]) => [k, v.name]))
 })
 
 // ---------- 明细 ----------
@@ -31,9 +32,9 @@ const detailTotal = ref(0)
 const detailQuery = reactive({
   page: 1,
   page_size: 10,
-  warehouse_id: '' as number | '',
-  location_id: '' as number | '',
-  sku_id: '' as number | '',
+  warehouse_id: '' as EntityID | '',
+  location_id: '' as EntityID | '',
+  sku_id: '' as EntityID | '',
   sku_keyword: '',
 })
 
@@ -60,7 +61,7 @@ const summaryTotal = ref(0)
 const summaryQuery = reactive({
   page: 1,
   page_size: 10,
-  warehouse_id: '' as number | '',
+  warehouse_id: '' as EntityID | '',
 })
 
 async function loadSummary() {
@@ -91,7 +92,7 @@ const transTotal = ref(0)
 const transQuery = reactive({
   page: 1,
   page_size: 10,
-  inventory_id: 0,
+  inventory_id: '' as EntityID | '',
   order_no: '',
   trans_type: '',
 })
@@ -123,7 +124,7 @@ function searchTrans() {
   loadTrans()
 }
 
-function skuLabel(skuId: number): string {
+function skuLabel(skuId: EntityID): string {
   return skuMap.value[skuId] || String(skuId)
 }
 </script>

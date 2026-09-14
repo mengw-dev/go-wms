@@ -49,7 +49,7 @@ type ReceiptOrder struct {
 	model.Base
 	model.Versioned
 	OrderNo      string      `json:"order_no" gorm:"size:64;uniqueIndex;not null"`
-	WarehouseID  int64       `json:"warehouse_id" gorm:"not null"`
+	WarehouseID  int64       `json:"warehouse_id,string" gorm:"not null"`
 	Status       OrderStatus `json:"status" gorm:"size:16;index;not null;default:'DRAFT'"`
 	Source       string      `json:"source" gorm:"size:16;default:'MANUAL'"` // MANUAL / IMPORT
 	Remark       string      `json:"remark" gorm:"size:255"`
@@ -67,8 +67,8 @@ func (ReceiptOrder) TableName() string { return "wms_receipt_order" }
 
 type ReceiptOrderDetail struct {
 	model.Base
-	OrderID      int64  `json:"order_id" gorm:"index;not null"`
-	SKUID        int64  `json:"sku_id" gorm:"column:sku_id;not null"`
+	OrderID      int64  `json:"order_id,string" gorm:"index;not null"`
+	SKUID        int64  `json:"sku_id,string" gorm:"column:sku_id;not null"`
 	SKUCode      string `json:"sku_code" gorm:"size:64"`
 	SKUName      string `json:"sku_name" gorm:"size:128"`
 	ExpectedQty  int    `json:"expected_qty" gorm:"not null"`

@@ -2,7 +2,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { createRole, deleteRole, listRoles, updateRole } from '@/api/system'
-import type { RoleItem } from '@/api/types'
+import type { EntityID,  RoleItem } from '@/api/types'
 import { cleanParams, formatTime } from '@/utils'
 
 // ---------- 列表 ----------
@@ -30,7 +30,7 @@ function search() {
 onMounted(load)
 
 // ---------- 新增 / 编辑 ----------
-const dialog = reactive({ visible: false, loading: false, editingId: 0 })
+const dialog = reactive({ visible: false, loading: false, editingId: '' as EntityID })
 const formRef = ref<FormInstance>()
 const form = reactive({ name: '', perms: '', remark: '' })
 
@@ -39,7 +39,7 @@ const rules: FormRules = {
 }
 
 function openCreate() {
-  dialog.editingId = 0
+  dialog.editingId = ''
   form.name = ''
   form.perms = ''
   form.remark = ''

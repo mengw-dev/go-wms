@@ -17,8 +17,8 @@ type StocktakeOrder struct {
 	model.Base
 	model.Versioned
 	OrderNo      string      `json:"order_no" gorm:"size:64;uniqueIndex;not null"`
-	WarehouseID  int64       `json:"warehouse_id" gorm:"not null"`
-	LocationID   int64       `json:"location_id"` // 0 表示整仓盘点
+	WarehouseID  int64       `json:"warehouse_id,string" gorm:"not null"`
+	LocationID   int64       `json:"location_id,string"` // 0 表示整仓盘点
 	LocationCode string      `json:"location_code" gorm:"size:64"`
 	Status       OrderStatus `json:"status" gorm:"size:16;index;not null;default:'DRAFT'"`
 	Remark       string      `json:"remark" gorm:"size:255"`
@@ -29,12 +29,12 @@ func (StocktakeOrder) TableName() string { return "wms_stocktake_order" }
 
 type StocktakeDetail struct {
 	model.Base
-	OrderID      int64  `json:"order_id" gorm:"index;not null"`
-	InventoryID  int64  `json:"inventory_id" gorm:"not null"`
-	SKUID        int64  `json:"sku_id" gorm:"column:sku_id;not null"`
+	OrderID      int64  `json:"order_id,string" gorm:"index;not null"`
+	InventoryID  int64  `json:"inventory_id,string" gorm:"not null"`
+	SKUID        int64  `json:"sku_id,string" gorm:"column:sku_id;not null"`
 	SKUCode      string `json:"sku_code" gorm:"size:64"`
 	SKUName      string `json:"sku_name" gorm:"size:128"`
-	LocationID   int64  `json:"location_id"`
+	LocationID   int64  `json:"location_id,string"`
 	LocationCode string `json:"location_code" gorm:"size:64"`
 	BatchNo      string `json:"batch_no" gorm:"size:64"`
 	BookQty      int    `json:"book_qty"`   // 快照账面库存

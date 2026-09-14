@@ -1,8 +1,8 @@
 package dto
 
 type CreateOrderReq struct {
-	WarehouseID  int64  `json:"warehouse_id" binding:"required"`
-	LocationID   int64  `json:"location_id"` // 0 = 整仓
+	WarehouseID  int64  `json:"warehouse_id,string" binding:"required"`
+	LocationID   int64  `json:"location_id,string"` // 0 = 整仓
 	LocationCode string `json:"location_code" binding:"max=64"`
 	Remark       string `json:"remark" binding:"max=255"`
 }
@@ -15,6 +15,6 @@ type OrderQuery struct {
 }
 
 type RecordActualReq struct {
-	DetailID  int64 `json:"detail_id" binding:"required"`
+	DetailID  int64 `json:"detail_id,string" binding:"required"`
 	ActualQty int   `json:"actual_qty" binding:"min=0"`
 }

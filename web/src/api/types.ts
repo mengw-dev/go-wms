@@ -1,3 +1,6 @@
+/** 对外 ID 统一使用字符串，避免 JavaScript Number 精度丢失。 */
+export type EntityID = string
+
 /** 后端统一响应结构 */
 export interface ApiResponse<T = unknown> {
   code: number
@@ -25,7 +28,7 @@ export interface LoginParams {
 
 export interface LoginResult {
   token: string
-  user_id: number
+  user_id: EntityID
   username: string
   nickname: string
   roles: string[]
@@ -33,7 +36,7 @@ export interface LoginResult {
 }
 
 export interface ProfileResult {
-  user_id: number
+  user_id: EntityID
   username: string
   nickname: string
   roles: string[]
@@ -48,7 +51,7 @@ export interface ChangePasswordParams {
 // ---------- 系统：用户 ----------
 
 export interface UserItem {
-  id: number
+  id: EntityID
   username: string
   nickname: string
   status: number
@@ -65,19 +68,19 @@ export interface UserCreateParams {
   username: string
   password: string
   nickname: string
-  role_ids: number[]
+  role_ids: EntityID[]
 }
 
 export interface UserUpdateParams {
   nickname: string
   status?: number
-  role_ids?: number[]
+  role_ids?: EntityID[]
 }
 
 // ---------- 系统：角色 ----------
 
 export interface RoleItem {
-  id: number
+  id: EntityID
   name: string
   perms: string
   remark: string
@@ -98,8 +101,8 @@ export interface RoleListQuery extends PageQuery {
 // ---------- 系统：操作日志 ----------
 
 export interface OperLogItem {
-  id: number
-  user_id: number
+  id: EntityID
+  user_id: EntityID
   username: string
   path: string
   method: string
@@ -118,7 +121,7 @@ export interface OperLogListQuery extends PageQuery {
 // ---------- 基础数据：仓库 ----------
 
 export interface WarehouseItem {
-  id: number
+  id: EntityID
   code: string
   name: string
   remark: string
@@ -141,8 +144,8 @@ export interface WarehouseListQuery extends PageQuery {
 // ---------- 基础数据：库位 ----------
 
 export interface LocationItem {
-  id: number
-  warehouse_id: number
+  id: EntityID
+  warehouse_id: EntityID
   code: string
   zone: string
   status: number
@@ -150,14 +153,14 @@ export interface LocationItem {
 }
 
 export interface LocationListQuery extends PageQuery {
-  warehouse_id?: number | ''
+  warehouse_id?: EntityID | ''
   zone?: string
   code?: string
   status?: number | ''
 }
 
 export interface LocationBatchParams {
-  warehouse_id: number
+  warehouse_id: EntityID
   zone: string
   row_from: number
   row_to: number
@@ -168,7 +171,7 @@ export interface LocationBatchParams {
 // ---------- 基础数据：货品 ----------
 
 export interface SkuItem {
-  id: number
+  id: EntityID
   code: string
   barcode: string
   name: string
@@ -193,10 +196,10 @@ export interface SkuListQuery extends PageQuery {
 // ---------- 库存 ----------
 
 export interface InventoryItem {
-  id: number
-  warehouse_id: number
-  location_id: number
-  sku_id: number
+  id: EntityID
+  warehouse_id: EntityID
+  location_id: EntityID
+  sku_id: EntityID
   batch_no: string
   stock_quantity: number
   available_quantity: number
@@ -206,14 +209,14 @@ export interface InventoryItem {
 }
 
 export interface InventoryListQuery extends PageQuery {
-  warehouse_id?: number | ''
-  location_id?: number | ''
-  sku_id?: number | ''
+  warehouse_id?: EntityID | ''
+  location_id?: EntityID | ''
+  sku_id?: EntityID | ''
   sku_keyword?: string
 }
 
 export interface InventorySummaryItem {
-  sku_id: number
+  sku_id: EntityID
   sku_code: string
   sku_name: string
   unit: string
@@ -223,12 +226,12 @@ export interface InventorySummaryItem {
 }
 
 export interface InventorySummaryQuery extends PageQuery {
-  warehouse_id?: number | ''
+  warehouse_id?: EntityID | ''
 }
 
 export interface InventoryTransItem {
-  id: number
-  inventory_id: number
+  id: EntityID
+  inventory_id: EntityID
   trans_type: string
   quantity_change: number
   before_quantity: number
@@ -242,7 +245,7 @@ export interface InventoryTransItem {
 }
 
 export interface InventoryTransQuery extends PageQuery {
-  inventory_id?: number | ''
+  inventory_id?: EntityID | ''
   order_no?: string
   trans_type?: string
 }
@@ -250,16 +253,16 @@ export interface InventoryTransQuery extends PageQuery {
 // ---------- 任务 ----------
 
 export interface TaskItem {
-  id: number
+  id: EntityID
   task_no: string
   task_type: string
   status: string
-  order_id: number
+  order_id: EntityID
   order_no: string
-  detail_id: number
-  allocation_id: number
-  sku_id: number
-  warehouse_id: number
+  detail_id: EntityID
+  allocation_id: EntityID
+  sku_id: EntityID
+  warehouse_id: EntityID
   target_qty: number
   done_qty: number
   operator: string
@@ -267,7 +270,7 @@ export interface TaskItem {
 }
 
 export interface TaskListQuery extends PageQuery {
-  order_id?: number | ''
+  order_id?: EntityID | ''
   task_type?: string
   status?: string
 }
@@ -275,14 +278,14 @@ export interface TaskListQuery extends PageQuery {
 // ---------- 入库 ----------
 
 export interface OrderDetailLine {
-  sku_id: number
+  sku_id: EntityID
   expected_qty: number
 }
 
 export interface InboundOrderItem {
-  id: number
+  id: EntityID
   order_no: string
-  warehouse_id: number
+  warehouse_id: EntityID
   status: string
   source: string
   remark: string
@@ -295,9 +298,9 @@ export interface InboundOrderItem {
 }
 
 export interface InboundOrderDetailRow {
-  id: number
-  order_id: number
-  sku_id: number
+  id: EntityID
+  order_id: EntityID
+  sku_id: EntityID
   sku_code: string
   sku_name: string
   expected_qty: number
@@ -307,7 +310,7 @@ export interface InboundOrderDetailRow {
 }
 
 export interface InboundCreateParams {
-  warehouse_id: number
+  warehouse_id: EntityID
   remark: string
   details: OrderDetailLine[]
 }
@@ -319,21 +322,21 @@ export interface InboundOrderDetail {
 }
 
 export interface InboundOrderListQuery extends PageQuery {
-  warehouse_id?: number | ''
+  warehouse_id?: EntityID | ''
   status?: string
   keyword?: string
 }
 
 export interface ReceiveParams {
-  detail_id: number
+  detail_id: EntityID
   qty: number
   defective_qty: number
   batch_no: string
 }
 
 export interface PutawayParams {
-  task_id: number
-  location_id: number
+  task_id: EntityID
+  location_id: EntityID
   qty: number
 }
 
@@ -350,10 +353,10 @@ export interface ImportTaskItem {
 // ---------- 出库 ----------
 
 export interface OutboundOrderItem {
-  id: number
+  id: EntityID
   order_no: string
   biz_order_no: string
-  warehouse_id: number
+  warehouse_id: EntityID
   status: string
   remark: string
   expected_qty: number
@@ -365,9 +368,9 @@ export interface OutboundOrderItem {
 }
 
 export interface OutboundOrderDetailRow {
-  id: number
-  order_id: number
-  sku_id: number
+  id: EntityID
+  order_id: EntityID
+  sku_id: EntityID
   sku_code: string
   sku_name: string
   expected_qty: number
@@ -376,12 +379,12 @@ export interface OutboundOrderDetailRow {
 }
 
 export interface AllocationItem {
-  id: number
-  order_id: number
-  detail_id: number
-  inventory_id: number
-  sku_id: number
-  location_id: number
+  id: EntityID
+  order_id: EntityID
+  detail_id: EntityID
+  inventory_id: EntityID
+  sku_id: EntityID
+  location_id: EntityID
   location_code: string
   batch_no: string
   allocated_qty: number
@@ -390,7 +393,7 @@ export interface AllocationItem {
 }
 
 export interface OutboundCreateParams {
-  warehouse_id: number
+  warehouse_id: EntityID
   biz_order_no: string
   remark: string
   details: OrderDetailLine[]
@@ -404,23 +407,23 @@ export interface OutboundOrderDetail {
 }
 
 export interface OutboundOrderListQuery extends PageQuery {
-  warehouse_id?: number | ''
+  warehouse_id?: EntityID | ''
   status?: string
   keyword?: string
 }
 
 export interface PickParams {
-  task_id: number
+  task_id: EntityID
   qty: number
 }
 
 // ---------- 盘点 ----------
 
 export interface StocktakeOrderItem {
-  id: number
+  id: EntityID
   order_no: string
-  warehouse_id: number
-  location_id: number
+  warehouse_id: EntityID
+  location_id: EntityID
   location_code: string
   status: string
   remark: string
@@ -430,13 +433,13 @@ export interface StocktakeOrderItem {
 }
 
 export interface StocktakeDetailItem {
-  id: number
-  order_id: number
-  inventory_id: number
-  sku_id: number
+  id: EntityID
+  order_id: EntityID
+  inventory_id: EntityID
+  sku_id: EntityID
   sku_code: string
   sku_name: string
-  location_id: number
+  location_id: EntityID
   location_code: string
   batch_no: string
   book_qty: number
@@ -446,8 +449,8 @@ export interface StocktakeDetailItem {
 }
 
 export interface StocktakeCreateParams {
-  warehouse_id: number
-  location_id: number
+  warehouse_id: EntityID
+  location_id?: EntityID
   location_code?: string
   remark: string
 }
@@ -458,12 +461,12 @@ export interface StocktakeOrderDetail {
 }
 
 export interface StocktakeOrderListQuery extends PageQuery {
-  warehouse_id?: number | ''
+  warehouse_id?: EntityID | ''
   status?: string
   keyword?: string
 }
 
 export interface StocktakeActualParams {
-  detail_id: number
+  detail_id: EntityID
   actual_qty: number
 }

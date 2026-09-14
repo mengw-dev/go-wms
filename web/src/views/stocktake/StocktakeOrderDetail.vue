@@ -8,22 +8,22 @@ import {
   getStocktakeOrder,
   submitStocktakeActual,
 } from '@/api/stocktake'
-import type { StocktakeDetailItem, StocktakeOrderDetail as StocktakeDetailData } from '@/api/types'
+import type { EntityID,  StocktakeDetailItem, StocktakeOrderDetail as StocktakeDetailData } from '@/api/types'
 import { statusTag, statusText } from '@/constants'
 import { formatTime } from '@/utils'
 import { loadWarehouseOptions, toOptionMap } from '@/utils/options'
 
 const route = useRoute()
 const router = useRouter()
-const orderId = Number(route.params.id)
+const orderId = String(route.params.id)
 
 const loading = ref(false)
-const savingIds = reactive<Record<number, boolean>>({})
+const savingIds = reactive<Record<EntityID, boolean>>({})
 const data = ref<StocktakeDetailData | null>(null)
-const warehouseMap = ref<Record<number, string>>({})
+const warehouseMap = ref<Record<EntityID, string>>({})
 
 /** 草稿状态下每行可编辑的实盘数 */
-const actualInputs = reactive<Record<number, number>>({})
+const actualInputs = reactive<Record<EntityID, number>>({})
 
 const isDraft = () => data.value?.order?.status === 'DRAFT'
 
@@ -109,7 +109,7 @@ async function onCancel() {
           <el-descriptions-item label="盘点单号">{{ data.order.order_no }}</el-descriptions-item>
           <el-descriptions-item label="仓库">{{ warehouseMap[data.order.warehouse_id] || data.order.warehouse_id }}</el-descriptions-item>
           <el-descriptions-item label="盘点范围">
-            {{ data.order.location_id > 0 ? (data.order.location_code || `库位#${data.order.location_id}`) : '整仓盘点' }}
+            {{ data.order.location_id && data.order.location_id !== '0' ? (data.order.location_code || `库位#${data.order.location_id}`) : '整仓盘点' }}
           </el-descriptions-item>
           <el-descriptions-item label="创建人">{{ data.order.created_by || '-' }}</el-descriptions-item>
           <el-descriptions-item label="创建时间">{{ formatTime(data.order.created_at) }}</el-descriptions-item>
