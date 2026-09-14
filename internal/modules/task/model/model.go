@@ -47,12 +47,12 @@ type Task struct {
 	TaskNo       string     `json:"task_no" gorm:"size:64;uniqueIndex;not null"`
 	TaskType     TaskType   `json:"task_type" gorm:"size:16;index;not null"`
 	Status       TaskStatus `json:"status" gorm:"size:16;index;not null;default:'CREATED'"`
-	OrderID      int64      `json:"order_id" gorm:"index;not null"` // 来源单据 id（入库单/出库单）
+	OrderID      int64      `json:"order_id,string" gorm:"index;not null"` // 来源单据 id（入库单/出库单）
 	OrderNo      string     `json:"order_no" gorm:"size:64;index"`
-	DetailID     int64      `json:"detail_id" gorm:"index"`     // 单据明细 id（收货/上架任务）
-	AllocationID int64      `json:"allocation_id" gorm:"index"` // 拣货任务对应的分配行
-	SKUID        int64      `json:"sku_id" gorm:"column:sku_id;index;not null"`
-	WarehouseID  int64      `json:"warehouse_id" gorm:"not null"`
+	DetailID     int64      `json:"detail_id,string" gorm:"index"`     // 单据明细 id（收货/上架任务）
+	AllocationID int64      `json:"allocation_id,string" gorm:"index"` // 拣货任务对应的分配行
+	SKUID        int64      `json:"sku_id,string" gorm:"column:sku_id;index;not null"`
+	WarehouseID  int64      `json:"warehouse_id,string" gorm:"not null"`
 	TargetQty    int        `json:"target_qty" gorm:"not null"`
 	DoneQty      int        `json:"done_qty" gorm:"not null;default:0"`
 	Operator     string     `json:"operator" gorm:"size:64"`

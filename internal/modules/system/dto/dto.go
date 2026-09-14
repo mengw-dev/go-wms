@@ -1,5 +1,7 @@
 package dto
 
+import "gowms/internal/pkg/typex"
+
 type LoginReq struct {
 	Username string `json:"username" binding:"required"`
 	Password string `json:"password" binding:"required"`
@@ -7,7 +9,7 @@ type LoginReq struct {
 
 type LoginResp struct {
 	Token    string   `json:"token"`
-	UserID   int64    `json:"user_id"`
+	UserID   int64    `json:"user_id,string"`
 	Username string   `json:"username"`
 	Nickname string   `json:"nickname"`
 	Roles    []string `json:"roles"`
@@ -15,7 +17,7 @@ type LoginResp struct {
 }
 
 type ProfileResp struct {
-	UserID   int64    `json:"user_id"`
+	UserID   int64    `json:"user_id,string"`
 	Username string   `json:"username"`
 	Nickname string   `json:"nickname"`
 	Roles    []string `json:"roles"`
@@ -23,16 +25,16 @@ type ProfileResp struct {
 }
 
 type UserCreateReq struct {
-	Username string  `json:"username" binding:"required,max=64"`
-	Password string  `json:"password" binding:"required,min=6,max=32"`
-	Nickname string  `json:"nickname" binding:"max=64"`
-	RoleIDs  []int64 `json:"role_ids"`
+	Username string          `json:"username" binding:"required,max=64"`
+	Password string          `json:"password" binding:"required,min=6,max=32"`
+	Nickname string          `json:"nickname" binding:"max=64"`
+	RoleIDs  typex.Int64List `json:"role_ids"`
 }
 
 type UserUpdateReq struct {
-	Nickname string  `json:"nickname" binding:"max=64"`
-	Status   *int    `json:"status"`
-	RoleIDs  []int64 `json:"role_ids"`
+	Nickname string          `json:"nickname" binding:"max=64"`
+	Status   *int            `json:"status"`
+	RoleIDs  typex.Int64List `json:"role_ids"`
 }
 
 type UserListQuery struct {

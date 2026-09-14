@@ -27,7 +27,7 @@ type LocationQuery struct {
 
 // LocationBatchReq 批量初始化库位：按 库区-排-列 规则批量生成，已存在编码跳过（幂等）。
 type LocationBatchReq struct {
-	WarehouseID int64  `json:"warehouse_id" binding:"required"`
+	WarehouseID int64  `json:"warehouse_id,string" binding:"required"`
 	Zone        string `json:"zone" binding:"required,max=32"` // 库区，如 A01
 	RowFrom     int    `json:"row_from" binding:"required,min=1"`
 	RowTo       int    `json:"row_to" binding:"required,min=1"`

@@ -44,7 +44,7 @@ type ShipmentOrder struct {
 	model.Versioned
 	OrderNo      string      `json:"order_no" gorm:"size:64;uniqueIndex;not null"`
 	BizOrderNo   string      `json:"biz_order_no" gorm:"size:64;uniqueIndex;not null"` // 幂等键：业务订单号
-	WarehouseID  int64       `json:"warehouse_id" gorm:"not null"`
+	WarehouseID  int64       `json:"warehouse_id,string" gorm:"not null"`
 	Status       OrderStatus `json:"status" gorm:"size:16;index;not null;default:'DRAFT'"`
 	Remark       string      `json:"remark" gorm:"size:255"`
 	ExpectedQty  int         `json:"expected_qty" gorm:"not null;default:0"`
@@ -57,8 +57,8 @@ func (ShipmentOrder) TableName() string { return "wms_shipment_order" }
 
 type ShipmentOrderDetail struct {
 	model.Base
-	OrderID      int64  `json:"order_id" gorm:"index;not null"`
-	SKUID        int64  `json:"sku_id" gorm:"column:sku_id;not null"`
+	OrderID      int64  `json:"order_id,string" gorm:"index;not null"`
+	SKUID        int64  `json:"sku_id,string" gorm:"column:sku_id;not null"`
 	SKUCode      string `json:"sku_code" gorm:"size:64"`
 	SKUName      string `json:"sku_name" gorm:"size:128"`
 	ExpectedQty  int    `json:"expected_qty" gorm:"not null"`
@@ -82,11 +82,11 @@ const (
 type Allocation struct {
 	model.Base
 	model.Versioned
-	OrderID      int64            `json:"order_id" gorm:"index;not null"`
-	DetailID     int64            `json:"detail_id" gorm:"index;not null"`
-	InventoryID  int64            `json:"inventory_id" gorm:"index;not null"`
-	SKUID        int64            `json:"sku_id" gorm:"column:sku_id;not null"`
-	LocationID   int64            `json:"location_id" gorm:"not null"`
+	OrderID      int64            `json:"order_id,string" gorm:"index;not null"`
+	DetailID     int64            `json:"detail_id,string" gorm:"index;not null"`
+	InventoryID  int64            `json:"inventory_id,string" gorm:"index;not null"`
+	SKUID        int64            `json:"sku_id,string" gorm:"column:sku_id;not null"`
+	LocationID   int64            `json:"location_id,string" gorm:"not null"`
 	LocationCode string           `json:"location_code" gorm:"size:64"`
 	BatchNo      string           `json:"batch_no" gorm:"size:64"`
 	AllocatedQty int              `json:"allocated_qty" gorm:"not null"`

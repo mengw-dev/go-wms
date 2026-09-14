@@ -250,6 +250,22 @@ npm run build
 
 `WMS_TEST_REQUIRED=1` 会让 MySQL 不可用时直接失败，避免 CI 在集成测试全部跳过的情况下误报成功。
 
+## ID 与接口契约
+
+数据库内部主键仍使用 `BIGINT`，Go 代码内部仍使用 `int64`。所有对外的 `id`、`*_id` 字段在 JSON 中使用字符串传输，避免 JavaScript 超过 `Number.MAX_SAFE_INTEGER` 后发生精度丢失。
+
+示例：
+
+```json
+{
+  "id": "357813313721077761",
+  "warehouse_id": "2",
+  "sku_id": "30"
+}
+```
+
+客户端请求也应发送字符串 ID。角色 ID 数组兼容接收字符串和数字，但服务端始终输出字符串。
+
 ## 主要 API
 
 所有业务接口前缀为 `/api/v1`。除登录外，请求需携带：

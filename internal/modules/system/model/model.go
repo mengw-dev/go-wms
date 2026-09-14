@@ -8,7 +8,7 @@ import (
 
 // Base 所有业务表通用字段。
 type Base struct {
-	ID        int64          `json:"id" gorm:"primaryKey"`
+	ID        int64          `json:"id,string" gorm:"primaryKey"`
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
 	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
@@ -48,8 +48,8 @@ type SysUserRole struct {
 func (SysUserRole) TableName() string { return "sys_user_role" }
 
 type SysOperLog struct {
-	ID        int64     `json:"id" gorm:"primaryKey"`
-	UserID    int64     `json:"user_id"`
+	ID        int64     `json:"id,string" gorm:"primaryKey"`
+	UserID    int64     `json:"user_id,string"`
 	Username  string    `json:"username" gorm:"size:64"`
 	Path      string    `json:"path" gorm:"size:255"`
 	Method    string    `json:"method" gorm:"size:16"`
