@@ -8,7 +8,7 @@ import (
 	"gowms/internal/pkg/errcode"
 )
 
-// 盘点单查询。
+// OrderDetail 盘点单详情聚合。
 type OrderDetail struct {
 	Order   *model.StocktakeOrder    `json:"order"`
 	Details []*model.StocktakeDetail `json:"details"`

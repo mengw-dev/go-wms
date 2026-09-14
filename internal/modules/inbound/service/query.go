@@ -10,7 +10,7 @@ import (
 	"gowms/internal/pkg/errcode"
 )
 
-// 入库单查询。
+// OrderDetail 入库单详情聚合。
 type OrderDetail struct {
 	Order   *model.ReceiptOrder         `json:"order"`
 	Details []*model.ReceiptOrderDetail `json:"details"`
