@@ -250,6 +250,36 @@ npm run build
 
 `WMS_TEST_REQUIRED=1` 会让 MySQL 不可用时直接失败，避免 CI 在集成测试全部跳过的情况下误报成功。
 
+## Service 拆分规范
+
+核心业务模块不再把所有方法堆在单个 `service.go` 中，而是按业务用例拆分。
+
+```text
+inbound/service/
+├── service.go      # 依赖、构造函数，只保留公共装配逻辑
+├── order.go        # 创建、提交、审核、取消、状态流转
+├── receiving.go    # 收货
+├── putaway.go      # 上架
+├── import.go       # Excel 导入和补偿任务
+└── query.go        # 详情、列表和查询模型
+```
+
+同样的规则应用于：
+
+- `outbound/service`：生命周期、拣货、查询
+- `stocktake/service`：创建取消、实盘录入、审核、查询
+- `inventory/service`：库存变动、查询
+- `system/service`：认证、用户、角色、权限、审计
+- `basic/service`：仓库、库位、货品
+
+拆分原则：
+
+1. 同一业务用例的方法放在同一文件。
+2. `service.go` 只保留依赖结构和构造函数。
+3. 不为拆而拆，不创建只包一层的方法。
+4. 同一模块继续使用同一个 Service 类型，避免过度拆分和循环依赖。
+5. 先按用例稳定边界，再考虑未来是否拆成独立领域服务。
+
 ## 主要 API
 
 所有业务接口前缀为 `/api/v1`。除登录外，请求需携带：
