@@ -250,7 +250,7 @@ wms/
 ├── cmd/wms/main.go          # 入口：配置 → DB/Redis → Migrate → HTTP
 ├── configs/config.yaml
 ├── deploy/docker-compose.yaml
-├── migrations/001_init.sql  # 表结构人工审阅版（运行时以 AutoMigrate 为准）
+├── migrations/versions/     # golang-migrate 版本化迁移
 ├── internal/
 │   ├── app/                 # 依赖组装 + 路由（手动构造注入）
 │   ├── bootstrap/           # InitDB/InitRedis/Migrate/seed

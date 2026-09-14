@@ -1,0 +1,21 @@
+-- Roll back the initial GoWMS schema.
+SET FOREIGN_KEY_CHECKS = 0;
+DROP TABLE IF EXISTS wms_stocktake_detail;
+DROP TABLE IF EXISTS wms_stocktake_order;
+DROP TABLE IF EXISTS wms_allocation;
+DROP TABLE IF EXISTS wms_shipment_order_detail;
+DROP TABLE IF EXISTS wms_shipment_order;
+DROP TABLE IF EXISTS wms_import_task;
+DROP TABLE IF EXISTS wms_receipt_order_detail;
+DROP TABLE IF EXISTS wms_receipt_order;
+DROP TABLE IF EXISTS wms_task;
+DROP TABLE IF EXISTS wms_inventory_trans;
+DROP TABLE IF EXISTS wms_inventory;
+DROP TABLE IF EXISTS wms_sku;
+DROP TABLE IF EXISTS wms_location;
+DROP TABLE IF EXISTS wms_warehouse;
+DROP TABLE IF EXISTS sys_oper_log;
+DROP TABLE IF EXISTS sys_user_role;
+DROP TABLE IF EXISTS sys_role;
+DROP TABLE IF EXISTS sys_user;
+SET FOREIGN_KEY_CHECKS = 1;
