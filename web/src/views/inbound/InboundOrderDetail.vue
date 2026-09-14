@@ -8,7 +8,7 @@ import {
   getInboundOrder,
   submitInboundOrder,
 } from '@/api/inbound'
-import type { InboundOrderDetail as InboundDetailData } from '@/api/types'
+import type { EntityID,  InboundOrderDetail as InboundDetailData } from '@/api/types'
 import { statusTag, statusText, taskTypeText } from '@/constants'
 import { formatTime } from '@/utils'
 import { loadWarehouseOptions, toOptionMap } from '@/utils/options'
@@ -17,11 +17,11 @@ import PutawayDialog from '@/components/PutawayDialog.vue'
 
 const route = useRoute()
 const router = useRouter()
-const orderId = Number(route.params.id)
+const orderId = String(route.params.id)
 
 const loading = ref(false)
 const data = ref<InboundDetailData | null>(null)
-const warehouseMap = ref<Record<number, string>>({})
+const warehouseMap = ref<Record<EntityID, string>>({})
 
 async function load() {
   loading.value = true
@@ -79,7 +79,7 @@ function openReceive() {
   receiveRef.value?.open(orderId)
 }
 
-function openPutaway(taskId?: number) {
+function openPutaway(taskId?: EntityID) {
   const task = data.value?.tasks?.find((t) => t.id === taskId)
   putawayRef.value?.open(orderId, task)
 }

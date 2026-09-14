@@ -8,7 +8,7 @@ import {
   getOutboundOrder,
   submitOutboundOrder,
 } from '@/api/outbound'
-import type { OutboundOrderDetail as OutboundDetailData } from '@/api/types'
+import type { EntityID,  OutboundOrderDetail as OutboundDetailData } from '@/api/types'
 import { statusTag, statusText, taskTypeText } from '@/constants'
 import { formatTime } from '@/utils'
 import { loadWarehouseOptions, toOptionMap } from '@/utils/options'
@@ -16,11 +16,11 @@ import PickDialog from '@/components/PickDialog.vue'
 
 const route = useRoute()
 const router = useRouter()
-const orderId = Number(route.params.id)
+const orderId = String(route.params.id)
 
 const loading = ref(false)
 const data = ref<OutboundDetailData | null>(null)
-const warehouseMap = ref<Record<number, string>>({})
+const warehouseMap = ref<Record<EntityID, string>>({})
 
 async function load() {
   loading.value = true
@@ -73,7 +73,7 @@ async function onCancel() {
 // ---------- 拣货 ----------
 const pickRef = ref<InstanceType<typeof PickDialog>>()
 
-function openPick(taskId?: number) {
+function openPick(taskId?: EntityID) {
   const task = data.value?.tasks?.find((t) => t.id === taskId)
   pickRef.value?.open(orderId, task)
 }

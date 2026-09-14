@@ -2,7 +2,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { createSku, deleteSku, listSkus, updateSku } from '@/api/basic'
-import type { SkuItem } from '@/api/types'
+import type { EntityID,  SkuItem } from '@/api/types'
 import { cleanParams, formatTime } from '@/utils'
 
 // ---------- 列表 ----------
@@ -30,7 +30,7 @@ function search() {
 onMounted(load)
 
 // ---------- 新增 / 编辑 ----------
-const dialog = reactive({ visible: false, loading: false, editingId: 0 })
+const dialog = reactive({ visible: false, loading: false, editingId: '' as EntityID })
 const formRef = ref<FormInstance>()
 const form = reactive({ code: '', barcode: '', name: '', spec: '', unit: '' })
 
@@ -41,7 +41,7 @@ const rules: FormRules = {
 }
 
 function openCreate() {
-  dialog.editingId = 0
+  dialog.editingId = ''
   form.code = ''
   form.barcode = ''
   form.name = ''

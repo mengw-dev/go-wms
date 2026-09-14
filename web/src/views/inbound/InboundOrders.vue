@@ -15,7 +15,7 @@ import {
   submitInboundOrder,
   updateInboundOrder,
 } from '@/api/inbound'
-import type { ImportTaskItem, InboundOrderItem } from '@/api/types'
+import type { EntityID, ImportTaskItem, InboundOrderItem } from '@/api/types'
 import { INBOUND_STATUS_OPTIONS, statusTag, statusText } from '@/constants'
 import { cleanParams, formatTime } from '@/utils'
 import { loadSkuMap, loadWarehouseOptions, toOptionMap, type IdOption } from '@/utils/options'
@@ -26,7 +26,7 @@ const router = useRouter()
 
 // ---------- 基础选项 ----------
 const warehouseOptions = ref<IdOption[]>([])
-const warehouseMap = ref<Record<number, string>>({})
+const warehouseMap = ref<Record<EntityID, string>>({})
 const skuOptions = ref<IdOption[]>([])
 
 onMounted(async () => {
@@ -34,7 +34,7 @@ onMounted(async () => {
   warehouseMap.value = toOptionMap(warehouseOptions.value)
   const map = await loadSkuMap()
   skuOptions.value = Object.entries(map).map(([id, sku]) => ({
-    id: Number(id),
+    id,
     label: `${sku.code} ${sku.name}`,
   }))
   load()
@@ -47,7 +47,7 @@ const total = ref(0)
 const query = reactive({
   page: 1,
   page_size: 10,
-  warehouse_id: '' as number | '',
+  warehouse_id: '' as EntityID | '',
   status: '',
   keyword: '',
 })
@@ -118,15 +118,15 @@ function goDetail(row: InboundOrderItem) {
 }
 
 // ---------- 新建 / 编辑 ----------
-const editDialog = reactive({ visible: false, loading: false, editingId: 0 })
+const editDialog = reactive({ visible: false, loading: false, editingId: '' as EntityID })
 const editForm = reactive({
-  warehouse_id: undefined as number | undefined,
+  warehouse_id: undefined as EntityID | undefined,
   remark: '',
-  details: [] as { sku_id: number | undefined; expected_qty: number }[],
+  details: [] as { sku_id: EntityID | undefined; expected_qty: number }[],
 })
 
 function openCreate() {
-  editDialog.editingId = 0
+  editDialog.editingId = ''
   editForm.warehouse_id = undefined
   editForm.remark = ''
   editForm.details = [{ sku_id: undefined, expected_qty: 1 }]

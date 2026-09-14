@@ -8,7 +8,7 @@ import {
   createStocktakeOrder,
   listStocktakeOrders,
 } from '@/api/stocktake'
-import type { StocktakeOrderItem } from '@/api/types'
+import type { EntityID,  StocktakeOrderItem } from '@/api/types'
 import { STOCKTAKE_STATUS_OPTIONS, statusTag, statusText } from '@/constants'
 import { cleanParams, formatTime } from '@/utils'
 import { loadLocationOptions, loadWarehouseOptions, toOptionMap, type IdOption } from '@/utils/options'
@@ -17,7 +17,7 @@ const router = useRouter()
 
 // ---------- 基础选项 ----------
 const warehouseOptions = ref<IdOption[]>([])
-const warehouseMap = ref<Record<number, string>>({})
+const warehouseMap = ref<Record<EntityID, string>>({})
 
 onMounted(async () => {
   warehouseOptions.value = await loadWarehouseOptions()
@@ -32,7 +32,7 @@ const total = ref(0)
 const query = reactive({
   page: 1,
   page_size: 10,
-  warehouse_id: '' as number | '',
+  warehouse_id: '' as EntityID | '',
   status: '',
   keyword: '',
 })
@@ -87,8 +87,8 @@ async function onCancel(row: StocktakeOrderItem) {
 // ---------- 新建 ----------
 const createDialog = reactive({ visible: false, loading: false })
 const createForm = reactive({
-  warehouse_id: undefined as number | undefined,
-  location_id: 0,
+  warehouse_id: undefined as EntityID | undefined,
+  location_id: '' as EntityID | '',
   remark: '',
 })
 const locationOptions = ref<IdOption[]>([])
@@ -96,14 +96,14 @@ const locationLoading = ref(false)
 
 function openCreate() {
   createForm.warehouse_id = undefined
-  createForm.location_id = 0
+  createForm.location_id = ''
   createForm.remark = ''
   locationOptions.value = []
   createDialog.visible = true
 }
 
-async function onWarehouseChange(warehouseId: number | undefined) {
-  createForm.location_id = 0
+async function onWarehouseChange(warehouseId: EntityID | undefined) {
+  createForm.location_id = ''
   locationOptions.value = []
   if (warehouseId) {
     locationLoading.value = true
@@ -124,7 +124,7 @@ async function submitCreate() {
   try {
     await createStocktakeOrder({
       warehouse_id: createForm.warehouse_id,
-      location_id: createForm.location_id,
+      location_id: createForm.location_id || undefined,
       location_code: locationOptions.value.find((l) => l.id === createForm.location_id)?.label,
       remark: createForm.remark,
     })

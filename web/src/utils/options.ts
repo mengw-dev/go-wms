@@ -1,9 +1,9 @@
 import { listLocations, listSkus, listWarehouses } from '@/api/basic'
-import type { SkuItem } from '@/api/types'
+import type { EntityID, SkuItem } from '@/api/types'
 import { COMMON_STATUS, LOCATION_STATUS } from '@/constants'
 
 export interface IdOption {
-  id: number
+  id: EntityID
   label: string
 }
 
@@ -14,22 +14,22 @@ export async function loadWarehouseOptions(): Promise<IdOption[]> {
 }
 
 /** 仓库 id → 名称映射 */
-export function toOptionMap(options: IdOption[]): Record<number, string> {
-  const map: Record<number, string> = {}
+export function toOptionMap(options: IdOption[]): Record<EntityID, string> {
+  const map: Record<EntityID, string> = {}
   for (const o of options) map[o.id] = o.label
   return map
 }
 
 /** 货品 id → 货品映射（表格中 sku_id 反显用） */
-export async function loadSkuMap(): Promise<Record<number, SkuItem>> {
+export async function loadSkuMap(): Promise<Record<EntityID, SkuItem>> {
   const data = await listSkus({ page: 1, page_size: 100 })
-  const map: Record<number, SkuItem> = {}
+  const map: Record<EntityID, SkuItem> = {}
   for (const s of data.list ?? []) map[s.id] = s
   return map
 }
 
 /** 指定仓库的空闲库位下拉（上架选择库位用） */
-export async function loadIdleLocationOptions(warehouseId: number): Promise<IdOption[]> {
+export async function loadIdleLocationOptions(warehouseId: EntityID): Promise<IdOption[]> {
   const data = await listLocations({
     page: 1,
     page_size: 100,
@@ -40,7 +40,7 @@ export async function loadIdleLocationOptions(warehouseId: number): Promise<IdOp
 }
 
 /** 指定仓库的全部库位下拉（盘点选择库位用） */
-export async function loadLocationOptions(warehouseId: number): Promise<IdOption[]> {
+export async function loadLocationOptions(warehouseId: EntityID): Promise<IdOption[]> {
   const data = await listLocations({ page: 1, page_size: 100, warehouse_id: warehouseId })
   return (data.list ?? []).map((l) => ({ id: l.id, label: l.code }))
 }

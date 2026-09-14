@@ -1,5 +1,6 @@
 import { del, get, post } from './request'
 import type {
+  EntityID,
   OutboundCreateParams,
   OutboundOrderDetail,
   OutboundOrderItem,
@@ -13,7 +14,7 @@ export function listOutboundOrders(params: OutboundOrderListQuery) {
 }
 
 /** 详情：{ order, details, allocations, tasks } */
-export function getOutboundOrder(id: number | string) {
+export function getOutboundOrder(id: EntityID) {
   return get<OutboundOrderDetail>(`/outbound/orders/${id}`)
 }
 
@@ -21,25 +22,25 @@ export function createOutboundOrder(data: OutboundCreateParams) {
   return post<OutboundOrderItem>('/outbound/orders', data)
 }
 
-export function deleteOutboundOrder(id: number) {
+export function deleteOutboundOrder(id: EntityID) {
   return del<void>(`/outbound/orders/${id}`)
 }
 
 /** 提交 */
-export function submitOutboundOrder(id: number) {
+export function submitOutboundOrder(id: EntityID) {
   return post<void>(`/outbound/orders/${id}/submit`)
 }
 
 /** 审核（即分配库存） */
-export function approveOutboundOrder(id: number) {
+export function approveOutboundOrder(id: EntityID) {
   return post<void>(`/outbound/orders/${id}/approve`)
 }
 
-export function cancelOutboundOrder(id: number) {
+export function cancelOutboundOrder(id: EntityID) {
   return post<void>(`/outbound/orders/${id}/cancel`)
 }
 
 /** 拣货（路径 :id 即 task_id） */
-export function pickOutboundTask(taskId: number, data: PickParams) {
+export function pickOutboundTask(taskId: EntityID, data: PickParams) {
   return post<void>(`/outbound/tasks/${taskId}/pick`, data)
 }

@@ -8,7 +8,7 @@ import {
   updateWarehouse,
   updateWarehouseStatus,
 } from '@/api/basic'
-import type { WarehouseItem } from '@/api/types'
+import type { EntityID,  WarehouseItem } from '@/api/types'
 import { COMMON_STATUS } from '@/constants'
 import { cleanParams, formatTime } from '@/utils'
 
@@ -48,7 +48,7 @@ async function onToggleStatus(row: WarehouseItem, value: string | number | boole
 }
 
 // ---------- 新增 / 编辑 ----------
-const dialog = reactive({ visible: false, loading: false, editingId: 0 })
+const dialog = reactive({ visible: false, loading: false, editingId: '' as EntityID })
 const formRef = ref<FormInstance>()
 const form = reactive({ code: '', name: '', remark: '' })
 
@@ -58,7 +58,7 @@ const rules: FormRules = {
 }
 
 function openCreate() {
-  dialog.editingId = 0
+  dialog.editingId = ''
   form.code = ''
   form.name = ''
   form.remark = ''

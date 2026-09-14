@@ -10,7 +10,7 @@ import {
   updateUser,
   updateUserStatus,
 } from '@/api/system'
-import type { RoleItem, UserItem } from '@/api/types'
+import type { EntityID, RoleItem, UserItem } from '@/api/types'
 import { cleanParams, formatTime } from '@/utils'
 
 // ---------- 列表 ----------
@@ -59,13 +59,13 @@ async function onToggleStatus(row: UserItem, value: string | number | boolean) {
 }
 
 // ---------- 新增 / 编辑 ----------
-const dialog = reactive({ visible: false, loading: false, editingId: 0 })
+const dialog = reactive({ visible: false, loading: false, editingId: '' as EntityID })
 const formRef = ref<FormInstance>()
 const form = reactive({
   username: '',
   password: '',
   nickname: '',
-  role_ids: [] as number[],
+  role_ids: [] as EntityID[],
 })
 /** 编辑时角色是否被改动过（未改动则不下发 role_ids，避免清空原有角色） */
 const roleDirty = ref(false)
@@ -81,7 +81,7 @@ const createRules: FormRules = {
 }
 
 function openCreate() {
-  dialog.editingId = 0
+  dialog.editingId = ''
   form.username = ''
   form.password = ''
   form.nickname = ''
@@ -107,7 +107,7 @@ async function submit() {
   dialog.loading = true
   try {
     if (dialog.editingId) {
-      const data: { nickname: string; status: number; role_ids?: number[] } = {
+      const data: { nickname: string; status: number; role_ids?: EntityID[] } = {
         nickname: form.nickname,
         status: editStatus.value,
       }
@@ -133,7 +133,7 @@ async function submit() {
 }
 
 // ---------- 重置密码 ----------
-const pwdDialog = reactive({ visible: false, loading: false, userId: 0, username: '' })
+const pwdDialog = reactive({ visible: false, loading: false, userId: '' as EntityID, username: '' })
 const pwdFormRef = ref<FormInstance>()
 const pwdForm = reactive({ password: '' })
 const pwdRules: FormRules = {

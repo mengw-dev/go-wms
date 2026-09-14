@@ -1,5 +1,6 @@
 import { del, get, post, put, upload } from './request'
 import type {
+  EntityID,
   ImportTaskItem,
   InboundCreateParams,
   InboundOrderDetail,
@@ -15,7 +16,7 @@ export function listInboundOrders(params: InboundOrderListQuery) {
 }
 
 /** 详情：{ order, details, tasks } */
-export function getInboundOrder(id: number | string) {
+export function getInboundOrder(id: EntityID) {
   return get<InboundOrderDetail>(`/inbound/orders/${id}`)
 }
 
@@ -24,33 +25,33 @@ export function createInboundOrder(data: InboundCreateParams) {
   return post<InboundOrderItem>('/inbound/orders', data)
 }
 
-export function updateInboundOrder(id: number, data: InboundCreateParams) {
+export function updateInboundOrder(id: EntityID, data: InboundCreateParams) {
   return put<void>(`/inbound/orders/${id}`, data)
 }
 
-export function deleteInboundOrder(id: number) {
+export function deleteInboundOrder(id: EntityID) {
   return del<void>(`/inbound/orders/${id}`)
 }
 
-export function submitInboundOrder(id: number) {
+export function submitInboundOrder(id: EntityID) {
   return post<void>(`/inbound/orders/${id}/submit`)
 }
 
-export function approveInboundOrder(id: number) {
+export function approveInboundOrder(id: EntityID) {
   return post<void>(`/inbound/orders/${id}/approve`)
 }
 
-export function cancelInboundOrder(id: number) {
+export function cancelInboundOrder(id: EntityID) {
   return post<void>(`/inbound/orders/${id}/cancel`)
 }
 
 /** 收货 */
-export function receiveInbound(id: number, data: ReceiveParams) {
+export function receiveInbound(id: EntityID, data: ReceiveParams) {
   return post<void>(`/inbound/orders/${id}/receive`, data)
 }
 
 /** 上架（路径 :id 即 task_id） */
-export function putawayInboundTask(taskId: number, data: PutawayParams) {
+export function putawayInboundTask(taskId: EntityID, data: PutawayParams) {
   return post<void>(`/inbound/tasks/${taskId}/putaway`, data)
 }
 
