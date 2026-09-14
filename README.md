@@ -74,7 +74,8 @@ wms/
 ### 2. 启动后端
 
 ```bash
-mysql -uroot -p < migrations/001_init.sql
+mysql -uroot -p -e "CREATE DATABASE IF NOT EXISTS gowms DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+go run ./cmd/migrate -seed up
 go run ./cmd/wms
 ```
 
@@ -302,7 +303,23 @@ Authorization: Bearer <token>
 
 ## 数据库与迁移
 
-应用启动时使用 GORM AutoMigrate 保证运行所需表结构，`migrations/001_init.sql` 提供可直接审阅的 MySQL 初始化脚本。生产环境建议改为版本化迁移流程，并在发布前由 DBA 审核索引和约束。
+项目使用 `golang-migrate` 管理版本化数据库迁移，迁移文件位于 `migrations/versions`，并嵌入 `cmd/migrate` 二进制。
+
+开发环境为了快速启动，`debug` 模式仍可执行 AutoMigrate；`release` 模式不会自动改表，必须显式执行迁移：
+
+```bash
+make migrate-up
+# 或
+go run ./cmd/migrate -config configs/config.yaml -seed up
+```
+
+回退一个版本：
+
+```bash
+make migrate-down
+```
+
+迁移版本记录保存在 MySQL 的 `schema_migrations` 表。生产发布应先备份数据库，再执行迁移，并检查 dirty 状态。
 
 ## 生产级处理
 

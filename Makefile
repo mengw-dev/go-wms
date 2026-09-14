@@ -1,7 +1,13 @@
-.PHONY: run build test test-required test-race lint tidy compose-up compose-infra compose-down
+.PHONY: run migrate-up migrate-down build test test-required test-race lint tidy compose-up compose-infra compose-down
 
 run:
 	go run ./cmd/wms
+
+migrate-up:
+	go run ./cmd/migrate -seed up
+
+migrate-down:
+	go run ./cmd/migrate -steps 1 down
 
 build:
 	go build -o bin/wms.exe ./cmd/wms

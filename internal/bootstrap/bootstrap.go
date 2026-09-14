@@ -62,8 +62,16 @@ func InitRedis(cfg *config.Config) *redis.Client {
 	return rdb
 }
 
-// Migrate 自动迁移表结构 + CHECK 约束 + 种子数据。
+// Migrate 仅供开发和测试使用：AutoMigrate + 种子数据。
 func Migrate(db *gorm.DB) error {
+	if err := AutoMigrate(db); err != nil {
+		return err
+	}
+	return Seed(db)
+}
+
+// AutoMigrate 自动迁移表结构 + CHECK 约束。生产环境应使用 cmd/migrate。
+func AutoMigrate(db *gorm.DB) error {
 	if err := db.AutoMigrate(
 		&sysmodel.SysUser{}, &sysmodel.SysRole{}, &sysmodel.SysUserRole{}, &sysmodel.SysOperLog{},
 		&model.Warehouse{}, &model.Location{}, &model.SKU{},
@@ -82,11 +90,11 @@ func Migrate(db *gorm.DB) error {
 			log.L().Warn("add inventory check constraint failed", "err", err)
 		}
 	}
-	return seed(db)
+	return nil
 }
 
-// seed 内置管理员与角色：admin / admin123。
-func seed(db *gorm.DB) error {
+// Seed 内置管理员与角色：admin / admin123。
+func Seed(db *gorm.DB) error {
 	var n int64
 
 	if err := db.Model(&sysmodel.SysUser{}).Count(&n).Error; err != nil {

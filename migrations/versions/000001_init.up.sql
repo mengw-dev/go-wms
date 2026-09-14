@@ -2,12 +2,10 @@
 -- 实际表结构以 AutoMigrate 为准；此脚本用于人工审阅与生产环境 DBA 评审。
 -- MySQL 8.0.16+（CHECK 约束强制执行）
 
-CREATE DATABASE IF NOT EXISTS gowms DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-USE gowms;
 
 -- ---------- 系统管理 ----------
 CREATE TABLE IF NOT EXISTS sys_user (
-  id            BIGINT PRIMARY KEY,
+  id            BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   username      VARCHAR(64)  NOT NULL,
   password_hash VARCHAR(128) NOT NULL,
   nickname      VARCHAR(64)  DEFAULT '',
@@ -21,7 +19,7 @@ CREATE TABLE IF NOT EXISTS sys_user (
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS sys_role (
-  id         BIGINT PRIMARY KEY,
+  id         BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   name       VARCHAR(64)  NOT NULL,
   perms      VARCHAR(1024) DEFAULT '',
   remark     VARCHAR(255) DEFAULT '',
@@ -33,14 +31,14 @@ CREATE TABLE IF NOT EXISTS sys_role (
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS sys_user_role (
-  id      BIGINT PRIMARY KEY,
+  id      BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   user_id BIGINT NOT NULL,
   role_id BIGINT NOT NULL,
   UNIQUE KEY uk_user_role (user_id, role_id)
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS sys_oper_log (
-  id         BIGINT PRIMARY KEY,
+  id         BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   user_id    BIGINT,
   username   VARCHAR(64),
   path       VARCHAR(255),
@@ -56,7 +54,7 @@ CREATE TABLE IF NOT EXISTS sys_oper_log (
 
 -- ---------- 基础资料 ----------
 CREATE TABLE IF NOT EXISTS wms_warehouse (
-  id         BIGINT PRIMARY KEY,
+  id         BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   code       VARCHAR(32) NOT NULL,
   name       VARCHAR(64) NOT NULL,
   remark     VARCHAR(255) DEFAULT '',
@@ -69,7 +67,7 @@ CREATE TABLE IF NOT EXISTS wms_warehouse (
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS wms_location (
-  id           BIGINT PRIMARY KEY,
+  id           BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   warehouse_id BIGINT NOT NULL,
   code         VARCHAR(64) NOT NULL,   -- {库区}-{排}-{列}，如 A01-02-03
   zone         VARCHAR(32) DEFAULT '',
@@ -82,7 +80,7 @@ CREATE TABLE IF NOT EXISTS wms_location (
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS wms_sku (
-  id         BIGINT PRIMARY KEY,
+  id         BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   code       VARCHAR(64)  NOT NULL,
   barcode    VARCHAR(64)  NOT NULL,
   name       VARCHAR(128) NOT NULL,
@@ -99,7 +97,7 @@ CREATE TABLE IF NOT EXISTS wms_sku (
 
 -- ---------- 库存（核心） ----------
 CREATE TABLE IF NOT EXISTS wms_inventory (
-  id                 BIGINT PRIMARY KEY,
+  id                 BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   warehouse_id       BIGINT NOT NULL,
   location_id        BIGINT NOT NULL,
   sku_id             BIGINT NOT NULL,
@@ -117,7 +115,7 @@ CREATE TABLE IF NOT EXISTS wms_inventory (
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS wms_inventory_trans (
-  id                BIGINT PRIMARY KEY,
+  id                BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   inventory_id      BIGINT NOT NULL,
   trans_type        VARCHAR(16) NOT NULL,   -- RECEIVE/ALLOCATE/SHIP/RELEASE/ADJUST
   quantity_change   INT NOT NULL,
@@ -137,7 +135,7 @@ CREATE TABLE IF NOT EXISTS wms_inventory_trans (
 
 -- ---------- 统一任务 ----------
 CREATE TABLE IF NOT EXISTS wms_task (
-  id           BIGINT PRIMARY KEY,
+  id           BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   task_no      VARCHAR(64) NOT NULL,
   task_type    VARCHAR(16) NOT NULL,   -- RECEIVE/PUTAWAY/PICK
   status       VARCHAR(16) NOT NULL DEFAULT 'CREATED',
@@ -163,7 +161,7 @@ CREATE TABLE IF NOT EXISTS wms_task (
 
 -- ---------- 入库 ----------
 CREATE TABLE IF NOT EXISTS wms_receipt_order (
-  id            BIGINT PRIMARY KEY,
+  id            BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   order_no      VARCHAR(64) NOT NULL,
   warehouse_id  BIGINT NOT NULL,
   status        VARCHAR(16) NOT NULL DEFAULT 'DRAFT',
@@ -186,7 +184,7 @@ CREATE TABLE IF NOT EXISTS wms_receipt_order (
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS wms_receipt_order_detail (
-  id            BIGINT PRIMARY KEY,
+  id            BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   order_id      BIGINT NOT NULL,
   sku_id        BIGINT NOT NULL,
   sku_code      VARCHAR(64) DEFAULT '',
@@ -203,7 +201,7 @@ CREATE TABLE IF NOT EXISTS wms_receipt_order_detail (
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS wms_import_task (
-  id           BIGINT PRIMARY KEY,
+  id           BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   task_id      VARCHAR(64) NOT NULL,
   status       VARCHAR(16) NOT NULL DEFAULT 'PENDING',
   file_name    VARCHAR(255) DEFAULT '',
@@ -223,7 +221,7 @@ CREATE TABLE IF NOT EXISTS wms_import_task (
 
 -- ---------- 出库 ----------
 CREATE TABLE IF NOT EXISTS wms_shipment_order (
-  id            BIGINT PRIMARY KEY,
+  id            BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   order_no      VARCHAR(64) NOT NULL,
   biz_order_no  VARCHAR(64) NOT NULL,   -- 幂等键：业务订单号
   warehouse_id  BIGINT NOT NULL,
@@ -244,7 +242,7 @@ CREATE TABLE IF NOT EXISTS wms_shipment_order (
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS wms_shipment_order_detail (
-  id            BIGINT PRIMARY KEY,
+  id            BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   order_id      BIGINT NOT NULL,
   sku_id        BIGINT NOT NULL,
   sku_code      VARCHAR(64) DEFAULT '',
@@ -260,7 +258,7 @@ CREATE TABLE IF NOT EXISTS wms_shipment_order_detail (
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS wms_allocation (
-  id            BIGINT PRIMARY KEY,
+  id            BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   order_id      BIGINT NOT NULL,
   detail_id     BIGINT NOT NULL,
   inventory_id  BIGINT NOT NULL,
@@ -283,7 +281,7 @@ CREATE TABLE IF NOT EXISTS wms_allocation (
 
 -- ---------- 盘点 ----------
 CREATE TABLE IF NOT EXISTS wms_stocktake_order (
-  id            BIGINT PRIMARY KEY,
+  id            BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   order_no      VARCHAR(64) NOT NULL,
   warehouse_id  BIGINT NOT NULL,
   location_id   BIGINT DEFAULT 0,
@@ -301,7 +299,7 @@ CREATE TABLE IF NOT EXISTS wms_stocktake_order (
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS wms_stocktake_detail (
-  id            BIGINT PRIMARY KEY,
+  id            BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   order_id      BIGINT NOT NULL,
   inventory_id  BIGINT NOT NULL,
   sku_id        BIGINT NOT NULL,

@@ -28,6 +28,21 @@ services:
       timeout: 3s
       retries: 20
 
+  migrate:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: gowms-migrate
+    restart: "no"
+    environment:
+      WMS_SERVER_MODE: release
+      WMS_MYSQL_DSN: root:${MYSQL_ROOT_PASSWORD:-gowms-root}@tcp(mysql:3306)/${MYSQL_DATABASE:-gowms}?charset=utf8mb4&parseTime=True&loc=Local
+      WMS_JWT_SECRET: ${JWT_SECRET:-}
+    command: ["./migrate", "-seed", "up"]
+    depends_on:
+      mysql:
+        condition: service_healthy
+
   wms:
     build:
       context: ..
@@ -57,6 +72,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
       interval: 10s

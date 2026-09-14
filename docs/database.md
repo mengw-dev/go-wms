@@ -1,7 +1,7 @@
 # GoWMS 数据库设计
 
 > MySQL 8.0.16+（依赖 CHECK 约束强制执行）｜ 全表 InnoDB / utf8mb4
-> 运行时以 GORM AutoMigrate 为准，本目录 `migrations/001_init.sql` 为人工审阅版，二者结构一致。
+> 生产结构以 `migrations/versions` 中的版本化迁移为准；开发 debug 模式可使用 AutoMigrate。
 
 ## 1. 表清单总览（18 张）
 
@@ -129,5 +129,5 @@ erDiagram
 
 ## 5. 与 AutoMigrate 的关系
 
-- 开发/演示环境：启动时 AutoMigrate 建表 + 种子数据（admin/admin123），**无需手工执行 SQL**；
-- 生产环境：DBA 审阅 `migrations/001_init.sql` 建库建表，应用启动时 AutoMigrate 检测无结构差异则跳过。
+- 开发/演示环境：启动时 AutoMigrate 建表 + 种子数据（admin/admin123）；
+- 生产环境：运行 `cmd/migrate` 执行版本化迁移，应用 release 模式不自动改表。

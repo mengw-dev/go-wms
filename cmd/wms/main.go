@@ -34,9 +34,13 @@ func main() {
 		logger.Error("init db failed", "err", err)
 		os.Exit(1)
 	}
-	if err := bootstrap.Migrate(db); err != nil {
-		logger.Error("migrate failed", "err", err)
-		os.Exit(1)
+	if cfg.Server.Mode == "debug" {
+		if err := bootstrap.Migrate(db); err != nil {
+			logger.Error("auto migrate failed", "err", err)
+			os.Exit(1)
+		}
+	} else {
+		logger.Info("AutoMigrate disabled in release mode; run cmd/migrate before startup")
 	}
 	rdb := bootstrap.InitRedis(cfg)
 

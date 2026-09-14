@@ -4,7 +4,8 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/wms ./cmd/wms
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/wms ./cmd/wms \
+    && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/migrate ./cmd/migrate
 
 # ---- 运行阶段 ----
 FROM alpine:3.21
@@ -14,6 +15,7 @@ RUN apk add --no-cache ca-certificates tzdata wget \
 ENV TZ=Asia/Shanghai
 WORKDIR /app
 COPY --from=builder /out/wms ./wms
+COPY --from=builder /out/migrate ./migrate
 COPY configs ./configs
 COPY migrations ./migrations
 RUN mkdir -p /app/data/uploads && chown -R app:app /app
