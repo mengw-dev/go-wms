@@ -10,10 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
-	"gorm.io/gorm/schema"
 
 	basicmodel "gowms/internal/modules/basic/model"
 	"gowms/internal/modules/inventory/api"
@@ -22,31 +19,19 @@ import (
 	sysmodel "gowms/internal/modules/system/model"
 	"gowms/internal/pkg/snowflake"
 	"gowms/internal/pkg/tx"
+	"gowms/internal/testutil"
 )
 
 // 集成测试：需要本地 MySQL（默认 root:root123@127.0.0.1:3306/gowms）。
 // 可通过环境变量 WMS_TEST_DSN 覆盖；连不上数据库时自动跳过。
 func newTestService(t *testing.T) (*Service, *tx.Manager, *gorm.DB) {
 	t.Helper()
+
 	dsn := os.Getenv("WMS_TEST_DSN")
 	if dsn == "" {
 		dsn = "root:1234@tcp(127.0.0.1:3306)/gowms?charset=utf8mb4&parseTime=True&loc=Local"
 	}
-	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Silent),
-		NamingStrategy: schema.NamingStrategy{
-			SingularTable: true,
-		},
-	})
-	if err != nil {
-		if os.Getenv("WMS_TEST_REQUIRED") == "1" {
-			t.Fatalf("mysql required but unavailable: %v", err)
-		}
-		t.Skipf("mysql unavailable, skip: %v", err)
-	}
-	if err := db.AutoMigrate(&model.Inventory{}, &model.InventoryTrans{}, &basicmodel.Location{}); err != nil {
-		t.Fatalf("migrate: %v", err)
-	}
+	db := testutil.OpenIsolatedMySQL(t, dsn, &model.Inventory{}, &model.InventoryTrans{}, &basicmodel.Location{})
 	snowflake.Init(1)
 	tm := tx.New(db)
 	return New(repository.New(), tm), tm, db
