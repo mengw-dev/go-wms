@@ -61,6 +61,7 @@ func (a *App) NewRouter() (*gin.Engine, error) {
 	a.TaskHandler.RegisterRoutes(auth, a.SystemAPI)
 	a.InboundHandler.RegisterRoutes(auth, a.SystemAPI)
 	a.OutboundHandler.RegisterRoutes(auth, a.SystemAPI)
+	a.OutboundHandler.RegisterIntegrationRoutes(pub, a.Config.Integration.APIKey)
 	a.StocktakeHandler.RegisterRoutes(auth, a.SystemAPI)
 
 	return r, nil

@@ -94,6 +94,8 @@ var (
 	ModifyAdminForbidden       = New(10011, "不允许操作内置管理员账号")
 	TooManyLoginAttempts       = New(10012, "登录失败次数过多，请稍后再试")
 	ModifyBuiltinRoleForbidden = New(10013, "不允许修改或删除内置超级管理员角色")
+	IntegrationUnauthorized    = New(10014, "集成 API Key 无效")
+	IntegrationDisabled        = New(10015, "集成 API 未启用")
 )
 
 // 基础资料 20000+

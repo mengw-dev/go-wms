@@ -61,13 +61,6 @@ const shortcuts = [
   { title: '货品管理', desc: 'SKU / 条码', path: '/basic/skus', icon: 'Box', perm: 'wms:basic' },
 ]
 
-const highlights = [
-  { title: '三数量库存模型', desc: '存量 = 可用 + 分配，每笔变动均有流水可追溯' },
-  { title: '双重防超卖', desc: 'SELECT FOR UPDATE 行锁 + WHERE 条件更新兜底' },
-  { title: '审核即 FIFO 分配', desc: '按批次先进先出锁库，出库按分配明细执行' },
-  { title: 'Excel 异步导入', desc: '状态机 + CAS 抢占 + 悬挂任务定时补偿' },
-]
-
 const today = new Date().toLocaleDateString('zh-CN', {
   year: 'numeric',
   month: 'long',
@@ -110,45 +103,25 @@ const today = new Date().toLocaleDateString('zh-CN', {
       </div>
     </div>
 
-    <el-row :gutter="16">
-      <!-- 快捷入口 -->
-      <el-col :xs="24" :md="14">
-        <div class="card">
-          <div class="card-head"><b>快捷入口</b></div>
-          <div class="shortcuts">
-            <div
-              v-for="s in shortcuts.filter((item) => auth.hasPerm(item.perm))"
-              :key="s.path"
-              class="shortcut"
-              role="button"
-              tabindex="0"
-              :aria-label="s.title"
-              @click="$router.push(s.path)"
-              @keyup.enter="$router.push(s.path)"
-            >
-              <el-icon :size="22"><component :is="s.icon" /></el-icon>
-              <b>{{ s.title }}</b>
-              <span>{{ s.desc }}</span>
-            </div>
-          </div>
+    <div class="card">
+      <div class="card-head"><b>快捷入口</b></div>
+      <div class="shortcuts">
+        <div
+          v-for="s in shortcuts.filter((item) => auth.hasPerm(item.perm))"
+          :key="s.path"
+          class="shortcut"
+          role="button"
+          tabindex="0"
+          :aria-label="s.title"
+          @click="$router.push(s.path)"
+          @keyup.enter="$router.push(s.path)"
+        >
+          <el-icon :size="22"><component :is="s.icon" /></el-icon>
+          <b>{{ s.title }}</b>
+          <span>{{ s.desc }}</span>
         </div>
-      </el-col>
-      <!-- 技术亮点 -->
-      <el-col :xs="24" :md="10">
-        <div class="card">
-          <div class="card-head"><b>技术亮点</b><span class="head-sub">面试可讲</span></div>
-          <ul class="hl-list">
-            <li v-for="h in highlights" :key="h.title">
-              <span class="hl-dot"></span>
-              <div>
-                <b>{{ h.title }}</b>
-                <p>{{ h.desc }}</p>
-              </div>
-            </li>
-          </ul>
-        </div>
-      </el-col>
-    </el-row>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -302,11 +275,6 @@ html.dark .stat-4 {
   color: var(--el-text-color-primary);
 }
 
-.head-sub {
-  font-size: 12px;
-  color: var(--el-color-primary);
-}
-
 /* 快捷入口宫格 */
 .shortcuts {
   display: grid;
@@ -350,43 +318,4 @@ html.dark .stat-4 {
   color: var(--el-text-color-secondary);
 }
 
-/* 亮点列表 */
-.hl-list {
-  list-style: none;
-  margin: 0;
-  padding: 8px 18px 14px;
-}
-
-.hl-list li {
-  display: flex;
-  gap: 12px;
-  padding: 11px 0;
-  border-bottom: 1px dashed var(--el-border-color-lighter);
-}
-
-.hl-list li:last-child {
-  border-bottom: none;
-}
-
-.hl-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  margin-top: 6px;
-  background: var(--el-color-primary);
-  box-shadow: 0 0 6px var(--el-color-primary-light-5);
-  flex-shrink: 0;
-}
-
-.hl-list b {
-  font-size: 13px;
-  color: var(--el-text-color-primary);
-}
-
-.hl-list p {
-  margin: 2px 0 0;
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-  line-height: 1.6;
-}
 </style>

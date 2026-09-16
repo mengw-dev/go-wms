@@ -27,6 +27,8 @@ func TestHTTPStatus(t *testing.T) {
 		{errcode.AvailableNotEnough.Code, 400}, // 30201 业务规则
 		{errcode.OrderStatusWrong.Code, 400},   // 40002 状态机
 		{errcode.UserOrPwdWrong.Code, 400},     // 10002 登录失败不是 401（未携带凭据/凭据错误）
+		{errcode.IntegrationUnauthorized.Code, 401},
+		{errcode.IntegrationDisabled.Code, 503},
 	}
 	for _, c := range cases {
 		if got := httpStatus(c.code); got != c.want {

@@ -50,6 +50,10 @@ try {
         $values["JWT_SECRET"] = New-RandomHex -ByteCount 48
         $changed = $true
     }
+    if (Test-PlaceholderSecret $values["WMS_INTEGRATION_API_KEY"] -or $values["WMS_INTEGRATION_API_KEY"].Length -lt 24) {
+        $values["WMS_INTEGRATION_API_KEY"] = New-RandomHex -ByteCount 24
+        $changed = $true
+    }
     if (-not $values.Contains("WMS_SERVER_NODE") -or [string]::IsNullOrWhiteSpace($values["WMS_SERVER_NODE"])) {
         $values["WMS_SERVER_NODE"] = "1"
         $changed = $true
@@ -97,6 +101,7 @@ try {
     Write-Host "API:  http://127.0.0.1:$apiPort" -ForegroundColor Green
     Write-Host "User: admin" -ForegroundColor Green
     Write-Host "Pass: admin123" -ForegroundColor Green
+    Write-Host "Integration API Key is stored in .env as WMS_INTEGRATION_API_KEY." -ForegroundColor Green
     Write-Host "Change the default password immediately after first login." -ForegroundColor Yellow
 
     if (-not $NoBrowser) {

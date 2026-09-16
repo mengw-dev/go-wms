@@ -1,0 +1,27 @@
+[
+  {
+    "warehouse_code": "WH01",
+    "biz_order_no": "OMS-20260916-1001",
+    "remark": "OMS 推送：华东门店补货",
+    "details": [
+      { "sku_code": "SKU000001", "expected_qty": 2 },
+      { "sku_code": "SKU000003", "expected_qty": 1 }
+    ]
+  },
+  {
+    "warehouse_code": "WH01",
+    "biz_order_no": "OMS-20260916-1002",
+    "remark": "OMS 推送：电商订单",
+    "details": [
+      { "sku_code": "SKU000002", "expected_qty": 3 }
+    ]
+  },
+  {
+    "warehouse_code": "WH02",
+    "biz_order_no": "OMS-20260916-1003",
+    "remark": "OMS 推送：华南门店补货",
+    "details": [
+      { "sku_code": "SKU000004", "expected_qty": 2 }
+    ]
+  }
+]
