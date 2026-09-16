@@ -252,6 +252,16 @@ npm test
 npm run build
 ```
 
+端到端测试（Playwright）：
+
+```powershell
+.\scripts\e2e.ps1
+```
+
+脚本会启动独立的 Compose 项目和独立数据库，执行登录权限、入库、出库、盘点关键流程，结束后自动删除测试容器和数据卷。首次运行会构建镜像并下载 Chromium，之后可以加 `-NoBuild` 跳过镜像构建。
+
+测试报告生成在 `web/playwright-report`。
+
 `WMS_TEST_REQUIRED=1` 会让 MySQL 不可用时直接失败，避免 CI 在集成测试全部跳过的情况下误报成功。
 
 ## Service 拆分规范

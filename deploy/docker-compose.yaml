@@ -1,7 +1,6 @@
 services:
   mysql:
     image: mysql:8.0
-    container_name: gowms-mysql
     restart: unless-stopped
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-gowms-root}
@@ -18,7 +17,6 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: gowms-redis
     restart: unless-stopped
     volumes:
       - redis_data:/data
@@ -32,7 +30,6 @@ services:
     build:
       context: ..
       dockerfile: Dockerfile
-    container_name: gowms-migrate
     restart: "no"
     environment:
       WMS_SERVER_MODE: release
@@ -47,7 +44,6 @@ services:
     build:
       context: ..
       dockerfile: Dockerfile
-    container_name: gowms-api
     restart: unless-stopped
     environment:
       WMS_SERVER_MODE: release
@@ -87,7 +83,6 @@ services:
     build:
       context: ../web
       dockerfile: Dockerfile
-    container_name: gowms-web
     restart: unless-stopped
     ports:
       - "${WMS_WEB_PORT:-80}:8080"
@@ -97,7 +92,6 @@ services:
 
   prometheus:
     image: prom/prometheus:v2.54.1
-    container_name: gowms-prometheus
     profiles: ["monitoring"]
     restart: unless-stopped
     volumes:

@@ -159,7 +159,7 @@ func (h *Handler) receive(c *gin.Context) {
 	if !ok {
 		return
 	}
-	detailID, ok := httpx.QueryID(c, "detail_id")
+	detailID, ok := httpx.OptionalQueryID(c, "detail_id")
 	if !ok {
 		return
 	}

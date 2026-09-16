@@ -36,7 +36,7 @@ async function open(id: EntityID) {
       forms[row.id] = {
         qty: remaining(row) || 1,
         defective_qty: 0,
-        batch_no: '',
+        batch_no: row.batch_no || '',
         submitting: false,
       }
     }
@@ -53,6 +53,10 @@ async function submit(row: InboundOrderDetailRow) {
   }
   if (form.defective_qty < 0 || form.defective_qty > form.qty) {
     ElMessage.warning('不良品数量不能大于收货数量')
+    return
+  }
+  if (!row.batch_no && !form.batch_no.trim()) {
+    ElMessage.warning('首次收货必须填写批次号')
     return
   }
   form.submitting = true
@@ -101,7 +105,7 @@ defineExpose({ open })
       </el-table-column>
       <el-table-column label="批次号" width="140">
         <template #default="{ row }">
-          <el-input v-model="forms[row.id]!.batch_no" placeholder="可选" />
+          <el-input v-model="forms[row.id]!.batch_no" placeholder="首次收货必填" />
         </template>
       </el-table-column>
       <el-table-column label="操作" width="90" fixed="right">

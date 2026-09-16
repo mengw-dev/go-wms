@@ -37,12 +37,6 @@ async function submit() {
   }
 }
 
-const highlights = [
-  { title: '三数量库存模型', desc: '存量 = 可用 + 分配，全链路流水可追溯' },
-  { title: '双重防超卖', desc: '行锁 + 条件更新，并发分配数据强一致' },
-  { title: 'FIFO 智能分配', desc: '审核即锁库，先入先出跨批次扣减' },
-  { title: '全流程状态机', desc: '入库 / 出库 / 盘点 / 任务，流转严格可控' },
-]
 </script>
 
 <template>
@@ -58,17 +52,14 @@ const highlights = [
       </div>
       <div class="brand-body">
         <h1 class="brand-title">让每一个库存数字<br />都值得信赖</h1>
-        <ul class="brand-list">
-          <li v-for="h in highlights" :key="h.title">
-            <span class="dot"></span>
-            <div>
-              <b>{{ h.title }}</b>
-              <p>{{ h.desc }}</p>
-            </div>
-          </li>
-        </ul>
+        <p class="brand-desc">覆盖入库、上架、出库、库存与盘点全流程，让仓储作业更清晰、更高效。</p>
+        <div class="brand-modules">
+          <span>入库管理</span>
+          <span>出库管理</span>
+          <span>库存查询</span>
+          <span>盘点管理</span>
+        </div>
       </div>
-      <div class="brand-foot">Go · Gin · GORM · MySQL · Redis · Vue3 · TypeScript</div>
     </div>
 
     <!-- 右侧表单区 -->
@@ -193,46 +184,26 @@ const highlights = [
   font-weight: 700;
 }
 
-.brand-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+.brand-desc {
+  max-width: 520px;
+  margin: -12px 0 24px;
+  font-size: 15px;
+  line-height: 1.8;
+  opacity: 0.78;
+}
+
+.brand-modules {
   display: flex;
-  flex-direction: column;
-  gap: 18px;
-  max-width: 460px;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
-.brand-list li {
-  display: flex;
-  gap: 12px;
-}
-
-.brand-list .dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  margin-top: 7px;
-  background: #22d3ee;
-  box-shadow: 0 0 8px rgba(34, 211, 238, 0.8);
-  flex-shrink: 0;
-}
-
-.brand-list b {
-  font-size: 14px;
-}
-
-.brand-list p {
-  margin: 2px 0 0;
-  font-size: 12px;
-  opacity: 0.72;
-}
-
-.brand-foot {
-  margin-top: auto;
-  font-size: 12px;
-  opacity: 0.6;
-  letter-spacing: 0.5px;
+.brand-modules span {
+  padding: 8px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 13px;
 }
 
 /* ---------- 右侧表单区 ---------- */

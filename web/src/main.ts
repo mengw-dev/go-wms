@@ -21,6 +21,12 @@ import {
   User,
 } from '@element-plus/icons-vue'
 import 'element-plus/theme-chalk/dark/css-vars.css'
+// Service components are created imperatively, so their styles are not
+// auto-imported by unplugin-vue-components. Import them explicitly to keep
+// message boxes/messages centered and fully styled.
+import 'element-plus/es/components/message-box/style/css'
+import 'element-plus/es/components/message/style/css'
+import 'element-plus/es/components/loading/style/css'
 
 import App from './App.vue'
 import router from './router'
