@@ -1,3 +1,4 @@
+import { resolve } from 'node:path'
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import {
   confirmMessageBox,
@@ -14,6 +15,27 @@ function tableRow(page: Page, text: string): Locator {
 function dialog(page: Page, name: string): Locator {
   return page.getByRole('dialog', { name })
 }
+
+test('inbound Excel sample reports successful and failed rows', async ({ page }) => {
+  await loginByUi(page)
+  await page.goto('/inbound/orders')
+  await page.getByRole('button', { name: 'Excel 导入' }).click()
+
+  const importDialog = dialog(page, 'Excel 导入入库单')
+  const sampleFile = resolve(
+    process.cwd(),
+    '..',
+    'samples',
+    'inbound',
+    '入库单批量导入示例_含错误行.xlsx',
+  )
+  await importDialog.locator('input[type="file"]').setInputFiles(sampleFile)
+  await importDialog.getByRole('button', { name: '开始导入' }).click()
+
+  await expect(importDialog.getByText('已完成', { exact: true })).toBeVisible({ timeout: 20_000 })
+  await expect(importDialog.getByText('5', { exact: true })).toBeVisible()
+  await expect(importDialog.getByText('2 / 3', { exact: true })).toBeVisible()
+})
 
 test('inbound UI flow creates stock and inventory transaction', async ({ page, request }) => {
   const seed = await seedBaseData(request)
