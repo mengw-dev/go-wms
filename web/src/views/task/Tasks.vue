@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import { listTasks } from '@/api/task'
-import type { TaskItem } from '@/api/types'
+import type { EntityID, TaskItem } from '@/api/types'
 import {
   statusTag,
   statusText,
@@ -19,7 +19,7 @@ const query = reactive({
   page_size: 10,
   task_type: '',
   status: '',
-  order_id: '' as number | '',
+  order_id: '' as EntityID | '',
 })
 
 async function load() {

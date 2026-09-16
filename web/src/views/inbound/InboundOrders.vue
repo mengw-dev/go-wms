@@ -392,6 +392,7 @@ onUnmounted(stopPolling)
       destroy-on-close
       :close-on-click-modal="false"
       :close-on-press-escape="!editDialog.loading"
+      :show-close="!editDialog.loading"
     >
       <el-form label-width="90px">
         <el-form-item label="仓库" required>

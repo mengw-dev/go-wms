@@ -221,7 +221,7 @@ async function onDelete(row: UserItem) {
 
     <div class="toolbar">
       <span />
-      <el-button type="primary" @click="openCreate">新增用户</el-button>
+      <el-button v-permission="'wms:system:user'" type="primary" @click="openCreate">新增用户</el-button>
     </div>
 
     <el-table v-loading="loading" :data="list" border stripe>
@@ -303,6 +303,7 @@ async function onDelete(row: UserItem) {
       destroy-on-close
       :close-on-click-modal="false"
       :close-on-press-escape="!dialog.loading"
+      :show-close="!dialog.loading"
     >
       <el-form ref="formRef" :model="form" :rules="dialog.editingId ? {} : createRules" label-width="90px">
         <el-form-item label="用户名" prop="username">
@@ -342,6 +343,7 @@ async function onDelete(row: UserItem) {
       destroy-on-close
       :close-on-click-modal="false"
       :close-on-press-escape="!pwdDialog.loading"
+      :show-close="!pwdDialog.loading"
     >
       <el-form ref="pwdFormRef" :model="pwdForm" :rules="pwdRules" label-width="90px">
         <el-form-item label="新密码" prop="password">

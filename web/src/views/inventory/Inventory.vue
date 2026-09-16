@@ -23,6 +23,7 @@ onMounted(async () => {
   warehouseMap.value = toOptionMap(warehouseOptions.value)
   const map = await loadSkuMap()
   skuMap.value = Object.fromEntries(Object.entries(map).map(([k, v]) => [k, v.name]))
+  await loadDetail()
 })
 
 // ---------- 明细 ----------

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, reactive } from 'vue'
+import { computed, onMounted, reactive } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { listInboundOrders } from '@/api/inbound'
 import { listOutboundOrders } from '@/api/outbound'
@@ -15,26 +15,41 @@ const stats = reactive({
   inventory: null as number | null,
 })
 
-function pickTotal(list: Promise<unknown>): Promise<number | null> {
-  return list
-    .then((res) => (res as { total: number }).total ?? 0)
-    .catch(() => null)
+type StatKey = keyof typeof stats
+
+const statCards = [
+  { key: 'inbound', label: '入库单总数', path: '/inbound/orders', perm: 'wms:inbound:view', icon: 'Download', className: 'stat-1' },
+  { key: 'outbound', label: '出库单总数', path: '/outbound/orders', perm: 'wms:outbound:view', icon: 'Upload', className: 'stat-2' },
+  { key: 'runningTasks', label: '进行中任务', path: '/tasks', perm: 'wms:task', icon: 'Clock', className: 'stat-3' },
+  { key: 'inventory', label: '库存记录数', path: '/inventory', perm: 'wms:inventory', icon: 'Coin', className: 'stat-4' },
+] as const
+
+const visibleStatCards = computed(() => statCards.filter((card) => auth.hasPerm(card.perm)))
+
+async function loadStat(key: StatKey, request: Promise<{ total: number }>) {
+  try {
+    const result = await request
+    stats[key] = result.total ?? 0
+  } catch {
+    stats[key] = null
+  }
 }
 
 onMounted(async () => {
-  const results = await Promise.allSettled([
-    pickTotal(listInboundOrders({ page: 1, page_size: 1 })),
-    pickTotal(listOutboundOrders({ page: 1, page_size: 1 })),
-    pickTotal(listTasks({ page: 1, page_size: 1, status: 'IN_PROGRESS' })),
-    pickTotal(listInventory({ page: 1, page_size: 1 })),
-  ])
-  const [inbound, outbound, running, inventory] = results.map((r) =>
-    r.status === 'fulfilled' ? r.value : null,
-  )
-  stats.inbound = inbound
-  stats.outbound = outbound
-  stats.runningTasks = running
-  stats.inventory = inventory
+  const jobs: Promise<void>[] = []
+  if (auth.hasPerm('wms:inbound:view')) {
+    jobs.push(loadStat('inbound', listInboundOrders({ page: 1, page_size: 1 })))
+  }
+  if (auth.hasPerm('wms:outbound:view')) {
+    jobs.push(loadStat('outbound', listOutboundOrders({ page: 1, page_size: 1 })))
+  }
+  if (auth.hasPerm('wms:task')) {
+    jobs.push(loadStat('runningTasks', listTasks({ page: 1, page_size: 1, status: 'IN_PROGRESS' })))
+  }
+  if (auth.hasPerm('wms:inventory')) {
+    jobs.push(loadStat('inventory', listInventory({ page: 1, page_size: 1 })))
+  }
+  await Promise.all(jobs)
 })
 
 const shortcuts = [
@@ -70,38 +85,27 @@ const today = new Date().toLocaleDateString('zh-CN', {
         <p>{{ today }} · 祝你工作顺利</p>
       </div>
       <el-button v-if="auth.hasPerm('wms:inbound:view')" type="primary" @click="$router.push('/inbound/orders')">
-        <el-icon class="btn-icon"><Plus /></el-icon>新建入库单
+        <el-icon class="btn-icon"><Download /></el-icon>进入入库管理
       </el-button>
     </div>
 
     <!-- 统计卡 -->
     <div class="stats">
-      <div class="stat stat-1" @click="$router.push('/inbound/orders')">
-        <div class="stat-icon"><el-icon :size="20"><Download /></el-icon></div>
+      <div
+        v-for="card in visibleStatCards"
+        :key="card.key"
+        class="stat"
+        :class="card.className"
+        role="button"
+        tabindex="0"
+        :aria-label="card.label"
+        @click="$router.push(card.path)"
+        @keyup.enter="$router.push(card.path)"
+      >
+        <div class="stat-icon"><el-icon :size="20"><component :is="card.icon" /></el-icon></div>
         <div class="stat-body">
-          <div class="label">入库单总数</div>
-          <div class="num">{{ stats.inbound ?? '—' }}</div>
-        </div>
-      </div>
-      <div class="stat stat-2" @click="$router.push('/outbound/orders')">
-        <div class="stat-icon"><el-icon :size="20"><Upload /></el-icon></div>
-        <div class="stat-body">
-          <div class="label">出库单总数</div>
-          <div class="num">{{ stats.outbound ?? '—' }}</div>
-        </div>
-      </div>
-      <div class="stat stat-3" @click="$router.push('/tasks')">
-        <div class="stat-icon"><el-icon :size="20"><Clock /></el-icon></div>
-        <div class="stat-body">
-          <div class="label">进行中任务</div>
-          <div class="num">{{ stats.runningTasks ?? '—' }}</div>
-        </div>
-      </div>
-      <div class="stat stat-4" @click="$router.push('/inventory')">
-        <div class="stat-icon"><el-icon :size="20"><Coin /></el-icon></div>
-        <div class="stat-body">
-          <div class="label">库存记录数</div>
-          <div class="num">{{ stats.inventory ?? '—' }}</div>
+          <div class="label">{{ card.label }}</div>
+          <div class="num">{{ stats[card.key] ?? '—' }}</div>
         </div>
       </div>
     </div>
@@ -112,7 +116,16 @@ const today = new Date().toLocaleDateString('zh-CN', {
         <div class="card">
           <div class="card-head"><b>快捷入口</b></div>
           <div class="shortcuts">
-            <div v-for="s in shortcuts.filter((item) => auth.hasPerm(item.perm))" :key="s.path" class="shortcut" @click="$router.push(s.path)">
+            <div
+              v-for="s in shortcuts.filter((item) => auth.hasPerm(item.perm))"
+              :key="s.path"
+              class="shortcut"
+              role="button"
+              tabindex="0"
+              :aria-label="s.title"
+              @click="$router.push(s.path)"
+              @keyup.enter="$router.push(s.path)"
+            >
               <el-icon :size="22"><component :is="s.icon" /></el-icon>
               <b>{{ s.title }}</b>
               <span>{{ s.desc }}</span>

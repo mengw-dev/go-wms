@@ -281,6 +281,7 @@ function openPick(row: OutboundOrderItem) {
       destroy-on-close
       :close-on-click-modal="false"
       :close-on-press-escape="!createDialog.loading"
+      :show-close="!createDialog.loading"
     >
       <el-form label-width="90px">
         <el-form-item label="仓库" required>

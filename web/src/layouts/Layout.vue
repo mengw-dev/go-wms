@@ -192,6 +192,7 @@ async function submitPassword() {
       destroy-on-close
       :close-on-click-modal="false"
       :close-on-press-escape="!pwdDialog.loading"
+      :show-close="!pwdDialog.loading"
     >
       <el-form ref="pwdFormRef" :model="pwdForm" :rules="pwdRules" label-width="90px">
         <el-form-item label="原密码" prop="old_password">
