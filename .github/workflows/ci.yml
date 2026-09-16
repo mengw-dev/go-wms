@@ -128,6 +128,7 @@ jobs:
       WMS_API_PORT: 18080
       WMS_WEB_PORT: 18081
       E2E_BASE_URL: http://127.0.0.1:18081
+      COMPOSE_PROGRESS: plain
     steps:
       - uses: actions/checkout@v4
 
@@ -171,6 +172,20 @@ jobs:
           path: |
             web/playwright-report
             web/test-results
+          if-no-files-found: ignore
+
+      - name: Collect Compose diagnostics
+        if: failure()
+        run: |
+          docker compose -f deploy/docker-compose.yaml ps > compose.log 2>&1 || true
+          docker compose -f deploy/docker-compose.yaml logs --no-color >> compose.log 2>&1 || true
+
+      - name: Upload Compose diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compose-diagnostics
+          path: compose.log
           if-no-files-found: ignore
 
       - name: Stop isolated WMS stack
