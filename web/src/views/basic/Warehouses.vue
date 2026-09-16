@@ -203,6 +203,7 @@ async function onDelete(row: WarehouseItem) {
       destroy-on-close
       :close-on-click-modal="false"
       :close-on-press-escape="!dialog.loading"
+      :show-close="!dialog.loading"
     >
       <el-form ref="formRef" :model="form" :rules="rules" label-width="90px">
         <el-form-item label="编码" prop="code">

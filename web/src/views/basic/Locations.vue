@@ -274,6 +274,7 @@ async function onDelete(row: LocationItem) {
       destroy-on-close
       :close-on-click-modal="false"
       :close-on-press-escape="!batchDialog.loading"
+      :show-close="!batchDialog.loading"
     >
       <el-alert
         type="info"

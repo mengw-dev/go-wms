@@ -22,6 +22,7 @@ const rules: FormRules = {
 }
 
 async function submit() {
+  if (loading.value) return
   const valid = await formRef.value?.validate().catch(() => false)
   if (!valid) return
   loading.value = true
