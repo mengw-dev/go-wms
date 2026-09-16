@@ -126,19 +126,48 @@ async function submitBatch() {
 }
 
 // ---------- 状态 / 删除 ----------
+const statusUpdatingId = ref<EntityID>('')
+
 async function onToggleStatus(row: LocationItem, value: string | number | boolean) {
   const status = value ? LOCATION_STATUS.IDLE : LOCATION_STATUS.DISABLED
+  if (status === LOCATION_STATUS.DISABLED) {
+    try {
+      await ElMessageBox.confirm(
+        `停用库位「${row.code}」后，该库位将不能继续参与上架，确定继续吗？`,
+        '停用库位',
+        {
+          type: 'warning',
+          confirmButtonText: '确认停用',
+          cancelButtonText: '取消',
+          confirmButtonClass: 'el-button--danger',
+        },
+      )
+    } catch {
+      return
+    }
+  }
+  statusUpdatingId.value = row.id
   try {
     await updateLocationStatus(row.id, status)
     ElMessage.success('状态已更新')
   } finally {
+    statusUpdatingId.value = ''
     load()
   }
 }
 
 async function onDelete(row: LocationItem) {
   try {
-    await ElMessageBox.confirm(`确定删除库位「${row.code}」吗？`, '提示', { type: 'warning' })
+    await ElMessageBox.confirm(
+      `删除库位「${row.code}」前请确认该库位没有库存，确定继续吗？`,
+      '删除库位',
+      {
+        type: 'warning',
+        confirmButtonText: '确认删除',
+        cancelButtonText: '取消',
+        confirmButtonClass: 'el-button--danger',
+      },
+    )
   } catch {
     return
   }
@@ -185,7 +214,6 @@ async function onDelete(row: LocationItem) {
     </div>
 
     <el-table v-loading="loading" :data="list" border stripe>
-      <el-table-column prop="id" label="ID" width="70" />
       <el-table-column label="仓库" min-width="160">
         <template #default="{ row }">{{ warehouseMap[row.warehouse_id] || row.warehouse_id }}</template>
       </el-table-column>
@@ -198,13 +226,24 @@ async function onDelete(row: LocationItem) {
       </el-table-column>
       <el-table-column label="启停" width="90">
         <template #default="{ row }">
-          <el-switch
-            :model-value="row.status !== LOCATION_STATUS.DISABLED"
-            inline-prompt
-            active-text="启"
-            inactive-text="停"
-            @change="onToggleStatus(row, $event)"
-          />
+          <el-tooltip
+            :disabled="row.status !== LOCATION_STATUS.OCCUPIED"
+            content="占用中的库位不可直接停用"
+            placement="top"
+          >
+            <span class="switch-wrap">
+              <el-switch
+                v-permission="'wms:basic'"
+                :model-value="row.status !== LOCATION_STATUS.DISABLED"
+                :disabled="row.status === LOCATION_STATUS.OCCUPIED"
+                :loading="statusUpdatingId === row.id"
+                inline-prompt
+                active-text="启"
+                inactive-text="停"
+                @change="onToggleStatus(row, $event)"
+              />
+            </span>
+          </el-tooltip>
         </template>
       </el-table-column>
       <el-table-column label="创建时间" width="170">
@@ -228,7 +267,14 @@ async function onDelete(row: LocationItem) {
       @size-change="search"
     />
 
-    <el-dialog v-model="batchDialog.visible" title="批量生成库位" width="480px" destroy-on-close>
+    <el-dialog
+      v-model="batchDialog.visible"
+      title="批量生成库位"
+      width="480px"
+      destroy-on-close
+      :close-on-click-modal="false"
+      :close-on-press-escape="!batchDialog.loading"
+    >
       <el-alert
         type="info"
         :closable="false"
@@ -257,7 +303,7 @@ async function onDelete(row: LocationItem) {
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="batchDialog.visible = false">取消</el-button>
+        <el-button :disabled="batchDialog.loading" @click="batchDialog.visible = false">取消</el-button>
         <el-button type="primary" :loading="batchDialog.loading" @click="submitBatch">生成</el-button>
       </template>
     </el-dialog>
@@ -272,5 +318,9 @@ async function onDelete(row: LocationItem) {
 .range-sep {
   margin: 0 8px;
   color: var(--el-text-color-secondary);
+}
+
+.switch-wrap {
+  display: inline-flex;
 }
 </style>

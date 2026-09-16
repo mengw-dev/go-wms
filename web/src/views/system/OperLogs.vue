@@ -40,7 +40,6 @@ onMounted(load)
     </el-form>
 
     <el-table v-loading="loading" :data="list" border stripe>
-      <el-table-column prop="id" label="ID" width="80" />
       <el-table-column prop="username" label="操作人" width="120" />
       <el-table-column prop="method" label="方法" width="90" />
       <el-table-column prop="path" label="请求路径" min-width="220" show-overflow-tooltip />

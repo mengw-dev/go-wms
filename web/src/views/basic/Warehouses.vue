@@ -37,12 +37,32 @@ function search() {
 onMounted(load)
 
 // ---------- 状态开关 ----------
+const statusUpdatingId = ref<EntityID>('')
+
 async function onToggleStatus(row: WarehouseItem, value: string | number | boolean) {
   const status = value ? COMMON_STATUS.ENABLED : COMMON_STATUS.DISABLED
+  if (status === COMMON_STATUS.DISABLED) {
+    try {
+      await ElMessageBox.confirm(
+        `停用仓库「${row.name}」后，将无法继续产生新的入库、出库和盘点业务，确定继续吗？`,
+        '停用仓库',
+        {
+          type: 'warning',
+          confirmButtonText: '确认停用',
+          cancelButtonText: '取消',
+          confirmButtonClass: 'el-button--danger',
+        },
+      )
+    } catch {
+      return
+    }
+  }
+  statusUpdatingId.value = row.id
   try {
     await updateWarehouseStatus(row.id, status)
     ElMessage.success(status === COMMON_STATUS.ENABLED ? '已启用' : '已停用')
   } finally {
+    statusUpdatingId.value = ''
     load()
   }
 }
@@ -94,7 +114,16 @@ async function submit() {
 
 async function onDelete(row: WarehouseItem) {
   try {
-    await ElMessageBox.confirm(`确定删除仓库「${row.name}」吗？`, '提示', { type: 'warning' })
+    await ElMessageBox.confirm(
+      `删除仓库「${row.name}」前请确认仓库下没有库位或库存，确定继续吗？`,
+      '删除仓库',
+      {
+        type: 'warning',
+        confirmButtonText: '确认删除',
+        cancelButtonText: '取消',
+        confirmButtonClass: 'el-button--danger',
+      },
+    )
   } catch {
     return
   }
@@ -127,14 +156,15 @@ async function onDelete(row: WarehouseItem) {
     </div>
 
     <el-table v-loading="loading" :data="list" border stripe>
-      <el-table-column prop="id" label="ID" width="70" />
       <el-table-column prop="code" label="编码" min-width="110" />
       <el-table-column prop="name" label="名称" min-width="140" />
       <el-table-column prop="remark" label="备注" min-width="160" show-overflow-tooltip />
       <el-table-column label="状态" width="90">
         <template #default="{ row }">
           <el-switch
+            v-permission="'wms:basic'"
             :model-value="row.status === COMMON_STATUS.ENABLED"
+            :loading="statusUpdatingId === row.id"
             inline-prompt
             active-text="启"
             inactive-text="停"
@@ -171,6 +201,8 @@ async function onDelete(row: WarehouseItem) {
       :title="dialog.editingId ? '编辑仓库' : '新增仓库'"
       width="480px"
       destroy-on-close
+      :close-on-click-modal="false"
+      :close-on-press-escape="!dialog.loading"
     >
       <el-form ref="formRef" :model="form" :rules="rules" label-width="90px">
         <el-form-item label="编码" prop="code">
@@ -184,7 +216,7 @@ async function onDelete(row: WarehouseItem) {
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="dialog.visible = false">取消</el-button>
+        <el-button :disabled="dialog.loading" @click="dialog.visible = false">取消</el-button>
         <el-button type="primary" :loading="dialog.loading" @click="submit">确定</el-button>
       </template>
     </el-dialog>

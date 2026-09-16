@@ -33,8 +33,6 @@ const detailQuery = reactive({
   page: 1,
   page_size: 10,
   warehouse_id: '' as EntityID | '',
-  location_id: '' as EntityID | '',
-  sku_id: '' as EntityID | '',
   sku_keyword: '',
 })
 
@@ -139,12 +137,6 @@ function skuLabel(skuId: EntityID): string {
               <el-option v-for="w in warehouseOptions" :key="w.id" :label="w.label" :value="w.id" />
             </el-select>
           </el-form-item>
-          <el-form-item label="库位ID">
-            <el-input v-model="detailQuery.location_id" placeholder="库位ID" clearable style="width: 110px" @keyup.enter="searchDetail" @clear="searchDetail" />
-          </el-form-item>
-          <el-form-item label="SKU ID">
-            <el-input v-model="detailQuery.sku_id" placeholder="货品ID" clearable style="width: 110px" @keyup.enter="searchDetail" @clear="searchDetail" />
-          </el-form-item>
           <el-form-item label="SKU关键字">
             <el-input v-model="detailQuery.sku_keyword" placeholder="编码/名称/条码" clearable style="width: 160px" @keyup.enter="searchDetail" @clear="searchDetail" />
           </el-form-item>
@@ -154,7 +146,6 @@ function skuLabel(skuId: EntityID): string {
         </el-form>
 
         <el-table v-loading="detailLoading" :data="detailList" border stripe>
-          <el-table-column prop="id" label="ID" width="70" />
           <el-table-column label="仓库" min-width="150">
             <template #default="{ row }">{{ warehouseMap[row.warehouse_id] || row.warehouse_id }}</template>
           </el-table-column>
@@ -249,7 +240,6 @@ function skuLabel(skuId: EntityID): string {
       </el-form>
 
       <el-table v-loading="transLoading" :data="transList" border stripe size="small">
-        <el-table-column prop="id" label="ID" width="70" />
         <el-table-column label="类型" width="90">
           <template #default="{ row }">
             <el-tag :type="statusTag(row.trans_type)" size="small">{{ statusText(row.trans_type) }}</el-tag>

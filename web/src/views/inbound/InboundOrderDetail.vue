@@ -62,7 +62,12 @@ async function onApprove() {
 
 async function onCancel() {
   try {
-    await ElMessageBox.confirm('确定取消该入库单吗？', '提示', { type: 'warning' })
+    await ElMessageBox.confirm('确定取消该入库单吗？取消后不能继续收货或上架。', '取消入库单', {
+      type: 'warning',
+      confirmButtonText: '确认取消',
+      cancelButtonText: '返回',
+      confirmButtonClass: 'el-button--danger',
+    })
   } catch {
     return
   }
@@ -134,7 +139,6 @@ function canPutaway(task: { task_type: string; status: string }): boolean {
       <div class="page-card section">
         <h3 class="section-title">单据明细</h3>
         <el-table :data="data.details ?? []" border stripe>
-          <el-table-column prop="id" label="明细ID" width="80" />
           <el-table-column prop="sku_code" label="货品编码" min-width="130" />
           <el-table-column prop="sku_name" label="货品名称" min-width="160" show-overflow-tooltip />
           <el-table-column prop="expected_qty" label="应收数量" width="100" align="right" />
