@@ -10,6 +10,37 @@ function Write-Ok([string]$Message) {
     Write-Host "[OK] $Message" -ForegroundColor Green
 }
 
+function Get-DockerDesktopPath {
+    # Common Docker Desktop install locations on Windows.
+    # String interpolation is used (instead of Join-Path) so unset
+    # env vars like ProgramFiles(x86) on 32-bit Windows don't throw.
+    $candidates = @(
+        "$env:ProgramFiles\Docker\Docker\Docker Desktop.exe",
+        "${env:ProgramFiles(x86)}\Docker\Docker\Docker Desktop.exe",
+        "$env:LOCALAPPDATA\Programs\Docker\Docker\Docker Desktop.exe"
+    )
+    foreach ($path in $candidates) {
+        if ($path -and (Test-Path -LiteralPath $path)) {
+            return $path
+        }
+    }
+    return $null
+}
+
+function Wait-DockerEngine {
+    param([int]$TimeoutSeconds = 120)
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    while ((Get-Date) -lt $deadline) {
+        & docker info *> $null
+        if ($LASTEXITCODE -eq 0) {
+            return $true
+        }
+        Start-Sleep -Seconds 3
+    }
+    return $false
+}
+
 function Assert-Docker {
     if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
         throw "Docker was not found. Install Docker Desktop first: https://www.docker.com/products/docker-desktop/"
@@ -17,7 +48,17 @@ function Assert-Docker {
 
     & docker info *> $null
     if ($LASTEXITCODE -ne 0) {
-        throw "Docker is installed but the engine is not running. Start Docker Desktop and try again."
+        Write-Step "Docker engine is not running. Starting Docker Desktop..."
+        $dockerExe = Get-DockerDesktopPath
+        if (-not $dockerExe) {
+            throw "Docker Desktop is not running and its executable was not found. Start Docker Desktop manually and try again."
+        }
+        Start-Process -FilePath $dockerExe
+        $ready = Wait-DockerEngine -TimeoutSeconds 120
+        if (-not $ready) {
+            throw "Docker Desktop did not become ready within 2 minutes. Open Docker Desktop manually and try again."
+        }
+        Write-Ok "Docker Desktop is now running"
     }
 
     & docker compose version *> $null
@@ -34,7 +75,14 @@ function Invoke-WmsCompose {
     param([Parameter(ValueFromRemainingArguments = $true)][string[]]$ComposeArgs)
 
     $composePath = Get-ComposePath
-    & docker compose -f $composePath @ComposeArgs
+    # Explicitly point --env-file at the project root .env so variable
+    # interpolation works regardless of where the compose file lives.
+    $envPath = Join-Path $script:WmsRoot ".env"
+    $envFileArgs = @()
+    if (Test-Path -LiteralPath $envPath) {
+        $envFileArgs = @("--env-file", $envPath)
+    }
+    & docker compose -f $composePath @envFileArgs @ComposeArgs
     if ($LASTEXITCODE -ne 0) {
         throw "docker compose failed with exit code $LASTEXITCODE"
     }

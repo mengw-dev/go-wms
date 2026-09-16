@@ -38,7 +38,7 @@ services:
       WMS_SERVER_MODE: release
       WMS_MYSQL_DSN: root:${MYSQL_ROOT_PASSWORD:-gowms-root}@tcp(mysql:3306)/${MYSQL_DATABASE:-gowms}?charset=utf8mb4&parseTime=True&loc=Local
       WMS_JWT_SECRET: ${JWT_SECRET:-}
-    command: ["./migrate", "-seed", "up"]
+    entrypoint: ["./migrate", "-seed", "up"]
     depends_on:
       mysql:
         condition: service_healthy
