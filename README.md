@@ -262,6 +262,23 @@ npm run build
 
 测试报告生成在 `web/playwright-report`。
 
+## 示例数据与第三方系统对接
+
+可直接用于演示的 Excel、基础资料初始化脚本和模拟 OMS 推送脚本位于：
+
+```text
+samples/
+```
+
+首次初始化时会自动创建演示仓库、库位、货品和库存。详细演示步骤见 [samples/README.md](samples/README.md)。
+
+外部系统推送出库单接口：
+
+```text
+POST /api/v1/integration/outbound-orders
+X-API-Key: <WMS_INTEGRATION_API_KEY>
+```
+
 `WMS_TEST_REQUIRED=1` 会让 MySQL 不可用时直接失败，避免 CI 在集成测试全部跳过的情况下误报成功。
 
 ## Service 拆分规范

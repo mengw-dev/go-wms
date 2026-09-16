@@ -147,6 +147,7 @@ jobs:
       WMS_MYSQL_DSN: "root:root@tcp(127.0.0.1:3306)/gowms_e2e?charset=utf8mb4&parseTime=True&loc=Local"
       WMS_REDIS_ADDR: 127.0.0.1:6379
       WMS_JWT_SECRET: e2e-jwt-secret-0123456789abcdef0123456789abcdef
+      WMS_INTEGRATION_API_KEY: e2e-integration-api-key-0123456789abcdef
       WMS_SERVER_MODE: debug
       E2E_BASE_URL: http://127.0.0.1:5173
     steps:

@@ -34,3 +34,6 @@ metrics:
   enabled: false
   port: 9090
   path: /metrics
+
+integration:
+  api_key: "change-this-integration-api-key"

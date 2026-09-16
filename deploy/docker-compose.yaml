@@ -58,6 +58,7 @@ services:
       WMS_MYSQL_DSN: root:${MYSQL_ROOT_PASSWORD:-gowms-root}@tcp(mysql:3306)/${MYSQL_DATABASE:-gowms}?charset=utf8mb4&parseTime=True&loc=Local
       WMS_REDIS_ADDR: redis:6379
       WMS_JWT_SECRET: ${JWT_SECRET:-}
+      WMS_INTEGRATION_API_KEY: ${WMS_INTEGRATION_API_KEY:-}
       WMS_UPLOAD_DIR: /app/data/uploads
       WMS_METRICS_ENABLED: "true"
       WMS_METRICS_PORT: "9090"

@@ -1,4 +1,6 @@
 import { expect, type APIRequestContext, type Locator, type Page } from '@playwright/test'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 
 export const baseURL = process.env.E2E_BASE_URL || 'http://127.0.0.1:8081'
 
@@ -6,6 +8,21 @@ export const adminAccount = {
   username: 'admin',
   password: 'admin123',
 }
+
+function readRootEnv(key: string): string {
+  try {
+    const content = readFileSync(resolve(process.cwd(), '..', '.env'), 'utf8')
+    const line = content.split(/\r?\n/).find((item) => item.startsWith(`${key}=`))
+    return line?.slice(key.length + 1).trim() || ''
+  } catch {
+    return ''
+  }
+}
+
+export const integrationApiKey =
+  process.env.E2E_INTEGRATION_API_KEY ||
+  process.env.WMS_INTEGRATION_API_KEY ||
+  readRootEnv('WMS_INTEGRATION_API_KEY')
 
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE'
 

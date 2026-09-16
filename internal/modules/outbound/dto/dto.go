@@ -24,3 +24,26 @@ type PickReq struct {
 	TaskID int64 `json:"task_id,string" binding:"required"`
 	Qty    int   `json:"qty" binding:"required,min=1"`
 }
+
+// ExternalOrderDetailItem 外部系统按货品编码推送的出库明细。
+type ExternalOrderDetailItem struct {
+	SKUCode     string `json:"sku_code" binding:"required,max=64"`
+	ExpectedQty int    `json:"expected_qty" binding:"required,min=1"`
+}
+
+// ExternalCreateOrderReq OMS/ERP 等外部系统推送的出库单请求。
+type ExternalCreateOrderReq struct {
+	WarehouseCode string                    `json:"warehouse_code" binding:"required,max=32"`
+	BizOrderNo    string                    `json:"biz_order_no" binding:"required,max=64"`
+	Remark        string                    `json:"remark" binding:"max=255"`
+	Details       []ExternalOrderDetailItem `json:"details" binding:"required,min=1,dive"`
+}
+
+// ExternalCreateOrderResp 外部系统推送成功后的稳定响应。
+type ExternalCreateOrderResp struct {
+	OrderID    int64  `json:"order_id,string"`
+	OrderNo    string `json:"order_no"`
+	BizOrderNo string `json:"biz_order_no"`
+	Status     string `json:"status"`
+	Idempotent bool   `json:"idempotent"`
+}

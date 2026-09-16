@@ -6,10 +6,16 @@
 
 ### 1.1 认证
 
-除 `POST /login` 与 `GET /healthz` 外，所有接口需要请求头：
+除 `POST /login`、`GET /healthz` 和 `/integration/*` API Key 接口外，所有接口需要请求头：
 
 ```text
 Authorization: Bearer <token>     # 登录接口返回，HS256 JWT
+```
+
+外部系统集成接口使用：
+
+```text
+X-API-Key: <WMS_INTEGRATION_API_KEY>
 ```
 
 ### 1.2 统一响应
@@ -165,6 +171,44 @@ Authorization: Bearer <token>     # 登录接口返回，HS256 JWT
 // 200（HTTP 层正常，业务层失败）
 { "code": 40012, "msg": "库存不足，无法完成分配", "data": null }
 ```
+
+### 7.1 外部 OMS 推送出库单
+
+| 方法 | 路径 | 认证 | 说明 |
+| --- | --- | --- | --- |
+| POST | `/integration/outbound-orders` | `X-API-Key` | 按仓库/货品编码创建草稿出库单，`biz_order_no` 幂等 |
+
+请求示例：
+
+```json
+{
+  "warehouse_code": "WH01",
+  "biz_order_no": "OMS-20260916-1001",
+  "remark": "OMS 推送：门店补货",
+  "details": [
+    { "sku_code": "SKU000001", "expected_qty": 2 },
+    { "sku_code": "SKU000003", "expected_qty": 1 }
+  ]
+}
+```
+
+响应示例：
+
+```json
+{
+  "code": 0,
+  "msg": "success",
+  "data": {
+    "order_id": "358740812147724289",
+    "order_no": "CK20260916000001",
+    "biz_order_no": "OMS-20260916-1001",
+    "status": "DRAFT",
+    "idempotent": false
+  }
+}
+```
+
+重复推送同一个 `biz_order_no` 时返回原订单，并设置 `idempotent: true`，不会重复建单。
 
 ## 8. 盘点管理
 

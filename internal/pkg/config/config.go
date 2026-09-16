@@ -8,13 +8,14 @@ import (
 )
 
 type Config struct {
-	Server  ServerConfig  `mapstructure:"server"`
-	MySQL   MySQLConfig   `mapstructure:"mysql"`
-	Redis   RedisConfig   `mapstructure:"redis"`
-	JWT     JWTConfig     `mapstructure:"jwt"`
-	Log     LogConfig     `mapstructure:"log"`
-	Upload  UploadConfig  `mapstructure:"upload"`
-	Metrics MetricsConfig `mapstructure:"metrics"`
+	Server      ServerConfig      `mapstructure:"server"`
+	MySQL       MySQLConfig       `mapstructure:"mysql"`
+	Redis       RedisConfig       `mapstructure:"redis"`
+	JWT         JWTConfig         `mapstructure:"jwt"`
+	Log         LogConfig         `mapstructure:"log"`
+	Upload      UploadConfig      `mapstructure:"upload"`
+	Metrics     MetricsConfig     `mapstructure:"metrics"`
+	Integration IntegrationConfig `mapstructure:"integration"`
 }
 
 type ServerConfig struct {
@@ -59,6 +60,10 @@ type MetricsConfig struct {
 	Enabled bool   `mapstructure:"enabled"`
 	Port    int    `mapstructure:"port"`
 	Path    string `mapstructure:"path"`
+}
+
+type IntegrationConfig struct {
+	APIKey string `mapstructure:"api_key"`
 }
 
 // Load 读取 configs/config.yaml；支持环境变量覆盖（WMS_ 前缀，. 分隔，如 WMS_MYSQL_DSN）。

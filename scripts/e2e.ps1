@@ -16,6 +16,7 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
 $env:MYSQL_ROOT_PASSWORD = "gowms-e2e-root"
 $env:MYSQL_DATABASE = "gowms_e2e"
 $env:JWT_SECRET = "gowms-e2e-jwt-secret-0123456789abcdef0123456789abcdef"
+$env:WMS_INTEGRATION_API_KEY = "gowms-e2e-integration-api-key-0123456789abcdef"
 $env:WMS_API_PORT = "18080"
 $env:WMS_WEB_PORT = "$webPort"
 $env:E2E_BASE_URL = "http://127.0.0.1:$webPort"
