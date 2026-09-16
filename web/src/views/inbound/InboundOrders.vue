@@ -281,9 +281,9 @@ function startPolling(taskId: string) {
     try {
       const info = await getImportStatus(taskId)
       importInfo.value = info
-      if (info.status === 'SUCCESS' || info.status === 'FAILED') {
+      if (info.status === 'COMPLETED' || info.status === 'FAILED') {
         stopPolling()
-        if (info.status === 'SUCCESS') {
+        if (info.status === 'COMPLETED') {
           ElMessage.success(`导入完成：成功 ${info.success_rows} 条，失败 ${info.fail_rows} 条`)
         }
         load()
