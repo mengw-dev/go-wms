@@ -6,6 +6,7 @@ import (
 	"gorm.io/gorm"
 
 	"gowms/internal/modules/system/model"
+	"gowms/internal/pkg/typex"
 )
 
 type Repository struct {
@@ -87,8 +88,47 @@ func (r *Repository) ListUsers(ctx context.Context, keyword string, page, size i
 		return nil, 0, err
 	}
 	var list []*model.SysUser
-	err := q.Order("id DESC").Offset((page - 1) * size).Limit(size).Find(&list).Error
-	return list, total, err
+	if err := q.Order("id DESC").Offset((page - 1) * size).Limit(size).Find(&list).Error; err != nil {
+		return nil, 0, err
+	}
+	if err := r.attachUserRoleIDs(ctx, list); err != nil {
+		return nil, 0, err
+	}
+	return list, total, nil
+}
+
+func (r *Repository) attachUserRoleIDs(ctx context.Context, users []*model.SysUser) error {
+	if len(users) == 0 {
+		return nil
+	}
+	userIDs := make([]int64, 0, len(users))
+	for _, user := range users {
+		userIDs = append(userIDs, user.ID)
+	}
+
+	var rows []struct {
+		UserID int64 `gorm:"column:user_id"`
+		RoleID int64 `gorm:"column:role_id"`
+	}
+	if err := r.db.WithContext(ctx).Model(&model.SysUserRole{}).
+		Select("user_id, role_id").
+		Where("user_id IN ?", userIDs).
+		Order("role_id").
+		Scan(&rows).Error; err != nil {
+		return err
+	}
+
+	roleIDsByUser := make(map[int64]typex.Int64List, len(users))
+	for _, row := range rows {
+		roleIDsByUser[row.UserID] = append(roleIDsByUser[row.UserID], row.RoleID)
+	}
+	for _, user := range users {
+		user.RoleIDs = roleIDsByUser[user.ID]
+		if user.RoleIDs == nil {
+			user.RoleIDs = typex.Int64List{}
+		}
+	}
+	return nil
 }
 
 // ---------- 角色 ----------

@@ -62,8 +62,12 @@ async function onApprove(row: StocktakeOrderItem) {
   try {
     await ElMessageBox.confirm(
       `确定审核盘点单「${row.order_no}」吗？审核后将按差异自动调整库存。`,
-      '提示',
-      { type: 'warning' },
+      '审核盘点单',
+      {
+        type: 'warning',
+        confirmButtonText: '确认审核',
+        cancelButtonText: '返回',
+      },
     )
   } catch {
     return
@@ -75,7 +79,16 @@ async function onApprove(row: StocktakeOrderItem) {
 
 async function onCancel(row: StocktakeOrderItem) {
   try {
-    await ElMessageBox.confirm(`确定取消盘点单「${row.order_no}」吗？`, '提示', { type: 'warning' })
+    await ElMessageBox.confirm(
+      `确定取消盘点单「${row.order_no}」吗？取消后本次盘点记录不能继续使用。`,
+      '取消盘点单',
+      {
+        type: 'warning',
+        confirmButtonText: '确认取消',
+        cancelButtonText: '返回',
+        confirmButtonClass: 'el-button--danger',
+      },
+    )
   } catch {
     return
   }
@@ -213,7 +226,14 @@ async function submitCreate() {
     />
 
     <!-- 新建 -->
-    <el-dialog v-model="createDialog.visible" title="新建盘点单" width="520px" destroy-on-close>
+    <el-dialog
+      v-model="createDialog.visible"
+      title="新建盘点单"
+      width="520px"
+      destroy-on-close
+      :close-on-click-modal="false"
+      :close-on-press-escape="!createDialog.loading"
+    >
       <el-form label-width="90px">
         <el-form-item label="仓库" required>
           <el-select
@@ -243,7 +263,7 @@ async function submitCreate() {
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="createDialog.visible = false">取消</el-button>
+        <el-button :disabled="createDialog.loading" @click="createDialog.visible = false">取消</el-button>
         <el-button type="primary" :loading="createDialog.loading" @click="submitCreate">创建</el-button>
       </template>
     </el-dialog>

@@ -81,18 +81,19 @@ var (
 
 // 系统/认证 10000+
 var (
-	UserExist            = New(10001, "用户名已存在")
-	UserOrPwdWrong       = New(10002, "用户名或密码错误")
-	UserDisabled         = New(10003, "用户已被禁用")
-	RoleExist            = New(10004, "角色名已存在")
-	RoleInUse            = New(10005, "角色已绑定用户，禁止删除")
-	OldPwdWrong          = New(10006, "原密码错误")
-	OperRecordFail       = New(10007, "操作日志记录失败")
-	PermFormatInvalid    = New(10008, "权限标识格式错误，应为 wms:module:action")
-	UserIDInvalid        = New(10009, "用户不存在")
-	RoleIDInvalid        = New(10010, "角色不存在")
-	ModifyAdminForbidden = New(10011, "不允许操作内置管理员账号")
-	TooManyLoginAttempts = New(10012, "登录失败次数过多，请稍后再试")
+	UserExist                  = New(10001, "用户名已存在")
+	UserOrPwdWrong             = New(10002, "用户名或密码错误")
+	UserDisabled               = New(10003, "用户已被禁用")
+	RoleExist                  = New(10004, "角色名已存在")
+	RoleInUse                  = New(10005, "角色已绑定用户，禁止删除")
+	OldPwdWrong                = New(10006, "原密码错误")
+	OperRecordFail             = New(10007, "操作日志记录失败")
+	PermFormatInvalid          = New(10008, "权限标识格式错误，应为 wms:module:action")
+	UserIDInvalid              = New(10009, "用户不存在")
+	RoleIDInvalid              = New(10010, "角色不存在")
+	ModifyAdminForbidden       = New(10011, "不允许操作内置管理员账号")
+	TooManyLoginAttempts       = New(10012, "登录失败次数过多，请稍后再试")
+	ModifyBuiltinRoleForbidden = New(10013, "不允许修改或删除内置超级管理员角色")
 )
 
 // 基础资料 20000+

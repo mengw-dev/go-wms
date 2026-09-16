@@ -61,7 +61,12 @@ async function onApprove() {
 
 async function onCancel() {
   try {
-    await ElMessageBox.confirm('确定取消该出库单吗？取消后将释放已分配库存。', '提示', { type: 'warning' })
+    await ElMessageBox.confirm('确定取消该出库单吗？取消后将释放已分配库存。', '取消出库单', {
+      type: 'warning',
+      confirmButtonText: '确认取消',
+      cancelButtonText: '返回',
+      confirmButtonClass: 'el-button--danger',
+    })
   } catch {
     return
   }
@@ -124,7 +129,6 @@ function canPick(task: { task_type: string; status: string }): boolean {
       <div class="page-card section">
         <h3 class="section-title">单据明细</h3>
         <el-table :data="data.details ?? []" border stripe>
-          <el-table-column prop="id" label="明细ID" width="80" />
           <el-table-column prop="sku_code" label="货品编码" min-width="130" />
           <el-table-column prop="sku_name" label="货品名称" min-width="160" show-overflow-tooltip />
           <el-table-column prop="expected_qty" label="需求数量" width="100" align="right" />
@@ -136,8 +140,6 @@ function canPick(task: { task_type: string; status: string }): boolean {
       <div class="page-card section">
         <h3 class="section-title">分配明细</h3>
         <el-table :data="data.allocations ?? []" border stripe>
-          <el-table-column prop="id" label="分配ID" width="80" />
-          <el-table-column prop="detail_id" label="明细ID" width="80" />
           <el-table-column prop="location_code" label="库位" min-width="120">
             <template #default="{ row }">{{ row.location_code || row.location_id }}</template>
           </el-table-column>

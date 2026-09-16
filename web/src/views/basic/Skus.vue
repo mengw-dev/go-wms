@@ -81,7 +81,16 @@ async function submit() {
 
 async function onDelete(row: SkuItem) {
   try {
-    await ElMessageBox.confirm(`确定删除货品「${row.name}」吗？`, '提示', { type: 'warning' })
+    await ElMessageBox.confirm(
+      `删除货品「${row.name}」前请确认该货品没有库存，确定继续吗？`,
+      '删除货品',
+      {
+        type: 'warning',
+        confirmButtonText: '确认删除',
+        cancelButtonText: '取消',
+        confirmButtonClass: 'el-button--danger',
+      },
+    )
   } catch {
     return
   }
@@ -108,7 +117,6 @@ async function onDelete(row: SkuItem) {
     </div>
 
     <el-table v-loading="loading" :data="list" border stripe>
-      <el-table-column prop="id" label="ID" width="70" />
       <el-table-column prop="code" label="编码" min-width="120" />
       <el-table-column prop="barcode" label="条码" min-width="140" />
       <el-table-column prop="name" label="名称" min-width="160" />
@@ -143,6 +151,8 @@ async function onDelete(row: SkuItem) {
       :title="dialog.editingId ? '编辑货品' : '新增货品'"
       width="480px"
       destroy-on-close
+      :close-on-click-modal="false"
+      :close-on-press-escape="!dialog.loading"
     >
       <el-form ref="formRef" :model="form" :rules="rules" label-width="90px">
         <el-form-item label="编码" prop="code">
@@ -162,7 +172,7 @@ async function onDelete(row: SkuItem) {
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="dialog.visible = false">取消</el-button>
+        <el-button :disabled="dialog.loading" @click="dialog.visible = false">取消</el-button>
         <el-button type="primary" :loading="dialog.loading" @click="submit">确定</el-button>
       </template>
     </el-dialog>

@@ -87,7 +87,16 @@ async function onApprove(row: OutboundOrderItem) {
 
 async function onCancel(row: OutboundOrderItem) {
   try {
-    await ElMessageBox.confirm(`确定取消出库单「${row.order_no}」吗？取消后将释放已分配库存。`, '提示', { type: 'warning' })
+    await ElMessageBox.confirm(
+      `确定取消出库单「${row.order_no}」吗？取消后将释放已分配库存。`,
+      '取消出库单',
+      {
+        type: 'warning',
+        confirmButtonText: '确认取消',
+        cancelButtonText: '返回',
+        confirmButtonClass: 'el-button--danger',
+      },
+    )
   } catch {
     return
   }
@@ -98,7 +107,16 @@ async function onCancel(row: OutboundOrderItem) {
 
 async function onDelete(row: OutboundOrderItem) {
   try {
-    await ElMessageBox.confirm(`确定删除出库单「${row.order_no}」吗？`, '提示', { type: 'warning' })
+    await ElMessageBox.confirm(
+      `确定删除草稿出库单「${row.order_no}」吗？删除后不可恢复。`,
+      '删除出库单',
+      {
+        type: 'warning',
+        confirmButtonText: '确认删除',
+        cancelButtonText: '返回',
+        confirmButtonClass: 'el-button--danger',
+      },
+    )
   } catch {
     return
   }
@@ -256,7 +274,14 @@ function openPick(row: OutboundOrderItem) {
     />
 
     <!-- 新建 -->
-    <el-dialog v-model="createDialog.visible" title="新建出库单" width="760px" destroy-on-close>
+    <el-dialog
+      v-model="createDialog.visible"
+      title="新建出库单"
+      width="760px"
+      destroy-on-close
+      :close-on-click-modal="false"
+      :close-on-press-escape="!createDialog.loading"
+    >
       <el-form label-width="90px">
         <el-form-item label="仓库" required>
           <el-select v-model="createForm.warehouse_id" placeholder="选择仓库" style="width: 300px">
@@ -285,7 +310,7 @@ function openPick(row: OutboundOrderItem) {
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="createDialog.visible = false">取消</el-button>
+        <el-button :disabled="createDialog.loading" @click="createDialog.visible = false">取消</el-button>
         <el-button type="primary" :loading="createDialog.loading" @click="submitCreate">保存</el-button>
       </template>
     </el-dialog>

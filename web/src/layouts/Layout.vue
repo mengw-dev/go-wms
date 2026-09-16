@@ -185,7 +185,14 @@ async function submitPassword() {
       </el-main>
     </el-container>
 
-    <el-dialog v-model="pwdDialog.visible" title="修改密码" width="420px" destroy-on-close>
+    <el-dialog
+      v-model="pwdDialog.visible"
+      title="修改密码"
+      width="420px"
+      destroy-on-close
+      :close-on-click-modal="false"
+      :close-on-press-escape="!pwdDialog.loading"
+    >
       <el-form ref="pwdFormRef" :model="pwdForm" :rules="pwdRules" label-width="90px">
         <el-form-item label="原密码" prop="old_password">
           <el-input v-model="pwdForm.old_password" type="password" show-password placeholder="请输入原密码" />
@@ -198,7 +205,7 @@ async function submitPassword() {
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="pwdDialog.visible = false">取消</el-button>
+        <el-button :disabled="pwdDialog.loading" @click="pwdDialog.visible = false">取消</el-button>
         <el-button type="primary" :loading="pwdDialog.loading" @click="submitPassword">确定</el-button>
       </template>
     </el-dialog>

@@ -66,7 +66,11 @@ async function saveActual(row: StocktakeDetailItem) {
 // ---------- 审核 / 取消 ----------
 async function onApprove() {
   try {
-    await ElMessageBox.confirm('确定审核该盘点单吗？审核后将按差异自动调整库存。', '提示', { type: 'warning' })
+    await ElMessageBox.confirm('确定审核该盘点单吗？审核后将按差异自动调整库存。', '审核盘点单', {
+      type: 'warning',
+      confirmButtonText: '确认审核',
+      cancelButtonText: '返回',
+    })
   } catch {
     return
   }
@@ -77,7 +81,12 @@ async function onApprove() {
 
 async function onCancel() {
   try {
-    await ElMessageBox.confirm('确定取消该盘点单吗？', '提示', { type: 'warning' })
+    await ElMessageBox.confirm('确定取消该盘点单吗？', '取消盘点单', {
+      type: 'warning',
+      confirmButtonText: '确认取消',
+      cancelButtonText: '返回',
+      confirmButtonClass: 'el-button--danger',
+    })
   } catch {
     return
   }
@@ -123,7 +132,6 @@ async function onCancel() {
           <el-tag v-if="isDraft()" type="warning" size="small" class="draft-tip">草稿状态可直接录入实盘数</el-tag>
         </h3>
         <el-table :data="data.details ?? []" border stripe>
-          <el-table-column prop="id" label="明细ID" width="80" />
           <el-table-column label="库位" min-width="120">
             <template #default="{ row }">{{ row.location_code || '-' }}</template>
           </el-table-column>
@@ -144,6 +152,7 @@ async function onCancel() {
                     style="width: 120px"
                   />
                   <el-button
+                    v-permission="'wms:stocktake:stocktake'"
                     type="primary"
                     size="small"
                     :loading="savingIds[row.id]"

@@ -93,7 +93,16 @@ async function onApprove(row: InboundOrderItem) {
 
 async function onCancel(row: InboundOrderItem) {
   try {
-    await ElMessageBox.confirm(`确定取消入库单「${row.order_no}」吗？`, '提示', { type: 'warning' })
+    await ElMessageBox.confirm(
+      `确定取消入库单「${row.order_no}」吗？取消后不能继续收货或上架。`,
+      '取消入库单',
+      {
+        type: 'warning',
+        confirmButtonText: '确认取消',
+        cancelButtonText: '返回',
+        confirmButtonClass: 'el-button--danger',
+      },
+    )
   } catch {
     return
   }
@@ -104,7 +113,16 @@ async function onCancel(row: InboundOrderItem) {
 
 async function onDelete(row: InboundOrderItem) {
   try {
-    await ElMessageBox.confirm(`确定删除入库单「${row.order_no}」吗？`, '提示', { type: 'warning' })
+    await ElMessageBox.confirm(
+      `确定删除草稿入库单「${row.order_no}」吗？删除后不可恢复。`,
+      '删除入库单',
+      {
+        type: 'warning',
+        confirmButtonText: '确认删除',
+        cancelButtonText: '返回',
+        confirmButtonClass: 'el-button--danger',
+      },
+    )
   } catch {
     return
   }
@@ -372,6 +390,8 @@ onUnmounted(stopPolling)
       :title="editDialog.editingId ? '编辑入库单' : '新建入库单'"
       width="720px"
       destroy-on-close
+      :close-on-click-modal="false"
+      :close-on-press-escape="!editDialog.loading"
     >
       <el-form label-width="90px">
         <el-form-item label="仓库" required>
@@ -398,7 +418,7 @@ onUnmounted(stopPolling)
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="editDialog.visible = false">取消</el-button>
+        <el-button :disabled="editDialog.loading" @click="editDialog.visible = false">取消</el-button>
         <el-button type="primary" :loading="editDialog.loading" @click="submitEdit">保存</el-button>
       </template>
     </el-dialog>
@@ -410,7 +430,15 @@ onUnmounted(stopPolling)
     <PutawayDialog ref="putawayRef" @success="load" />
 
     <!-- Excel 导入 -->
-    <el-dialog v-model="importDialog.visible" title="Excel 导入入库单" width="560px" @close="closeImport">
+    <el-dialog
+      v-model="importDialog.visible"
+      title="Excel 导入入库单"
+      width="560px"
+      :close-on-click-modal="false"
+      :close-on-press-escape="!importDialog.uploading"
+      :show-close="!importDialog.uploading"
+      @close="closeImport"
+    >
       <el-upload
         drag
         accept=".xlsx,.xls"

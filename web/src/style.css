@@ -142,6 +142,8 @@ body {
 }
 
 .query-form {
+  display: flex;
+  flex-wrap: wrap;
   margin-bottom: 4px;
 }
 
@@ -158,7 +160,9 @@ body {
 
 .table-oper {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  align-items: center;
+  white-space: nowrap;
   gap: 4px;
 }
 
@@ -313,4 +317,37 @@ html.dark .el-button--primary:not(.is-link):not(.is-text) {
 
 ::-webkit-scrollbar-track {
   background: transparent;
+}
+
+/* ===========================================================
+   响应式兜底：窄屏下保证页面和弹窗不横向溢出
+   =========================================================== */
+@media (max-width: 768px) {
+  .page-card {
+    padding: 12px;
+  }
+
+  .query-form .el-form-item {
+    width: 100%;
+    margin-right: 0;
+  }
+
+  .query-form .el-input,
+  .query-form .el-select {
+    width: 100% !important;
+  }
+
+  .toolbar {
+    align-items: stretch;
+  }
+
+  .pagination {
+    justify-content: center;
+    overflow-x: auto;
+  }
+
+  .el-dialog {
+    width: calc(100vw - 24px) !important;
+    margin-top: 5vh !important;
+  }
 }

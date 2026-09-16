@@ -89,7 +89,15 @@ defineExpose({ open })
 </script>
 
 <template>
-  <el-dialog v-model="visible" title="上架" width="520px" destroy-on-close>
+  <el-dialog
+    v-model="visible"
+    title="上架"
+    width="520px"
+    destroy-on-close
+    :close-on-click-modal="false"
+    :close-on-press-escape="!submitting"
+    :show-close="!submitting"
+  >
     <el-form label-width="90px" v-loading="loading">
       <el-form-item label="上架任务">
         <el-select v-model="form.task_id" placeholder="选择待执行的上架任务" style="width: 100%" @change="onTaskChange">
@@ -112,7 +120,7 @@ defineExpose({ open })
       </el-form-item>
     </el-form>
     <template #footer>
-      <el-button @click="visible = false">取消</el-button>
+      <el-button :disabled="submitting" @click="visible = false">取消</el-button>
       <el-button type="primary" :loading="submitting" @click="submit">确定上架</el-button>
     </template>
   </el-dialog>

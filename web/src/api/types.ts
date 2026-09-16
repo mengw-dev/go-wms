@@ -55,6 +55,7 @@ export interface UserItem {
   username: string
   nickname: string
   status: number
+  role_ids: EntityID[]
   created_at: string
   updated_at: string
 }

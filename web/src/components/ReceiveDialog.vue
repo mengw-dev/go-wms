@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { getInboundOrder, receiveInbound } from '@/api/inbound'
 import type { EntityID, InboundOrderDetailRow } from '@/api/types'
@@ -18,6 +18,7 @@ interface RowForm {
   submitting: boolean
 }
 const forms = reactive<Record<EntityID, RowForm>>({})
+const hasSubmitting = computed(() => Object.values(forms).some((form) => form.submitting))
 
 function remaining(row: InboundOrderDetailRow): number {
   return Math.max(row.expected_qty - row.received_qty, 0)
@@ -30,14 +31,13 @@ async function open(id: EntityID) {
   try {
     const detail = await getInboundOrder(id)
     details.value = detail.details ?? []
+    Object.keys(forms).forEach((key) => delete forms[key])
     for (const row of details.value) {
-      if (!forms[row.id]) {
-        forms[row.id] = {
-          qty: remaining(row) || 1,
-          defective_qty: 0,
-          batch_no: '',
-          submitting: false,
-        }
+      forms[row.id] = {
+        qty: remaining(row) || 1,
+        defective_qty: 0,
+        batch_no: '',
+        submitting: false,
       }
     }
   } finally {
@@ -75,7 +75,15 @@ defineExpose({ open })
 </script>
 
 <template>
-  <el-dialog v-model="visible" title="收货" width="820px" destroy-on-close>
+  <el-dialog
+    v-model="visible"
+    title="收货"
+    width="820px"
+    destroy-on-close
+    :close-on-click-modal="false"
+    :close-on-press-escape="!loading && !hasSubmitting"
+    :show-close="!loading && !hasSubmitting"
+  >
     <el-table v-loading="loading" :data="details" border max-height="420">
       <el-table-column prop="sku_code" label="货品编码" min-width="110" />
       <el-table-column prop="sku_name" label="货品名称" min-width="130" show-overflow-tooltip />
@@ -111,7 +119,7 @@ defineExpose({ open })
       </el-table-column>
     </el-table>
     <template #footer>
-      <el-button @click="visible = false">关闭</el-button>
+      <el-button :disabled="loading || hasSubmitting" @click="visible = false">关闭</el-button>
     </template>
   </el-dialog>
 </template>

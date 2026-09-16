@@ -18,6 +18,9 @@ func (s *Service) CreateRole(ctx context.Context, req *dto.RoleCreateReq) error 
 }
 
 func (s *Service) UpdateRole(ctx context.Context, id int64, req *dto.RoleUpdateReq) error {
+	if id == 1 {
+		return errcode.ModifyBuiltinRoleForbidden
+	}
 	if err := s.repo.UpdateRole(ctx, id, req.Name, req.Perms, req.Remark); err != nil {
 		return err
 	}
@@ -26,6 +29,9 @@ func (s *Service) UpdateRole(ctx context.Context, id int64, req *dto.RoleUpdateR
 }
 
 func (s *Service) DeleteRole(ctx context.Context, id int64) error {
+	if id == 1 {
+		return errcode.ModifyBuiltinRoleForbidden
+	}
 	n, err := s.repo.CountUserRole(ctx, id)
 	if err != nil {
 		return err
