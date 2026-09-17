@@ -209,10 +209,41 @@ make compose-down
 | `WMS_METRICS_PORT` | 指标服务端口 | `9090` |
 | `WMS_PROMETHEUS_PORT` | Prometheus 宿主机映射端口 | `9090` |
 | `WMS_METRICS_PATH` | 指标路径 | `/metrics` |
+| `WMS_GRAFANA_PORT` | Grafana 宿主机映射端口 | `3000` |
+| `WMS_GRAFANA_ADMIN_USER` | Grafana 管理员用户名 | `admin` |
+| `WMS_GRAFANA_ADMIN_PASSWORD` | Grafana 管理员密码 | 随机生成 |
 
 生产模式 `WMS_SERVER_MODE=release` 会拒绝过短或仍包含示例占位内容的 JWT、MySQL 和集成 API Key。多实例部署时每个实例必须使用不同的 `WMS_SERVER_NODE`。
 
 默认情况下 API 和 Prometheus 只绑定到宿主机 `127.0.0.1`，外部访问统一通过 Web 容器的 Nginx `/api/` 代理。云服务器安全组只需要开放 `80/443` 和受限的 SSH 端口，不要开放 MySQL、Redis、API 管理端口或 Prometheus。
+
+### Prometheus + Grafana 监控
+
+项目内置可选的 Prometheus 和 Grafana 监控栈。Windows 一键启动监控：
+
+```powershell
+.\scripts\windows\start-monitoring.ps1
+```
+
+也可以使用：
+
+```powershell
+make compose-monitoring
+```
+
+启动后访问：
+
+- Prometheus：`http://127.0.0.1:9090`
+- Grafana：`http://127.0.0.1:3000`
+- Grafana 用户名/密码：见 `.env` 中的 `WMS_GRAFANA_ADMIN_USER`、`WMS_GRAFANA_ADMIN_PASSWORD`
+
+Grafana 会自动加载 `GoWMS Overview` 仪表盘，包含服务状态、QPS、5xx 错误率、P95 延迟、并发请求、MySQL 连接池、Goroutine 和内存。停止监控不会停止 WMS：
+
+```powershell
+.\scripts\windows\stop-monitoring.ps1
+```
+
+详细查询示例见 [docs/monitoring.md](docs/monitoring.md)。
 
 ## 权限说明
 

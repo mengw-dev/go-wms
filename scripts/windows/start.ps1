@@ -74,6 +74,23 @@ try {
         $values["WMS_PROMETHEUS_PORT"] = "9090"
         $changed = $true
     }
+    if (-not $values.Contains("WMS_GRAFANA_PORT") -or [string]::IsNullOrWhiteSpace($values["WMS_GRAFANA_PORT"])) {
+        $values["WMS_GRAFANA_PORT"] = "3000"
+        $changed = $true
+    }
+    if (-not $values.Contains("WMS_GRAFANA_ADMIN_USER") -or [string]::IsNullOrWhiteSpace($values["WMS_GRAFANA_ADMIN_USER"])) {
+        $values["WMS_GRAFANA_ADMIN_USER"] = "admin"
+        $changed = $true
+    }
+    if (-not $values.Contains("WMS_GRAFANA_ADMIN_PASSWORD")) {
+        $values["WMS_GRAFANA_ADMIN_PASSWORD"] = ""
+        $changed = $true
+    }
+    $grafanaPassword = [string]$values["WMS_GRAFANA_ADMIN_PASSWORD"]
+    if (Test-PlaceholderSecret $grafanaPassword -or $grafanaPassword.Length -lt 12) {
+        $values["WMS_GRAFANA_ADMIN_PASSWORD"] = New-RandomHex -ByteCount 16
+        $changed = $true
+    }
 
     if ($changed -or -not (Test-Path -LiteralPath $envPath)) {
         Save-DotEnv -Path $envPath -Values $values

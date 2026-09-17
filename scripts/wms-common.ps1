@@ -144,7 +144,10 @@ function Save-DotEnv {
         "WMS_SERVER_NODE",
         "WMS_API_BIND",
         "WMS_API_PORT",
-        "WMS_WEB_PORT"
+        "WMS_WEB_PORT",
+        "WMS_GRAFANA_PORT",
+        "WMS_GRAFANA_ADMIN_USER",
+        "WMS_GRAFANA_ADMIN_PASSWORD"
     )
 
     $lines = New-Object System.Collections.Generic.List[string]

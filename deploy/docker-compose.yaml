@@ -105,8 +105,29 @@ services:
       wms:
         condition: service_healthy
 
+  grafana:
+    image: grafana/grafana-oss:11.3.0
+    profiles: ["monitoring"]
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${WMS_GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${WMS_GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_SERVER_ROOT_URL: ${WMS_GRAFANA_ROOT_URL:-http://127.0.0.1:3000}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "127.0.0.1:${WMS_GRAFANA_PORT:-3000}:3000"
+    depends_on:
+      prometheus:
+        condition: service_started
+
 volumes:
   mysql_data:
   redis_data:
   upload_data:
   prometheus_data:
+  grafana_data:
