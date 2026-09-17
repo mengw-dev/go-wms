@@ -506,7 +506,7 @@ onUnmounted(stopPolling)
             </el-dropdown-menu>
           </template>
         </el-dropdown>
-        <el-button link class="clear-btn" :class="{ 'is-hidden': selectedRows.length === 0 }" @click="tableRef?.clearSelection()">清除选择</el-button>
+        <el-button link :disabled="selectedRows.length === 0" @click="tableRef?.clearSelection()">清除选择</el-button>
       </div>
     </div>
 
@@ -699,8 +699,7 @@ onUnmounted(stopPolling)
   text-align: right;
 }
 
-.selected-hint.is-hidden,
-.clear-btn.is-hidden {
+.selected-hint.is-hidden {
   visibility: hidden;
   pointer-events: none;
 }
