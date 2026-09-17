@@ -10,6 +10,10 @@ server:
   cors_allow_origins: "http://localhost:5173,http://127.0.0.1:5173"
   trusted_proxies: ""  # 例如 127.0.0.1,172.16.0.0/12；生产环境不要信任所有代理
 
+# 敏感凭据说明：
+#   - 下面的 dsn / jwt.secret / integration.api_key 仅供本地开发使用
+#   - 生产环境必须用环境变量覆盖（WMS_MYSQL_DSN / WMS_JWT_SECRET / WMS_INTEGRATION_API_KEY）
+#   - release 模式启动时会拒绝弱密码/占位符（见 internal/pkg/config/config.go）
 mysql:
   dsn: "root:1234@tcp(127.0.0.1:3306)/gowms?charset=utf8mb4&parseTime=True&loc=Local"
   max_open_conns: 50

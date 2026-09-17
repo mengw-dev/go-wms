@@ -8,6 +8,7 @@ import (
 	"gorm.io/gorm/clause"
 
 	"gowms/internal/modules/inbound/model"
+	"gowms/internal/pkg/dbutil"
 )
 
 type Repository struct{}
@@ -130,7 +131,7 @@ func (r *Repository) ListOrders(ctx context.Context, db *gorm.DB, warehouseID in
 		q = q.Where("status = ?", status)
 	}
 	if keyword != "" {
-		q = q.Where("order_no LIKE ?", "%"+keyword+"%")
+		q = q.Where("order_no LIKE ?", "%"+dbutil.LikePattern(keyword)+"%")
 	}
 	if importTaskID != "" {
 		q = q.Where("import_task_id = ?", importTaskID)

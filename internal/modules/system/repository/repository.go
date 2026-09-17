@@ -6,6 +6,7 @@ import (
 	"gorm.io/gorm"
 
 	"gowms/internal/modules/system/model"
+	"gowms/internal/pkg/dbutil"
 	"gowms/internal/pkg/typex"
 )
 
@@ -81,7 +82,7 @@ func (r *Repository) UpdatePassword(ctx context.Context, id int64, hash string) 
 func (r *Repository) ListUsers(ctx context.Context, keyword string, page, size int) ([]*model.SysUser, int64, error) {
 	q := r.db.WithContext(ctx).Model(&model.SysUser{})
 	if keyword != "" {
-		q = q.Where("username LIKE ? OR nickname LIKE ?", "%"+keyword+"%", "%"+keyword+"%")
+		q = q.Where("username LIKE ? OR nickname LIKE ?", "%"+dbutil.LikePattern(keyword)+"%", "%"+dbutil.LikePattern(keyword)+"%")
 	}
 	var total int64
 	if err := q.Count(&total).Error; err != nil {
@@ -163,7 +164,7 @@ func (r *Repository) CountUserRole(ctx context.Context, roleID int64) (int64, er
 func (r *Repository) ListRoles(ctx context.Context, keyword string, page, size int) ([]*model.SysRole, int64, error) {
 	q := r.db.WithContext(ctx).Model(&model.SysRole{})
 	if keyword != "" {
-		q = q.Where("name LIKE ?", "%"+keyword+"%")
+		q = q.Where("name LIKE ?", "%"+dbutil.LikePattern(keyword)+"%")
 	}
 	var total int64
 	if err := q.Count(&total).Error; err != nil {
@@ -228,7 +229,7 @@ func (r *Repository) ListOperLogs(ctx context.Context, username, path string, pa
 		q = q.Where("username = ?", username)
 	}
 	if path != "" {
-		q = q.Where("path LIKE ?", "%"+path+"%")
+		q = q.Where("path LIKE ?", "%"+dbutil.LikePattern(path)+"%")
 	}
 	var total int64
 	if err := q.Count(&total).Error; err != nil {

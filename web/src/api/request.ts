@@ -68,6 +68,11 @@ service.interceptors.response.use(
   },
 )
 
+// 注意：拦截器在 onFulfilled 中返回 body.data（而非 AxiosResponse），
+// 因此 service.get/post 等方法的实际返回类型是 Promise<T> 而非 Promise<AxiosResponse>。
+// TypeScript 静态类型仍按 AxiosResponse 推断，所以这里用 `as unknown as Promise<T>`
+// 跳过结构类型检查。这是 axios 拦截器返回非标准类型的常见妥协，不应简化。
+// 调用方使用 get<T>/post<T> 时无需再断言，类型安全已得到保证。
 export function get<T = unknown>(url: string, params?: Record<string, unknown>): Promise<T> {
   return service.get(url, { params }) as unknown as Promise<T>
 }

@@ -199,19 +199,23 @@ const createForm = reactive({
   warehouse_id: undefined as EntityID | undefined,
   biz_order_no: '',
   remark: '',
-  details: [] as { sku_id: EntityID | undefined; expected_qty: number }[],
+  details: [] as { _uid: string; sku_id: EntityID | undefined; expected_qty: number }[],
 })
+
+function makeDetail(sku_id?: EntityID, expected_qty = 1) {
+  return { _uid: crypto.randomUUID(), sku_id, expected_qty }
+}
 
 function openCreate() {
   createForm.warehouse_id = undefined
   createForm.biz_order_no = ''
   createForm.remark = ''
-  createForm.details = [{ sku_id: undefined, expected_qty: 1 }]
+  createForm.details = [makeDetail()]
   createDialog.visible = true
 }
 
 function addDetail() {
-  createForm.details.push({ sku_id: undefined, expected_qty: 1 })
+  createForm.details.push(makeDetail())
 }
 
 function removeDetail(index: number) {
@@ -380,7 +384,7 @@ function openPick(row: OutboundOrderItem) {
         </el-form-item>
         <el-form-item label="明细" required>
           <div class="detail-editor">
-            <div v-for="(item, index) in createForm.details" :key="index" class="detail-row">
+            <div v-for="(item, index) in createForm.details" :key="item._uid" class="detail-row">
               <el-select v-model="item.sku_id" placeholder="选择货品" filterable style="width: 320px">
                 <el-option v-for="s in skuOptions" :key="s.id" :label="s.label" :value="s.id" />
               </el-select>

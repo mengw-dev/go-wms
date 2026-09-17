@@ -6,6 +6,7 @@ import (
 	"gorm.io/gorm"
 
 	"gowms/internal/modules/basic/model"
+	"gowms/internal/pkg/dbutil"
 )
 
 type Repository struct{}
@@ -56,7 +57,7 @@ func (r *Repository) CountLocationsByWarehouse(ctx context.Context, db *gorm.DB,
 func (r *Repository) ListWarehouses(ctx context.Context, db *gorm.DB, keyword string, page, size int) ([]*model.Warehouse, int64, error) {
 	q := db.WithContext(ctx).Model(&model.Warehouse{})
 	if keyword != "" {
-		q = q.Where("code LIKE ? OR name LIKE ?", "%"+keyword+"%", "%"+keyword+"%")
+		q = q.Where("code LIKE ? OR name LIKE ?", "%"+dbutil.LikePattern(keyword)+"%", "%"+dbutil.LikePattern(keyword)+"%")
 	}
 	var total int64
 	if err := q.Count(&total).Error; err != nil {
@@ -113,7 +114,7 @@ func (r *Repository) ListLocations(ctx context.Context, db *gorm.DB, warehouseID
 		q = q.Where("warehouse_id = ?", warehouseID)
 	}
 	if keyword != "" {
-		q = q.Where("code LIKE ?", "%"+keyword+"%")
+		q = q.Where("code LIKE ?", "%"+dbutil.LikePattern(keyword)+"%")
 	}
 	var total int64
 	if err := q.Count(&total).Error; err != nil {
@@ -183,7 +184,7 @@ func (r *Repository) DeleteSKU(ctx context.Context, db *gorm.DB, id int64) error
 func (r *Repository) ListSKUs(ctx context.Context, db *gorm.DB, keyword string, page, size int) ([]*model.SKU, int64, error) {
 	q := db.WithContext(ctx).Model(&model.SKU{})
 	if keyword != "" {
-		q = q.Where("code LIKE ? OR name LIKE ? OR barcode LIKE ?", "%"+keyword+"%", "%"+keyword+"%", "%"+keyword+"%")
+		q = q.Where("code LIKE ? OR name LIKE ? OR barcode LIKE ?", "%"+dbutil.LikePattern(keyword)+"%", "%"+dbutil.LikePattern(keyword)+"%", "%"+dbutil.LikePattern(keyword)+"%")
 	}
 	var total int64
 	if err := q.Count(&total).Error; err != nil {

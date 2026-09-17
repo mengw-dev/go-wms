@@ -125,6 +125,13 @@ func Load(path string) (*Config, error) {
 		if len(cfg.JWT.Secret) < 32 || strings.Contains(secret, "change") || strings.Contains(secret, "dev-secret") {
 			return nil, fmt.Errorf("release mode requires a random WMS_JWT_SECRET with at least 32 characters")
 		}
+		// 拒绝开发默认 DSN（root:1234 或占位符），强制用 WMS_MYSQL_DSN 注入生产凭据
+		if strings.Contains(cfg.MySQL.DSN, "root:1234") || strings.Contains(cfg.MySQL.DSN, "change-this") {
+			return nil, fmt.Errorf("release mode requires WMS_MYSQL_DSN to override the dev default in config.yaml")
+		}
+		if cfg.Integration.APIKey == "" || strings.Contains(strings.ToLower(cfg.Integration.APIKey), "change-this") {
+			return nil, fmt.Errorf("release mode requires WMS_INTEGRATION_API_KEY to override the dev default in config.yaml")
+		}
 	}
 	if cfg.Upload.Dir == "" {
 		cfg.Upload.Dir = "./data/uploads"

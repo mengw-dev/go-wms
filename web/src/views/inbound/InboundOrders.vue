@@ -285,14 +285,18 @@ const editDialog = reactive({ visible: false, loading: false, editingId: '' as E
 const editForm = reactive({
   warehouse_id: undefined as EntityID | undefined,
   remark: '',
-  details: [] as { sku_id: EntityID | undefined; expected_qty: number }[],
+  details: [] as { _uid: string; sku_id: EntityID | undefined; expected_qty: number }[],
 })
+
+function makeDetail(sku_id?: EntityID, expected_qty = 1) {
+  return { _uid: crypto.randomUUID(), sku_id, expected_qty }
+}
 
 function openCreate() {
   editDialog.editingId = ''
   editForm.warehouse_id = undefined
   editForm.remark = ''
-  editForm.details = [{ sku_id: undefined, expected_qty: 1 }]
+  editForm.details = [makeDetail()]
   editDialog.visible = true
 }
 
@@ -302,12 +306,12 @@ async function openEdit(row: InboundOrderItem) {
   const detail = await getInboundOrder(row.id)
   editForm.warehouse_id = detail.order.warehouse_id
   editForm.remark = detail.order.remark
-  editForm.details = (detail.details ?? []).map((d) => ({ sku_id: d.sku_id, expected_qty: d.expected_qty }))
-  if (editForm.details.length === 0) editForm.details = [{ sku_id: undefined, expected_qty: 1 }]
+  editForm.details = (detail.details ?? []).map((d) => makeDetail(d.sku_id, d.expected_qty))
+  if (editForm.details.length === 0) editForm.details = [makeDetail()]
 }
 
 function addDetail() {
-  editForm.details.push({ sku_id: undefined, expected_qty: 1 })
+  editForm.details.push(makeDetail())
 }
 
 function removeDetail(index: number) {
@@ -599,7 +603,7 @@ onUnmounted(stopPolling)
         </el-form-item>
         <el-form-item label="明细" required>
           <div class="detail-editor">
-            <div v-for="(item, index) in editForm.details" :key="index" class="detail-row">
+            <div v-for="(item, index) in editForm.details" :key="item._uid" class="detail-row">
               <el-select v-model="item.sku_id" placeholder="选择货品" filterable style="width: 320px">
                 <el-option v-for="s in skuOptions" :key="s.id" :label="s.label" :value="s.id" />
               </el-select>

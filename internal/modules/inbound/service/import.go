@@ -13,6 +13,7 @@ import (
 	"gowms/internal/modules/inbound/dto"
 	"gowms/internal/modules/inbound/model"
 	sysmodel "gowms/internal/modules/system/model"
+	"gowms/internal/pkg/concurrent"
 	"gowms/internal/pkg/errcode"
 	"gowms/internal/pkg/log"
 	"gowms/internal/pkg/snowflake"
@@ -52,7 +53,7 @@ func (s *Service) Import(ctx context.Context, fileName string, data []byte) (*dt
 	if err := s.repo.CreateImportTask(ctx, s.tm.DB(), t); err != nil {
 		return nil, err
 	}
-	go s.processImport(taskID) // 异步执行
+	concurrent.SafeGo(ctx, func() { s.processImport(taskID) }) // 异步执行，带 panic 恢复
 	return &dto.ImportResp{TaskID: taskID}, nil
 }
 
@@ -80,22 +81,29 @@ func (s *Service) processImport(taskID string) {
 	}
 	// 心跳：长任务定期刷新 updated_at，防止被悬挂补偿误判
 	stopHeartbeat := make(chan struct{})
-	go func() {
+	concurrent.SafeGo(ctx, func() {
 		t := time.NewTicker(importHeartbeatInterval)
 		defer t.Stop()
 		for {
 			select {
 			case <-t.C:
-				_ = s.repo.TouchImport(s.tm.DB(), taskID)
+				if err := s.repo.TouchImport(s.tm.DB(), taskID); err != nil {
+					log.L().Warn("import heartbeat touch failed", "task_id", taskID, "err", err)
+				}
 			case <-stopHeartbeat:
 				return
 			}
 		}
-	}()
+	})
 	defer close(stopHeartbeat)
 
 	t, err := s.repo.GetImportTask(ctx, s.tm.DB(), taskID)
 	if err != nil {
+		// 任务已被抢占到 PROCESSING 但读取失败：主动复位为 PENDING，避免状态卡死等待补偿器超时
+		log.L().Error("get import task after acquiring PROCESSING failed, reset to PENDING", "task_id", taskID, "err", err)
+		if _, resetErr := s.repo.ResetProcessingToPending(s.tm.DB(), taskID); resetErr != nil {
+			log.L().Error("reset processing import to pending failed", "task_id", taskID, "err", resetErr)
+		}
 		return
 	}
 	total, success, fail, errMsg := s.doImport(ctx, t)
@@ -173,7 +181,7 @@ func (s *Service) doImport(ctx context.Context, t *model.ImportTask) (total, suc
 }
 
 func (s *Service) StartCompensator(ctx context.Context) {
-	go func() {
+	concurrent.SafeGo(ctx, func() {
 		ticker := time.NewTicker(compensateScanInterval)
 		defer ticker.Stop()
 		for {
@@ -184,7 +192,7 @@ func (s *Service) StartCompensator(ctx context.Context) {
 				s.compensateOnce()
 			}
 		}
-	}()
+	})
 }
 
 func (s *Service) compensateOnce() {
@@ -216,6 +224,6 @@ func (s *Service) compensateOnce() {
 			log.L().Warn("stale processing import reset", "task_id", t.TaskID)
 		}
 		// PENDING：CAS 抢占后重跑
-		go s.processImport(t.TaskID)
+		concurrent.SafeGo(ctx, func() { s.processImport(t.TaskID) })
 	}
 }

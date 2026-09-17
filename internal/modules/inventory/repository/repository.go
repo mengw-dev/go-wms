@@ -7,6 +7,7 @@ import (
 	"gorm.io/gorm/clause"
 
 	"gowms/internal/modules/inventory/model"
+	"gowms/internal/pkg/dbutil"
 )
 
 type Repository struct{}
@@ -128,7 +129,7 @@ func (r *Repository) List(ctx context.Context, db *gorm.DB, f *QueryFilter) ([]*
 	}
 	if f.SKUKeyword != "" {
 		q = q.Where("sku_id IN (SELECT id FROM wms_sku WHERE deleted_at IS NULL AND (code LIKE ? OR name LIKE ? OR barcode LIKE ?))",
-			"%"+f.SKUKeyword+"%", "%"+f.SKUKeyword+"%", "%"+f.SKUKeyword+"%")
+			"%"+dbutil.LikePattern(f.SKUKeyword)+"%", "%"+dbutil.LikePattern(f.SKUKeyword)+"%", "%"+dbutil.LikePattern(f.SKUKeyword)+"%")
 	}
 	var total int64
 	if err := q.Count(&total).Error; err != nil {
@@ -167,7 +168,7 @@ func (r *Repository) ListTrans(ctx context.Context, db *gorm.DB, inventoryID int
 		q = q.Where("inventory_id = ?", inventoryID)
 	}
 	if orderNo != "" {
-		q = q.Where("order_no LIKE ?", "%"+orderNo+"%")
+		q = q.Where("order_no LIKE ?", "%"+dbutil.LikePattern(orderNo)+"%")
 	}
 	if transType != "" {
 		q = q.Where("trans_type = ?", transType)

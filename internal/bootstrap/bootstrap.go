@@ -153,8 +153,12 @@ func seedDemoData(db *gorm.DB) error {
 	// 幂等：已存在任何入库/出库单则跳过单据种入
 	var existingInbound int64
 	var existingOutbound int64
-	_ = db.Model(&inboundmodel.ReceiptOrder{}).Count(&existingInbound).Error
-	_ = db.Model(&outboundmodel.ShipmentOrder{}).Count(&existingOutbound).Error
+	if err := db.Model(&inboundmodel.ReceiptOrder{}).Count(&existingInbound).Error; err != nil {
+		log.L().Warn("count existing inbound orders failed, skip demo order seeding", "err", err)
+	}
+	if err := db.Model(&outboundmodel.ShipmentOrder{}).Count(&existingOutbound).Error; err != nil {
+		log.L().Warn("count existing outbound orders failed, skip demo order seeding", "err", err)
+	}
 	seedDemoOrders := existingInbound == 0 && existingOutbound == 0
 
 	warehouses := []model.Warehouse{

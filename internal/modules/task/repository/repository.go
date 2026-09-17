@@ -7,6 +7,7 @@ import (
 	"gorm.io/gorm/clause"
 
 	"gowms/internal/modules/task/model"
+	"gowms/internal/pkg/dbutil"
 )
 
 type Repository struct{}
@@ -84,7 +85,7 @@ func (r *Repository) List(ctx context.Context, db *gorm.DB, orderID int64, taskT
 		q = q.Where("status = ?", status)
 	}
 	if keyword != "" {
-		q = q.Where("task_no LIKE ? OR order_no LIKE ?", "%"+keyword+"%", "%"+keyword+"%")
+		q = q.Where("task_no LIKE ? OR order_no LIKE ?", "%"+dbutil.LikePattern(keyword)+"%", "%"+dbutil.LikePattern(keyword)+"%")
 	}
 	var total int64
 	if err := q.Count(&total).Error; err != nil {

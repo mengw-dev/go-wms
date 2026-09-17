@@ -7,6 +7,7 @@ import (
 	"gorm.io/gorm/clause"
 
 	"gowms/internal/modules/outbound/model"
+	"gowms/internal/pkg/dbutil"
 )
 
 type Repository struct{}
@@ -124,7 +125,7 @@ func (r *Repository) ListOrders(ctx context.Context, db *gorm.DB, warehouseID in
 		q = q.Where("status = ?", status)
 	}
 	if keyword != "" {
-		q = q.Where("order_no LIKE ? OR biz_order_no LIKE ?", "%"+keyword+"%", "%"+keyword+"%")
+		q = q.Where("order_no LIKE ? OR biz_order_no LIKE ?", "%"+dbutil.LikePattern(keyword)+"%", "%"+dbutil.LikePattern(keyword)+"%")
 	}
 	if createdAtFrom != "" {
 		q = q.Where("created_at >= ?", createdAtFrom)
