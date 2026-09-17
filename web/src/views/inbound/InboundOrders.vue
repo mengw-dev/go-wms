@@ -3,7 +3,7 @@ import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, genFileId } from 'element-plus'
 import type { UploadFile, UploadRawFile } from 'element-plus'
-import { ArrowDown, CloseBold, Delete, Files, Promotion, Select } from '@element-plus/icons-vue'
+import { Delete, Files } from '@element-plus/icons-vue'
 import {
   approveInboundOrder,
   batchApproveInboundOrders,
@@ -17,6 +17,7 @@ import {
   getImportStatus,
   getInboundOrder,
   importInboundExcel,
+  listImports,
   listInboundOrders,
   submitInboundOrder,
   updateInboundOrder,
@@ -34,6 +35,7 @@ const router = useRouter()
 const warehouseOptions = ref<IdOption[]>([])
 const warehouseMap = ref<Record<EntityID, string>>({})
 const skuOptions = ref<IdOption[]>([])
+const importBatchOptions = ref<{ task_id: string; label: string }[]>([])
 
 onMounted(async () => {
   warehouseOptions.value = await loadWarehouseOptions()
@@ -43,6 +45,17 @@ onMounted(async () => {
     id,
     label: `${sku.code} ${sku.name}`,
   }))
+  // 加载最近 20 条历史导入批次，供下拉筛选
+  try {
+    const imports = await listImports(20)
+    importBatchOptions.value = imports.map((t: ImportTaskItem) => {
+      const statusMap: Record<string, string> = { PENDING: '待处理', PROCESSING: '处理中', COMPLETED: '完成', FAILED: '失败' }
+      const date = new Date(Date.parse((t as unknown as { created_at?: string }).created_at || '')).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+      return { task_id: t.task_id, label: `${t.task_id} (${date} · ${statusMap[t.status] || t.status} · ${t.success_rows}/${t.total_rows})` }
+    })
+  } catch {
+    // 后端未部署或没有导入历史时静默忽略，不影响主功能
+  }
   load()
 })
 
@@ -56,6 +69,7 @@ const query = reactive({
   warehouse_id: '' as EntityID | '',
   status: '',
   keyword: '',
+  import_task_id: '',
 })
 
 async function load() {
@@ -71,6 +85,16 @@ async function load() {
 
 function search() {
   query.page = 1
+  load()
+}
+
+function resetSearch() {
+  query.page = 1
+  query.page_size = 10
+  query.warehouse_id = ''
+  query.status = ''
+  query.keyword = ''
+  query.import_task_id = ''
   load()
 }
 
@@ -147,14 +171,6 @@ const tableRef = ref()
 
 function onSelectionChange(rows: InboundOrderItem[]) {
   selectedRows.value = rows
-}
-
-function onBatchCommand(cmd: string) {
-  if (cmd === 'delete') onBatchDelete()
-  else if (cmd === 'submit') onBatchSubmit()
-  else if (cmd === 'approve') onBatchApprove()
-  else if (cmd === 'cancel') onBatchCancel()
-  else if (cmd === 'batch-by-task' && singleImportBatch.value) onBatchDeleteByTask(singleImportBatch.value)
 }
 
 // 动态计算可用批量操作：只要选中单据中"至少有一张能做"就显示按钮
@@ -424,63 +440,49 @@ onUnmounted(stopPolling)
           <el-option v-for="s in INBOUND_STATUS_OPTIONS" :key="s" :label="statusText(s)" :value="s" />
         </el-select>
       </el-form-item>
+      <el-form-item label="批次号">
+        <el-select v-model="query.import_task_id" placeholder="全部" clearable filterable style="width: 320px" @change="search">
+          <el-option
+            v-for="b in importBatchOptions"
+            :key="b.task_id"
+            :label="b.label"
+            :value="b.task_id"
+          />
+        </el-select>
+      </el-form-item>
       <el-form-item label="单号">
         <el-input v-model="query.keyword" placeholder="单号模糊搜索" clearable style="width: 180px" @keyup.enter="search" @clear="search" />
       </el-form-item>
       <el-form-item>
         <el-button type="primary" @click="search">查询</el-button>
+        <el-button @click="resetSearch">重置</el-button>
       </el-form-item>
     </el-form>
 
     <div class="toolbar">
-      <el-button v-permission="'wms:inbound:create'" type="primary" @click="openCreate">新建入库单</el-button>
-      <el-button v-permission="'wms:inbound:create'" type="success" plain @click="openImport">Excel 导入</el-button>
-      <el-dropdown trigger="click" @command="onBatchCommand">
-        <el-button plain>
-          批量操作
-          <el-icon class="el-icon--right"><arrow-down /></el-icon>
-        </el-button>
-        <template #dropdown>
-          <el-dropdown-menu>
-            <el-dropdown-item command="delete" :disabled="!availableBatchOps.delete">
-              <el-icon><Delete /></el-icon>批量删除<span v-if="availableBatchOps.delete" class="badge-hint">(DRAFT)</span>
-            </el-dropdown-item>
-            <el-dropdown-item command="submit" :disabled="!availableBatchOps.submit">
-              <el-icon><Promotion /></el-icon>批量提交<span v-if="availableBatchOps.submit" class="badge-hint">(DRAFT)</span>
-            </el-dropdown-item>
-            <el-dropdown-item command="approve" :disabled="!availableBatchOps.approve">
-              <el-icon><Select /></el-icon>批量审核<span v-if="availableBatchOps.approve" class="badge-hint">(SUBMITTED)</span>
-            </el-dropdown-item>
-            <el-dropdown-item command="cancel" :disabled="!availableBatchOps.cancel">
-              <el-icon><CloseBold /></el-icon>批量作废
-            </el-dropdown-item>
-            <el-dropdown-item v-if="singleImportBatch" command="batch-by-task" :divider="true">
-              <el-icon><Files /></el-icon>按批次删除（{{ singleImportBatch }}）
-            </el-dropdown-item>
-          </el-dropdown-menu>
-        </template>
-      </el-dropdown>
-      <span v-if="selectedRows.length > 0" class="selected-hint">已选 {{ selectedRows.length }} 项</span>
+      <div class="toolbar-left">
+        <el-button v-permission="'wms:inbound:create'" type="primary" @click="openCreate">新建入库单</el-button>
+        <el-button v-permission="'wms:inbound:create'" type="success" plain @click="openImport">Excel 导入</el-button>
+      </div>
+      <div class="toolbar-right" v-if="selectedRows.length > 0">
+        <span class="selected-hint">已选 {{ selectedRows.length }} 项</span>
+        <el-button v-if="availableBatchOps.delete" type="danger" link @click="onBatchDelete">删除<span class="badge-hint">(DRAFT)</span></el-button>
+        <el-button v-if="availableBatchOps.submit" type="success" link @click="onBatchSubmit">提交<span class="badge-hint">(DRAFT)</span></el-button>
+        <el-button v-if="availableBatchOps.approve" type="primary" link @click="onBatchApprove">审核<span class="badge-hint">(SUBMITTED)</span></el-button>
+        <el-button v-if="availableBatchOps.cancel" type="danger" link @click="onBatchCancel">作废</el-button>
+        <el-dropdown v-if="singleImportBatch" trigger="click" @command="(cmd: string) => cmd === 'batch-by-task' && onBatchDeleteByTask(singleImportBatch!)">
+          <el-button plain link>
+            <el-icon><Files /></el-icon>按批次删除
+          </el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="batch-by-task">删除批次 {{ singleImportBatch }} 全部 DRAFT</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
+        <el-button link @click="tableRef?.clearSelection()">清除选择</el-button>
+      </div>
     </div>
-
-    <el-alert
-      v-if="selectedRows.length > 0"
-      type="info"
-      class="batch-alert"
-      :closable="false"
-      show-icon
-    >
-      <template #title>
-        <span>已勾选 <strong>{{ selectedRows.length }}</strong> 张入库单</span>
-        <span class="batch-alert-actions">
-          <el-button v-if="availableBatchOps.delete" link type="danger" @click="onBatchDelete">删除</el-button>
-          <el-button v-if="availableBatchOps.submit" link type="success" @click="onBatchSubmit">提交</el-button>
-          <el-button v-if="availableBatchOps.approve" link type="primary" @click="onBatchApprove">审核</el-button>
-          <el-button v-if="availableBatchOps.cancel" link type="danger" @click="onBatchCancel">作废</el-button>
-          <el-button link @click="tableRef?.clearSelection()">清除选择</el-button>
-        </span>
-      </template>
-    </el-alert>
 
     <el-table ref="tableRef" v-loading="loading" :data="list" border stripe @selection-change="onSelectionChange">
       <el-table-column type="selection" width="42" />
@@ -643,21 +645,29 @@ onUnmounted(stopPolling)
 </template>
 
 <style scoped>
-.selected-hint {
-  margin-left: 12px;
-  font-size: 13px;
-  color: var(--el-color-primary);
-  font-weight: 500;
-}
-
-.batch-alert {
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   margin-bottom: 12px;
 }
 
-.batch-alert-actions {
-  margin-left: 16px;
-  display: inline-flex;
-  gap: 4px;
+.toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.selected-hint {
+  font-size: 13px;
+  color: var(--el-color-primary);
+  font-weight: 500;
 }
 
 .badge-hint {

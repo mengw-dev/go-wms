@@ -2,7 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowDown, CloseBold, Delete, Promotion, Select } from '@element-plus/icons-vue'
+import { Delete } from '@element-plus/icons-vue'
 import {
   approveOutboundOrder,
   batchApproveOutboundOrders,
@@ -120,13 +120,6 @@ const tableRef = ref()
 
 function onSelectionChange(rows: OutboundOrderItem[]) {
   selectedRows.value = rows
-}
-
-function onBatchCommand(cmd: string) {
-  if (cmd === 'delete') onBatchDelete()
-  else if (cmd === 'submit') onBatchSubmit()
-  else if (cmd === 'approve') onBatchApprove()
-  else if (cmd === 'cancel') onBatchCancel()
 }
 
 // 动态计算可用批量操作：只要"至少有一张能做"就显示按钮
@@ -269,50 +262,18 @@ function openPick(row: OutboundOrderItem) {
     </el-form>
 
     <div class="toolbar">
-      <el-button v-permission="'wms:outbound:create'" type="primary" @click="openCreate">新建出库单</el-button>
-      <el-dropdown trigger="click" @command="onBatchCommand">
-        <el-button plain>
-          批量操作
-          <el-icon class="el-icon--right"><arrow-down /></el-icon>
-        </el-button>
-        <template #dropdown>
-          <el-dropdown-menu>
-            <el-dropdown-item command="delete" :disabled="!availableBatchOps.delete">
-              <el-icon><Delete /></el-icon>批量删除
-            </el-dropdown-item>
-            <el-dropdown-item command="submit" :disabled="!availableBatchOps.submit">
-              <el-icon><Promotion /></el-icon>批量提交
-            </el-dropdown-item>
-            <el-dropdown-item command="approve" :disabled="!availableBatchOps.approve">
-              <el-icon><Select /></el-icon>批量审核
-            </el-dropdown-item>
-            <el-dropdown-item command="cancel" :disabled="!availableBatchOps.cancel">
-              <el-icon><CloseBold /></el-icon>批量作废
-            </el-dropdown-item>
-          </el-dropdown-menu>
-        </template>
-      </el-dropdown>
-      <span v-if="selectedRows.length > 0" class="selected-hint">已选 {{ selectedRows.length }} 项</span>
+      <div class="toolbar-left">
+        <el-button v-permission="'wms:outbound:create'" type="primary" @click="openCreate">新建出库单</el-button>
+      </div>
+      <div class="toolbar-right" v-if="selectedRows.length > 0">
+        <span class="selected-hint">已选 {{ selectedRows.length }} 项</span>
+        <el-button v-if="availableBatchOps.delete" type="danger" link @click="onBatchDelete">删除</el-button>
+        <el-button v-if="availableBatchOps.submit" type="success" link @click="onBatchSubmit">提交</el-button>
+        <el-button v-if="availableBatchOps.approve" type="primary" link @click="onBatchApprove">审核</el-button>
+        <el-button v-if="availableBatchOps.cancel" type="danger" link @click="onBatchCancel">作废</el-button>
+        <el-button link @click="tableRef?.clearSelection()">清除选择</el-button>
+      </div>
     </div>
-
-    <el-alert
-      v-if="selectedRows.length > 0"
-      type="info"
-      class="batch-alert"
-      :closable="false"
-      show-icon
-    >
-      <template #title>
-        <span>已勾选 <strong>{{ selectedRows.length }}</strong> 张出库单</span>
-        <span class="batch-alert-actions">
-          <el-button v-if="availableBatchOps.delete" link type="danger" @click="onBatchDelete">删除</el-button>
-          <el-button v-if="availableBatchOps.submit" link type="success" @click="onBatchSubmit">提交</el-button>
-          <el-button v-if="availableBatchOps.approve" link type="primary" @click="onBatchApprove">审核</el-button>
-          <el-button v-if="availableBatchOps.cancel" link type="danger" @click="onBatchCancel">作废</el-button>
-          <el-button link @click="tableRef?.clearSelection()">清除选择</el-button>
-        </span>
-      </template>
-    </el-alert>
 
     <el-table ref="tableRef" v-loading="loading" :data="list" border stripe @selection-change="onSelectionChange">
       <el-table-column type="selection" width="42" />
@@ -419,21 +380,29 @@ function openPick(row: OutboundOrderItem) {
 </template>
 
 <style scoped>
-.selected-hint {
-  margin-left: 12px;
-  font-size: 13px;
-  color: var(--el-color-primary);
-  font-weight: 500;
-}
-
-.batch-alert {
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   margin-bottom: 12px;
 }
 
-.batch-alert-actions {
-  margin-left: 16px;
-  display: inline-flex;
-  gap: 4px;
+.toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.selected-hint {
+  font-size: 13px;
+  color: var(--el-color-primary);
+  font-weight: 500;
 }
 
 .detail-editor {
