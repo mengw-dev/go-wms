@@ -34,5 +34,5 @@ func (s *Service) Get(ctx context.Context, id int64) (*OrderDetail, error) {
 }
 
 func (s *Service) List(ctx context.Context, q *dto.OrderQuery) ([]*model.ReceiptOrder, int64, error) {
-	return s.repo.ListOrders(ctx, s.tm.DB(), q.WarehouseID, q.Status, q.Keyword, q.CreatedAtFrom, q.CreatedAtTo, q.Page, q.PageSize)
+	return s.repo.ListOrders(ctx, s.tm.DB(), q.WarehouseID, q.Status, q.Keyword, q.ImportTaskID, q.CreatedAtFrom, q.CreatedAtTo, q.Page, q.PageSize)
 }

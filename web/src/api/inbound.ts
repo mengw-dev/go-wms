@@ -68,6 +68,11 @@ export function getImportStatus(taskId: string) {
   return get<ImportTaskItem>(`/inbound/import/${taskId}`)
 }
 
+/** 列出最近 limit 条历史导入任务（下拉筛选器专用） */
+export function listImports(limit = 20) {
+  return get<ImportTaskItem[]>('/inbound/imports', { limit })
+}
+
 /** 批量删除入库单（仅 DRAFT） */
 export function batchDeleteInboundOrders(ids: EntityID[]) {
   return post<BatchOperResult>('/inbound/orders/batch-delete', { ids })

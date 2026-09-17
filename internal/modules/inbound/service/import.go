@@ -64,6 +64,14 @@ func (s *Service) GetImport(ctx context.Context, taskID string) (*model.ImportTa
 	return t, nil
 }
 
+// ListImports 返回最近 limit 条历史导入任务（下拉筛选器专用，默认 20 条）。
+func (s *Service) ListImports(ctx context.Context, limit int) ([]*model.ImportTask, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	return s.repo.ListImportTasks(ctx, s.tm.DB(), limit)
+}
+
 func (s *Service) processImport(taskID string) {
 	ctx := context.Background()
 	n, err := s.repo.CASImportStatus(s.tm.DB(), taskID, model.ImportPending, model.ImportProcessing)

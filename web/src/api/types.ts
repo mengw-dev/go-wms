@@ -327,6 +327,7 @@ export interface InboundOrderListQuery extends PageQuery {
   warehouse_id?: EntityID | ''
   status?: string
   keyword?: string
+  import_task_id?: string
   created_at_from?: string
   created_at_to?: string
 }

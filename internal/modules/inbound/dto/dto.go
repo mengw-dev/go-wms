@@ -19,6 +19,7 @@ type OrderQuery struct {
 	WarehouseID   int64  `form:"warehouse_id"`
 	Status        string `form:"status"`
 	Keyword       string `form:"keyword"`
+	ImportTaskID  string `form:"import_task_id"`
 	CreatedAtFrom string `form:"created_at_from"`
 	CreatedAtTo   string `form:"created_at_to"`
 	Page          int    `form:"page,default=1" binding:"min=1"`

@@ -47,6 +47,7 @@ func (h *Handler) RegisterRoutes(auth *gin.RouterGroup, checker middleware.Perms
 
 	g.POST("/tasks/:id/putaway", perm("putaway"), h.putaway)
 	g.POST("/import", perm("create"), h.importExcel)
+	g.GET("/imports", read, h.listImports)
 	g.GET("/import/:taskId", read, h.importStatus)
 	g.DELETE("/import/:taskId/orders", perm("create"), h.deleteByImportTask)
 }
@@ -287,4 +288,14 @@ func (h *Handler) importStatus(c *gin.Context) {
 		return
 	}
 	response.OK(c, task)
+}
+
+func (h *Handler) listImports(c *gin.Context) {
+	limit, _ := httpx.QueryInt(c, "limit", 20, 1, 200)
+	list, err := h.svc.ListImports(c.Request.Context(), limit)
+	if err != nil {
+		response.Fail(c, err)
+		return
+	}
+	response.OK(c, list)
 }

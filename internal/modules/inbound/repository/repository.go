@@ -121,7 +121,7 @@ func (r *Repository) IncrOrderReceive(tx *gorm.DB, id int64, version int, qtyDel
 	return res.RowsAffected, res.Error
 }
 
-func (r *Repository) ListOrders(ctx context.Context, db *gorm.DB, warehouseID int64, status, keyword, createdAtFrom, createdAtTo string, page, size int) ([]*model.ReceiptOrder, int64, error) {
+func (r *Repository) ListOrders(ctx context.Context, db *gorm.DB, warehouseID int64, status, keyword, importTaskID, createdAtFrom, createdAtTo string, page, size int) ([]*model.ReceiptOrder, int64, error) {
 	q := db.WithContext(ctx).Model(&model.ReceiptOrder{})
 	if warehouseID > 0 {
 		q = q.Where("warehouse_id = ?", warehouseID)
@@ -131,6 +131,9 @@ func (r *Repository) ListOrders(ctx context.Context, db *gorm.DB, warehouseID in
 	}
 	if keyword != "" {
 		q = q.Where("order_no LIKE ?", "%"+keyword+"%")
+	}
+	if importTaskID != "" {
+		q = q.Where("import_task_id = ?", importTaskID)
 	}
 	if createdAtFrom != "" {
 		q = q.Where("created_at >= ?", createdAtFrom)
@@ -205,4 +208,15 @@ func (r *Repository) ListStaleImports(ctx context.Context, db *gorm.DB, pendingB
 // ResetProcessingToPending 悬挂 PROCESSING 任务复位为 PENDING（CAS）。
 func (r *Repository) ResetProcessingToPending(db *gorm.DB, taskID string) (int64, error) {
 	return r.CASImportStatus(db, taskID, model.ImportProcessing, model.ImportPending)
+}
+
+// ListImportTasks 返回所有历史导入任务（按创建时间倒序，最多 returnLimit 条）。
+func (r *Repository) ListImportTasks(ctx context.Context, db *gorm.DB, returnLimit int) ([]*model.ImportTask, error) {
+	var list []*model.ImportTask
+	q := db.WithContext(ctx).Model(&model.ImportTask{}).Order("created_at DESC")
+	if returnLimit > 0 {
+		q = q.Limit(returnLimit)
+	}
+	err := q.Find(&list).Error
+	return list, err
 }
