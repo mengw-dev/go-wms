@@ -54,6 +54,7 @@ func (a *App) NewRouter() (*gin.Engine, error) {
 	pub := api.Group("")
 	// 需登录的路由：JWT → 操作日志审计
 	auth := api.Group("", middleware.Auth(a.Config.JWT.Secret, a.SystemAPI), middleware.OperLog(a.SystemAPI))
+	auth.Use(middleware.DemoSession(a.DemoService))
 
 	a.SysHandler.RegisterRoutes(pub, auth, a.SystemAPI)
 	a.BasicHandler.RegisterRoutes(auth, a.SystemAPI)
@@ -63,6 +64,7 @@ func (a *App) NewRouter() (*gin.Engine, error) {
 	a.OutboundHandler.RegisterRoutes(auth, a.SystemAPI)
 	a.OutboundHandler.RegisterIntegrationRoutes(pub, a.Config.Integration.APIKey)
 	a.StocktakeHandler.RegisterRoutes(auth, a.SystemAPI)
+	a.DemoHandler.RegisterRoutes(auth, a.SystemAPI)
 
 	return r, nil
 }

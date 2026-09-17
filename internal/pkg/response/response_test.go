@@ -29,6 +29,10 @@ func TestHTTPStatus(t *testing.T) {
 		{errcode.UserOrPwdWrong.Code, 400},     // 10002 登录失败不是 401（未携带凭据/凭据错误）
 		{errcode.IntegrationUnauthorized.Code, 401},
 		{errcode.IntegrationDisabled.Code, 503},
+		{errcode.DemoDisabled.Code, 503},
+		{errcode.DemoDataMissing.Code, 503},
+		{errcode.DemoBusy.Code, 423},
+		{errcode.DemoSessionInvalid.Code, 423},
 	}
 	for _, c := range cases {
 		if got := httpStatus(c.code); got != c.want {

@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/golang-migrate/migrate/v4"
@@ -38,7 +39,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("open mysql: %v", err)
 	}
-	if err := sqlDB.Ping(); err != nil {
+	if err := waitForMySQL(sqlDB, 90*time.Second); err != nil {
 		log.Fatalf("ping mysql: %v", err)
 	}
 	defer sqlDB.Close()
@@ -73,6 +74,9 @@ func main() {
 			defer sqlSeedDB.Close()
 			if err := bootstrap.Seed(db); err != nil {
 				log.Fatalf("seed: %v", err)
+			}
+			if err := bootstrap.SeedDemoAccount(db, cfg); err != nil {
+				log.Fatalf("seed demo account: %v", err)
 			}
 		}
 		log.Println("migration up completed")
@@ -109,6 +113,22 @@ func usage() {
 	fmt.Fprintln(os.Stderr, "  migrate -seed up")
 	fmt.Fprintln(os.Stderr, "  migrate -steps 1 down")
 	os.Exit(2)
+}
+
+func waitForMySQL(db *sql.DB, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	var lastErr error
+	for {
+		if err := db.Ping(); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+		if time.Now().After(deadline) {
+			return lastErr
+		}
+		time.Sleep(2 * time.Second)
+	}
 }
 
 func migrationDSN(dsn string) string {

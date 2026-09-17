@@ -3,6 +3,7 @@ import { reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { login } from '@/api/auth'
+import { acquireDemoSession } from '@/api/demo'
 import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
@@ -29,9 +30,15 @@ async function submit() {
   try {
     const result = await login({ username: form.username, password: form.password })
     auth.setAuth(result)
+    if ((result.perms ?? []).includes('wms:demo')) {
+      const session = await acquireDemoSession()
+      auth.setDemoSession(session)
+    }
     ElMessage.success('登录成功')
     const redirect = route.query.redirect
     router.push(typeof redirect === 'string' && redirect.startsWith('/') ? redirect : '/')
+  } catch {
+    auth.clear()
   } finally {
     loading.value = false
   }

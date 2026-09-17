@@ -221,13 +221,55 @@ X-API-Key: <WMS_INTEGRATION_API_KEY>
 | POST | `/stocktake/orders/:id/approve` | `wms:stocktake:approve` | 审核：锁内重算差异，调整库存 + ADJUST 流水 |
 | POST | `/stocktake/orders/:id/cancel` | `wms:stocktake:cancel` | 取消 |
 
-## 9. 健康检查
+## 9. 演示模式
+
+演示接口都需要 `wms:demo` 权限；除 `session/acquire` 外，还必须携带请求头 `X-Demo-Session`。
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| POST | `/demo/session/acquire` | 获取单实例演示会话；已有会话时返回 HTTP 423 |
+| POST | `/demo/session/heartbeat` | 续期当前演示会话 |
+| POST | `/demo/session/release` | 释放会话并恢复初始数据 |
+| GET | `/demo/session/status` | 查询会话剩余时间 |
+| POST | `/demo/run/inbound` | 执行入库、收货、上架场景 |
+| POST | `/demo/run/outbound` | 执行出库 FIFO 分配、拣货场景 |
+| POST | `/demo/run/stocktake` | 执行盘点、差异调整场景 |
+| POST | `/demo/run/full` | 依次执行上述完整流程 |
+| POST | `/demo/reset` | 手动恢复初始数据，保留当前会话 |
+
+示例：
+
+```http
+POST /api/v1/demo/session/acquire
+Authorization: Bearer <demo-token>
+```
+
+```json
+{
+  "code": 0,
+  "msg": "success",
+  "data": {
+    "session_id": "uuid",
+    "expires_in": 300
+  }
+}
+```
+
+```http
+POST /api/v1/demo/run/full
+Authorization: Bearer <demo-token>
+X-Demo-Session: uuid
+```
+
+详细部署和使用方式见 [demo.md](demo.md)。
+
+## 10. 健康检查
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | GET | `/healthz` | DB 必须可用；Redis 不可用不影响（已降级） |
 
-## 10. 调试建议
+## 11. 调试建议
 
 ```bash
 # 1. 登录取 token

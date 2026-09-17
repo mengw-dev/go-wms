@@ -41,3 +41,9 @@ metrics:
 
 integration:
   api_key: "change-this-integration-api-key"
+
+demo:
+  enabled: false
+  username: "demo"
+  password: "demo123456"
+  session_ttl_seconds: 300

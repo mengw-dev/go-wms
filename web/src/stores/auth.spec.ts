@@ -11,6 +11,12 @@ describe('auth store permissions', () => {
       removeItem: (key: string) => storage.delete(key),
       clear: () => storage.clear(),
     })
+    vi.stubGlobal('sessionStorage', {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => storage.set(key, value),
+      removeItem: (key: string) => storage.delete(key),
+      clear: () => storage.clear(),
+    })
     setActivePinia(createPinia())
   })
 

@@ -26,6 +26,9 @@ service.interceptors.request.use((config) => {
   if (auth.token) {
     config.headers.Authorization = `Bearer ${auth.token}`
   }
+  if (auth.isDemo && auth.demoSessionId) {
+    config.headers['X-Demo-Session'] = auth.demoSessionId
+  }
   return config
 })
 

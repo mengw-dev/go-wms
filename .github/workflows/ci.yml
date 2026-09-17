@@ -149,6 +149,9 @@ jobs:
       WMS_JWT_SECRET: e2e-jwt-secret-0123456789abcdef0123456789abcdef
       WMS_INTEGRATION_API_KEY: e2e-integration-api-key-0123456789abcdef
       WMS_SERVER_MODE: debug
+      WMS_DEMO_ENABLED: "true"
+      WMS_DEMO_USERNAME: demo
+      WMS_DEMO_PASSWORD: demo123456
       E2E_BASE_URL: http://127.0.0.1:5173
     steps:
       - uses: actions/checkout@v4

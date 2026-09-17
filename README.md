@@ -46,6 +46,7 @@ wms/
 │   ├── bootstrap/           # DB、Redis、迁移、种子数据
 │   ├── modules/
 │   │   ├── basic/           # 仓库、库位、SKU
+│   │   ├── demo/            # 演示会话、流程模拟、数据重置
 │   │   ├── inbound/         # 入库单、收货、上架、Excel
 │   │   ├── inventory/       # 库存、流水、FIFO 与锁库
 │   │   ├── outbound/        # 出库单、分配、拣货、发货
@@ -181,6 +182,29 @@ make compose-infra
 make compose-down
 ```
 
+## 演示模式
+
+项目内置独立演示模式，适合把项目临时开放给 HR 或面试官体验：
+
+- 演示账号默认：`demo / demo123456`
+- 右下角“演示控制台”可运行入库、出库、盘点或一键完整流程
+- “重置数据”和“退出并重置”会恢复初始演示数据
+- 同一实例同一时间只允许一个演示会话，避免多个体验者互相覆盖数据
+- 支持 A/B 两套完全隔离的演示实例，端口和 Volume 均不共享
+
+详细配置、双实例启动命令和 HR 使用说明见 [docs/demo.md](docs/demo.md)。
+
+一键启动两个独立演示实例：
+
+```powershell
+.\scripts\windows\start-demo-a.ps1
+.\scripts\windows\start-demo-b.ps1
+```
+
+默认地址分别为 `http://服务器IP:18081` 和 `http://服务器IP:18082`。启动脚本会在 `deploy/env.demo-a`、`deploy/env.demo-b` 中生成随机数据库密码和 JWT 密钥。
+
+> 演示模式不是多租户功能，不应承载真实业务数据。生产环境请按“安全配置”章节加固后关闭或限制演示账号。
+
 ## 配置
 
 本地默认配置位于 `configs/config.yaml`。所有字段均可用环境变量覆盖：
@@ -201,6 +225,10 @@ make compose-down
 | `WMS_REDIS_ADDR` | Redis 地址 | `127.0.0.1:6379` |
 | `WMS_JWT_SECRET` | JWT 密钥，生产环境至少 32 字符 | 开发配置 |
 | `WMS_INTEGRATION_API_KEY` | 外部 OMS/ERP API Key | 开发占位值 |
+| `WMS_DEMO_ENABLED` | 是否启用演示模式 | `false` |
+| `WMS_DEMO_USERNAME` | 演示账号用户名 | `demo` |
+| `WMS_DEMO_PASSWORD` | 演示账号密码 | `demo123456` |
+| `WMS_DEMO_SESSION_TTL_SECONDS` | 演示会话空闲超时秒数 | `300` |
 | `WMS_API_BIND` | API 端口绑定地址 | `127.0.0.1` |
 | `WMS_API_PORT` | API 宿主机映射端口 | `8080` |
 | `WMS_WEB_PORT` | Web 宿主机映射端口 | `80` |

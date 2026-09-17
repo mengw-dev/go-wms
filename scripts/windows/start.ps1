@@ -92,6 +92,22 @@ try {
         $changed = $true
     }
 
+    if (-not $values.Contains("WMS_DEMO_ENABLED") -or [string]::IsNullOrWhiteSpace($values["WMS_DEMO_ENABLED"])) {
+        $values["WMS_DEMO_ENABLED"] = "true"
+        $changed = $true
+    }
+    if (-not $values.Contains("WMS_DEMO_USERNAME") -or [string]::IsNullOrWhiteSpace($values["WMS_DEMO_USERNAME"])) {
+        $values["WMS_DEMO_USERNAME"] = "demo"
+        $changed = $true
+    }
+    if (-not $values.Contains("WMS_DEMO_PASSWORD") -or [string]::IsNullOrWhiteSpace($values["WMS_DEMO_PASSWORD"])) {
+        $values["WMS_DEMO_PASSWORD"] = "demo123456"
+        $changed = $true
+    }
+    if (-not $values.Contains("WMS_DEMO_SESSION_TTL_SECONDS") -or [string]::IsNullOrWhiteSpace($values["WMS_DEMO_SESSION_TTL_SECONDS"])) {
+        $values["WMS_DEMO_SESSION_TTL_SECONDS"] = "300"
+        $changed = $true
+    }
     if ($changed -or -not (Test-Path -LiteralPath $envPath)) {
         Save-DotEnv -Path $envPath -Values $values
         Write-Ok "Generated or repaired .env with secure random values"
@@ -126,6 +142,9 @@ try {
     Write-Host "API:  http://127.0.0.1:$apiPort" -ForegroundColor Green
     Write-Host "User: admin" -ForegroundColor Green
     Write-Host "Pass: admin123" -ForegroundColor Green
+    if ($values["WMS_DEMO_ENABLED"] -eq "true") {
+        Write-Host "Demo: $($values['WMS_DEMO_USERNAME']) / $($values['WMS_DEMO_PASSWORD'])" -ForegroundColor Green
+    }
     Write-Host "Integration API Key is stored in .env as WMS_INTEGRATION_API_KEY." -ForegroundColor Green
     Write-Host "Change the default password immediately after first login." -ForegroundColor Yellow
 

@@ -169,3 +169,11 @@ var (
 	StocktakeNoDetail    = New(60004, "盘点单没有可盘点的库存明细")
 	StocktakeVersionBad  = New(60005, "盘点单已被其他人操作，请刷新重试")
 )
+
+// 演示模式 70000+
+var (
+	DemoDisabled       = New(70001, "演示模式未启用")
+	DemoBusy           = New(70002, "演示环境正在被使用，请稍后重试")
+	DemoSessionInvalid = New(70003, "演示会话已失效，请重新登录")
+	DemoDataMissing    = New(70004, "演示基础数据不存在，请先重置演示数据")
+)

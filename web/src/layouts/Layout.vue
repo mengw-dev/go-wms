@@ -3,6 +3,8 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { changePassword, getProfile } from '@/api/auth'
+import { releaseDemoSession } from '@/api/demo'
+import DemoConsole from '@/components/DemoConsole.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
 
@@ -29,6 +31,9 @@ async function onCommand(command: string) {
       await ElMessageBox.confirm('确定退出登录吗？', '提示', { type: 'warning' })
     } catch {
       return
+    }
+    if (auth.isDemo) {
+      await releaseDemoSession().catch(() => undefined)
     }
     auth.clear()
     ElMessage.success('已退出登录')
@@ -211,6 +216,7 @@ async function submitPassword() {
       </template>
     </el-dialog>
   </el-container>
+  <DemoConsole />
 </template>
 
 <style scoped>

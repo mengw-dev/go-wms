@@ -36,12 +36,17 @@ func main() {
 		os.Exit(1)
 	}
 	if cfg.Server.Mode == "debug" {
-		if err := bootstrap.Migrate(db); err != nil {
+		if err := bootstrap.Migrate(db, cfg); err != nil {
 			logger.Error("auto migrate failed", "err", err)
 			os.Exit(1)
 		}
 	} else {
 		logger.Info("AutoMigrate disabled in release mode; run cmd/migrate before startup")
+		// 每次启动同步演示账号状态：开启时创建/修复，关闭时禁用旧账号。
+		if err := bootstrap.SeedDemoAccount(db, cfg); err != nil {
+			logger.Error("sync demo account failed", "err", err)
+			os.Exit(1)
+		}
 	}
 	rdb := bootstrap.InitRedis(cfg)
 

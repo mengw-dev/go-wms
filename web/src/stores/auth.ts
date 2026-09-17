@@ -1,8 +1,9 @@
 import { defineStore } from 'pinia'
-import type { EntityID, LoginResult, ProfileResult } from '@/api/types'
+import type { DemoSessionInfo, EntityID, LoginResult, ProfileResult } from '@/api/types'
 
 const TOKEN_KEY = 'WMS_TOKEN'
 const USER_KEY = 'WMS_USER'
+const DEMO_SESSION_KEY = 'WMS_DEMO_SESSION'
 
 export interface AuthUser {
   user_id: EntityID
@@ -25,9 +26,12 @@ export const useAuthStore = defineStore('auth', {
   state: () => ({
     token: localStorage.getItem(TOKEN_KEY) || '',
     user: safeParseUser(localStorage.getItem(USER_KEY)),
+    demoSessionId: sessionStorage.getItem(DEMO_SESSION_KEY) || '',
+    demoSessionExpiresIn: 0,
   }),
   getters: {
     isLoggedIn: (state) => !!state.token,
+    isDemo: (state) => (state.user?.perms ?? []).includes('wms:demo'),
     displayName: (state) => state.user?.nickname || state.user?.username || '未知用户',
     perms: (state) => state.user?.perms ?? [],
     hasPerm: (state) => (perm: string) =>
@@ -35,6 +39,7 @@ export const useAuthStore = defineStore('auth', {
   },
   actions: {
     setAuth(result: LoginResult) {
+      this.clearDemoSession()
       this.token = result.token
       this.user = {
         user_id: result.user_id,
@@ -56,7 +61,18 @@ export const useAuthStore = defineStore('auth', {
       }
       localStorage.setItem(USER_KEY, JSON.stringify(this.user))
     },
+    setDemoSession(info: DemoSessionInfo) {
+      this.demoSessionId = info.session_id
+      this.demoSessionExpiresIn = info.expires_in
+      sessionStorage.setItem(DEMO_SESSION_KEY, info.session_id)
+    },
+    clearDemoSession() {
+      this.demoSessionId = ''
+      this.demoSessionExpiresIn = 0
+      sessionStorage.removeItem(DEMO_SESSION_KEY)
+    },
     clear() {
+      this.clearDemoSession()
       this.token = ''
       this.user = null
       localStorage.removeItem(TOKEN_KEY)

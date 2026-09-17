@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -64,11 +65,14 @@ func InitRedis(cfg *config.Config) *redis.Client {
 }
 
 // Migrate 仅供开发和测试使用：AutoMigrate + 种子数据。
-func Migrate(db *gorm.DB) error {
+func Migrate(db *gorm.DB, cfg *config.Config) error {
 	if err := AutoMigrate(db); err != nil {
 		return err
 	}
-	return Seed(db)
+	if err := Seed(db); err != nil {
+		return err
+	}
+	return SeedDemoAccount(db, cfg)
 }
 
 // AutoMigrate 自动迁移表结构 + CHECK 约束。生产环境应使用 cmd/migrate。
@@ -299,5 +303,107 @@ func seedDemoData(db *gorm.DB) error {
 		}
 
 		return nil
+	})
+}
+
+// SeedDemoAccount 幂等创建公开演示账号。只有 WMS_DEMO_ENABLED=true 时才创建。
+func SeedDemoAccount(db *gorm.DB, cfg *config.Config) error {
+	if cfg == nil {
+		return nil
+	}
+	if !cfg.Demo.Enabled {
+		// 关闭演示模式时同步禁用既有演示账号，避免旧账号绕过 DemoSession 中间件。
+		return db.Model(&sysmodel.SysUser{}).Where("username = ?", cfg.Demo.Username).
+			Update("status", 0).Error
+	}
+	const demoPerms = "wms:basic,wms:inventory,wms:task," +
+		"wms:inbound:view,wms:inbound:create,wms:inbound:submit,wms:inbound:approve,wms:inbound:cancel,wms:inbound:receive,wms:inbound:putaway," +
+		"wms:outbound:view,wms:outbound:create,wms:outbound:submit,wms:outbound:approve,wms:outbound:cancel,wms:outbound:pick," +
+		"wms:stocktake:view,wms:stocktake:create,wms:stocktake:stocktake,wms:stocktake:approve,wms:stocktake:cancel,wms:demo"
+
+	var role sysmodel.SysRole
+	err := db.Where("name = ?", "demo").First(&role).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		role = sysmodel.SysRole{Name: "demo", Perms: demoPerms, Remark: "公开演示账号，仅允许业务演示"}
+		if err := db.Create(&role).Error; err != nil {
+			return err
+		}
+	} else if err != nil {
+		return err
+	} else if err := db.Model(&role).Updates(map[string]any{
+		"perms": demoPerms, "remark": "公开演示账号，仅允许业务演示",
+	}).Error; err != nil {
+		return err
+	}
+
+	// 每个实例只保留当前配置的演示账号，避免改用户名后旧演示账号继续绕过单会话锁。
+	var linkedUserIDs []int64
+	if err := db.Model(&sysmodel.SysUserRole{}).Where("role_id = ?", role.ID).
+		Pluck("user_id", &linkedUserIDs).Error; err != nil {
+		return err
+	}
+	if len(linkedUserIDs) > 0 {
+		if err := db.Model(&sysmodel.SysUser{}).
+			Where("id IN ? AND username <> ?", linkedUserIDs, cfg.Demo.Username).
+			Update("status", 0).Error; err != nil {
+			return err
+		}
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(cfg.Demo.Password), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+	var user sysmodel.SysUser
+	err = db.Where("username = ?", cfg.Demo.Username).First(&user).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		user = sysmodel.SysUser{
+			Username: cfg.Demo.Username, PasswordHash: string(hash), Nickname: "演示账号", Status: 1,
+		}
+		if err := db.Create(&user).Error; err != nil {
+			return err
+		}
+	} else if err != nil {
+		return err
+	} else if err := db.Model(&user).Updates(map[string]any{
+		"password_hash": string(hash), "nickname": "演示账号", "status": 1,
+	}).Error; err != nil {
+		return err
+	}
+
+	var link sysmodel.SysUserRole
+	err = db.Where("user_id = ? AND role_id = ?", user.ID, role.ID).First(&link).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return db.Create(&sysmodel.SysUserRole{UserID: user.ID, RoleID: role.ID}).Error
+	}
+	return err
+}
+
+// ResetDemoData 硬删除所有演示业务数据并重新写入默认演示数据。
+// 用户、角色、迁移记录和操作日志不会删除。
+func ResetDemoData(db *gorm.DB) error {
+	return db.Transaction(func(tx *gorm.DB) error {
+		models := []any{
+			&taskmodel.Task{},
+			&outboundmodel.Allocation{},
+			&outboundmodel.ShipmentOrderDetail{},
+			&outboundmodel.ShipmentOrder{},
+			&inboundmodel.ReceiptOrderDetail{},
+			&inboundmodel.ReceiptOrder{},
+			&inboundmodel.ImportTask{},
+			&stocktakemodel.StocktakeDetail{},
+			&stocktakemodel.StocktakeOrder{},
+			&invmodel.InventoryTrans{},
+			&invmodel.Inventory{},
+			&model.Location{},
+			&model.SKU{},
+			&model.Warehouse{},
+		}
+		for _, item := range models {
+			if err := tx.Unscoped().Where("1 = 1").Delete(item).Error; err != nil {
+				return err
+			}
+		}
+		return seedDemoData(tx)
 	})
 }

@@ -16,6 +16,7 @@ type Config struct {
 	Upload      UploadConfig      `mapstructure:"upload"`
 	Metrics     MetricsConfig     `mapstructure:"metrics"`
 	Integration IntegrationConfig `mapstructure:"integration"`
+	Demo        DemoConfig        `mapstructure:"demo"`
 }
 
 type ServerConfig struct {
@@ -64,6 +65,13 @@ type MetricsConfig struct {
 
 type IntegrationConfig struct {
 	APIKey string `mapstructure:"api_key"`
+}
+
+type DemoConfig struct {
+	Enabled           bool   `mapstructure:"enabled"`
+	Username          string `mapstructure:"username"`
+	Password          string `mapstructure:"password"`
+	SessionTTLSeconds int    `mapstructure:"session_ttl_seconds"`
 }
 
 // Load 读取 configs/config.yaml；支持环境变量覆盖（WMS_ 前缀，. 分隔，如 WMS_MYSQL_DSN）。
@@ -144,6 +152,15 @@ func Load(path string) (*Config, error) {
 	}
 	if !strings.HasPrefix(cfg.Metrics.Path, "/") {
 		cfg.Metrics.Path = "/" + cfg.Metrics.Path
+	}
+	if cfg.Demo.Username == "" {
+		cfg.Demo.Username = "demo"
+	}
+	if cfg.Demo.Password == "" {
+		cfg.Demo.Password = "demo123456"
+	}
+	if cfg.Demo.SessionTTLSeconds <= 0 {
+		cfg.Demo.SessionTTLSeconds = 300
 	}
 	return &cfg, nil
 }

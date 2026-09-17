@@ -9,3 +9,5 @@ dist/
 coverage/
 playwright-report/
 test-results/
+deploy/env.demo-a
+deploy/env.demo-b

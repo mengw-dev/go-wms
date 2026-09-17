@@ -485,3 +485,21 @@ export interface StocktakeActualParams {
   detail_id: EntityID
   actual_qty: number
 }
+
+// ---------- 演示模式 ----------
+
+export interface DemoSessionInfo {
+  session_id: string
+  expires_in: number
+}
+
+export interface DemoScenarioStep {
+  title: string
+  detail: string
+}
+
+export interface DemoScenarioResult {
+  name: string
+  summary: string
+  steps: DemoScenarioStep[]
+}

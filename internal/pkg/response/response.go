@@ -60,6 +60,10 @@ func httpStatus(code int) int {
 		return http.StatusUnauthorized
 	case errcode.IntegrationDisabled.Code:
 		return http.StatusServiceUnavailable
+	case errcode.DemoDisabled.Code, errcode.DemoDataMissing.Code:
+		return http.StatusServiceUnavailable
+	case errcode.DemoBusy.Code, errcode.DemoSessionInvalid.Code:
+		return http.StatusLocked
 	case errcode.Internal.Code:
 		return http.StatusInternalServerError
 	case errcode.PayloadTooLarge.Code:
