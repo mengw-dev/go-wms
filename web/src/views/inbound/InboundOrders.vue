@@ -3,7 +3,7 @@ import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, genFileId } from 'element-plus'
 import type { UploadFile, UploadRawFile } from 'element-plus'
-import { Delete, Files } from '@element-plus/icons-vue'
+import { ArrowDown, CloseBold, Delete, Files, Promotion, Select } from '@element-plus/icons-vue'
 import {
   approveInboundOrder,
   batchApproveInboundOrders,
@@ -171,6 +171,14 @@ const tableRef = ref()
 
 function onSelectionChange(rows: InboundOrderItem[]) {
   selectedRows.value = rows
+}
+
+function onBatchCommand(cmd: string) {
+  if (cmd === 'delete') onBatchDelete()
+  else if (cmd === 'submit') onBatchSubmit()
+  else if (cmd === 'approve') onBatchApprove()
+  else if (cmd === 'cancel') onBatchCancel()
+  else if (cmd === 'batch-by-task' && singleImportBatch.value) onBatchDeleteByTask(singleImportBatch.value)
 }
 
 // 动态计算可用批量操作：只要选中单据中"至少有一张能做"就显示按钮
@@ -464,23 +472,34 @@ onUnmounted(stopPolling)
         <el-button v-permission="'wms:inbound:create'" type="primary" @click="openCreate">新建入库单</el-button>
         <el-button v-permission="'wms:inbound:create'" type="success" plain @click="openImport">Excel 导入</el-button>
       </div>
-      <div class="toolbar-right" v-if="selectedRows.length > 0">
-        <span class="selected-hint">已选 {{ selectedRows.length }} 项</span>
-        <el-button v-if="availableBatchOps.delete" type="danger" link @click="onBatchDelete">删除<span class="badge-hint">(DRAFT)</span></el-button>
-        <el-button v-if="availableBatchOps.submit" type="success" link @click="onBatchSubmit">提交<span class="badge-hint">(DRAFT)</span></el-button>
-        <el-button v-if="availableBatchOps.approve" type="primary" link @click="onBatchApprove">审核<span class="badge-hint">(SUBMITTED)</span></el-button>
-        <el-button v-if="availableBatchOps.cancel" type="danger" link @click="onBatchCancel">作废</el-button>
-        <el-dropdown v-if="singleImportBatch" trigger="click" @command="(cmd: string) => cmd === 'batch-by-task' && onBatchDeleteByTask(singleImportBatch!)">
-          <el-button plain link>
-            <el-icon><Files /></el-icon>按批次删除
+      <div class="toolbar-right">
+        <span v-if="selectedRows.length > 0" class="selected-hint">已选 {{ selectedRows.length }} 项</span>
+        <el-dropdown trigger="click" @command="onBatchCommand">
+          <el-button plain :disabled="selectedRows.length === 0">
+            批量操作
+            <el-icon class="el-icon--right"><ArrowDown /></el-icon>
           </el-button>
           <template #dropdown>
             <el-dropdown-menu>
-              <el-dropdown-item command="batch-by-task">删除批次 {{ singleImportBatch }} 全部 DRAFT</el-dropdown-item>
+              <el-dropdown-item command="delete" :disabled="!availableBatchOps.delete">
+                <el-icon><Delete /></el-icon>批量删除<span v-if="availableBatchOps.delete" class="badge-hint">(DRAFT)</span>
+              </el-dropdown-item>
+              <el-dropdown-item command="submit" :disabled="!availableBatchOps.submit">
+                <el-icon><Promotion /></el-icon>批量提交<span v-if="availableBatchOps.submit" class="badge-hint">(DRAFT)</span>
+              </el-dropdown-item>
+              <el-dropdown-item command="approve" :disabled="!availableBatchOps.approve">
+                <el-icon><Select /></el-icon>批量审核<span v-if="availableBatchOps.approve" class="badge-hint">(SUBMITTED)</span>
+              </el-dropdown-item>
+              <el-dropdown-item command="cancel" :disabled="!availableBatchOps.cancel">
+                <el-icon><CloseBold /></el-icon>批量作废
+              </el-dropdown-item>
+              <el-dropdown-item v-if="singleImportBatch" command="batch-by-task" :divider="true">
+                <el-icon><Files /></el-icon>按批次删除（{{ singleImportBatch }}）
+              </el-dropdown-item>
             </el-dropdown-menu>
           </template>
         </el-dropdown>
-        <el-button link @click="tableRef?.clearSelection()">清除选择</el-button>
+        <el-button v-if="selectedRows.length > 0" link @click="tableRef?.clearSelection()">清除选择</el-button>
       </div>
     </div>
 
@@ -645,6 +664,13 @@ onUnmounted(stopPolling)
 </template>
 
 <style scoped>
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
 .toolbar-left {
   display: flex;
   align-items: center;

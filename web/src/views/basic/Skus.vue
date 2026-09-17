@@ -112,6 +112,7 @@ async function onDelete(row: SkuItem) {
     </el-form>
 
     <div class="toolbar">
+      <span />
       <el-button v-permission="'wms:basic'" type="primary" @click="openCreate">新增货品</el-button>
     </div>
 

@@ -209,6 +209,7 @@ async function onDelete(row: LocationItem) {
     </el-form>
 
     <div class="toolbar">
+      <span />
       <el-button v-permission="'wms:basic'" type="primary" @click="openBatch">批量生成库位</el-button>
     </div>
 

@@ -220,6 +220,7 @@ async function onDelete(row: UserItem) {
     </el-form>
 
     <div class="toolbar">
+      <span />
       <el-button v-permission="'wms:system:user'" type="primary" @click="openCreate">新增用户</el-button>
     </div>
 

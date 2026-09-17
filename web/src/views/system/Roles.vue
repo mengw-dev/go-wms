@@ -219,6 +219,7 @@ async function onDelete(row: RoleItem) {
     </el-form>
 
     <div class="toolbar">
+      <span />
       <el-button v-permission="'wms:system:role'" type="primary" @click="openCreate">新增角色</el-button>
     </div>
 
