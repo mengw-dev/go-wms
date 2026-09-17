@@ -327,6 +327,29 @@ npm run build
 
 测试报告生成在 `web/playwright-report`。
 
+### k6 业务流程与压测
+
+Windows 一键运行（需要本机安装 `k6`）：
+
+```powershell
+# 环境自检，输出 WAREHOUSE_ID / SKU_ID
+.\scripts\windows\run-k6.ps1 -Mode check -BaseUrl http://127.0.0.1:18080
+
+# 正常业务流程：入库→收货→上架→出库 FIFO→拣货→盘点
+.\scripts\windows\run-k6.ps1 -Mode flow -BaseUrl http://127.0.0.1:18080
+
+# 出库冒烟
+.\scripts\windows\run-k6.ps1 -Mode smoke -BaseUrl http://127.0.0.1:18080 -WarehouseId 21 -SkuId 69
+
+# 并发出库压测
+.\scripts\windows\run-k6.ps1 -Mode stress -BaseUrl http://127.0.0.1:18080 -WarehouseId 21 -SkuId 69 -RemoteWrite
+
+# 真实波次拣货压测
+.\scripts\windows\run-k6.ps1 -Mode wave -BaseUrl http://127.0.0.1:18080 -WarehouseId 21 -SkuId 69
+```
+
+完整说明、压测指标和给 HR 的演示顺序见 [docs/load-testing.md](docs/load-testing.md)。
+
 ## 示例数据与第三方系统对接
 
 可直接用于演示的 Excel、基础资料初始化脚本和模拟 OMS 推送脚本位于：

@@ -52,27 +52,31 @@ const ZONE = `K6${Date.now().toString(36).toUpperCase()}`;     // 本次压测�
 const pickOk = new Counter('pick_ok_total');        // 拣货业务成功次数（期望 == TOTAL）
 const pickReject = new Counter('pick_reject_total'); // 拣货业务拒绝次数（防超拣，预期较多）
 
+const scenarios = {
+  // 主场景：拣货员各负责任务，逐件扫码
+  wave: {
+    executor: 'per-vu-iterations',
+    vus: WORKERS,
+    iterations: 1,
+    exec: 'wavePick',
+    tags: { scenario: 'wave' },
+  },
+};
+if (CHAOS > 0) {
+  // 竞争场景：额外 VU 随机抢拣同一批任务
+  scenarios.chaos = {
+    executor: 'per-vu-iterations',
+    vus: CHAOS,
+    iterations: QTY_PER_ROW * 2, // 每人尝试 2 倍任务量，确保过量
+    exec: 'chaosPick',
+    startTime: '0s',
+    tags: { scenario: 'chaos' },
+  };
+}
+
 export const options = {
   setupTimeout: '10m',
-  scenarios: {
-    // 主场景：拣货员各负责任务，逐件扫码
-    wave: {
-      executor: 'per-vu-iterations',
-      vus: WORKERS,
-      iterations: 1,
-      exec: 'wavePick',
-      tags: { scenario: 'wave' },
-    },
-    // 竞争场景：额外 VU 随机抢拣同一批任务
-    chaos: {
-      executor: 'per-vu-iterations',
-      vus: CHAOS,
-      iterations: QTY_PER_ROW * 2, // 每人尝试 2 倍任务量，确保过量
-      exec: 'chaosPick',
-      startTime: '0s',
-      tags: { scenario: 'chaos' },
-    },
-  },
+  scenarios,
   thresholds: {
     http_req_failed: ['rate<0.02'],         // HTTP 层错误（连接/5xx）应 <2%
     http_req_duration: ['p(95)<1500', 'p(99)<3000'],
@@ -102,7 +106,11 @@ function seedStockAt(token, locationID, batchNo, qty, idx) {
 
   const detail = getJSON(`/api/v1/inbound/orders/${inboundId}`, token);
   must(detail, `铺货-${idx}-查明细`);
-  const detailID = detail.json('data.details[0].id');
+  const inboundDetails = detail.json('data.details') || [];
+  const detailID = inboundDetails[0] ? inboundDetails[0].id : '';
+  if (!detailID) {
+    throw new Error(`铺货-${idx}: 入库明细为空 ${detail.body}`);
+  }
 
   // 收货：指定批次，一次收齐 → 自动生成上架任务
   must(

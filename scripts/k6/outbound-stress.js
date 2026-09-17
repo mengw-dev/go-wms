@@ -38,6 +38,10 @@ const bizFail = new Counter('biz_fail_total');
 
 // 场景 B 的大订单拣货总量（即并发争抢的"名额"）。
 const CONTENTION_QTY = parseInt(__ENV.CONTENTION_QTY || '100', 10);
+const STRESS_VUS = parseInt(__ENV.STRESS_VUS || '20', 10);
+const STRESS_RAMP = __ENV.STRESS_RAMP || '20s';
+const STRESS_PEAK = __ENV.STRESS_PEAK || '1m';
+const STRESS_DOWN = __ENV.STRESS_DOWN || '20s';
 const ENABLE_PICK_CONTENTION = __ENV.ENABLE_PICK_CONTENTION === '1';
 
 // 记录一次业务调用的结果。
@@ -57,9 +61,9 @@ const scenarios = {
     executor: 'ramping-vus',
     startVUs: 0,
     stages: [
-      { duration: '20s', target: 10 },  // 爬坡
-      { duration: '1m', target: 20 },   // 峰值保持
-      { duration: '20s', target: 0 },   // 下降
+      { duration: STRESS_RAMP, target: Math.max(1, Math.floor(STRESS_VUS / 2)) }, // 爬坡
+      { duration: STRESS_PEAK, target: STRESS_VUS },                              // 峰值保持
+      { duration: STRESS_DOWN, target: 0 },                                       // 下降
     ],
     exec: 'mixedFlow',
     tags: { scenario: 'mixed_flow' },

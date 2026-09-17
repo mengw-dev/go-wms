@@ -7,7 +7,7 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 $composeFile = Join-Path $root "deploy/docker-compose.yaml"
 $projectName = "gowms-e2e"
-$webPort = 18081
+$webPort = 28081
 
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     throw "Docker was not found. Install Docker Desktop first."
@@ -18,8 +18,11 @@ $env:MYSQL_DATABASE = "gowms_e2e"
 $env:JWT_SECRET = "gowms-e2e-jwt-secret-0123456789abcdef0123456789abcdef"
 $env:WMS_INTEGRATION_API_KEY = "gowms-e2e-integration-api-key-0123456789abcdef"
 $env:WMS_API_BIND = "127.0.0.1"
-$env:WMS_API_PORT = "18080"
+$env:WMS_API_PORT = "28080"
 $env:WMS_WEB_PORT = "$webPort"
+$env:WMS_DEMO_ENABLED = "true"
+$env:WMS_DEMO_USERNAME = "demo"
+$env:WMS_DEMO_PASSWORD = "demo123456"
 $env:E2E_BASE_URL = "http://127.0.0.1:$webPort"
 
 function Wait-WebReady {
