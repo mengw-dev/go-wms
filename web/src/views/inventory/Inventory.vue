@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
+import { useAutoRefresh } from '@/composables/autoRefresh'
 import { listInventory, listInventorySummary, listInventoryTrans } from '@/api/inventory'
 import type {
   EntityID,
@@ -37,14 +38,14 @@ const detailQuery = reactive({
   sku_keyword: '',
 })
 
-async function loadDetail() {
-  detailLoading.value = true
+async function loadDetail(silent = false) {
+  if (!silent) detailLoading.value = true
   try {
     const data = await listInventory(cleanParams({ ...detailQuery }))
     detailList.value = data.list ?? []
     detailTotal.value = data.total ?? 0
   } finally {
-    detailLoading.value = false
+    if (!silent) detailLoading.value = false
   }
 }
 
@@ -63,14 +64,14 @@ const summaryQuery = reactive({
   warehouse_id: '' as EntityID | '',
 })
 
-async function loadSummary() {
-  summaryLoading.value = true
+async function loadSummary(silent = false) {
+  if (!silent) summaryLoading.value = true
   try {
     const data = await listInventorySummary(cleanParams({ ...summaryQuery }))
     summaryList.value = data.list ?? []
     summaryTotal.value = data.total ?? 0
   } finally {
-    summaryLoading.value = false
+    if (!silent) summaryLoading.value = false
   }
 }
 
@@ -107,14 +108,14 @@ function openTrans(row: InventoryItem) {
   loadTrans()
 }
 
-async function loadTrans() {
-  transLoading.value = true
+async function loadTrans(silent = false) {
+  if (!silent) transLoading.value = true
   try {
     const data = await listInventoryTrans(cleanParams({ ...transQuery }))
     transList.value = data.list ?? []
     transTotal.value = data.total ?? 0
   } finally {
-    transLoading.value = false
+    if (!silent) transLoading.value = false
   }
 }
 
@@ -126,6 +127,17 @@ function searchTrans() {
 function skuLabel(skuId: EntityID): string {
   return skuMap.value[skuId] || String(skuId)
 }
+
+function refreshActiveTab() {
+  if (activeTab.value === 'summary') {
+    loadSummary(true)
+  } else {
+    loadDetail(true)
+  }
+  if (drawerVisible.value) loadTrans(true)
+}
+
+useAutoRefresh(refreshActiveTab)
 </script>
 
 <template>

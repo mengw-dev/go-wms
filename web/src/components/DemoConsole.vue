@@ -8,10 +8,12 @@ import {
   heartbeatDemoSession,
   releaseDemoSession,
   resetDemoData,
+  runConcurrentDemo,
   runDemoScenario,
 } from '@/api/demo'
-import type { DemoScenarioResult } from '@/api/types'
+import type { DemoConcurrentResult, DemoScenarioResult } from '@/api/types'
 import { useAuthStore } from '@/stores/auth'
+import { emitDataChanged } from '@/utils/events'
 
 type ScenarioKey = 'inbound' | 'outbound' | 'stocktake' | 'full'
 
@@ -19,9 +21,11 @@ const router = useRouter()
 const auth = useAuthStore()
 const visible = ref(false)
 const running = ref<ScenarioKey | ''>('')
+const concurrentRunning = ref(false)
 const acquiring = ref(false)
 const remaining = ref(0)
 const result = ref<DemoScenarioResult | null>(null)
+const concurrentResult = ref<DemoConcurrentResult | null>(null)
 let countdownTimer: number | undefined
 let heartbeatTimer: number | undefined
 
@@ -29,7 +33,7 @@ const remainingText = computed(() => {
   const seconds = Math.max(0, remaining.value)
   return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`
 })
-const busy = computed(() => acquiring.value || running.value !== '')
+const busy = computed(() => acquiring.value || running.value !== '' || concurrentRunning.value)
 
 function clearTimers() {
   if (countdownTimer !== undefined) window.clearInterval(countdownTimer)
@@ -101,10 +105,36 @@ async function runScenario(scenario: ScenarioKey) {
   result.value = null
   try {
     result.value = await runDemoScenario(scenario)
+    concurrentResult.value = null
+    emitDataChanged()
     ElMessage.success(result.value.summary)
   } finally {
     running.value = ''
   }
+}
+
+async function runConcurrent() {
+  if (busy.value) return
+  concurrentRunning.value = true
+  concurrentResult.value = null
+  result.value = null
+  try {
+    concurrentResult.value = await runConcurrentDemo(20)
+    emitDataChanged()
+    ElMessage.success(concurrentResult.value.summary)
+  } finally {
+    concurrentRunning.value = false
+  }
+}
+
+function goPerformance() {
+  visible.value = false
+  router.push('/demo/performance')
+}
+
+function goActivity() {
+  visible.value = false
+  router.push('/demo/activity')
 }
 
 async function resetData() {
@@ -119,6 +149,8 @@ async function resetData() {
   }
   await resetDemoData()
   result.value = null
+  concurrentResult.value = null
+  emitDataChanged()
   ElMessage.success('演示数据已恢复为初始状态')
 }
 
@@ -209,10 +241,28 @@ onBeforeUnmount(() => {
       <el-button :loading="running === 'stocktake'" :disabled="busy && running !== 'stocktake'" @click="runScenario('stocktake')">
         盘点演示
       </el-button>
+      <el-button type="warning" :loading="concurrentRunning" :disabled="busy && !concurrentRunning" @click="runConcurrent">
+        并发业务演示
+      </el-button>
+      <el-button :disabled="busy" @click="goPerformance">性能指标</el-button>
+      <el-button :disabled="busy" @click="goActivity">操作记录</el-button>
     </div>
 
     <el-divider content-position="left">执行结果</el-divider>
-    <div v-if="result" class="demo-result">
+    <div v-if="concurrentResult" class="demo-result">
+      <el-alert type="success" :closable="false" show-icon :title="concurrentResult.summary" />
+      <el-timeline class="demo-timeline">
+        <el-timeline-item
+          v-for="(step, index) in concurrentResult.steps"
+          :key="`${step.title}-${index}`"
+          :timestamp="step.title"
+          color="var(--el-color-warning)"
+        >
+          {{ step.detail }}
+        </el-timeline-item>
+      </el-timeline>
+    </div>
+    <div v-else-if="result" class="demo-result">
       <el-alert type="success" :closable="false" show-icon :title="result.summary" />
       <el-timeline class="demo-timeline">
         <el-timeline-item

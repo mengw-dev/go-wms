@@ -503,3 +503,82 @@ export interface DemoScenarioResult {
   summary: string
   steps: DemoScenarioStep[]
 }
+
+// ---------- HR 演示中心 ----------
+
+export interface DemoComponentHealth {
+  status: string
+  latency_ms: number
+  message?: string
+}
+
+export interface DemoDBPoolStats {
+  max_open_connections: number
+  open_connections: number
+  in_use: number
+  idle: number
+  wait_count: number
+  wait_duration_ms: number
+}
+
+export interface DemoRuntimeStats {
+  goroutines: number
+  memory_alloc_mb: number
+  memory_sys_mb: number
+  num_gc: number
+}
+
+export interface DemoBusinessStats {
+  inbound_today: number
+  outbound_today: number
+  pending_tasks: number
+  inventory_rows: number
+  stock_total: number
+  available_total: number
+  allocated_total: number
+}
+
+export interface DemoPerformanceSnapshot {
+  checked_at: string
+  database: DemoComponentHealth
+  redis: DemoComponentHealth
+  pool: DemoDBPoolStats
+  runtime: DemoRuntimeStats
+  business: DemoBusinessStats
+}
+
+export interface DemoOperationLog {
+  id: EntityID
+  user_id: EntityID
+  username: string
+  path: string
+  method: string
+  params?: string
+  ip?: string
+  cost_ms: number
+  status: number
+  result?: string
+  created_at: string
+}
+
+export interface DemoActivitySnapshot {
+  operations: DemoOperationLog[]
+  inbound_orders: InboundOrderItem[]
+  outbound_orders: OutboundOrderItem[]
+  stocktake_orders: StocktakeOrderItem[]
+  tasks: TaskItem[]
+  inventory_trans: InventoryTransItem[]
+}
+
+export interface DemoConcurrentResult {
+  concurrency: number
+  success: number
+  failed: number
+  duration_ms: number
+  stock_total: number
+  available_total: number
+  allocated_total: number
+  negative_rows: number
+  summary: string
+  steps: DemoScenarioStep[]
+}

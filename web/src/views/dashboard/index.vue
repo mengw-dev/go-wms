@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
+import { useAutoRefresh } from '@/composables/autoRefresh'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { listInboundOrders } from '@/api/inbound'
@@ -176,9 +177,12 @@ async function loadRecent() {
   }
 }
 
-onMounted(async () => {
+async function refreshDashboard() {
   await Promise.all([loadStats(), loadTasks(), loadRecent()])
-})
+}
+
+onMounted(refreshDashboard)
+useAutoRefresh(refreshDashboard)
 
 // ---------- 欢迎区 ----------
 const todayDate = new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })

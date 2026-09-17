@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
+import { useAutoRefresh } from '@/composables/autoRefresh'
 import { listTasks } from '@/api/task'
 import type { EntityID, TaskItem } from '@/api/types'
 import {
@@ -22,14 +23,14 @@ const query = reactive({
   order_id: '' as EntityID | '',
 })
 
-async function load() {
-  loading.value = true
+async function load(silent = false) {
+  if (!silent) loading.value = true
   try {
     const data = await listTasks(cleanParams({ ...query }))
     list.value = data.list ?? []
     total.value = data.total ?? 0
   } finally {
-    loading.value = false
+    if (!silent) loading.value = false
   }
 }
 
@@ -39,6 +40,8 @@ function search() {
 }
 
 onMounted(load)
+
+useAutoRefresh(() => load(true))
 </script>
 
 <template>

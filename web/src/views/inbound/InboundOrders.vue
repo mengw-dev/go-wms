@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
+import { useAutoRefresh } from '@/composables/autoRefresh'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, genFileId } from 'element-plus'
 import type { UploadFile, UploadRawFile } from 'element-plus'
@@ -75,14 +76,14 @@ const query = reactive({
   import_task_id: '',
 })
 
-async function load() {
-  loading.value = true
+async function load(silent = false) {
+  if (!silent) loading.value = true
   try {
     const data = await listInboundOrders(cleanParams({ ...query }))
     list.value = data.list ?? []
     total.value = data.total ?? 0
   } finally {
-    loading.value = false
+    if (!silent) loading.value = false
   }
 }
 
@@ -444,6 +445,8 @@ function startPolling(taskId: string) {
 }
 
 onUnmounted(stopPolling)
+
+useAutoRefresh(() => load(true))
 </script>
 
 <template>

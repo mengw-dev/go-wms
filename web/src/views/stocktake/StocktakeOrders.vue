@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
+import { useAutoRefresh } from '@/composables/autoRefresh'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
@@ -37,14 +38,14 @@ const query = reactive({
   keyword: '',
 })
 
-async function load() {
-  loading.value = true
+async function load(silent = false) {
+  if (!silent) loading.value = true
   try {
     const data = await listStocktakeOrders(cleanParams({ ...query }))
     list.value = data.list ?? []
     total.value = data.total ?? 0
   } finally {
-    loading.value = false
+    if (!silent) loading.value = false
   }
 }
 
@@ -148,6 +149,8 @@ async function submitCreate() {
     createDialog.loading = false
   }
 }
+
+useAutoRefresh(() => load(true))
 </script>
 
 <template>

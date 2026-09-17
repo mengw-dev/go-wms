@@ -22,6 +22,18 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '仪表盘' },
       },
       {
+        path: 'demo/performance',
+        name: 'demo-performance',
+        component: () => import('@/views/demo/Performance.vue'),
+        meta: { title: '性能指标', perm: 'wms:demo' },
+      },
+      {
+        path: 'demo/activity',
+        name: 'demo-activity',
+        component: () => import('@/views/demo/Activity.vue'),
+        meta: { title: '演示记录', perm: 'wms:demo' },
+      },
+      {
         path: 'system/users',
         name: 'system-users',
         component: () => import('@/views/system/Users.vue'),
