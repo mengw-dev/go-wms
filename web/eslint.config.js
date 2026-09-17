@@ -13,6 +13,7 @@ export default tseslint.config(
         window: 'readonly',
         document: 'readonly',
         localStorage: 'readonly',
+        sessionStorage: 'readonly',
         File: 'readonly',
         FormData: 'readonly',
         Blob: 'readonly',

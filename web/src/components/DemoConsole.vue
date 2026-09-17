@@ -88,7 +88,6 @@ async function acquire() {
     auth.setDemoSession(info)
     remaining.value = info.expires_in
     startTimers()
-    visible.value = true
   } catch {
     if (redirectingToLogin) return
     redirectingToLogin = true
@@ -101,19 +100,22 @@ async function acquire() {
 
 async function initialize() {
   if (!auth.isDemo) return
+  const autoOpen = sessionStorage.getItem('WMS_DEMO_AUTO_OPEN') === '1'
+  sessionStorage.removeItem('WMS_DEMO_AUTO_OPEN')
   if (auth.demoSessionId) {
     try {
       const info = await heartbeatDemoSession()
       auth.setDemoSession(info)
       remaining.value = info.expires_in
       startTimers()
-      visible.value = true
+      visible.value = autoOpen
       return
     } catch {
       auth.clearDemoSession()
     }
   }
   await acquire()
+  visible.value = autoOpen
 }
 
 async function runScenario(scenario: ScenarioKey) {
@@ -150,20 +152,20 @@ async function runConcurrent() {
   }
 }
 
-function goPerformance() {
+async function goPerformance() {
+  await router.push('/demo/performance')
   visible.value = false
-  router.push('/demo/performance')
 }
 
-function goActivity() {
+async function goActivity() {
+  await router.push('/demo/activity')
   visible.value = false
-  router.push('/demo/activity')
 }
 
-function goTarget(path?: string) {
+async function goTarget(path?: string) {
   if (!path) return
+  await router.push(path)
   visible.value = false
-  router.push(path)
 }
 
 async function resetData() {

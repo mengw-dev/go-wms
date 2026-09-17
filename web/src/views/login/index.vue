@@ -33,6 +33,7 @@ async function submit() {
     if ((result.perms ?? []).includes('wms:demo')) {
       const session = await acquireDemoSession()
       auth.setDemoSession(session)
+      sessionStorage.setItem('WMS_DEMO_AUTO_OPEN', '1')
     }
     ElMessage.success('登录成功')
     const redirect = route.query.redirect
