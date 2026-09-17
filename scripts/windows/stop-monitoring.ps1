@@ -7,5 +7,5 @@ Set-Location $WmsRoot
 
 Assert-Docker
 Write-Step "Stopping Prometheus and Grafana"
-Invoke-WmsCompose @("--profile", "monitoring", "stop", "prometheus", "grafana")
+Invoke-WmsCompose -ComposeArgs @("--profile", "monitoring", "stop", "prometheus", "grafana")
 Write-Ok "Monitoring stopped. WMS, MySQL and Redis were not stopped."

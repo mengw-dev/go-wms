@@ -50,11 +50,12 @@ if ($changed) {
 }
 
 Write-Step "Starting Prometheus and Grafana"
-Invoke-WmsCompose @("--profile", "monitoring", "up", "-d", "prometheus", "grafana")
+$composeArgs = @("--profile", "monitoring", "up", "-d", "prometheus", "grafana")
+Invoke-WmsCompose -ComposeArgs $composeArgs
 
 $grafanaPort = [int]$values["WMS_GRAFANA_PORT"]
 if (-not (Wait-HttpReady -Url "http://127.0.0.1:$grafanaPort/api/health")) {
-    Invoke-WmsCompose @("--profile", "monitoring", "ps")
+    Invoke-WmsCompose -ComposeArgs @("--profile", "monitoring", "ps")
     throw "Grafana did not become healthy in time."
 }
 
