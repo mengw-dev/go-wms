@@ -42,12 +42,12 @@ type ImportResp struct {
 	TaskID string `json:"task_id"`
 }
 
-// 批量操作请求。IDs 兼容 JSON 数字数组和字符串数组（typex.Int64List）。
+// BatchOperReq 批量操作请求，IDs 兼容 JSON 数字数组和字符串数组（typex.Int64List）。
 type BatchOperReq struct {
 	IDs typex.Int64List `json:"ids" binding:"required,min=1,max=200"`
 }
 
-// 批量操作结果。
+// BatchItemError 表示批量操作中处理失败的一项。
 type BatchItemError struct {
 	ID  int64  `json:"id,string"`
 	Msg string `json:"msg"`

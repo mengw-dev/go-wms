@@ -226,7 +226,7 @@ func (s *Service) batchOper(ctx context.Context, ids []int64, operator string, f
 	return resp
 }
 
-// 批量删除（仅 DRAFT）。
+// BatchDelete 批量删除（仅 DRAFT）。
 func (s *Service) BatchDelete(ctx context.Context, ids []int64) *dto.BatchOperResp {
 	resp := &dto.BatchOperResp{}
 	for _, id := range ids {
@@ -240,7 +240,7 @@ func (s *Service) BatchDelete(ctx context.Context, ids []int64) *dto.BatchOperRe
 	return resp
 }
 
-// 批量提交（DRAFT → SUBMITTED）。
+// BatchSubmit 批量提交（DRAFT → SUBMITTED）。
 func (s *Service) BatchSubmit(ctx context.Context, ids []int64) *dto.BatchOperResp {
 	resp := &dto.BatchOperResp{}
 	for _, id := range ids {
@@ -254,12 +254,12 @@ func (s *Service) BatchSubmit(ctx context.Context, ids []int64) *dto.BatchOperRe
 	return resp
 }
 
-// 批量审核（SUBMITTED → PICKING，含库存分配 + 拣货任务生成）。
+// BatchApprove 批量审核（SUBMITTED → PICKING，含库存分配 + 拣货任务生成）。
 func (s *Service) BatchApprove(ctx context.Context, ids []int64, operator string) *dto.BatchOperResp {
 	return s.batchOper(ctx, ids, operator, s.Approve)
 }
 
-// 批量作废（DRAFT/SUBMITTED/APPROVED/PICKING → CANCELLED，释放已分配库存）。
+// BatchCancel 批量作废（DRAFT/SUBMITTED/APPROVED/PICKING → CANCELLED，释放已分配库存）。
 func (s *Service) BatchCancel(ctx context.Context, ids []int64, operator string) *dto.BatchOperResp {
 	return s.batchOper(ctx, ids, operator, s.Cancel)
 }

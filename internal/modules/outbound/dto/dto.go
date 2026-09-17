@@ -51,7 +51,7 @@ type ExternalCreateOrderResp struct {
 	Idempotent bool   `json:"idempotent"`
 }
 
-// 批量操作请求。IDs 兼容 JSON 数字数组和字符串数组（typex.Int64List）。
+// BatchOperReq 批量操作请求，IDs 兼容 JSON 数字数组和字符串数组（typex.Int64List）。
 type BatchOperReq struct {
 	IDs typex.Int64List `json:"ids" binding:"required,min=1,max=200"`
 }

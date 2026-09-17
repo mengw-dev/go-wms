@@ -194,26 +194,26 @@ func (s *Service) batchOper(ctx context.Context, ids []int64, fn func(context.Co
 	return resp
 }
 
-// 批量删除（仅 DRAFT）。
+// BatchDelete 批量删除（仅 DRAFT）。
 func (s *Service) BatchDelete(ctx context.Context, ids []int64) *dto.BatchOperResp {
 	return s.batchOper(ctx, ids, s.Delete)
 }
 
-// 批量提交（DRAFT → SUBMITTED）。
+// BatchSubmit 批量提交（DRAFT → SUBMITTED）。
 func (s *Service) BatchSubmit(ctx context.Context, ids []int64) *dto.BatchOperResp {
 	return s.batchOper(ctx, ids, func(ctx context.Context, id int64) error {
 		return s.transit(ctx, id, model.OrderDraft, model.OrderSubmitted)
 	})
 }
 
-// 批量审核（SUBMITTED → APPROVED，含收货任务生成）。
+// BatchApprove 批量审核（SUBMITTED → APPROVED，含收货任务生成）。
 func (s *Service) BatchApprove(ctx context.Context, ids []int64, operator string) *dto.BatchOperResp {
 	return s.batchOper(ctx, ids, func(ctx context.Context, id int64) error {
 		return s.Approve(ctx, id, operator)
 	})
 }
 
-// 批量作废（DRAFT/SUBMITTED/APPROVED → CANCELLED）。
+// BatchCancel 批量作废（DRAFT/SUBMITTED/APPROVED → CANCELLED）。
 func (s *Service) BatchCancel(ctx context.Context, ids []int64) *dto.BatchOperResp {
 	return s.batchOper(ctx, ids, s.Cancel)
 }

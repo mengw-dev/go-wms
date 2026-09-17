@@ -124,7 +124,9 @@ async function loadTasks() {
       pendingTotal.value = (cre.total ?? 0) + (run.total ?? 0)
       runningTasks.value = run.list ?? []
     }
-  } catch {}
+  } catch {
+    // 任务数据加载失败时保持空态，不影响仪表盘其余区域展示
+  }
 }
 
 function goTaskList(status?: string) {
@@ -169,7 +171,9 @@ async function loadRecent() {
       }))
     }
     await Promise.all(jobs)
-  } catch {}
+  } catch {
+    // 最近单据加载失败时保持空列表展示
+  }
 }
 
 onMounted(async () => {
