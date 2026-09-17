@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh, VideoPlay } from '@element-plus/icons-vue'
@@ -26,6 +26,15 @@ const acquiring = ref(false)
 const remaining = ref(0)
 const result = ref<DemoScenarioResult | null>(null)
 const concurrentResult = ref<DemoConcurrentResult | null>(null)
+const draftParams = reactive({
+  inboundCount: 3,
+  inboundQty: 20,
+  outboundCount: 3,
+  outboundQty: 5,
+  stocktakeCount: 2,
+  concurrentCount: 20,
+  concurrentQty: 1,
+})
 let countdownTimer: number | undefined
 let heartbeatTimer: number | undefined
 
@@ -103,8 +112,14 @@ async function runScenario(scenario: ScenarioKey) {
   if (busy.value) return
   running.value = scenario
   result.value = null
+  const options = (() => {
+    if (scenario === 'inbound_drafts') return { count: draftParams.inboundCount, qty: draftParams.inboundQty }
+    if (scenario === 'outbound_drafts') return { count: draftParams.outboundCount, qty: draftParams.outboundQty }
+    if (scenario === 'stocktake_drafts') return { count: draftParams.stocktakeCount }
+    return {}
+  })()
   try {
-    result.value = await runDemoScenario(scenario)
+    result.value = await runDemoScenario(scenario, options)
     concurrentResult.value = null
     emitDataChanged()
     ElMessage.success(result.value.summary)
@@ -119,7 +134,7 @@ async function runConcurrent() {
   concurrentResult.value = null
   result.value = null
   try {
-    concurrentResult.value = await runConcurrentDemo(20)
+    concurrentResult.value = await runConcurrentDemo(draftParams.concurrentCount, draftParams.concurrentQty)
     emitDataChanged()
     ElMessage.success(concurrentResult.value.summary)
   } finally {
@@ -248,15 +263,48 @@ onBeforeUnmount(() => {
         批量创建盘点单
       </el-button>
       <el-button type="warning" :loading="concurrentRunning" :disabled="busy && !concurrentRunning" @click="runConcurrent">
-        并发业务测试
+        并发出库测试
       </el-button>
       <el-button :disabled="busy" @click="goPerformance">性能指标</el-button>
       <el-button :disabled="busy" @click="goActivity">操作记录</el-button>
     </div>
 
+    <div class="demo-params">
+      <div class="param-line">
+        <span>批量入库</span>
+        <el-input-number v-model="draftParams.inboundCount" :min="1" :max="20" size="small" />
+        <em>张</em>
+        <el-input-number v-model="draftParams.inboundQty" :min="1" :max="1000" size="small" />
+        <em>件/张</em>
+      </div>
+      <div class="param-line">
+        <span>上游出库</span>
+        <el-input-number v-model="draftParams.outboundCount" :min="1" :max="20" size="small" />
+        <em>张</em>
+        <el-input-number v-model="draftParams.outboundQty" :min="1" :max="1000" size="small" />
+        <em>件/张</em>
+      </div>
+      <div class="param-line">
+        <span>盘点草稿</span>
+        <el-input-number v-model="draftParams.stocktakeCount" :min="1" :max="20" size="small" />
+        <em>张</em>
+      </div>
+      <div class="param-line concurrent-param">
+        <span>并发出库测试</span>
+        <el-input-number v-model="draftParams.concurrentCount" :min="1" :max="30" size="small" />
+        <em>张并发</em>
+        <el-input-number v-model="draftParams.concurrentQty" :min="1" :max="10" size="small" />
+        <em>件/张</em>
+        <small>测试库存行锁、FIFO、事务重试、防超卖</small>
+      </div>
+    </div>
+
     <el-divider content-position="left">执行结果</el-divider>
     <div v-if="concurrentResult" class="demo-result">
       <el-alert type="success" :closable="false" show-icon :title="concurrentResult.summary" />
+      <div class="concurrent-focus">
+        测试重点：{{ concurrentResult.test_focus }}，总需求 {{ concurrentResult.total_demand }} 件
+      </div>
       <el-timeline class="demo-timeline">
         <el-timeline-item
           v-for="(step, index) in concurrentResult.steps"
@@ -356,6 +404,51 @@ onBeforeUnmount(() => {
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 16px;
+}
+
+.demo-params {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid var(--el-border-color-light);
+  border-radius: 10px;
+  background: var(--el-fill-color-lighter);
+}
+
+.param-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
+}
+
+.param-line > span:first-child {
+  width: 88px;
+  color: var(--el-text-color-primary);
+}
+
+.param-line em {
+  font-style: normal;
+  color: var(--el-text-color-secondary);
+}
+
+.param-line small {
+  margin-left: 4px;
+  color: var(--el-text-color-secondary);
+}
+
+.concurrent-param {
+  padding-top: 8px;
+  border-top: 1px dashed var(--el-border-color-light);
+}
+
+.concurrent-focus {
+  margin-top: 10px;
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
 }
 
 .demo-result {

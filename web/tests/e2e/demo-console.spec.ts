@@ -22,8 +22,8 @@ test('business center creates drafts, runs flows, shows metrics and records, the
   await dialog.getByRole('button', { name: '一键完整流程' }).click()
   await expect(dialog.getByText('入库、出库、盘点三个核心流程已全部完成')).toBeVisible({ timeout: 60_000 })
 
-  await dialog.getByRole('button', { name: '并发业务测试' }).click()
-  await expect(dialog.getByText(/并发演示完成/)).toBeVisible({ timeout: 30_000 })
+  await dialog.getByRole('button', { name: '并发出库测试' }).click()
+  await expect(dialog.getByText(/并发出库测试完成/)).toBeVisible({ timeout: 30_000 })
 
   await dialog.getByRole('button', { name: '性能指标', exact: true }).click()
   await expect(page).toHaveURL(/\/demo\/performance/)

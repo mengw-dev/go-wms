@@ -17,12 +17,20 @@ export function getDemoSessionStatus() {
   return get<DemoSessionInfo>('/demo/session/status')
 }
 
-export function runDemoScenario(scenario: 'inbound' | 'outbound' | 'stocktake' | 'full' | 'inbound_drafts' | 'outbound_drafts' | 'stocktake_drafts') {
-  return post<DemoScenarioResult>(`/demo/run/${scenario}`)
+export interface DemoScenarioOptions {
+  count?: number
+  qty?: number
 }
 
-export function runConcurrentDemo(concurrency = 20) {
-  return post<DemoConcurrentResult>('/demo/run/concurrent', { concurrency })
+export function runDemoScenario(
+  scenario: 'inbound' | 'outbound' | 'stocktake' | 'full' | 'inbound_drafts' | 'outbound_drafts' | 'stocktake_drafts',
+  options: DemoScenarioOptions = {},
+) {
+  return post<DemoScenarioResult>(`/demo/run/${scenario}`, options)
+}
+
+export function runConcurrentDemo(concurrency = 20, qtyPerOrder = 1) {
+  return post<DemoConcurrentResult>('/demo/run/concurrent', { concurrency, qty_per_order: qtyPerOrder })
 }
 
 export function getDemoPerformance() {

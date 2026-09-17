@@ -14,6 +14,8 @@ import (
 // ConcurrentResult 一次受控并发业务演示的结果。
 type ConcurrentResult struct {
 	Concurrency    int            `json:"concurrency"`
+	QtyPerOrder    int            `json:"qty_per_order"`
+	TotalDemand    int            `json:"total_demand"`
 	Success        int            `json:"success"`
 	Failed         int            `json:"failed"`
 	DurationMs     int64          `json:"duration_ms"`
@@ -21,12 +23,13 @@ type ConcurrentResult struct {
 	AvailableTotal int64          `json:"available_total"`
 	AllocatedTotal int64          `json:"allocated_total"`
 	NegativeRows   int64          `json:"negative_rows"`
+	TestFocus      string         `json:"test_focus"`
 	Summary        string         `json:"summary"`
 	Steps          []ScenarioStep `json:"steps"`
 }
 
 // RunConcurrent 恢复初始数据后并发执行多张出库单，演示库存锁、FIFO 和防超卖。
-func (s *Service) RunConcurrent(ctx context.Context, sessionID string, concurrency int) (*ConcurrentResult, error) {
+func (s *Service) RunConcurrent(ctx context.Context, sessionID string, concurrency, qtyPerOrder int) (*ConcurrentResult, error) {
 	if err := s.ValidateSession(ctx, sessionID); err != nil {
 		return nil, err
 	}
@@ -35,6 +38,12 @@ func (s *Service) RunConcurrent(ctx context.Context, sessionID string, concurren
 	}
 	if concurrency > 30 {
 		concurrency = 30
+	}
+	if qtyPerOrder <= 0 {
+		qtyPerOrder = 1
+	}
+	if qtyPerOrder > 10 {
+		qtyPerOrder = 10
 	}
 
 	s.runMu.Lock()
@@ -58,7 +67,7 @@ func (s *Service) RunConcurrent(ctx context.Context, sessionID string, concurren
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if err := s.runConcurrentOutbound(ctx, refs, index); err != nil {
+			if err := s.runConcurrentOutbound(ctx, refs, index, qtyPerOrder); err != nil {
 				failed.Add(1)
 				select {
 				case errs <- err.Error():
@@ -83,8 +92,11 @@ func (s *Service) RunConcurrent(ctx context.Context, sessionID string, concurren
 		}
 		failReasons = append(failReasons, reason)
 	}
+	totalDemand := concurrency * qtyPerOrder
+	testFocus := "库存行锁、FIFO 分配、事务冲突重试、防超卖、防负库存"
 	steps := []ScenarioStep{
-		{Title: "并发订单", Detail: fmt.Sprintf("同时创建并处理 %d 张出库单，每张 1 件", concurrency)},
+		{Title: "并发模型", Detail: fmt.Sprintf("同时创建并处理 %d 张出库单，每张 %d 件，总需求 %d 件", concurrency, qtyPerOrder, totalDemand)},
+		{Title: "测试重点", Detail: testFocus},
 		{Title: "成功完成", Detail: fmt.Sprintf("%d 张出库单最终 SHIPPED", success.Load())},
 		{Title: "业务拒绝", Detail: fmt.Sprintf("%d 张因库存锁/库存不足等业务规则被拒绝", failed.Load())},
 		{Title: "最终库存", Detail: fmt.Sprintf("stock=%d available=%d allocated=%d 负数行=%d", stats.StockTotal, stats.AvailableTotal, stats.AllocatedTotal, stats.NegativeRows)},
@@ -93,9 +105,11 @@ func (s *Service) RunConcurrent(ctx context.Context, sessionID string, concurren
 		steps = append(steps, ScenarioStep{Title: "失败样例", Detail: failReasons[0]})
 	}
 	durationMs := time.Since(start).Milliseconds()
-	summary := fmt.Sprintf("并发演示完成：成功 %d，业务拒绝 %d，耗时 %dms", success.Load(), failed.Load(), durationMs)
+	summary := fmt.Sprintf("并发出库测试完成：%d 张 × %d 件，成功 %d，业务拒绝 %d，耗时 %dms", concurrency, qtyPerOrder, success.Load(), failed.Load(), durationMs)
 	return &ConcurrentResult{
 		Concurrency:    concurrency,
+		QtyPerOrder:    qtyPerOrder,
+		TotalDemand:    totalDemand,
 		Success:        int(success.Load()),
 		Failed:         int(failed.Load()),
 		DurationMs:     durationMs,
@@ -103,19 +117,20 @@ func (s *Service) RunConcurrent(ctx context.Context, sessionID string, concurren
 		AvailableTotal: stats.AvailableTotal,
 		AllocatedTotal: stats.AllocatedTotal,
 		NegativeRows:   stats.NegativeRows,
+		TestFocus:      testFocus,
 		Summary:        summary,
 		Steps:          steps,
 	}, nil
 }
 
-func (s *Service) runConcurrentOutbound(ctx context.Context, refs *demoRefs, index int) error {
+func (s *Service) runConcurrentOutbound(ctx context.Context, refs *demoRefs, index, qtyPerOrder int) error {
 	operator := s.Username()
 	order, err := s.outbound.Create(ctx, &outbounddto.CreateOrderReq{
 		WarehouseID: refs.Warehouse.ID,
 		BizOrderNo:  fmt.Sprintf("DEMO-CONCURRENT-%d-%d", time.Now().UnixNano(), index),
 		Remark:      "并发业务演示：库存锁与防超卖",
 		Details: []outbounddto.OrderDetailItem{{
-			SKUID: refs.SKU.ID, ExpectedQty: 1,
+			SKUID: refs.SKU.ID, ExpectedQty: qtyPerOrder,
 		}},
 	}, operator)
 	if err != nil {

@@ -78,24 +78,25 @@ func (h *Handler) runOutbound(c *gin.Context)  { h.run(c, service.ScenarioOutbou
 func (h *Handler) runStocktake(c *gin.Context) { h.run(c, service.ScenarioStocktake) }
 func (h *Handler) runFull(c *gin.Context)      { h.run(c, service.ScenarioFull) }
 func (h *Handler) runInboundDrafts(c *gin.Context) {
-	h.run(c, service.ScenarioInboundDrafts)
+	h.runWithOptions(c, service.ScenarioInboundDrafts)
 }
 func (h *Handler) runOutboundDrafts(c *gin.Context) {
-	h.run(c, service.ScenarioOutboundDrafts)
+	h.runWithOptions(c, service.ScenarioOutboundDrafts)
 }
 func (h *Handler) runStocktakeDrafts(c *gin.Context) {
-	h.run(c, service.ScenarioStocktakeDrafts)
+	h.runWithOptions(c, service.ScenarioStocktakeDrafts)
 }
 
 func (h *Handler) runConcurrent(c *gin.Context) {
 	var req struct {
 		Concurrency int `json:"concurrency" binding:"omitempty,min=1,max=30"`
+		QtyPerOrder int `json:"qty_per_order" binding:"omitempty,min=1,max=10"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil && c.Request.ContentLength > 0 {
 		response.Fail(c, errcode.ParamError)
 		return
 	}
-	result, err := h.svc.RunConcurrent(c.Request.Context(), demoSessionID(c), req.Concurrency)
+	result, err := h.svc.RunConcurrent(c.Request.Context(), demoSessionID(c), req.Concurrency, req.QtyPerOrder)
 	if err != nil {
 		response.Fail(c, err)
 		return
@@ -118,6 +119,20 @@ func (h *Handler) activity(c *gin.Context) {
 		return
 	}
 	result, err := h.svc.Activity(c.Request.Context(), limit)
+	if err != nil {
+		response.Fail(c, err)
+		return
+	}
+	response.OK(c, result)
+}
+
+func (h *Handler) runWithOptions(c *gin.Context, scenario string) {
+	var req service.ScenarioOptions
+	if err := c.ShouldBindJSON(&req); err != nil && c.Request.ContentLength > 0 {
+		response.Fail(c, errcode.ParamError)
+		return
+	}
+	result, err := h.svc.Run(c.Request.Context(), demoSessionID(c), scenario, req)
 	if err != nil {
 		response.Fail(c, err)
 		return

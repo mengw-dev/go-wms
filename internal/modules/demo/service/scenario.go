@@ -40,9 +40,15 @@ type ScenarioResult struct {
 	Steps       []ScenarioStep `json:"steps"`
 }
 
+// ScenarioOptions 批量草稿类场景的可选参数。
+type ScenarioOptions struct {
+	Count int `json:"count"`
+	Qty   int `json:"qty"`
+}
+
 // Run 先恢复默认演示数据，再执行指定场景。单实例内由演示会话锁保证只有
 // 一个 HR 能触发；runMu 进一步避免同一进程内的场景请求交叉执行。
-func (s *Service) Run(ctx context.Context, sessionID, scenario string) (*ScenarioResult, error) {
+func (s *Service) Run(ctx context.Context, sessionID, scenario string, options ...ScenarioOptions) (*ScenarioResult, error) {
 	if err := s.ValidateSession(ctx, sessionID); err != nil {
 		return nil, err
 	}
@@ -62,13 +68,17 @@ func (s *Service) Run(ctx context.Context, sessionID, scenario string) (*Scenari
 		if err != nil {
 			return nil, err
 		}
+		var opt ScenarioOptions
+		if len(options) > 0 {
+			opt = options[0]
+		}
 		switch scenario {
 		case ScenarioInboundDrafts:
-			return s.createInboundDrafts(ctx, refs)
+			return s.createInboundDrafts(ctx, refs, opt.Count, opt.Qty)
 		case ScenarioOutboundDrafts:
-			return s.createOutboundDrafts(ctx, refs)
+			return s.createOutboundDrafts(ctx, refs, opt.Count, opt.Qty)
 		default:
-			return s.createStocktakeDrafts(ctx, refs)
+			return s.createStocktakeDrafts(ctx, refs, opt.Count)
 		}
 	}
 

@@ -574,6 +574,8 @@ export interface DemoActivitySnapshot {
 
 export interface DemoConcurrentResult {
   concurrency: number
+  qty_per_order: number
+  total_demand: number
   success: number
   failed: number
   duration_ms: number
@@ -581,6 +583,7 @@ export interface DemoConcurrentResult {
   available_total: number
   allocated_total: number
   negative_rows: number
+  test_focus: string
   summary: string
   steps: DemoScenarioStep[]
 }
