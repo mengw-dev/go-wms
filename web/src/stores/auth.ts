@@ -22,10 +22,26 @@ function safeParseUser(raw: string | null): AuthUser | null {
   }
 }
 
+/**
+ * 选择存储介质：演示账号使用 sessionStorage，关闭/刷新标签页即登出；
+ * 普通账号使用 localStorage，保持登录状态。
+ */
+function pickStorage(isDemo: boolean): Storage {
+  return isDemo ? sessionStorage : localStorage
+}
+
+function removeAllAuthStorage() {
+  localStorage.removeItem(TOKEN_KEY)
+  localStorage.removeItem(USER_KEY)
+  sessionStorage.removeItem(TOKEN_KEY)
+  sessionStorage.removeItem(USER_KEY)
+}
+
 export const useAuthStore = defineStore('auth', {
   state: () => ({
-    token: localStorage.getItem(TOKEN_KEY) || '',
-    user: safeParseUser(localStorage.getItem(USER_KEY)),
+    // 优先读 sessionStorage（演示账号），再读 localStorage（普通账号）。
+    token: sessionStorage.getItem(TOKEN_KEY) || localStorage.getItem(TOKEN_KEY) || '',
+    user: safeParseUser(sessionStorage.getItem(USER_KEY) || localStorage.getItem(USER_KEY)),
     demoSessionId: sessionStorage.getItem(DEMO_SESSION_KEY) || '',
     demoSessionExpiresIn: 0,
   }),
@@ -40,6 +56,10 @@ export const useAuthStore = defineStore('auth', {
   actions: {
     setAuth(result: LoginResult) {
       this.clearDemoSession()
+      const isDemo = (result.perms ?? []).includes('wms:demo')
+      const storage = pickStorage(isDemo)
+      // 切换账号类型时清理另一份存储，避免旧 token 残留。
+      removeAllAuthStorage()
       this.token = result.token
       this.user = {
         user_id: result.user_id,
@@ -48,10 +68,12 @@ export const useAuthStore = defineStore('auth', {
         roles: result.roles ?? [],
         perms: result.perms ?? [],
       }
-      localStorage.setItem(TOKEN_KEY, result.token)
-      localStorage.setItem(USER_KEY, JSON.stringify(this.user))
+      storage.setItem(TOKEN_KEY, result.token)
+      storage.setItem(USER_KEY, JSON.stringify(this.user))
     },
     setProfile(profile: ProfileResult) {
+      const isDemo = (profile.perms ?? []).includes('wms:demo')
+      const storage = pickStorage(isDemo)
       this.user = {
         user_id: profile.user_id,
         username: profile.username,
@@ -59,7 +81,7 @@ export const useAuthStore = defineStore('auth', {
         roles: profile.roles ?? [],
         perms: profile.perms ?? [],
       }
-      localStorage.setItem(USER_KEY, JSON.stringify(this.user))
+      storage.setItem(USER_KEY, JSON.stringify(this.user))
     },
     setDemoSession(info: DemoSessionInfo) {
       this.demoSessionId = info.session_id
@@ -75,8 +97,7 @@ export const useAuthStore = defineStore('auth', {
       this.clearDemoSession()
       this.token = ''
       this.user = null
-      localStorage.removeItem(TOKEN_KEY)
-      localStorage.removeItem(USER_KEY)
+      removeAllAuthStorage()
     },
   },
 })

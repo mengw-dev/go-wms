@@ -172,8 +172,10 @@ var (
 
 // 演示模式 70000+
 var (
-	DemoDisabled       = New(70001, "演示模式未启用")
-	DemoBusy           = New(70002, "演示环境正在被使用，请稍后重试")
-	DemoSessionInvalid = New(70003, "演示会话已失效，请重新登录")
-	DemoDataMissing    = New(70004, "演示基础数据不存在，请先重置演示数据")
+	DemoDisabled        = New(70001, "演示模式未启用")
+	DemoBusy            = New(70002, "演示环境正在被使用，请稍后重试")
+	DemoSessionInvalid  = New(70003, "演示会话已失效，请重新登录")
+	DemoDataMissing     = New(70004, "演示基础数据不存在，请先重置演示数据")
+	DemoPickTaskMissing = New(70005, "没有可拣货任务，请先执行并发出库审核分配测试")
+	DemoStockNotEnough  = New(70006, "可用库存不足，请先点击“一键补货入库”或减少并发数量")
 )

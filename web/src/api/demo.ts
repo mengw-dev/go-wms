@@ -1,4 +1,11 @@
-import type { DemoActivitySnapshot, DemoConcurrentResult, DemoPerformanceSnapshot, DemoScenarioResult, DemoSessionInfo } from './types'
+import type {
+  DemoActivitySnapshot,
+  DemoConcurrentResult,
+  DemoPerformanceSnapshot,
+  DemoPickingResult,
+  DemoScenarioResult,
+  DemoSessionInfo,
+} from './types'
 import { get, post } from './request'
 
 export function acquireDemoSession() {
@@ -31,6 +38,14 @@ export function runDemoScenario(
 
 export function runConcurrentDemo(concurrency = 20, qtyPerOrder = 1) {
   return post<DemoConcurrentResult>('/demo/run/concurrent', { concurrency, qty_per_order: qtyPerOrder })
+}
+
+export function runConcurrentPicking(workers = 10, contenders = 5) {
+  return post<DemoPickingResult>('/demo/run/picking', { workers, contenders })
+}
+
+export function restockDemo(qty = 500) {
+  return post<DemoScenarioResult>('/demo/run/restock', { qty })
 }
 
 export function getDemoPerformance() {

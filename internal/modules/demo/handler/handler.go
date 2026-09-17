@@ -33,6 +33,8 @@ func (h *Handler) RegisterRoutes(auth *gin.RouterGroup, checker middleware.Perms
 	g.POST("/run/outbound_drafts", perm, h.runOutboundDrafts)
 	g.POST("/run/stocktake_drafts", perm, h.runStocktakeDrafts)
 	g.POST("/run/concurrent", perm, h.runConcurrent)
+	g.POST("/run/picking", perm, h.runConcurrentPicking)
+	g.POST("/run/restock", perm, h.runRestock)
 	g.GET("/performance", perm, h.performance)
 	g.GET("/activity", perm, h.activity)
 	g.POST("/reset", perm, h.reset)
@@ -97,6 +99,39 @@ func (h *Handler) runConcurrent(c *gin.Context) {
 		return
 	}
 	result, err := h.svc.RunConcurrent(c.Request.Context(), demoSessionID(c), req.Concurrency, req.QtyPerOrder)
+	if err != nil {
+		response.Fail(c, err)
+		return
+	}
+	response.OK(c, result)
+}
+
+func (h *Handler) runConcurrentPicking(c *gin.Context) {
+	var req struct {
+		Workers    int `json:"workers" binding:"omitempty,min=1,max=30"`
+		Contenders int `json:"contenders" binding:"omitempty,min=0,max=20"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil && c.Request.ContentLength > 0 {
+		response.Fail(c, errcode.ParamError)
+		return
+	}
+	result, err := h.svc.RunConcurrentPicking(c.Request.Context(), demoSessionID(c), req.Workers, req.Contenders)
+	if err != nil {
+		response.Fail(c, err)
+		return
+	}
+	response.OK(c, result)
+}
+
+func (h *Handler) runRestock(c *gin.Context) {
+	var req struct {
+		Qty int `json:"qty" binding:"omitempty,min=1,max=2000"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil && c.Request.ContentLength > 0 {
+		response.Fail(c, errcode.ParamError)
+		return
+	}
+	result, err := h.svc.RestockDemo(c.Request.Context(), demoSessionID(c), req.Qty)
 	if err != nil {
 		response.Fail(c, err)
 		return

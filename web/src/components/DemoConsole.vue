@@ -9,9 +9,12 @@ import {
   releaseDemoSession,
   resetDemoData,
   runConcurrentDemo,
+  runConcurrentPicking,
   runDemoScenario,
+  restockDemo,
 } from '@/api/demo'
-import type { DemoConcurrentResult, DemoScenarioResult } from '@/api/types'
+import { ApiError } from '@/api/request'
+import type { DemoConcurrentResult, DemoPickingResult, DemoScenarioResult } from '@/api/types'
 import { useAuthStore } from '@/stores/auth'
 import { emitDataChanged } from '@/utils/events'
 
@@ -22,10 +25,13 @@ const auth = useAuthStore()
 const visible = ref(false)
 const running = ref<ScenarioKey | ''>('')
 const concurrentRunning = ref(false)
+const pickingRunning = ref(false)
+const restockRunning = ref(false)
 const acquiring = ref(false)
 const remaining = ref(0)
 const result = ref<DemoScenarioResult | null>(null)
 const concurrentResult = ref<DemoConcurrentResult | null>(null)
+const pickingResult = ref<DemoPickingResult | null>(null)
 const draftParams = reactive({
   inboundCount: 3,
   inboundQty: 20,
@@ -34,16 +40,22 @@ const draftParams = reactive({
   stocktakeCount: 2,
   concurrentCount: 20,
   concurrentQty: 1,
+  pickingWorkers: 10,
+  pickingContenders: 5,
+  restockQty: 500,
 })
 let countdownTimer: number | undefined
 let heartbeatTimer: number | undefined
 let redirectingToLogin = false
+let refreshing = false
 
 const remainingText = computed(() => {
   const seconds = Math.max(0, remaining.value)
   return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`
 })
-const busy = computed(() => acquiring.value || running.value !== '' || concurrentRunning.value)
+const busy = computed(
+  () => acquiring.value || running.value !== '' || concurrentRunning.value || pickingRunning.value || restockRunning.value,
+)
 
 function clearTimers() {
   if (countdownTimer !== undefined) window.clearInterval(countdownTimer)
@@ -52,20 +64,29 @@ function clearTimers() {
   heartbeatTimer = undefined
 }
 
+/**
+ * 启动倒计时与心跳：
+ * - 倒计时每秒递减，仅用于显示；
+ * - 心跳每 30 秒向后端续期并同步剩余时间，保证页面存活期间会话不过期。
+ */
 function startTimers() {
   clearTimers()
   if (remaining.value <= 0) remaining.value = auth.demoSessionExpiresIn || 300
   countdownTimer = window.setInterval(() => {
     remaining.value = Math.max(0, remaining.value - 1)
-    if (remaining.value <= 0) void refreshSession()
   }, 1000)
   heartbeatTimer = window.setInterval(() => {
-    if (remaining.value <= 30) void refreshSession()
-  }, 10_000)
+    void refreshSession()
+  }, 30_000)
 }
 
+/**
+ * 向后端续期演示会话并同步倒计时。并发安全：同一时刻只允许一个心跳请求。
+ * 失败时统一跳转登录页，由 request.ts 拦截器兜底防止刷屏。
+ */
 async function refreshSession() {
-  if (busy.value || !auth.demoSessionId) return
+  if (refreshing || busy.value || !auth.demoSessionId) return
+  refreshing = true
   try {
     const info = await heartbeatDemoSession()
     auth.setDemoSession(info)
@@ -74,9 +95,10 @@ async function refreshSession() {
     if (redirectingToLogin) return
     redirectingToLogin = true
     clearTimers()
+    // 会话失效由 request.ts 拦截器统一处理跳转，这里仅清理本地状态。
     auth.clear()
-    ElMessage.warning('业务会话已失效，请重新登录')
-    router.push('/login')
+  } finally {
+    refreshing = false
   }
 }
 
@@ -111,7 +133,9 @@ async function initialize() {
       visible.value = autoOpen
       return
     } catch {
+      // 会话失效已由 request.ts 拦截器统一跳转登录，这里无需重复处理。
       auth.clearDemoSession()
+      return
     }
   }
   await acquire()
@@ -131,6 +155,7 @@ async function runScenario(scenario: ScenarioKey) {
   try {
     result.value = await runDemoScenario(scenario, options)
     concurrentResult.value = null
+    pickingResult.value = null
     emitDataChanged()
     ElMessage.success(result.value.summary)
   } finally {
@@ -138,17 +163,111 @@ async function runScenario(scenario: ScenarioKey) {
   }
 }
 
-async function runConcurrent() {
+function isDemoError(error: unknown, code: number) {
+  return error instanceof ApiError && error.code === code
+}
+
+async function executeConcurrentAllocation() {
+  concurrentResult.value = await runConcurrentDemo(draftParams.concurrentCount, draftParams.concurrentQty)
+  pickingResult.value = null
+  result.value = null
+  emitDataChanged()
+  ElMessage.success(concurrentResult.value.summary)
+}
+
+async function executeConcurrentAllocationWithRestock() {
+  try {
+    await executeConcurrentAllocation()
+  } catch (error) {
+    if (!isDemoError(error, 70006)) throw error
+    const demand = draftParams.concurrentCount * draftParams.concurrentQty
+    const qty = Math.max(draftParams.restockQty, demand)
+    try {
+      await ElMessageBox.confirm(
+        `当前可用库存不足以满足 ${demand} 件并发出库需求。是否先通过完整入库流程补充 ${qty} 件，然后自动继续审核分配？`,
+        '库存不足',
+        {
+          type: 'warning',
+          confirmButtonText: '一键补货并继续',
+          cancelButtonText: '先不执行',
+        },
+      )
+    } catch {
+      return
+    }
+    restockRunning.value = true
+    try {
+      result.value = await restockDemo(qty)
+      concurrentResult.value = null
+      pickingResult.value = null
+      emitDataChanged()
+      ElMessage.success(result.value.summary)
+    } finally {
+      restockRunning.value = false
+    }
+    await executeConcurrentAllocation()
+  }
+}
+
+async function runConcurrentAllocation() {
   if (busy.value) return
   concurrentRunning.value = true
-  concurrentResult.value = null
-  result.value = null
   try {
-    concurrentResult.value = await runConcurrentDemo(draftParams.concurrentCount, draftParams.concurrentQty)
-    emitDataChanged()
-    ElMessage.success(concurrentResult.value.summary)
+    await executeConcurrentAllocationWithRestock()
   } finally {
     concurrentRunning.value = false
+  }
+}
+
+async function runPicking() {
+  pickingResult.value = await runConcurrentPicking(draftParams.pickingWorkers, draftParams.pickingContenders)
+  concurrentResult.value = null
+  result.value = null
+  emitDataChanged()
+  ElMessage.success(pickingResult.value.summary)
+}
+
+async function runConcurrentPickingDemo() {
+  if (busy.value) return
+  pickingRunning.value = true
+  try {
+    try {
+      await runPicking()
+    } catch (error) {
+      if (!isDemoError(error, 70005)) throw error
+      try {
+        await ElMessageBox.confirm(
+          '当前没有可用的拣货任务，请先执行“并发出库审核分配”生成任务，再开始 PDA 并发拣货。',
+          '缺少拣货任务',
+          {
+            type: 'warning',
+            confirmButtonText: '去执行并继续',
+            cancelButtonText: '先不执行',
+          },
+        )
+      } catch {
+        return
+      }
+      await executeConcurrentAllocationWithRestock()
+      await runPicking()
+    }
+  } finally {
+    pickingRunning.value = false
+  }
+}
+
+async function runRestock() {
+  if (busy.value) return
+  restockRunning.value = true
+  result.value = null
+  try {
+    result.value = await restockDemo(draftParams.restockQty)
+    concurrentResult.value = null
+    pickingResult.value = null
+    emitDataChanged()
+    ElMessage.success(result.value.summary)
+  } finally {
+    restockRunning.value = false
   }
 }
 
@@ -181,6 +300,7 @@ async function resetData() {
   await resetDemoData()
   result.value = null
   concurrentResult.value = null
+  pickingResult.value = null
   emitDataChanged()
   ElMessage.success('演示数据已恢复为初始状态')
 }
@@ -204,17 +324,29 @@ async function releaseAndExit() {
   }
 }
 
+/**
+ * 页面关闭/刷新时：
+ * 1. 同步清理演示账号登录态（token 在 sessionStorage，关闭即消失，刷新也立即登出）；
+ * 2. 尽力向后端发送释放请求，重置演示数据并让出会话锁。
+ */
 function releaseKeepalive() {
-  if (!auth.isDemo || !auth.demoSessionId || !auth.token) return
+  if (!auth.isDemo || !auth.token) return
+  const token = auth.token
+  const sessionId = auth.demoSessionId
+  // 先同步清理本地登录态，确保刷新后回到登录页。
+  auth.clear()
+  if (!sessionId) return
   const baseURL = (import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(/\/$/, '')
-  void window.fetch(`${baseURL}/demo/session/release`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${auth.token}`,
-      'X-Demo-Session': auth.demoSessionId,
-    },
-    keepalive: true,
-  }).catch(() => undefined)
+  void window
+    .fetch(`${baseURL}/demo/session/release`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'X-Demo-Session': sessionId,
+      },
+      keepalive: true,
+    })
+    .catch(() => undefined)
 }
 
 onMounted(() => {
@@ -272,8 +404,14 @@ onBeforeUnmount(() => {
       <el-button :loading="running === 'stocktake_drafts'" :disabled="busy && running !== 'stocktake_drafts'" @click="runScenario('stocktake_drafts')">
         批量创建盘点单
       </el-button>
-      <el-button type="warning" :loading="concurrentRunning" :disabled="busy && !concurrentRunning" @click="runConcurrent">
-        并发出库测试
+      <el-button type="success" :loading="restockRunning" :disabled="busy && !restockRunning" @click="runRestock">
+        一键补货入库
+      </el-button>
+      <el-button type="warning" :loading="concurrentRunning" :disabled="busy && !concurrentRunning" @click="runConcurrentAllocation">
+        并发出库审核分配
+      </el-button>
+      <el-button type="warning" plain :loading="pickingRunning" :disabled="busy && !pickingRunning" @click="runConcurrentPickingDemo">
+        PDA 并发拣货
       </el-button>
       <el-button :disabled="busy" @click="goPerformance">性能指标</el-button>
       <el-button :disabled="busy" @click="goActivity">操作记录</el-button>
@@ -300,17 +438,48 @@ onBeforeUnmount(() => {
         <em>张</em>
       </div>
       <div class="param-line concurrent-param">
-        <span>并发出库测试</span>
+        <span>并发审核分配</span>
         <el-input-number v-model="draftParams.concurrentCount" :min="1" :max="30" size="small" />
         <em>张并发</em>
         <el-input-number v-model="draftParams.concurrentQty" :min="1" :max="10" size="small" />
         <em>件/张</em>
-        <small>测试库存行锁、FIFO、事务重试、防超卖</small>
+        <small>并发创建、提交、审核出库单，生成拣货任务，不执行拣货</small>
+      </div>
+      <div class="param-line">
+        <span>PDA 并发拣货</span>
+        <el-input-number v-model="draftParams.pickingWorkers" :min="1" :max="30" size="small" />
+        <em>名拣货员</em>
+        <el-input-number v-model="draftParams.pickingContenders" :min="0" :max="20" size="small" />
+        <em>名抢单者</em>
+        <small>使用上一步生成的拣货任务，模拟逐件扫码、多人抢单和防超拣</small>
+      </div>
+      <div class="param-line">
+        <span>一键补货</span>
+        <el-input-number v-model="draftParams.restockQty" :min="1" :max="2000" size="small" />
+        <em>件</em>
+        <small>完整执行入库单→提交→审核→收货→上架，不清空当前单据</small>
       </div>
     </div>
 
     <el-divider content-position="left">执行结果</el-divider>
-    <div v-if="concurrentResult" class="demo-result">
+    <div v-if="pickingResult" class="demo-result">
+      <el-alert type="success" :closable="false" show-icon :title="pickingResult.summary" />
+      <div class="concurrent-focus">
+        任务 {{ pickingResult.task_count }} 个，拣货员 {{ pickingResult.workers }} 名，抢单者
+        {{ pickingResult.contenders }} 名，最终拣货 {{ pickingResult.final_picked }}/{{ pickingResult.total_target }} 件
+      </div>
+      <el-timeline class="demo-timeline">
+        <el-timeline-item
+          v-for="(step, index) in pickingResult.steps"
+          :key="`${step.title}-${index}`"
+          :timestamp="step.title"
+          color="var(--el-color-warning)"
+        >
+          {{ step.detail }}
+        </el-timeline-item>
+      </el-timeline>
+    </div>
+    <div v-else-if="concurrentResult" class="demo-result">
       <el-alert type="success" :closable="false" show-icon :title="concurrentResult.summary" />
       <div class="concurrent-focus">
         测试重点：{{ concurrentResult.test_focus }}，总需求 {{ concurrentResult.total_demand }} 件

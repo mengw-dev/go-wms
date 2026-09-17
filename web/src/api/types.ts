@@ -579,11 +579,33 @@ export interface DemoConcurrentResult {
   success: number
   failed: number
   duration_ms: number
+  pick_task_count: number
   stock_total: number
   available_total: number
   allocated_total: number
   negative_rows: number
   test_focus: string
+  summary: string
+  steps: DemoScenarioStep[]
+}
+
+export interface DemoPickingResult {
+  workers: number
+  contenders: number
+  task_count: number
+  total_target: number
+  worker_success: number
+  worker_rejected: number
+  contender_success: number
+  contender_rejected: number
+  final_picked: number
+  completed_tasks: number
+  shipped_orders: number
+  duration_ms: number
+  stock_total: number
+  available_total: number
+  allocated_total: number
+  negative_rows: number
   summary: string
   steps: DemoScenarioStep[]
 }
