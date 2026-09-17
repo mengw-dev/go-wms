@@ -17,7 +17,7 @@ export function getDemoSessionStatus() {
   return get<DemoSessionInfo>('/demo/session/status')
 }
 
-export function runDemoScenario(scenario: 'inbound' | 'outbound' | 'stocktake' | 'full') {
+export function runDemoScenario(scenario: 'inbound' | 'outbound' | 'stocktake' | 'full' | 'inbound_drafts' | 'outbound_drafts' | 'stocktake_drafts') {
   return post<DemoScenarioResult>(`/demo/run/${scenario}`)
 }
 

@@ -16,10 +16,13 @@ import (
 
 // 演示场景标识。
 const (
-	ScenarioInbound   = "inbound"
-	ScenarioOutbound  = "outbound"
-	ScenarioStocktake = "stocktake"
-	ScenarioFull      = "full"
+	ScenarioInbound         = "inbound"
+	ScenarioOutbound        = "outbound"
+	ScenarioStocktake       = "stocktake"
+	ScenarioFull            = "full"
+	ScenarioInboundDrafts   = "inbound_drafts"
+	ScenarioOutboundDrafts  = "outbound_drafts"
+	ScenarioStocktakeDrafts = "stocktake_drafts"
 )
 
 // ScenarioStep 演示中的一个可展示步骤。
@@ -30,9 +33,11 @@ type ScenarioStep struct {
 
 // ScenarioResult 一次演示场景的执行结果。
 type ScenarioResult struct {
-	Name    string         `json:"name"`
-	Summary string         `json:"summary"`
-	Steps   []ScenarioStep `json:"steps"`
+	Name        string         `json:"name"`
+	Summary     string         `json:"summary"`
+	TargetPath  string         `json:"target_path,omitempty"`
+	TargetLabel string         `json:"target_label,omitempty"`
+	Steps       []ScenarioStep `json:"steps"`
 }
 
 // Run 先恢复默认演示数据，再执行指定场景。单实例内由演示会话锁保证只有
@@ -43,13 +48,29 @@ func (s *Service) Run(ctx context.Context, sessionID, scenario string) (*Scenari
 	}
 	scenario = strings.ToLower(strings.TrimSpace(scenario))
 	switch scenario {
-	case ScenarioInbound, ScenarioOutbound, ScenarioStocktake, ScenarioFull:
+	case ScenarioInbound, ScenarioOutbound, ScenarioStocktake, ScenarioFull,
+		ScenarioInboundDrafts, ScenarioOutboundDrafts, ScenarioStocktakeDrafts:
 	default:
 		return nil, errcode.ParamError
 	}
 
 	s.runMu.Lock()
 	defer s.runMu.Unlock()
+
+	if scenario == ScenarioInboundDrafts || scenario == ScenarioOutboundDrafts || scenario == ScenarioStocktakeDrafts {
+		refs, err := s.loadDemoBaseRefs(ctx)
+		if err != nil {
+			return nil, err
+		}
+		switch scenario {
+		case ScenarioInboundDrafts:
+			return s.createInboundDrafts(ctx, refs)
+		case ScenarioOutboundDrafts:
+			return s.createOutboundDrafts(ctx, refs)
+		default:
+			return s.createStocktakeDrafts(ctx, refs)
+		}
+	}
 
 	if err := s.resetLocked(ctx); err != nil {
 		return nil, err
@@ -91,7 +112,7 @@ type demoRefs struct {
 	Location  basicmodel.Location
 }
 
-func (s *Service) loadDemoRefs(ctx context.Context) (*demoRefs, error) {
+func (s *Service) loadDemoBaseRefs(ctx context.Context) (*demoRefs, error) {
 	var refs demoRefs
 	if err := s.db.WithContext(ctx).Where("code = ? AND status = ?", "WH01", 1).
 		First(&refs.Warehouse).Error; err != nil {
@@ -101,12 +122,20 @@ func (s *Service) loadDemoRefs(ctx context.Context) (*demoRefs, error) {
 		First(&refs.SKU).Error; err != nil {
 		return nil, errcode.DemoDataMissing
 	}
+	return &refs, nil
+}
+
+func (s *Service) loadDemoRefs(ctx context.Context) (*demoRefs, error) {
+	refs, err := s.loadDemoBaseRefs(ctx)
+	if err != nil {
+		return nil, err
+	}
 	if err := s.db.WithContext(ctx).
 		Where("warehouse_id = ? AND status = ?", refs.Warehouse.ID, basicmodel.LocationStatusIdle).
 		Order("code ASC").First(&refs.Location).Error; err != nil {
 		return nil, errcode.DemoDataMissing
 	}
-	return &refs, nil
+	return refs, nil
 }
 
 func (s *Service) runInboundDemo(ctx context.Context, refs *demoRefs) (*ScenarioResult, error) {

@@ -234,8 +234,11 @@ X-API-Key: <WMS_INTEGRATION_API_KEY>
 | POST | `/demo/run/inbound` | 执行入库、收货、上架场景 |
 | POST | `/demo/run/outbound` | 执行出库 FIFO 分配、拣货场景 |
 | POST | `/demo/run/stocktake` | 执行盘点、差异调整场景 |
-| POST | `/demo/run/full` | 依次执行上述完整流程 |
-| POST | `/demo/run/concurrent` | 受控并发业务演示 `{ "concurrency": 20 }`，展示库存锁和防超卖 |
+| POST | `/demo/run/full` | 一键走完入库、出库、盘点完整流程 |
+| POST | `/demo/run/inbound_drafts` | 模拟 Excel 批量创建 3 张入库草稿，后续由 HR 手工处理 |
+| POST | `/demo/run/outbound_drafts` | 模拟上游系统批量创建 3 张出库草稿 |
+| POST | `/demo/run/stocktake_drafts` | 批量创建 2 张盘点草稿 |
+| POST | `/demo/run/concurrent` | 受控并发业务测试 `{ "concurrency": 20 }`，展示库存锁和防超卖 |
 | GET | `/demo/performance` | 实时性能快照：DB/Redis、连接池、Go 运行时和业务数量 |
 | GET | `/demo/activity?limit=20` | 当前演示账号的接口操作、单据、任务和库存流水 |
 | POST | `/demo/reset` | 手动恢复初始数据，保留当前会话 |

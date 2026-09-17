@@ -29,6 +29,9 @@ func (h *Handler) RegisterRoutes(auth *gin.RouterGroup, checker middleware.Perms
 	g.POST("/run/outbound", perm, h.runOutbound)
 	g.POST("/run/stocktake", perm, h.runStocktake)
 	g.POST("/run/full", perm, h.runFull)
+	g.POST("/run/inbound_drafts", perm, h.runInboundDrafts)
+	g.POST("/run/outbound_drafts", perm, h.runOutboundDrafts)
+	g.POST("/run/stocktake_drafts", perm, h.runStocktakeDrafts)
 	g.POST("/run/concurrent", perm, h.runConcurrent)
 	g.GET("/performance", perm, h.performance)
 	g.GET("/activity", perm, h.activity)
@@ -74,6 +77,15 @@ func (h *Handler) runInbound(c *gin.Context)   { h.run(c, service.ScenarioInboun
 func (h *Handler) runOutbound(c *gin.Context)  { h.run(c, service.ScenarioOutbound) }
 func (h *Handler) runStocktake(c *gin.Context) { h.run(c, service.ScenarioStocktake) }
 func (h *Handler) runFull(c *gin.Context)      { h.run(c, service.ScenarioFull) }
+func (h *Handler) runInboundDrafts(c *gin.Context) {
+	h.run(c, service.ScenarioInboundDrafts)
+}
+func (h *Handler) runOutboundDrafts(c *gin.Context) {
+	h.run(c, service.ScenarioOutboundDrafts)
+}
+func (h *Handler) runStocktakeDrafts(c *gin.Context) {
+	h.run(c, service.ScenarioStocktakeDrafts)
+}
 
 func (h *Handler) runConcurrent(c *gin.Context) {
 	var req struct {

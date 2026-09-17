@@ -324,14 +324,14 @@ func SeedDemoAccount(db *gorm.DB, cfg *config.Config) error {
 	var role sysmodel.SysRole
 	err := db.Where("name = ?", "demo").First(&role).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		role = sysmodel.SysRole{Name: "demo", Perms: demoPerms, Remark: "公开演示账号，仅允许业务演示"}
+		role = sysmodel.SysRole{Name: "demo", Perms: demoPerms, Remark: "公开业务体验账号，仅允许业务操作"}
 		if err := db.Create(&role).Error; err != nil {
 			return err
 		}
 	} else if err != nil {
 		return err
 	} else if err := db.Model(&role).Updates(map[string]any{
-		"perms": demoPerms, "remark": "公开演示账号，仅允许业务演示",
+		"perms": demoPerms, "remark": "公开业务体验账号，仅允许业务操作",
 	}).Error; err != nil {
 		return err
 	}
@@ -358,7 +358,7 @@ func SeedDemoAccount(db *gorm.DB, cfg *config.Config) error {
 	err = db.Where("username = ?", cfg.Demo.Username).First(&user).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		user = sysmodel.SysUser{
-			Username: cfg.Demo.Username, PasswordHash: string(hash), Nickname: "演示账号", Status: 1,
+			Username: cfg.Demo.Username, PasswordHash: string(hash), Nickname: "业务体验账号", Status: 1,
 		}
 		if err := db.Create(&user).Error; err != nil {
 			return err
@@ -366,7 +366,7 @@ func SeedDemoAccount(db *gorm.DB, cfg *config.Config) error {
 	} else if err != nil {
 		return err
 	} else if err := db.Model(&user).Updates(map[string]any{
-		"password_hash": string(hash), "nickname": "演示账号", "status": 1,
+		"password_hash": string(hash), "nickname": "业务体验账号", "status": 1,
 	}).Error; err != nil {
 		return err
 	}

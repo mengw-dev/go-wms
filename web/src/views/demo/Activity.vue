@@ -36,7 +36,7 @@ useAutoRefresh(() => load(true), 5000)
   <div v-loading="loading" class="activity-page">
     <div class="page-head">
       <div>
-        <h2>演示操作记录</h2>
+        <h2>业务操作记录</h2>
         <p>展示当前演示账号最近发生的接口操作、业务单据、任务和库存流水。</p>
       </div>
       <div class="head-actions">

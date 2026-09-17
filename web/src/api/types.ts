@@ -501,6 +501,8 @@ export interface DemoScenarioStep {
 export interface DemoScenarioResult {
   name: string
   summary: string
+  target_path?: string
+  target_label?: string
   steps: DemoScenarioStep[]
 }
 

@@ -107,7 +107,7 @@ async function submitPassword() {
         <el-sub-menu v-if="auth.isDemo" index="demo-center">
           <template #title>
             <el-icon><TrendCharts /></el-icon>
-            <span>演示中心</span>
+            <span>业务中心</span>
           </template>
           <el-menu-item index="/demo/performance">性能指标</el-menu-item>
           <el-menu-item index="/demo/activity">操作记录</el-menu-item>

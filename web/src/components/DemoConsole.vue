@@ -15,7 +15,7 @@ import type { DemoConcurrentResult, DemoScenarioResult } from '@/api/types'
 import { useAuthStore } from '@/stores/auth'
 import { emitDataChanged } from '@/utils/events'
 
-type ScenarioKey = 'inbound' | 'outbound' | 'stocktake' | 'full'
+type ScenarioKey = 'inbound_drafts' | 'outbound_drafts' | 'stocktake_drafts' | 'full'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -137,6 +137,12 @@ function goActivity() {
   router.push('/demo/activity')
 }
 
+function goTarget(path?: string) {
+  if (!path) return
+  visible.value = false
+  router.push(path)
+}
+
 async function resetData() {
   try {
     await ElMessageBox.confirm(
@@ -200,14 +206,14 @@ onBeforeUnmount(() => {
 <template>
   <button v-if="auth.isDemo" class="demo-fab" type="button" @click="visible = true">
     <el-icon><VideoPlay /></el-icon>
-    <span>演示控制台</span>
+    <span>业务流程中心</span>
     <small>{{ remainingText }}</small>
   </button>
 
   <el-dialog
     v-model="visible"
     class="demo-console-dialog"
-    title="WMS 业务流程演示"
+    title="业务流程中心"
     width="640px"
     align-center
     :close-on-click-modal="false"
@@ -216,7 +222,7 @@ onBeforeUnmount(() => {
       type="info"
       :closable="false"
       show-icon
-      title="当前是独立演示环境，同一实例同一时间只允许一个演示会话。退出后会恢复初始数据。"
+      title="当前是独立业务环境，同一实例同一时间只允许一个操作会话。退出后会恢复初始数据。"
       class="demo-tip"
     />
 
@@ -229,20 +235,20 @@ onBeforeUnmount(() => {
     </div>
 
     <div class="demo-actions">
-      <el-button type="primary" size="large" :loading="running === 'full'" :disabled="busy && running !== 'full'" @click="runScenario('full')">
-        一键完整流程演示
+      <el-button type="primary" :loading="running === 'full'" :disabled="busy && running !== 'full'" @click="runScenario('full')">
+        一键完整流程
       </el-button>
-      <el-button :loading="running === 'inbound'" :disabled="busy && running !== 'inbound'" @click="runScenario('inbound')">
-        入库演示
+      <el-button :loading="running === 'inbound_drafts'" :disabled="busy && running !== 'inbound_drafts'" @click="runScenario('inbound_drafts')">
+        模拟 Excel 批量入库
       </el-button>
-      <el-button :loading="running === 'outbound'" :disabled="busy && running !== 'outbound'" @click="runScenario('outbound')">
-        出库演示
+      <el-button :loading="running === 'outbound_drafts'" :disabled="busy && running !== 'outbound_drafts'" @click="runScenario('outbound_drafts')">
+        模拟上游批量出库
       </el-button>
-      <el-button :loading="running === 'stocktake'" :disabled="busy && running !== 'stocktake'" @click="runScenario('stocktake')">
-        盘点演示
+      <el-button :loading="running === 'stocktake_drafts'" :disabled="busy && running !== 'stocktake_drafts'" @click="runScenario('stocktake_drafts')">
+        批量创建盘点单
       </el-button>
       <el-button type="warning" :loading="concurrentRunning" :disabled="busy && !concurrentRunning" @click="runConcurrent">
-        并发业务演示
+        并发业务测试
       </el-button>
       <el-button :disabled="busy" @click="goPerformance">性能指标</el-button>
       <el-button :disabled="busy" @click="goActivity">操作记录</el-button>
@@ -264,6 +270,11 @@ onBeforeUnmount(() => {
     </div>
     <div v-else-if="result" class="demo-result">
       <el-alert type="success" :closable="false" show-icon :title="result.summary" />
+      <div v-if="result.target_path" class="result-action">
+        <el-button type="primary" plain @click="goTarget(result.target_path)">
+          {{ result.target_label || '前往处理' }}
+        </el-button>
+      </div>
       <el-timeline class="demo-timeline">
         <el-timeline-item
           v-for="(step, index) in result.steps"
@@ -349,6 +360,12 @@ onBeforeUnmount(() => {
 
 .demo-result {
   margin-top: 8px;
+}
+
+.result-action {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
 }
 
 .demo-timeline {
