@@ -1,5 +1,6 @@
 import { del, get, post } from './request'
 import type {
+  BatchOperResult,
   EntityID,
   OutboundCreateParams,
   OutboundOrderDetail,
@@ -43,4 +44,24 @@ export function cancelOutboundOrder(id: EntityID) {
 /** 拣货（路径 :id 即 task_id） */
 export function pickOutboundTask(taskId: EntityID, data: PickParams) {
   return post<void>(`/outbound/tasks/${taskId}/pick`, data)
+}
+
+/** 批量删除出库单（仅 DRAFT） */
+export function batchDeleteOutboundOrders(ids: EntityID[]) {
+  return post<BatchOperResult>('/outbound/orders/batch-delete', { ids })
+}
+
+/** 批量提交出库单（DRAFT → SUBMITTED） */
+export function batchSubmitOutboundOrders(ids: EntityID[]) {
+  return post<BatchOperResult>('/outbound/orders/batch-submit', { ids })
+}
+
+/** 批量审核出库单（SUBMITTED → PICKING，含库存分配） */
+export function batchApproveOutboundOrders(ids: EntityID[]) {
+  return post<BatchOperResult>('/outbound/orders/batch-approve', { ids })
+}
+
+/** 批量作废出库单 */
+export function batchCancelOutboundOrders(ids: EntityID[]) {
+  return post<BatchOperResult>('/outbound/orders/batch-cancel', { ids })
 }

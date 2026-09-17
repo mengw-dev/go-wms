@@ -1,12 +1,18 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, reactive, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, genFileId } from 'element-plus'
 import type { UploadFile, UploadRawFile } from 'element-plus'
+import { ArrowDown, CloseBold, Delete, Files, Promotion, Select } from '@element-plus/icons-vue'
 import {
   approveInboundOrder,
+  batchApproveInboundOrders,
+  batchCancelInboundOrders,
+  batchDeleteInboundOrders,
+  batchSubmitInboundOrders,
   cancelInboundOrder,
   createInboundOrder,
+  deleteInboundByImportTask,
   deleteInboundOrder,
   getImportStatus,
   getInboundOrder,
@@ -15,7 +21,7 @@ import {
   submitInboundOrder,
   updateInboundOrder,
 } from '@/api/inbound'
-import type { EntityID, ImportTaskItem, InboundOrderItem } from '@/api/types'
+import type { BatchOperResult, EntityID, ImportTaskItem, InboundOrderItem } from '@/api/types'
 import { INBOUND_STATUS_OPTIONS, statusTag, statusText } from '@/constants'
 import { cleanParams, formatTime } from '@/utils'
 import { loadSkuMap, loadWarehouseOptions, toOptionMap, type IdOption } from '@/utils/options'
@@ -133,6 +139,114 @@ async function onDelete(row: InboundOrderItem) {
 
 function goDetail(row: InboundOrderItem) {
   router.push(`/inbound/orders/${row.id}`)
+}
+
+// ---------- 批量操作 ----------
+const selectedRows = ref<InboundOrderItem[]>([])
+const tableRef = ref()
+
+function onSelectionChange(rows: InboundOrderItem[]) {
+  selectedRows.value = rows
+}
+
+function onBatchCommand(cmd: string) {
+  if (cmd === 'delete') onBatchDelete()
+  else if (cmd === 'submit') onBatchSubmit()
+  else if (cmd === 'approve') onBatchApprove()
+  else if (cmd === 'cancel') onBatchCancel()
+  else if (cmd === 'batch-by-task' && singleImportBatch.value) onBatchDeleteByTask(singleImportBatch.value)
+}
+
+// 动态计算可用批量操作：只要选中单据中"至少有一张能做"就显示按钮
+// 执行时后端会跳过状态不匹配的，返回部分成功/失败
+const availableBatchOps = computed(() => {
+  const rows = selectedRows.value
+  if (rows.length === 0) return { delete: false, submit: false, approve: false, cancel: false }
+  const hasDraft = rows.some(r => r.status === 'DRAFT')
+  const hasSubmitted = rows.some(r => r.status === 'SUBMITTED')
+  const hasCanCancel = rows.some(r => ['DRAFT', 'SUBMITTED', 'APPROVED'].includes(r.status))
+  return {
+    delete: hasDraft,
+    submit: hasDraft,
+    approve: hasSubmitted,
+    cancel: hasCanCancel,
+  }
+})
+
+// 是否存在可按批次删除的选中（全部来自同一次导入 + 都是 DRAFT）
+const singleImportBatch = computed(() => {
+  const rows = selectedRows.value
+  if (rows.length < 2) return null
+  const taskId = rows[0].import_task_id
+  if (!taskId) return null
+  if (!rows.every(r => r.import_task_id === taskId && r.status === 'DRAFT')) return null
+  return taskId
+})
+
+function showBatchResult(resp: BatchOperResult, action: string) {
+  if (resp.fail === 0) {
+    ElMessage.success(`${action}：全部成功 ${resp.success} 张`)
+  } else {
+    ElMessageBox.alert(
+      `${action}完成：成功 ${resp.success} 张，失败 ${resp.fail} 张`,
+      '批量操作结果',
+      { type: 'warning' },
+    )
+  }
+}
+
+async function onBatchDelete() {
+  const rows = selectedRows.value
+  try {
+    await ElMessageBox.confirm(`确定批量删除选中的 ${rows.length} 张草稿入库单吗？`, '批量删除', { type: 'warning', confirmButtonClass: 'el-button--danger' })
+  } catch { return }
+  const resp = await batchDeleteInboundOrders(rows.map(r => r.id))
+  showBatchResult(resp, '批量删除')
+  tableRef.value?.clearSelection()
+  load()
+}
+
+async function onBatchSubmit() {
+  const rows = selectedRows.value
+  try {
+    await ElMessageBox.confirm(`确定批量提交选中的 ${rows.length} 张草稿入库单吗？`, '批量提交', { type: 'warning' })
+  } catch { return }
+  const resp = await batchSubmitInboundOrders(rows.map(r => r.id))
+  showBatchResult(resp, '批量提交')
+  tableRef.value?.clearSelection()
+  load()
+}
+
+async function onBatchApprove() {
+  const rows = selectedRows.value
+  try {
+    await ElMessageBox.confirm(`确定批量审核选中的 ${rows.length} 张入库单吗？`, '批量审核', { type: 'warning' })
+  } catch { return }
+  const resp = await batchApproveInboundOrders(rows.map(r => r.id))
+  showBatchResult(resp, '批量审核')
+  tableRef.value?.clearSelection()
+  load()
+}
+
+async function onBatchCancel() {
+  const rows = selectedRows.value
+  try {
+    await ElMessageBox.confirm(`确定批量作废选中的 ${rows.length} 张入库单吗？`, '批量作废', { type: 'warning', confirmButtonClass: 'el-button--danger' })
+  } catch { return }
+  const resp = await batchCancelInboundOrders(rows.map(r => r.id))
+  showBatchResult(resp, '批量作废')
+  tableRef.value?.clearSelection()
+  load()
+}
+
+async function onBatchDeleteByTask(taskId: string) {
+  try {
+    await ElMessageBox.confirm(`确定按批次号 ${taskId} 删除全部 DRAFT 入库单吗？`, '按批次删除', { type: 'warning', confirmButtonClass: 'el-button--danger' })
+  } catch { return }
+  const resp = await deleteInboundByImportTask(taskId)
+  showBatchResult(resp, `批次 ${taskId} 删除`)
+  tableRef.value?.clearSelection()
+  load()
 }
 
 // ---------- 新建 / 编辑 ----------
@@ -321,9 +435,55 @@ onUnmounted(stopPolling)
     <div class="toolbar">
       <el-button v-permission="'wms:inbound:create'" type="primary" @click="openCreate">新建入库单</el-button>
       <el-button v-permission="'wms:inbound:create'" type="success" plain @click="openImport">Excel 导入</el-button>
+      <el-dropdown trigger="click" @command="onBatchCommand">
+        <el-button plain>
+          批量操作
+          <el-icon class="el-icon--right"><arrow-down /></el-icon>
+        </el-button>
+        <template #dropdown>
+          <el-dropdown-menu>
+            <el-dropdown-item command="delete" :disabled="!availableBatchOps.delete">
+              <el-icon><Delete /></el-icon>批量删除<span v-if="availableBatchOps.delete" class="badge-hint">(DRAFT)</span>
+            </el-dropdown-item>
+            <el-dropdown-item command="submit" :disabled="!availableBatchOps.submit">
+              <el-icon><Promotion /></el-icon>批量提交<span v-if="availableBatchOps.submit" class="badge-hint">(DRAFT)</span>
+            </el-dropdown-item>
+            <el-dropdown-item command="approve" :disabled="!availableBatchOps.approve">
+              <el-icon><Select /></el-icon>批量审核<span v-if="availableBatchOps.approve" class="badge-hint">(SUBMITTED)</span>
+            </el-dropdown-item>
+            <el-dropdown-item command="cancel" :disabled="!availableBatchOps.cancel">
+              <el-icon><CloseBold /></el-icon>批量作废
+            </el-dropdown-item>
+            <el-dropdown-item v-if="singleImportBatch" command="batch-by-task" :divider="true">
+              <el-icon><Files /></el-icon>按批次删除（{{ singleImportBatch }}）
+            </el-dropdown-item>
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
+      <span v-if="selectedRows.length > 0" class="selected-hint">已选 {{ selectedRows.length }} 项</span>
     </div>
 
-    <el-table v-loading="loading" :data="list" border stripe>
+    <el-alert
+      v-if="selectedRows.length > 0"
+      type="info"
+      class="batch-alert"
+      :closable="false"
+      show-icon
+    >
+      <template #title>
+        <span>已勾选 <strong>{{ selectedRows.length }}</strong> 张入库单</span>
+        <span class="batch-alert-actions">
+          <el-button v-if="availableBatchOps.delete" link type="danger" @click="onBatchDelete">删除</el-button>
+          <el-button v-if="availableBatchOps.submit" link type="success" @click="onBatchSubmit">提交</el-button>
+          <el-button v-if="availableBatchOps.approve" link type="primary" @click="onBatchApprove">审核</el-button>
+          <el-button v-if="availableBatchOps.cancel" link type="danger" @click="onBatchCancel">作废</el-button>
+          <el-button link @click="tableRef?.clearSelection()">清除选择</el-button>
+        </span>
+      </template>
+    </el-alert>
+
+    <el-table ref="tableRef" v-loading="loading" :data="list" border stripe @selection-change="onSelectionChange">
+      <el-table-column type="selection" width="42" />
       <el-table-column prop="order_no" label="入库单号" min-width="170">
         <template #default="{ row }">
           <el-link type="primary" @click="goDetail(row)">{{ row.order_no }}</el-link>
@@ -337,8 +497,14 @@ onUnmounted(stopPolling)
           <el-tag :type="statusTag(row.status)" size="small">{{ statusText(row.status) }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="来源" width="90">
-        <template #default="{ row }">{{ row.source === 'IMPORT' ? '导入' : '手动' }}</template>
+      <el-table-column label="来源" width="130">
+        <template #default="{ row }">
+          <template v-if="row.source === 'IMPORT'">
+            <el-tag type="info" size="small">导入</el-tag>
+            <div class="task-id" v-if="row.import_task_id">{{ row.import_task_id }}</div>
+          </template>
+          <span v-else>手动</span>
+        </template>
       </el-table-column>
       <el-table-column prop="expected_qty" label="应收数量" width="100" align="right" />
       <el-table-column prop="received_qty" label="已收数量" width="100" align="right" />
@@ -477,6 +643,39 @@ onUnmounted(stopPolling)
 </template>
 
 <style scoped>
+.selected-hint {
+  margin-left: 12px;
+  font-size: 13px;
+  color: var(--el-color-primary);
+  font-weight: 500;
+}
+
+.batch-alert {
+  margin-bottom: 12px;
+}
+
+.batch-alert-actions {
+  margin-left: 16px;
+  display: inline-flex;
+  gap: 4px;
+}
+
+.badge-hint {
+  margin-left: 4px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+
+.task-id {
+  font-size: 11px;
+  color: var(--el-text-color-secondary);
+  font-family: monospace;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .detail-editor {
   width: 100%;
 }

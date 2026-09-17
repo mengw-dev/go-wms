@@ -212,6 +212,58 @@ func (s *Service) Cancel(ctx context.Context, id int64, operator string) error {
 	})
 }
 
+// batchOper 逐张执行，部分成功不回滚，返回明细。
+func (s *Service) batchOper(ctx context.Context, ids []int64, operator string, fn func(context.Context, int64, string) error) *dto.BatchOperResp {
+	resp := &dto.BatchOperResp{}
+	for _, id := range ids {
+		if err := fn(ctx, id, operator); err != nil {
+			resp.Fail++
+			resp.Errors = append(resp.Errors, dto.BatchItemError{ID: id, Msg: err.Error()})
+			continue
+		}
+		resp.Success++
+	}
+	return resp
+}
+
+// 批量删除（仅 DRAFT）。
+func (s *Service) BatchDelete(ctx context.Context, ids []int64) *dto.BatchOperResp {
+	resp := &dto.BatchOperResp{}
+	for _, id := range ids {
+		if err := s.Delete(ctx, id); err != nil {
+			resp.Fail++
+			resp.Errors = append(resp.Errors, dto.BatchItemError{ID: id, Msg: err.Error()})
+			continue
+		}
+		resp.Success++
+	}
+	return resp
+}
+
+// 批量提交（DRAFT → SUBMITTED）。
+func (s *Service) BatchSubmit(ctx context.Context, ids []int64) *dto.BatchOperResp {
+	resp := &dto.BatchOperResp{}
+	for _, id := range ids {
+		if err := s.Submit(ctx, id); err != nil {
+			resp.Fail++
+			resp.Errors = append(resp.Errors, dto.BatchItemError{ID: id, Msg: err.Error()})
+			continue
+		}
+		resp.Success++
+	}
+	return resp
+}
+
+// 批量审核（SUBMITTED → PICKING，含库存分配 + 拣货任务生成）。
+func (s *Service) BatchApprove(ctx context.Context, ids []int64, operator string) *dto.BatchOperResp {
+	return s.batchOper(ctx, ids, operator, s.Approve)
+}
+
+// 批量作废（DRAFT/SUBMITTED/APPROVED/PICKING → CANCELLED，释放已分配库存）。
+func (s *Service) BatchCancel(ctx context.Context, ids []int64, operator string) *dto.BatchOperResp {
+	return s.batchOper(ctx, ids, operator, s.Cancel)
+}
+
 func (s *Service) buildDetails(ctx context.Context, items []dto.OrderDetailItem) ([]*model.ShipmentOrderDetail, int, error) {
 	details := make([]*model.ShipmentOrderDetail, 0, len(items))
 	expected := 0

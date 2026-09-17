@@ -121,7 +121,7 @@ func (r *Repository) IncrOrderReceive(tx *gorm.DB, id int64, version int, qtyDel
 	return res.RowsAffected, res.Error
 }
 
-func (r *Repository) ListOrders(ctx context.Context, db *gorm.DB, warehouseID int64, status, keyword string, page, size int) ([]*model.ReceiptOrder, int64, error) {
+func (r *Repository) ListOrders(ctx context.Context, db *gorm.DB, warehouseID int64, status, keyword, createdAtFrom, createdAtTo string, page, size int) ([]*model.ReceiptOrder, int64, error) {
 	q := db.WithContext(ctx).Model(&model.ReceiptOrder{})
 	if warehouseID > 0 {
 		q = q.Where("warehouse_id = ?", warehouseID)
@@ -132,6 +132,12 @@ func (r *Repository) ListOrders(ctx context.Context, db *gorm.DB, warehouseID in
 	if keyword != "" {
 		q = q.Where("order_no LIKE ?", "%"+keyword+"%")
 	}
+	if createdAtFrom != "" {
+		q = q.Where("created_at >= ?", createdAtFrom)
+	}
+	if createdAtTo != "" {
+		q = q.Where("created_at <= ?", createdAtTo)
+	}
 	var total int64
 	if err := q.Count(&total).Error; err != nil {
 		return nil, 0, err
@@ -139,6 +145,15 @@ func (r *Repository) ListOrders(ctx context.Context, db *gorm.DB, warehouseID in
 	var list []*model.ReceiptOrder
 	err := q.Order("id DESC").Offset((page - 1) * size).Limit(size).Find(&list).Error
 	return list, total, err
+}
+
+// ListIDsByImportTask 按导入批次号查询入库单 ID（仅 DRAFT 状态可删除）。
+func (r *Repository) ListIDsByImportTask(ctx context.Context, db *gorm.DB, taskID string) ([]int64, error) {
+	var ids []int64
+	err := db.WithContext(ctx).Model(&model.ReceiptOrder{}).
+		Where("import_task_id = ? AND status = ?", taskID, model.OrderDraft).
+		Pluck("id", &ids).Error
+	return ids, err
 }
 
 // ---------- 导入任务 ----------

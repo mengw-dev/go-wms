@@ -35,6 +35,10 @@ func (h *Handler) RegisterRoutes(auth *gin.RouterGroup, checker middleware.Perms
 		orders.POST("", perm("create"), h.create)
 		orders.PUT("/:id", perm("create"), h.update)
 		orders.DELETE("/:id", perm("create"), h.delete)
+		orders.POST("/batch-delete", perm("create"), h.batchDelete)
+		orders.POST("/batch-submit", perm("submit"), h.batchSubmit)
+		orders.POST("/batch-approve", perm("approve"), h.batchApprove)
+		orders.POST("/batch-cancel", perm("cancel"), h.batchCancel)
 		orders.POST("/:id/submit", perm("submit"), h.submit)
 		orders.POST("/:id/approve", perm("approve"), h.approve)
 		orders.POST("/:id/cancel", perm("cancel"), h.cancel)
@@ -44,6 +48,7 @@ func (h *Handler) RegisterRoutes(auth *gin.RouterGroup, checker middleware.Perms
 	g.POST("/tasks/:id/putaway", perm("putaway"), h.putaway)
 	g.POST("/import", perm("create"), h.importExcel)
 	g.GET("/import/:taskId", read, h.importStatus)
+	g.DELETE("/import/:taskId/orders", perm("create"), h.deleteByImportTask)
 }
 
 func (h *Handler) list(c *gin.Context) {
@@ -148,6 +153,48 @@ func (h *Handler) cancel(c *gin.Context) {
 		return
 	}
 	response.OK(c, nil)
+}
+
+func (h *Handler) batchDelete(c *gin.Context) {
+	var req dto.BatchOperReq
+	if !httpx.BindJSON(c, &req) {
+		return
+	}
+	response.OK(c, h.svc.BatchDelete(c.Request.Context(), req.IDs))
+}
+
+func (h *Handler) batchSubmit(c *gin.Context) {
+	var req dto.BatchOperReq
+	if !httpx.BindJSON(c, &req) {
+		return
+	}
+	response.OK(c, h.svc.BatchSubmit(c.Request.Context(), req.IDs))
+}
+
+func (h *Handler) batchApprove(c *gin.Context) {
+	var req dto.BatchOperReq
+	if !httpx.BindJSON(c, &req) {
+		return
+	}
+	response.OK(c, h.svc.BatchApprove(c.Request.Context(), req.IDs, middleware.Username(c)))
+}
+
+func (h *Handler) batchCancel(c *gin.Context) {
+	var req dto.BatchOperReq
+	if !httpx.BindJSON(c, &req) {
+		return
+	}
+	response.OK(c, h.svc.BatchCancel(c.Request.Context(), req.IDs))
+}
+
+func (h *Handler) deleteByImportTask(c *gin.Context) {
+	taskID := c.Param("taskId")
+	resp, err := h.svc.DeleteByImportTask(c.Request.Context(), taskID)
+	if err != nil {
+		response.Fail(c, err)
+		return
+	}
+	response.OK(c, resp)
 }
 
 func (h *Handler) receive(c *gin.Context) {

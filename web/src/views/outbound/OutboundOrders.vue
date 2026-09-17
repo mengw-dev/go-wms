@@ -1,16 +1,21 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { ArrowDown, CloseBold, Delete, Promotion, Select } from '@element-plus/icons-vue'
 import {
   approveOutboundOrder,
+  batchApproveOutboundOrders,
+  batchCancelOutboundOrders,
+  batchDeleteOutboundOrders,
+  batchSubmitOutboundOrders,
   cancelOutboundOrder,
   createOutboundOrder,
   deleteOutboundOrder,
   listOutboundOrders,
   submitOutboundOrder,
 } from '@/api/outbound'
-import type { EntityID,  OutboundOrderItem } from '@/api/types'
+import type { BatchOperResult, EntityID, OutboundOrderItem } from '@/api/types'
 import { OUTBOUND_STATUS_OPTIONS, statusTag, statusText } from '@/constants'
 import { cleanParams, formatTime } from '@/utils'
 import { loadSkuMap, loadWarehouseOptions, toOptionMap, type IdOption } from '@/utils/options'
@@ -66,9 +71,7 @@ function search() {
 async function onSubmit(row: OutboundOrderItem) {
   try {
     await ElMessageBox.confirm(`确定提交出库单「${row.order_no}」吗？`, '提示', { type: 'warning' })
-  } catch {
-    return
-  }
+  } catch { return }
   await submitOutboundOrder(row.id)
   ElMessage.success('提交成功')
   load()
@@ -77,9 +80,7 @@ async function onSubmit(row: OutboundOrderItem) {
 async function onApprove(row: OutboundOrderItem) {
   try {
     await ElMessageBox.confirm(`确定审核（分配库存）出库单「${row.order_no}」吗？`, '提示', { type: 'warning' })
-  } catch {
-    return
-  }
+  } catch { return }
   await approveOutboundOrder(row.id)
   ElMessage.success('审核完成，库存已分配')
   load()
@@ -89,17 +90,9 @@ async function onCancel(row: OutboundOrderItem) {
   try {
     await ElMessageBox.confirm(
       `确定取消出库单「${row.order_no}」吗？取消后将释放已分配库存。`,
-      '取消出库单',
-      {
-        type: 'warning',
-        confirmButtonText: '确认取消',
-        cancelButtonText: '返回',
-        confirmButtonClass: 'el-button--danger',
-      },
+      '取消出库单', { type: 'warning', confirmButtonText: '确认取消', cancelButtonText: '返回', confirmButtonClass: 'el-button--danger' },
     )
-  } catch {
-    return
-  }
+  } catch { return }
   await cancelOutboundOrder(row.id)
   ElMessage.success('已取消')
   load()
@@ -109,17 +102,9 @@ async function onDelete(row: OutboundOrderItem) {
   try {
     await ElMessageBox.confirm(
       `确定删除草稿出库单「${row.order_no}」吗？删除后不可恢复。`,
-      '删除出库单',
-      {
-        type: 'warning',
-        confirmButtonText: '确认删除',
-        cancelButtonText: '返回',
-        confirmButtonClass: 'el-button--danger',
-      },
+      '删除出库单', { type: 'warning', confirmButtonText: '确认删除', cancelButtonText: '返回', confirmButtonClass: 'el-button--danger' },
     )
-  } catch {
-    return
-  }
+  } catch { return }
   await deleteOutboundOrder(row.id)
   ElMessage.success('删除成功')
   load()
@@ -127,6 +112,85 @@ async function onDelete(row: OutboundOrderItem) {
 
 function goDetail(row: OutboundOrderItem) {
   router.push(`/outbound/orders/${row.id}`)
+}
+
+// ---------- 批量操作 ----------
+const selectedRows = ref<OutboundOrderItem[]>([])
+const tableRef = ref()
+
+function onSelectionChange(rows: OutboundOrderItem[]) {
+  selectedRows.value = rows
+}
+
+function onBatchCommand(cmd: string) {
+  if (cmd === 'delete') onBatchDelete()
+  else if (cmd === 'submit') onBatchSubmit()
+  else if (cmd === 'approve') onBatchApprove()
+  else if (cmd === 'cancel') onBatchCancel()
+}
+
+// 动态计算可用批量操作：只要"至少有一张能做"就显示按钮
+// 执行时后端会跳过状态不匹配的，返回部分成功/失败
+const availableBatchOps = computed(() => {
+  const rows = selectedRows.value
+  if (rows.length === 0) return { delete: false, submit: false, approve: false, cancel: false }
+  const hasDraft = rows.some(r => r.status === 'DRAFT')
+  const hasSubmitted = rows.some(r => r.status === 'SUBMITTED')
+  // 作废允许 DRAFT / SUBMITTED / PICKING（未实际拣货）
+  const hasCanCancel = rows.some(r => ['DRAFT', 'SUBMITTED', 'PICKING'].includes(r.status))
+  return { delete: hasDraft, submit: hasDraft, approve: hasSubmitted, cancel: hasCanCancel }
+})
+
+function showBatchResult(resp: BatchOperResult, action: string) {
+  if (resp.fail === 0) {
+    ElMessage.success(`${action}：全部成功 ${resp.success} 张`)
+  } else {
+    ElMessageBox.alert(`${action}完成：成功 ${resp.success} 张，失败 ${resp.fail} 张`, '批量操作结果', { type: 'warning' })
+  }
+}
+
+async function onBatchDelete() {
+  const rows = selectedRows.value
+  try {
+    await ElMessageBox.confirm(`确定批量删除选中的 ${rows.length} 张草稿出库单吗？`, '批量删除', { type: 'warning', confirmButtonClass: 'el-button--danger' })
+  } catch { return }
+  const resp = await batchDeleteOutboundOrders(rows.map(r => r.id))
+  showBatchResult(resp, '批量删除')
+  tableRef.value?.clearSelection()
+  load()
+}
+
+async function onBatchSubmit() {
+  const rows = selectedRows.value
+  try {
+    await ElMessageBox.confirm(`确定批量提交选中的 ${rows.length} 张草稿出库单吗？`, '批量提交', { type: 'warning' })
+  } catch { return }
+  const resp = await batchSubmitOutboundOrders(rows.map(r => r.id))
+  showBatchResult(resp, '批量提交')
+  tableRef.value?.clearSelection()
+  load()
+}
+
+async function onBatchApprove() {
+  const rows = selectedRows.value
+  try {
+    await ElMessageBox.confirm(`确定批量审核选中的 ${rows.length} 张出库单吗？审核将分配库存。`, '批量审核', { type: 'warning' })
+  } catch { return }
+  const resp = await batchApproveOutboundOrders(rows.map(r => r.id))
+  showBatchResult(resp, '批量审核')
+  tableRef.value?.clearSelection()
+  load()
+}
+
+async function onBatchCancel() {
+  const rows = selectedRows.value
+  try {
+    await ElMessageBox.confirm(`确定批量作废选中的 ${rows.length} 张出库单吗？已分配的库存将被释放。`, '批量作废', { type: 'warning', confirmButtonClass: 'el-button--danger' })
+  } catch { return }
+  const resp = await batchCancelOutboundOrders(rows.map(r => r.id))
+  showBatchResult(resp, '批量作废')
+  tableRef.value?.clearSelection()
+  load()
 }
 
 // ---------- 新建 ----------
@@ -155,19 +219,10 @@ function removeDetail(index: number) {
 }
 
 async function submitCreate() {
-  if (!createForm.warehouse_id) {
-    ElMessage.warning('请选择仓库')
-    return
-  }
-  if (!createForm.biz_order_no.trim()) {
-    ElMessage.warning('请输入业务订单号')
-    return
-  }
+  if (!createForm.warehouse_id) { ElMessage.warning('请选择仓库'); return }
+  if (!createForm.biz_order_no.trim()) { ElMessage.warning('请输入业务订单号'); return }
   const details = createForm.details.filter((d) => d.sku_id && d.expected_qty > 0)
-  if (details.length === 0) {
-    ElMessage.warning('请至少填写一行有效的明细（选择货品且数量大于 0）')
-    return
-  }
+  if (details.length === 0) { ElMessage.warning('请至少填写一行有效的明细'); return }
   createDialog.loading = true
   try {
     await createOutboundOrder({
@@ -214,11 +269,53 @@ function openPick(row: OutboundOrderItem) {
     </el-form>
 
     <div class="toolbar">
-      <span />
       <el-button v-permission="'wms:outbound:create'" type="primary" @click="openCreate">新建出库单</el-button>
+      <el-dropdown trigger="click" @command="onBatchCommand">
+        <el-button plain>
+          批量操作
+          <el-icon class="el-icon--right"><arrow-down /></el-icon>
+        </el-button>
+        <template #dropdown>
+          <el-dropdown-menu>
+            <el-dropdown-item command="delete" :disabled="!availableBatchOps.delete">
+              <el-icon><Delete /></el-icon>批量删除
+            </el-dropdown-item>
+            <el-dropdown-item command="submit" :disabled="!availableBatchOps.submit">
+              <el-icon><Promotion /></el-icon>批量提交
+            </el-dropdown-item>
+            <el-dropdown-item command="approve" :disabled="!availableBatchOps.approve">
+              <el-icon><Select /></el-icon>批量审核
+            </el-dropdown-item>
+            <el-dropdown-item command="cancel" :disabled="!availableBatchOps.cancel">
+              <el-icon><CloseBold /></el-icon>批量作废
+            </el-dropdown-item>
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
+      <span v-if="selectedRows.length > 0" class="selected-hint">已选 {{ selectedRows.length }} 项</span>
     </div>
 
-    <el-table v-loading="loading" :data="list" border stripe>
+    <el-alert
+      v-if="selectedRows.length > 0"
+      type="info"
+      class="batch-alert"
+      :closable="false"
+      show-icon
+    >
+      <template #title>
+        <span>已勾选 <strong>{{ selectedRows.length }}</strong> 张出库单</span>
+        <span class="batch-alert-actions">
+          <el-button v-if="availableBatchOps.delete" link type="danger" @click="onBatchDelete">删除</el-button>
+          <el-button v-if="availableBatchOps.submit" link type="success" @click="onBatchSubmit">提交</el-button>
+          <el-button v-if="availableBatchOps.approve" link type="primary" @click="onBatchApprove">审核</el-button>
+          <el-button v-if="availableBatchOps.cancel" link type="danger" @click="onBatchCancel">作废</el-button>
+          <el-button link @click="tableRef?.clearSelection()">清除选择</el-button>
+        </span>
+      </template>
+    </el-alert>
+
+    <el-table ref="tableRef" v-loading="loading" :data="list" border stripe @selection-change="onSelectionChange">
+      <el-table-column type="selection" width="42" />
       <el-table-column prop="order_no" label="出库单号" min-width="170">
         <template #default="{ row }">
           <el-link type="primary" @click="goDetail(row)">{{ row.order_no }}</el-link>
@@ -322,6 +419,23 @@ function openPick(row: OutboundOrderItem) {
 </template>
 
 <style scoped>
+.selected-hint {
+  margin-left: 12px;
+  font-size: 13px;
+  color: var(--el-color-primary);
+  font-weight: 500;
+}
+
+.batch-alert {
+  margin-bottom: 12px;
+}
+
+.batch-alert-actions {
+  margin-left: 16px;
+  display: inline-flex;
+  gap: 4px;
+}
+
 .detail-editor {
   width: 100%;
 }

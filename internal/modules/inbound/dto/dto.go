@@ -1,5 +1,9 @@
 package dto
 
+import (
+	"gowms/internal/pkg/typex"
+)
+
 type OrderDetailItem struct {
 	SKUID       int64 `json:"sku_id,string" binding:"required"`
 	ExpectedQty int   `json:"expected_qty" binding:"required,min=1"`
@@ -12,11 +16,13 @@ type CreateOrderReq struct {
 }
 
 type OrderQuery struct {
-	WarehouseID int64  `form:"warehouse_id"`
-	Status      string `form:"status"`
-	Keyword     string `form:"keyword"` // 单号模糊
-	Page        int    `form:"page,default=1" binding:"min=1"`
-	PageSize    int    `form:"page_size,default=10" binding:"min=1,max=100"`
+	WarehouseID   int64  `form:"warehouse_id"`
+	Status        string `form:"status"`
+	Keyword       string `form:"keyword"`
+	CreatedAtFrom string `form:"created_at_from"`
+	CreatedAtTo   string `form:"created_at_to"`
+	Page          int    `form:"page,default=1" binding:"min=1"`
+	PageSize      int    `form:"page_size,default=10" binding:"min=1,max=100"`
 }
 
 type ReceiveReq struct {
@@ -34,4 +40,21 @@ type PutawayReq struct {
 
 type ImportResp struct {
 	TaskID string `json:"task_id"`
+}
+
+// 批量操作请求。IDs 兼容 JSON 数字数组和字符串数组（typex.Int64List）。
+type BatchOperReq struct {
+	IDs typex.Int64List `json:"ids" binding:"required,min=1,max=200"`
+}
+
+// 批量操作结果。
+type BatchItemError struct {
+	ID  int64  `json:"id,string"`
+	Msg string `json:"msg"`
+}
+
+type BatchOperResp struct {
+	Success int              `json:"success"`
+	Fail    int              `json:"fail"`
+	Errors  []BatchItemError `json:"errors,omitempty"`
 }

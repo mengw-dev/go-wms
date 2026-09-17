@@ -289,6 +289,7 @@ export interface InboundOrderItem {
   warehouse_id: EntityID
   status: string
   source: string
+  import_task_id?: string
   remark: string
   expected_qty: number
   received_qty: number
@@ -326,6 +327,8 @@ export interface InboundOrderListQuery extends PageQuery {
   warehouse_id?: EntityID | ''
   status?: string
   keyword?: string
+  created_at_from?: string
+  created_at_to?: string
 }
 
 export interface ReceiveParams {
@@ -333,6 +336,13 @@ export interface ReceiveParams {
   qty: number
   defective_qty: number
   batch_no: string
+}
+
+// 批量操作结果。
+export interface BatchOperResult {
+  success: number
+  fail: number
+  errors?: { id: EntityID; msg: string }[]
 }
 
 export interface PutawayParams {
@@ -411,6 +421,8 @@ export interface OutboundOrderListQuery extends PageQuery {
   warehouse_id?: EntityID | ''
   status?: string
   keyword?: string
+  created_at_from?: string
+  created_at_to?: string
 }
 
 export interface PickParams {

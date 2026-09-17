@@ -1,5 +1,6 @@
 import { del, get, post, put, upload } from './request'
 import type {
+  BatchOperResult,
   EntityID,
   ImportTaskItem,
   InboundCreateParams,
@@ -65,4 +66,29 @@ export function importInboundExcel(file: File) {
 /** 查询导入任务状态 */
 export function getImportStatus(taskId: string) {
   return get<ImportTaskItem>(`/inbound/import/${taskId}`)
+}
+
+/** 批量删除入库单（仅 DRAFT） */
+export function batchDeleteInboundOrders(ids: EntityID[]) {
+  return post<BatchOperResult>('/inbound/orders/batch-delete', { ids })
+}
+
+/** 批量提交入库单（DRAFT → SUBMITTED） */
+export function batchSubmitInboundOrders(ids: EntityID[]) {
+  return post<BatchOperResult>('/inbound/orders/batch-submit', { ids })
+}
+
+/** 批量审核入库单（SUBMITTED → APPROVED） */
+export function batchApproveInboundOrders(ids: EntityID[]) {
+  return post<BatchOperResult>('/inbound/orders/batch-approve', { ids })
+}
+
+/** 批量作废入库单 */
+export function batchCancelInboundOrders(ids: EntityID[]) {
+  return post<BatchOperResult>('/inbound/orders/batch-cancel', { ids })
+}
+
+/** 按导入批次删除 DRAFT 入库单 */
+export function deleteInboundByImportTask(taskId: string) {
+  return del<BatchOperResult>(`/inbound/import/${taskId}/orders`)
 }

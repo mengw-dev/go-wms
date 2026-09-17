@@ -180,6 +180,56 @@ func (s *Service) Cancel(ctx context.Context, id int64) error {
 	})
 }
 
+// batchOper 逐张执行，部分成功不回滚，返回明细。
+func (s *Service) batchOper(ctx context.Context, ids []int64, fn func(context.Context, int64) error) *dto.BatchOperResp {
+	resp := &dto.BatchOperResp{}
+	for _, id := range ids {
+		if err := fn(ctx, id); err != nil {
+			resp.Fail++
+			resp.Errors = append(resp.Errors, dto.BatchItemError{ID: id, Msg: err.Error()})
+			continue
+		}
+		resp.Success++
+	}
+	return resp
+}
+
+// 批量删除（仅 DRAFT）。
+func (s *Service) BatchDelete(ctx context.Context, ids []int64) *dto.BatchOperResp {
+	return s.batchOper(ctx, ids, s.Delete)
+}
+
+// 批量提交（DRAFT → SUBMITTED）。
+func (s *Service) BatchSubmit(ctx context.Context, ids []int64) *dto.BatchOperResp {
+	return s.batchOper(ctx, ids, func(ctx context.Context, id int64) error {
+		return s.transit(ctx, id, model.OrderDraft, model.OrderSubmitted)
+	})
+}
+
+// 批量审核（SUBMITTED → APPROVED，含收货任务生成）。
+func (s *Service) BatchApprove(ctx context.Context, ids []int64, operator string) *dto.BatchOperResp {
+	return s.batchOper(ctx, ids, func(ctx context.Context, id int64) error {
+		return s.Approve(ctx, id, operator)
+	})
+}
+
+// 批量作废（DRAFT/SUBMITTED/APPROVED → CANCELLED）。
+func (s *Service) BatchCancel(ctx context.Context, ids []int64) *dto.BatchOperResp {
+	return s.batchOper(ctx, ids, s.Cancel)
+}
+
+// DeleteByImportTask 按导入批次删除 DRAFT 入库单，返回成功/失败明细。
+func (s *Service) DeleteByImportTask(ctx context.Context, taskID string) (*dto.BatchOperResp, error) {
+	ids, err := s.repo.ListIDsByImportTask(ctx, s.tm.DB(), taskID)
+	if err != nil {
+		return nil, err
+	}
+	if len(ids) == 0 {
+		return &dto.BatchOperResp{}, nil
+	}
+	return s.BatchDelete(ctx, ids), nil
+}
+
 func (s *Service) transit(ctx context.Context, id int64, from, to model.OrderStatus) error {
 	return s.tm.Tx(ctx, func(tx *gorm.DB) error {
 		o, err := s.repo.GetOrderForUpdate(tx, id)

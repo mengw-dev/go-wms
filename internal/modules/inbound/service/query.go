@@ -26,7 +26,7 @@ func (s *Service) Get(ctx context.Context, id int64) (*OrderDetail, error) {
 	if err != nil {
 		return nil, err
 	}
-	tasks, _, err := s.taskAPI.List(ctx, id, "", 1, taskapi.DetailTaskPageSize)
+	tasks, _, err := s.taskAPI.List(ctx, id, "", "", "", 1, taskapi.DetailTaskPageSize)
 	if err != nil {
 		return nil, err
 	}
@@ -34,5 +34,5 @@ func (s *Service) Get(ctx context.Context, id int64) (*OrderDetail, error) {
 }
 
 func (s *Service) List(ctx context.Context, q *dto.OrderQuery) ([]*model.ReceiptOrder, int64, error) {
-	return s.repo.ListOrders(ctx, s.tm.DB(), q.WarehouseID, q.Status, q.Keyword, q.Page, q.PageSize)
+	return s.repo.ListOrders(ctx, s.tm.DB(), q.WarehouseID, q.Status, q.Keyword, q.CreatedAtFrom, q.CreatedAtTo, q.Page, q.PageSize)
 }

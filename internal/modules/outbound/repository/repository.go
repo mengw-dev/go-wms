@@ -115,7 +115,7 @@ func (r *Repository) IncrOrderPicked(tx *gorm.DB, id int64, version int, delta i
 	return res.RowsAffected, res.Error
 }
 
-func (r *Repository) ListOrders(ctx context.Context, db *gorm.DB, warehouseID int64, status, keyword string, page, size int) ([]*model.ShipmentOrder, int64, error) {
+func (r *Repository) ListOrders(ctx context.Context, db *gorm.DB, warehouseID int64, status, keyword, createdAtFrom, createdAtTo string, page, size int) ([]*model.ShipmentOrder, int64, error) {
 	q := db.WithContext(ctx).Model(&model.ShipmentOrder{})
 	if warehouseID > 0 {
 		q = q.Where("warehouse_id = ?", warehouseID)
@@ -125,6 +125,12 @@ func (r *Repository) ListOrders(ctx context.Context, db *gorm.DB, warehouseID in
 	}
 	if keyword != "" {
 		q = q.Where("order_no LIKE ? OR biz_order_no LIKE ?", "%"+keyword+"%", "%"+keyword+"%")
+	}
+	if createdAtFrom != "" {
+		q = q.Where("created_at >= ?", createdAtFrom)
+	}
+	if createdAtTo != "" {
+		q = q.Where("created_at <= ?", createdAtTo)
 	}
 	var total int64
 	if err := q.Count(&total).Error; err != nil {
