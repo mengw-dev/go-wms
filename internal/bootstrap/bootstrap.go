@@ -152,15 +152,14 @@ func seedDemoData(db *gorm.DB) error {
 
 	warehouses := []model.Warehouse{
 		{Code: "WH01", Name: "华东一号仓", Remark: "演示数据：上海中心仓", Status: 1},
-		{Code: "WH02", Name: "华南二号仓", Remark: "演示数据：广州区域仓", Status: 1},
 	}
 
-	zones := []string{"A01", "B01"}
+	zones := []string{"A01"}
 	var locations []model.Location
 	for range warehouses {
 		for _, zone := range zones {
 			for row := 1; row <= 2; row++ {
-				for col := 1; col <= 3; col++ {
+				for col := 1; col <= 2; col++ {
 					locations = append(locations, model.Location{
 						Code:   fmt.Sprintf("%s-%02d-%02d", zone, row, col),
 						Zone:   zone,
@@ -177,11 +176,6 @@ func seedDemoData(db *gorm.DB) error {
 		{Code: "SKU000003", Barcode: "6901234500035", Name: "康师傅红烧牛肉面", Spec: "105g×12桶", Unit: "箱", Status: 1},
 		{Code: "SKU000004", Barcode: "6901234500042", Name: "旺旺雪饼", Spec: "540g", Unit: "袋", Status: 1},
 		{Code: "SKU000005", Barcode: "6901234500059", Name: "双汇王中王火腿肠", Spec: "60g×40支", Unit: "箱", Status: 1},
-		{Code: "SKU000006", Barcode: "6901234500066", Name: "维达超韧抽纸", Spec: "3层120抽×24包", Unit: "箱", Status: 1},
-		{Code: "SKU000007", Barcode: "6901234500073", Name: "蓝月亮深层洁净洗衣液", Spec: "3kg", Unit: "瓶", Status: 1},
-		{Code: "SKU000008", Barcode: "6901234500080", Name: "南孚5号碱性电池", Spec: "1.5V×40粒", Unit: "盒", Status: 1},
-		{Code: "SKU000009", Barcode: "6901234500097", Name: "苏泊尔电热水壶", Spec: "1.5L 1800W", Unit: "台", Status: 1},
-		{Code: "SKU000010", Barcode: "6901234500103", Name: "3M防护口罩", Spec: "KN95×50只", Unit: "盒", Status: 1},
 	}
 
 	date := func(s string) time.Time {
@@ -189,20 +183,9 @@ func seedDemoData(db *gorm.DB) error {
 		return t
 	}
 	placements := []demoPlacement{
-		{warehouse: 0, location: "A01-01-01", sku: 0, batch: "B20260801", qty: 1200, stockIn: date("2026-08-01")},
-		{warehouse: 0, location: "A01-01-02", sku: 1, batch: "B20260805", qty: 600, stockIn: date("2026-08-05")},
-		{warehouse: 0, location: "A01-01-03", sku: 2, batch: "B20260720", qty: 480, stockIn: date("2026-07-20")},
-		{warehouse: 0, location: "A01-02-01", sku: 5, batch: "B20260810", qty: 300, stockIn: date("2026-08-10")},
-		{warehouse: 0, location: "A01-02-02", sku: 6, batch: "B20260615", qty: 150, stockIn: date("2026-06-15")},
-		{warehouse: 0, location: "A01-02-03", sku: 0, batch: "B20260901", qty: 600, stockIn: date("2026-09-01")},
-		{warehouse: 0, location: "B01-01-01", sku: 8, batch: "B20260501", qty: 60, stockIn: date("2026-05-01")},
-		{warehouse: 0, location: "B01-01-02", sku: 7, batch: "B20260820", qty: 800, stockIn: date("2026-08-20")},
-		{warehouse: 0, location: "B01-02-01", sku: 3, batch: "B20260710", qty: 240, stockIn: date("2026-07-10")},
-		{warehouse: 0, location: "B01-02-02", sku: 9, batch: "B20260905", qty: 200, stockIn: date("2026-09-05")},
-		{warehouse: 1, location: "A01-01-01", sku: 0, batch: "B20260812", qty: 400, stockIn: date("2026-08-12")},
-		{warehouse: 1, location: "A01-01-02", sku: 4, batch: "B20260818", qty: 500, stockIn: date("2026-08-18")},
-		{warehouse: 1, location: "A01-02-01", sku: 5, batch: "B20260902", qty: 120, stockIn: date("2026-09-02")},
-		{warehouse: 1, location: "B01-01-01", sku: 6, batch: "B20260701", qty: 80, stockIn: date("2026-07-01")},
+		{warehouse: 0, location: "A01-01-01", sku: 0, batch: "B20260901", qty: 100, stockIn: date("2026-09-01")},
+		{warehouse: 0, location: "A01-01-02", sku: 1, batch: "B20260905", qty: 50, stockIn: date("2026-09-05")},
+		{warehouse: 0, location: "A01-02-01", sku: 2, batch: "B20260910", qty: 80, stockIn: date("2026-09-10")},
 	}
 
 	return db.Transaction(func(tx *gorm.DB) error {
@@ -212,7 +195,7 @@ func seedDemoData(db *gorm.DB) error {
 		locIndex := make(map[string]int64)
 		for whIdx := range warehouses {
 			for i := range locations {
-				if i/12 != whIdx {
+				if i/4 != whIdx {
 					continue
 				}
 				loc := locations[i]

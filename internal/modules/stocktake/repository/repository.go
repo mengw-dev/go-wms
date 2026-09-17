@@ -100,7 +100,7 @@ func (r *Repository) SnapshotInventory(tx *gorm.DB, warehouseID, locationID int6
 	}
 	type row struct {
 		InventoryID int64
-		SKUID       int64
+		SkuID       int64
 		LocationID  int64
 		BatchNo     string
 		BookQty     int
@@ -114,7 +114,7 @@ func (r *Repository) SnapshotInventory(tx *gorm.DB, warehouseID, locationID int6
 	if len(rows) == 0 {
 		return details, nil
 	}
-	skuRows := map[int64][2]string{}
+	skuMap := map[int64][2]string{}
 	var skus []struct {
 		ID   int64
 		Code string
@@ -124,9 +124,9 @@ func (r *Repository) SnapshotInventory(tx *gorm.DB, warehouseID, locationID int6
 		return nil, err
 	}
 	for _, s := range skus {
-		skuRows[s.ID] = [2]string{s.Code, s.Name}
+		skuMap[s.ID] = [2]string{s.Code, s.Name}
 	}
-	locRows := map[int64]string{}
+	locMap := map[int64]string{}
 	var locs []struct {
 		ID   int64
 		Code string
@@ -135,13 +135,13 @@ func (r *Repository) SnapshotInventory(tx *gorm.DB, warehouseID, locationID int6
 		return nil, err
 	}
 	for _, l := range locs {
-		locRows[l.ID] = l.Code
+		locMap[l.ID] = l.Code
 	}
 	for _, row := range rows {
-		code, name := skuRows[row.SKUID][0], skuRows[row.SKUID][1]
+		code, name := skuMap[row.SkuID][0], skuMap[row.SkuID][1]
 		details = append(details, &model.StocktakeDetail{
-			InventoryID: row.InventoryID, SKUID: row.SKUID, SKUCode: code, SKUName: name,
-			LocationID: row.LocationID, LocationCode: locRows[row.LocationID],
+			InventoryID: row.InventoryID, SKUID: row.SkuID, SKUCode: code, SKUName: name,
+			LocationID: row.LocationID, LocationCode: locMap[row.LocationID],
 			BatchNo: row.BatchNo, BookQty: row.BookQty,
 		})
 	}

@@ -145,8 +145,8 @@ func (s *Service) GetForUpdate(ctx context.Context, tx *gorm.DB, taskID int64) (
 	return t, nil
 }
 
-func (s *Service) List(ctx context.Context, orderID int64, taskType string, page, size int) ([]*model.Task, int64, error) {
-	return s.repo.List(ctx, s.db, orderID, taskType, page, size)
+func (s *Service) List(ctx context.Context, orderID int64, taskType, status, keyword string, page, size int) ([]*model.Task, int64, error) {
+	return s.repo.List(ctx, s.db, orderID, taskType, status, keyword, page, size)
 }
 
 func (s *Service) Get(ctx context.Context, taskID int64) (*model.Task, error) {

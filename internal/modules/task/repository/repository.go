@@ -72,13 +72,19 @@ func (r *Repository) Get(ctx context.Context, db *gorm.DB, id int64) (*model.Tas
 	return &t, nil
 }
 
-func (r *Repository) List(ctx context.Context, db *gorm.DB, orderID int64, taskType string, page, size int) ([]*model.Task, int64, error) {
+func (r *Repository) List(ctx context.Context, db *gorm.DB, orderID int64, taskType, status, keyword string, page, size int) ([]*model.Task, int64, error) {
 	q := db.WithContext(ctx).Model(&model.Task{})
 	if orderID > 0 {
 		q = q.Where("order_id = ?", orderID)
 	}
 	if taskType != "" {
 		q = q.Where("task_type = ?", taskType)
+	}
+	if status != "" {
+		q = q.Where("status = ?", status)
+	}
+	if keyword != "" {
+		q = q.Where("task_no LIKE ? OR order_no LIKE ?", "%"+keyword+"%", "%"+keyword+"%")
 	}
 	var total int64
 	if err := q.Count(&total).Error; err != nil {

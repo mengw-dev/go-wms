@@ -39,6 +39,6 @@ type TaskAPI interface {
 	// 避免事务外读到已被并发取消的任务（与 AddProgress 的锁读语义一致）。
 	GetForUpdate(ctx context.Context, tx *gorm.DB, taskID int64) (*model.Task, error)
 	// List 查询任务（只读，使用非事务连接）。
-	List(ctx context.Context, orderID int64, taskType string, page, size int) ([]*model.Task, int64, error)
+	List(ctx context.Context, orderID int64, taskType, status, keyword string, page, size int) ([]*model.Task, int64, error)
 	Get(ctx context.Context, taskID int64) (*model.Task, error)
 }

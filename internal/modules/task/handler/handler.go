@@ -29,6 +29,8 @@ func (h *Handler) list(c *gin.Context) {
 		return
 	}
 	taskType := c.Query("task_type")
+	status := c.Query("status")
+	keyword := c.Query("keyword")
 	page, ok := httpx.QueryInt(c, "page", 1, 1, 100000)
 	if !ok {
 		return
@@ -37,7 +39,7 @@ func (h *Handler) list(c *gin.Context) {
 	if !ok {
 		return
 	}
-	list, total, err := h.svc.List(c.Request.Context(), orderID, taskType, page, size)
+	list, total, err := h.svc.List(c.Request.Context(), orderID, taskType, status, keyword, page, size)
 	if err != nil {
 		response.Fail(c, err)
 		return
