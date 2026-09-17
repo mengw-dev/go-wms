@@ -5,7 +5,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-. (Join-Path $PSScriptRoot "scripts/wms-common.ps1")
+. (Join-Path $PSScriptRoot "..\wms-common.ps1")
 Set-Location $WmsRoot
 
 if (-not $Force) {
