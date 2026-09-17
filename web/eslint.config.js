@@ -16,6 +16,7 @@ export default tseslint.config(
         File: 'readonly',
         FormData: 'readonly',
         Blob: 'readonly',
+        crypto: 'readonly',
       },
     },
   },

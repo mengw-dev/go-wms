@@ -83,6 +83,10 @@ integration:
 }
 
 func TestLoadRejectsDevDSNInRelease(t *testing.T) {
+	// CI 在 shell 里 export 了 WMS_MYSQL_DSN（用作集成测试 DSN），
+	// viper 的 AutomaticEnv 会用它覆盖 yaml 中的 mysql.dsn，让 release 校验放行。
+	// 这里把 WMS_MYSQL_DSN 显式钉到测试期望的 dev 值，确保测试对 ambient env 免疫。
+	t.Setenv("WMS_MYSQL_DSN", "root:1234@tcp(127.0.0.1:3306)/gowms")
 	path := writeConfig(t, `server:
   port: 8080
   mode: release
@@ -101,6 +105,8 @@ integration:
 }
 
 func TestLoadRejectsDevAPIKeyInRelease(t *testing.T) {
+	// 同 TestLoadRejectsDevDSNInRelease，避免 ambient WMS_INTEGRATION_API_KEY 覆盖 yaml。
+	t.Setenv("WMS_INTEGRATION_API_KEY", "change-this-integration-api-key")
 	path := writeConfig(t, `server:
   port: 8080
   mode: release
