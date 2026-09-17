@@ -67,6 +67,15 @@ function search() {
   load()
 }
 
+function resetSearch() {
+  query.page = 1
+  query.page_size = 10
+  query.warehouse_id = ''
+  query.status = ''
+  query.keyword = ''
+  load()
+}
+
 // ---------- 行操作 ----------
 async function onSubmit(row: OutboundOrderItem) {
   try {
@@ -258,6 +267,7 @@ function openPick(row: OutboundOrderItem) {
       </el-form-item>
       <el-form-item>
         <el-button type="primary" @click="search">查询</el-button>
+        <el-button @click="resetSearch">重置</el-button>
       </el-form-item>
     </el-form>
 
@@ -380,13 +390,6 @@ function openPick(row: OutboundOrderItem) {
 </template>
 
 <style scoped>
-.toolbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
-}
-
 .toolbar-left {
   display: flex;
   align-items: center;

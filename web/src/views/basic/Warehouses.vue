@@ -151,7 +151,6 @@ async function onDelete(row: WarehouseItem) {
     </el-form>
 
     <div class="toolbar">
-      <span />
       <el-button v-permission="'wms:basic'" type="primary" @click="openCreate">新增仓库</el-button>
     </div>
 

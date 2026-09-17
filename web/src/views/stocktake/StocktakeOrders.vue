@@ -53,6 +53,15 @@ function search() {
   load()
 }
 
+function resetSearch() {
+  query.page = 1
+  query.page_size = 10
+  query.warehouse_id = ''
+  query.status = ''
+  query.keyword = ''
+  load()
+}
+
 function goDetail(row: StocktakeOrderItem) {
   router.push(`/stocktake/orders/${row.id}`)
 }
@@ -168,11 +177,11 @@ async function submitCreate() {
       </el-form-item>
       <el-form-item>
         <el-button type="primary" @click="search">查询</el-button>
+        <el-button @click="resetSearch">重置</el-button>
       </el-form-item>
     </el-form>
 
     <div class="toolbar">
-      <span />
       <el-button v-permission="'wms:stocktake:create'" type="primary" @click="openCreate">新建盘点单</el-button>
     </div>
 

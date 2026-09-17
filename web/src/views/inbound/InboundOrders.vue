@@ -645,13 +645,6 @@ onUnmounted(stopPolling)
 </template>
 
 <style scoped>
-.toolbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
-}
-
 .toolbar-left {
   display: flex;
   align-items: center;
