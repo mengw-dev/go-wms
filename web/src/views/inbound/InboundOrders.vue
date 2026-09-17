@@ -50,7 +50,7 @@ onMounted(async () => {
     const imports = await listImports(20)
     importBatchOptions.value = imports.map((t: ImportTaskItem) => {
       const statusMap: Record<string, string> = { PENDING: '待处理', PROCESSING: '处理中', COMPLETED: '完成', FAILED: '失败' }
-      const date = new Date(Date.parse((t as unknown as { created_at?: string }).created_at || '')).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+      const date = t.created_at ? new Date(Date.parse(t.created_at)).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''
       return { task_id: t.task_id, label: `${t.task_id} (${date} · ${statusMap[t.status] || t.status} · ${t.success_rows}/${t.total_rows})` }
     })
   } catch {

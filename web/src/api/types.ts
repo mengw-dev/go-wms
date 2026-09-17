@@ -360,6 +360,7 @@ export interface ImportTaskItem {
   success_rows: number
   fail_rows: number
   error_msg: string
+  created_at?: string
 }
 
 // ---------- 出库 ----------
