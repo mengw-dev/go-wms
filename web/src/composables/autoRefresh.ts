@@ -15,7 +15,9 @@ export function useAutoRefresh(
   }
 
   onMounted(() => {
-    timer = window.setInterval(run, intervalMs)
+    if (intervalMs > 0) {
+      timer = window.setInterval(run, intervalMs)
+    }
     stop = onDataChanged(run)
   })
 

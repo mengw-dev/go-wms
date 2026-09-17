@@ -41,7 +41,7 @@ function search() {
 
 onMounted(load)
 
-useAutoRefresh(() => load(true))
+useAutoRefresh(() => load(true), 0)
 </script>
 
 <template>

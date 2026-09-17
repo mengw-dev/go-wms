@@ -137,7 +137,7 @@ function refreshActiveTab() {
   if (drawerVisible.value) loadTrans(true)
 }
 
-useAutoRefresh(refreshActiveTab)
+useAutoRefresh(refreshActiveTab, 0)
 </script>
 
 <template>
