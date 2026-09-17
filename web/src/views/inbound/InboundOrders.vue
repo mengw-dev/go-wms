@@ -480,9 +480,9 @@ onUnmounted(stopPolling)
         <el-button v-permission="'wms:inbound:create'" type="success" plain @click="openImport">Excel 导入</el-button>
       </div>
       <div class="toolbar-right">
-        <span v-if="selectedRows.length > 0" class="selected-hint">已选 {{ selectedRows.length }} 项</span>
+        <span class="selected-hint" :class="{ 'is-hidden': selectedRows.length === 0 }">已选 {{ selectedRows.length }} 项</span>
         <el-dropdown trigger="click" @command="onBatchCommand">
-          <el-button plain :disabled="selectedRows.length === 0">
+          <el-button plain>
             批量操作
             <el-icon class="el-icon--right"><ArrowDown /></el-icon>
           </el-button>
@@ -500,13 +500,13 @@ onUnmounted(stopPolling)
               <el-dropdown-item command="cancel" :disabled="!availableBatchOps.cancel">
                 <el-icon><CloseBold /></el-icon>批量作废
               </el-dropdown-item>
-              <el-dropdown-item v-if="singleImportBatch" command="batch-by-task" :divider="true">
-                <el-icon><Files /></el-icon>按批次删除（{{ singleImportBatch }}）
+              <el-dropdown-item command="batch-by-task" :disabled="!singleImportBatch" :divider="true">
+                <el-icon><Files /></el-icon>按批次删除<span v-if="singleImportBatch" class="badge-hint">({{ singleImportBatch }})</span>
               </el-dropdown-item>
             </el-dropdown-menu>
           </template>
         </el-dropdown>
-        <el-button v-if="selectedRows.length > 0" link @click="tableRef?.clearSelection()">清除选择</el-button>
+        <el-button link class="clear-btn" :class="{ 'is-hidden': selectedRows.length === 0 }" @click="tableRef?.clearSelection()">清除选择</el-button>
       </div>
     </div>
 
@@ -694,6 +694,15 @@ onUnmounted(stopPolling)
   font-size: 13px;
   color: var(--el-color-primary);
   font-weight: 500;
+  white-space: nowrap;
+  min-width: 62px;
+  text-align: right;
+}
+
+.selected-hint.is-hidden,
+.clear-btn.is-hidden {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .badge-hint {
