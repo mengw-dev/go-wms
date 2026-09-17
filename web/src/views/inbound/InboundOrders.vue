@@ -37,6 +37,19 @@ const warehouseMap = ref<Record<EntityID, string>>({})
 const skuOptions = ref<IdOption[]>([])
 const importBatchOptions = ref<{ task_id: string; label: string }[]>([])
 
+async function loadImports() {
+  try {
+    const imports = await listImports(20)
+    const statusMap: Record<string, string> = { PENDING: '待处理', PROCESSING: '处理中', COMPLETED: '完成', FAILED: '失败' }
+    importBatchOptions.value = imports.map((t: ImportTaskItem) => {
+      const date = t.created_at ? new Date(Date.parse(t.created_at)).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''
+      return { task_id: t.task_id, label: `${t.task_id} (${date} · ${statusMap[t.status] || t.status} · ${t.success_rows}/${t.total_rows})` }
+    })
+  } catch {
+    // 后端未部署或没有导入历史时静默忽略
+  }
+}
+
 onMounted(async () => {
   warehouseOptions.value = await loadWarehouseOptions()
   warehouseMap.value = toOptionMap(warehouseOptions.value)
@@ -45,17 +58,7 @@ onMounted(async () => {
     id,
     label: `${sku.code} ${sku.name}`,
   }))
-  // 加载最近 20 条历史导入批次，供下拉筛选
-  try {
-    const imports = await listImports(20)
-    importBatchOptions.value = imports.map((t: ImportTaskItem) => {
-      const statusMap: Record<string, string> = { PENDING: '待处理', PROCESSING: '处理中', COMPLETED: '完成', FAILED: '失败' }
-      const date = t.created_at ? new Date(Date.parse(t.created_at)).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''
-      return { task_id: t.task_id, label: `${t.task_id} (${date} · ${statusMap[t.status] || t.status} · ${t.success_rows}/${t.total_rows})` }
-    })
-  } catch {
-    // 后端未部署或没有导入历史时静默忽略，不影响主功能
-  }
+  await loadImports()
   load()
 })
 
@@ -159,6 +162,7 @@ async function onDelete(row: InboundOrderItem) {
   await deleteInboundOrder(row.id)
   ElMessage.success('删除成功')
   load()
+  loadImports()
 }
 
 function goDetail(row: InboundOrderItem) {
@@ -228,6 +232,7 @@ async function onBatchDelete() {
   showBatchResult(resp, '批量删除')
   tableRef.value?.clearSelection()
   load()
+  loadImports()
 }
 
 async function onBatchSubmit() {
@@ -270,7 +275,9 @@ async function onBatchDeleteByTask(taskId: string) {
   const resp = await deleteInboundByImportTask(taskId)
   showBatchResult(resp, `批次 ${taskId} 删除`)
   tableRef.value?.clearSelection()
+  query.import_task_id = ''
   load()
+  loadImports()
 }
 
 // ---------- 新建 / 编辑 ----------

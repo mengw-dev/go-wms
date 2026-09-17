@@ -210,10 +210,13 @@ func (r *Repository) ResetProcessingToPending(db *gorm.DB, taskID string) (int64
 	return r.CASImportStatus(db, taskID, model.ImportProcessing, model.ImportPending)
 }
 
-// ListImportTasks 返回所有历史导入任务（按创建时间倒序，最多 returnLimit 条）。
+// ListImportTasks 返回"仍有关联入库单"的历史导入任务（下拉筛选器专用，按创建时间倒序）。
+// 已被删除（全删、作废）的批次会被自动过滤，避免下拉出现空批次。
 func (r *Repository) ListImportTasks(ctx context.Context, db *gorm.DB, returnLimit int) ([]*model.ImportTask, error) {
 	var list []*model.ImportTask
-	q := db.WithContext(ctx).Model(&model.ImportTask{}).Order("created_at DESC")
+	q := db.WithContext(ctx).Model(&model.ImportTask{}).
+		Where("EXISTS (SELECT 1 FROM wms_receipt_order o WHERE o.import_task_id = wms_import_task.task_id AND o.deleted_at IS NULL)").
+		Order("created_at DESC")
 	if returnLimit > 0 {
 		q = q.Limit(returnLimit)
 	}
