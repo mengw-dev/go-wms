@@ -54,11 +54,10 @@ wms/
 │   │   └── task/            # 统一任务中心
 │   └── pkg/                 # 配置、JWT、事务、日志、响应等公共能力
 ├── migrations/              # DBA 审阅用初始化 SQL
-├── scripts/wms-common.ps1   # PowerShell 一键启动公共函数
+├── scripts/windows/         # Windows 一键启动/停止/重置（PowerShell + cmd 包装）
+├── scripts/wms-common.ps1   # PowerShell 公共函数
 ├── scripts/k6/              # k6 压测与端到端脚本
-├── start.ps1 / start.cmd    # 一键启动
-├── stop.ps1 / stop.cmd      # 一键停止
-├── reset.ps1 / reset.cmd    # 清空数据并重新初始化
+├── start.cmd                # 一键启动入口（双击即可）
 └── web/                     # Vue 3 前端
 ```
 
@@ -113,7 +112,7 @@ start.cmd
 ### 方式二：PowerShell
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\start.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\windows\start.ps1
 ```
 
 `start.ps1` 会自动完成：
@@ -142,23 +141,23 @@ WMS_WEB_PORT=8088
 WMS_API_PORT=18080
 ```
 
-然后重新运行 `start.ps1`。
+然后重新运行 `.\scripts\windows\start.ps1`。
 
 ### 停止服务
 
 ```powershell
-.\stop.ps1
+.\scripts\windows\stop.ps1
 ```
 
-或者双击 `stop.cmd`。停止服务不会删除数据库和上传文件。
+或者双击 `scripts\windows\stop.cmd`。停止服务不会删除数据库和上传文件。
 
 ### 清空数据并重新初始化
 
 ```powershell
-.\reset.ps1
+.\scripts\windows\reset.ps1
 ```
 
-或者双击 `reset.cmd`。该操作会删除 MySQL、Redis 和上传文件 Volume，必须输入 `RESET` 确认。
+或者双击 `scripts\windows\reset.cmd`。该操作会删除 MySQL、Redis 和上传文件 Volume，必须输入 `RESET` 确认。
 
 ### 手动 Docker 启动
 

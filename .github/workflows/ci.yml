@@ -43,7 +43,7 @@ jobs:
       - name: Validate PowerShell scripts
         shell: pwsh
         run: |
-          foreach ($file in @("start.ps1", "stop.ps1", "reset.ps1", "scripts/wms-common.ps1")) {
+          foreach ($file in @("scripts/windows/start.ps1", "scripts/windows/stop.ps1", "scripts/windows/reset.ps1", "scripts/wms-common.ps1")) {
             $tokens = $null
             $errors = $null
             [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $file), [ref]$tokens, [ref]$errors) | Out-Null
