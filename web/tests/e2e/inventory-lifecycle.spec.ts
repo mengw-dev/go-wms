@@ -33,8 +33,8 @@ test('inbound Excel sample reports successful and failed rows', async ({ page })
   await importDialog.getByRole('button', { name: '开始导入' }).click()
 
   await expect(importDialog.getByText('已完成', { exact: true })).toBeVisible({ timeout: 20_000 })
-  await expect(importDialog.getByText('5', { exact: true })).toBeVisible()
-  await expect(importDialog.getByText('2 / 3', { exact: true })).toBeVisible()
+  await expect(importDialog.getByText('30', { exact: true })).toBeVisible()
+  await expect(importDialog.getByText('22 / 8', { exact: true })).toBeVisible()
 })
 
 test('inbound UI flow creates stock and inventory transaction', async ({ page, request }) => {
