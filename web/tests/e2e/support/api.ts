@@ -2,7 +2,7 @@ import { expect, type APIRequestContext, type Locator, type Page } from '@playwr
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
-export const baseURL = process.env.E2E_BASE_URL || 'http://127.0.0.1:8081'
+export const baseURL = process.env.E2E_BASE_URL || 'http://127.0.0.1'
 
 export const adminAccount = {
   username: 'admin',

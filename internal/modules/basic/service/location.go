@@ -23,7 +23,7 @@ func (s *Service) BatchCreateLocations(ctx context.Context, req *dto.LocationBat
 		return 0, errcode.ParamError
 	}
 	if (req.RowTo-req.RowFrom+1)*(req.ColTo-req.ColFrom+1) > 1000 {
-		return 0, errcode.New(20013, "单次批量生成不超过 1000 个库位")
+		return 0, errcode.LocationBatchLimit
 	}
 	exists, err := s.repo.ListLocationCodes(ctx, s.tm.DB(), req.WarehouseID)
 	if err != nil {

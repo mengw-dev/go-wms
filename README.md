@@ -200,12 +200,19 @@ make compose-down
 | `WMS_MYSQL_DSN` | MySQL DSN | 本地开发配置 |
 | `WMS_REDIS_ADDR` | Redis 地址 | `127.0.0.1:6379` |
 | `WMS_JWT_SECRET` | JWT 密钥，生产环境至少 32 字符 | 开发配置 |
+| `WMS_INTEGRATION_API_KEY` | 外部 OMS/ERP API Key | 开发占位值 |
+| `WMS_API_BIND` | API 端口绑定地址 | `127.0.0.1` |
+| `WMS_API_PORT` | API 宿主机映射端口 | `8080` |
+| `WMS_WEB_PORT` | Web 宿主机映射端口 | `80` |
 | `WMS_UPLOAD_DIR` | Excel 上传目录 | `./data/uploads` |
 | `WMS_METRICS_ENABLED` | 是否启用 Prometheus 指标端口 | `false` |
 | `WMS_METRICS_PORT` | 指标服务端口 | `9090` |
+| `WMS_PROMETHEUS_PORT` | Prometheus 宿主机映射端口 | `9090` |
 | `WMS_METRICS_PATH` | 指标路径 | `/metrics` |
 
-生产模式 `WMS_SERVER_MODE=release` 会拒绝过短或仍包含示例占位内容的 JWT 密钥。多实例部署时每个实例必须使用不同的 `WMS_SERVER_NODE`。
+生产模式 `WMS_SERVER_MODE=release` 会拒绝过短或仍包含示例占位内容的 JWT、MySQL 和集成 API Key。多实例部署时每个实例必须使用不同的 `WMS_SERVER_NODE`。
+
+默认情况下 API 和 Prometheus 只绑定到宿主机 `127.0.0.1`，外部访问统一通过 Web 容器的 Nginx `/api/` 代理。云服务器安全组只需要开放 `80/443` 和受限的 SSH 端口，不要开放 MySQL、Redis、API 管理端口或 Prometheus。
 
 ## 权限说明
 

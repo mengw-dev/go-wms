@@ -142,6 +142,7 @@ function Save-DotEnv {
         "JWT_SECRET",
         "WMS_INTEGRATION_API_KEY",
         "WMS_SERVER_NODE",
+        "WMS_API_BIND",
         "WMS_API_PORT",
         "WMS_WEB_PORT"
     )

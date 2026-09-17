@@ -62,8 +62,16 @@ try {
         $values["WMS_API_PORT"] = "8080"
         $changed = $true
     }
+    if (-not $values.Contains("WMS_API_BIND") -or [string]::IsNullOrWhiteSpace($values["WMS_API_BIND"])) {
+        $values["WMS_API_BIND"] = "127.0.0.1"
+        $changed = $true
+    }
     if (-not $values.Contains("WMS_WEB_PORT") -or [string]::IsNullOrWhiteSpace($values["WMS_WEB_PORT"])) {
         $values["WMS_WEB_PORT"] = "80"
+        $changed = $true
+    }
+    if (-not $values.Contains("WMS_PROMETHEUS_PORT") -or [string]::IsNullOrWhiteSpace($values["WMS_PROMETHEUS_PORT"])) {
+        $values["WMS_PROMETHEUS_PORT"] = "9090"
         $changed = $true
     }
 

@@ -35,6 +35,7 @@ services:
       WMS_SERVER_MODE: release
       WMS_MYSQL_DSN: root:${MYSQL_ROOT_PASSWORD:-gowms-root}@tcp(mysql:3306)/${MYSQL_DATABASE:-gowms}?charset=utf8mb4&parseTime=True&loc=Local
       WMS_JWT_SECRET: ${JWT_SECRET:-}
+      WMS_INTEGRATION_API_KEY: ${WMS_INTEGRATION_API_KEY:-}
     entrypoint: ["./migrate", "-seed", "up"]
     depends_on:
       mysql:
@@ -60,11 +61,11 @@ services:
       WMS_JWT_SECRET: ${JWT_SECRET:-}
       WMS_INTEGRATION_API_KEY: ${WMS_INTEGRATION_API_KEY:-}
       WMS_UPLOAD_DIR: /app/data/uploads
-      WMS_METRICS_ENABLED: "true"
-      WMS_METRICS_PORT: "9090"
-      WMS_METRICS_PATH: "/metrics"
+      WMS_METRICS_ENABLED: ${WMS_METRICS_ENABLED:-true}
+      WMS_METRICS_PORT: ${WMS_METRICS_PORT:-9090}
+      WMS_METRICS_PATH: ${WMS_METRICS_PATH:-/metrics}
     ports:
-      - "${WMS_API_PORT:-8080}:8080"
+      - "${WMS_API_BIND:-127.0.0.1}:${WMS_API_PORT:-8080}:8080"
     volumes:
       - upload_data:/app/data/uploads
     depends_on:
@@ -99,7 +100,7 @@ services:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
     ports:
-      - "9090:9090"
+      - "127.0.0.1:${WMS_PROMETHEUS_PORT:-9090}:9090"
     depends_on:
       wms:
         condition: service_healthy

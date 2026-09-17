@@ -1,7 +1,14 @@
 .git
+.env
 .github
 .idea
 .vscode
+deploy
+docs
+samples
+scripts
+tmpgen
+web
 **/node_modules
 **/dist
 **/coverage
