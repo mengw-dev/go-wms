@@ -251,7 +251,7 @@ function openPick(row: OutboundOrderItem) {
   pickRef.value?.open(row.id)
 }
 
-useAutoRefresh(() => load(true))
+useAutoRefresh(() => load(true), 5000, () => selectedRows.value.length === 0)
 </script>
 
 <template>

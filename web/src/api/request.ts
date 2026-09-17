@@ -51,12 +51,18 @@ service.interceptors.response.use(
   },
   (error) => {
     const status = error?.response?.status
+    const code = error?.response?.data?.code
     if (status === 401) {
       useAuthStore().clear()
       if (router.currentRoute.value.path !== '/login') {
         ElMessage.error('登录已失效，请重新登录')
         router.push('/login')
       }
+    } else if (status === 423 && code === 70003) {
+      // 会话失效由业务流程中心统一处理和提示，避免自动刷新并发请求刷屏。
+      useAuthStore().clearDemoSession()
+    } else if (status === 423 && code === 70002) {
+      ElMessage.warning(error?.response?.data?.msg || '当前环境正在被使用，请稍后重试')
     } else {
       const msg = error?.response?.data?.msg || error?.message || '网络异常'
       ElMessage.error(msg)

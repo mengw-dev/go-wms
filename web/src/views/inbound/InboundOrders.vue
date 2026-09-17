@@ -446,7 +446,7 @@ function startPolling(taskId: string) {
 
 onUnmounted(stopPolling)
 
-useAutoRefresh(() => load(true))
+useAutoRefresh(() => load(true), 5000, () => selectedRows.value.length === 0)
 </script>
 
 <template>

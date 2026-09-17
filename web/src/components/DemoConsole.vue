@@ -37,6 +37,7 @@ const draftParams = reactive({
 })
 let countdownTimer: number | undefined
 let heartbeatTimer: number | undefined
+let redirectingToLogin = false
 
 const remainingText = computed(() => {
   const seconds = Math.max(0, remaining.value)
@@ -58,7 +59,9 @@ function startTimers() {
     remaining.value = Math.max(0, remaining.value - 1)
     if (remaining.value <= 0) void refreshSession()
   }, 1000)
-  heartbeatTimer = window.setInterval(() => void refreshSession(), 60_000)
+  heartbeatTimer = window.setInterval(() => {
+    if (remaining.value <= 30) void refreshSession()
+  }, 10_000)
 }
 
 async function refreshSession() {
@@ -68,8 +71,11 @@ async function refreshSession() {
     auth.setDemoSession(info)
     remaining.value = info.expires_in
   } catch {
+    if (redirectingToLogin) return
+    redirectingToLogin = true
     clearTimers()
     auth.clear()
+    ElMessage.warning('业务会话已失效，请重新登录')
     router.push('/login')
   }
 }
@@ -84,6 +90,8 @@ async function acquire() {
     startTimers()
     visible.value = true
   } catch {
+    if (redirectingToLogin) return
+    redirectingToLogin = true
     auth.clear()
     router.push('/login')
   } finally {
