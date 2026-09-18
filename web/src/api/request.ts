@@ -85,7 +85,7 @@ service.interceptors.response.use(
       // 演示会话失效：清空登录态并跳转登录页，防刷屏。
       handleDemoSessionExpired()
     } else if (status === 423 && code === 70002) {
-      ElMessage.warning(error?.response?.data?.msg || '当前环境正在被使用，请稍后重试')
+      ElMessage.warning(error?.response?.data?.msg || '演示环境正在被其他访客使用，对方空闲约 5 分钟后自动释放，请稍后重试')
     } else {
       const msg = error?.response?.data?.msg || error?.message || '网络异常'
       ElMessage.error(msg)

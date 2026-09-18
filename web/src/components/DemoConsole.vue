@@ -59,6 +59,8 @@ const ACTIVITY_THROTTLE_MS = 1_000
 // 续期检查周期与两次续期之间的最小间隔。
 const RENEW_CHECK_INTERVAL_MS = 10_000
 const RENEW_MIN_INTERVAL_MS = 20_000
+// 剩余时间低于该阈值（秒）时，用户交互立即触发续期，不等定时器。
+const RENEW_URGENT_SECONDS = 30
 // 悬浮球与状态区的倒计时只在临近释放时出现，避免一直跳数字影响观感。
 const COUNTDOWN_VISIBLE_SECONDS = 60
 
@@ -85,16 +87,21 @@ function clearTimers() {
 }
 
 /**
- * 记录一次用户交互：把空闲倒计时重置为完整的会话时长，并标记需要向后端续期。
- * 高频事件通过时间戳节流，避免频繁触发。
+ * 记录一次用户交互并标记需要向后端续期。高频事件通过时间戳节流，避免频繁触发。
+ * 倒计时不再本地乐观重置为完整 TTL（那会造成本地显示与 Redis 实际剩余时间的竞态），
+ * 而是等续期成功后按后端返回的真实 TTL 同步；剩余时间临近耗尽时立即触发续期。
  */
 function markActivity() {
   if (!auth.isDemo || !auth.demoSessionId) return
   const now = Date.now()
   if (now - lastActivityAt < ACTIVITY_THROTTLE_MS) return
   lastActivityAt = now
-  remaining.value = idleTTL()
   renewPending = true
+  // 后端 TTL 临近耗尽时立即续期，不等 10 秒定时器，
+  // 避免活跃用户在续期窗口内被 70003 踢出。
+  if (remaining.value > 0 && remaining.value <= RENEW_URGENT_SECONDS) {
+    void refreshSession()
+  }
 }
 
 /**
@@ -117,7 +124,9 @@ function startTimers() {
     if (remaining.value === 0) void handleIdleTimeout()
   }, 1000)
   renewTimer = window.setInterval(() => {
-    if (!renewPending || refreshing || busy.value || !auth.demoSessionId) return
+    // busy（场景执行中）不跳过续期：心跳只延长 Redis TTL，与业务数据无交互，
+    // 长场景跑到一半同样需要保活，否则会话可能在执行中过期导致下一个请求被踢。
+    if (!renewPending || refreshing || !auth.demoSessionId) return
     if (Date.now() - lastRenewAt < RENEW_MIN_INTERVAL_MS) return
     void refreshSession()
   }, RENEW_CHECK_INTERVAL_MS)
@@ -130,14 +139,21 @@ async function refreshSession() {
   try {
     const info = await heartbeatDemoSession()
     auth.setDemoSession(info)
+    // 用后端返回的真实 TTL 重置本地倒计时，
+    // 保证倒计时始终反映 Redis 剩余时间而非乐观估计。
+    remaining.value = info.expires_in
     lastRenewAt = Date.now()
     renewPending = false
-  } catch {
-    if (redirectingToLogin) return
-    redirectingToLogin = true
-    clearTimers()
-    // 会话失效由 request.ts 拦截器统一处理跳转，这里仅清理本地状态。
-    auth.clear()
+  } catch (error) {
+    // 仅会话真正失效（70003）时才清理登录态并停止续期；
+    // 网络抖动/超时等瞬时错误保留状态，由下一个定时器周期自然重试。
+    if (error instanceof ApiError && error.code === 70003) {
+      if (redirectingToLogin) return
+      redirectingToLogin = true
+      clearTimers()
+      // 会话失效由 request.ts 拦截器统一处理跳转，这里仅清理本地状态。
+      auth.clear()
+    }
   } finally {
     refreshing = false
   }
