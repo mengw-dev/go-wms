@@ -691,10 +691,16 @@ onBeforeUnmount(() => {
 }
 
 .demo-actions {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
   margin-top: 16px;
+}
+
+/* 等宽网格下 Element Plus 的相邻按钮左间距会把按钮挤出格子，统一清零。 */
+.demo-actions .el-button {
+  width: 100%;
+  margin-left: 0;
 }
 
 .demo-params {
@@ -763,9 +769,8 @@ onBeforeUnmount(() => {
     bottom: 12px;
   }
 
-  .demo-actions .el-button {
-    width: 100%;
-    margin-left: 0;
+  .demo-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 </style>

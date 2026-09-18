@@ -178,11 +178,6 @@ useAutoRefresh(() => load(true), 3000)
           可以看到数据库连接数、协程数、内存占用随着并发上升、结束后自行回落——说明压力是真实存在的。
           演练中若出现少量「业务拒绝」并不是故障：库存不足时系统会主动拒绝出库，这正是防超卖规则在生效。
         </p>
-        <div class="command-list">
-          <code>.\scripts\windows\run-k6.ps1 -Mode flow -BaseUrl http://127.0.0.1:18080</code>
-          <code>.\scripts\windows\run-k6.ps1 -Mode stress -BaseUrl http://127.0.0.1:18080 -WarehouseId 3 -SkuId 11 -RemoteWrite</code>
-          <code>.\scripts\windows\run-k6.ps1 -Mode wave -BaseUrl http://127.0.0.1:18080 -WarehouseId 3 -SkuId 11</code>
-        </div>
       </section>
 
       <div class="last-updated">最后更新时间：{{ formatTime(data.checked_at) }}</div>
@@ -365,22 +360,9 @@ useAutoRefresh(() => load(true), 3000)
 }
 
 .load-desc {
-  margin: 0 0 12px;
+  margin: 0;
   color: var(--el-text-color-secondary);
   line-height: 1.8;
-}
-
-.command-list {
-  display: grid;
-  gap: 8px;
-}
-
-.command-list code {
-  padding: 10px 12px;
-  border-radius: 8px;
-  background: var(--el-fill-color-light);
-  color: var(--el-text-color-primary);
-  overflow-x: auto;
 }
 
 .last-updated {
