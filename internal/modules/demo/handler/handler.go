@@ -91,7 +91,7 @@ func (h *Handler) runStocktakeDrafts(c *gin.Context) {
 
 func (h *Handler) runConcurrent(c *gin.Context) {
 	var req struct {
-		Concurrency int `json:"concurrency" binding:"omitempty,min=1,max=30"`
+		Concurrency int `json:"concurrency" binding:"omitempty,min=1,max=100"`
 		QtyPerOrder int `json:"qty_per_order" binding:"omitempty,min=1,max=10"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil && c.Request.ContentLength > 0 {
@@ -108,8 +108,8 @@ func (h *Handler) runConcurrent(c *gin.Context) {
 
 func (h *Handler) runConcurrentPicking(c *gin.Context) {
 	var req struct {
-		Workers    int `json:"workers" binding:"omitempty,min=1,max=30"`
-		Contenders int `json:"contenders" binding:"omitempty,min=0,max=20"`
+		Workers    int `json:"workers" binding:"omitempty,min=1,max=100"`
+		Contenders int `json:"contenders" binding:"omitempty,min=0,max=50"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil && c.Request.ContentLength > 0 {
 		response.Fail(c, errcode.ParamError)

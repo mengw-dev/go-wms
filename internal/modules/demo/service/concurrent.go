@@ -65,8 +65,8 @@ func (s *Service) RunConcurrentAllocation(ctx context.Context, sessionID string,
 	if concurrency <= 0 {
 		concurrency = 20
 	}
-	if concurrency > 30 {
-		concurrency = 30
+	if concurrency > 100 {
+		concurrency = 100
 	}
 	if qtyPerOrder <= 0 {
 		qtyPerOrder = 1
@@ -270,14 +270,14 @@ func (s *Service) RunConcurrentPicking(ctx context.Context, sessionID string, wo
 	if workers <= 0 {
 		workers = 10
 	}
-	if workers > 30 {
-		workers = 30
+	if workers > 100 {
+		workers = 100
 	}
 	if contenders < 0 {
 		contenders = 0
 	}
-	if contenders > 20 {
-		contenders = 20
+	if contenders > 50 {
+		contenders = 50
 	}
 
 	s.runMu.Lock()

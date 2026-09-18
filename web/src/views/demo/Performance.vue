@@ -171,11 +171,12 @@ useAutoRefresh(() => load(true), 3000)
       <section class="load-panel">
         <div class="panel-title">
           <el-icon><TrendCharts /></el-icon>
-          <b>怎样向体验者展示真实压测</b>
+          <b>这一页在看什么</b>
         </div>
         <p class="load-desc">
-          页面中的“并发演示”会从后端并发创建并处理出库单，展示库存锁和防超卖；
-          真正的 HTTP 压测使用 k6，在压测进行时体验者可以停留在这个页面观察连接池、协程和内存变化。
+          这是系统的实时体检表。页面的「并发演示」会在后端并发处理出库单，运行时停在这一页，
+          可以看到数据库连接数、协程数、内存占用随着并发上升、结束后自行回落——说明压力是真实存在的。
+          演练中若出现少量「业务拒绝」并不是故障：库存不足时系统会主动拒绝出库，这正是防超卖规则在生效。
         </p>
         <div class="command-list">
           <code>.\scripts\windows\run-k6.ps1 -Mode flow -BaseUrl http://127.0.0.1:18080</code>

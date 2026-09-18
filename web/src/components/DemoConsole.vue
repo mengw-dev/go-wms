@@ -517,7 +517,7 @@ onBeforeUnmount(() => {
       </div>
       <div class="param-line concurrent-param">
         <span>并发审核分配</span>
-        <el-input-number v-model="draftParams.concurrentCount" :min="1" :max="30" size="small" />
+        <el-input-number v-model="draftParams.concurrentCount" :min="1" :max="100" size="small" />
         <em>张并发</em>
         <el-input-number v-model="draftParams.concurrentQty" :min="1" :max="10" size="small" />
         <em>件/张</em>
@@ -525,9 +525,9 @@ onBeforeUnmount(() => {
       </div>
       <div class="param-line">
         <span>PDA 并发拣货</span>
-        <el-input-number v-model="draftParams.pickingWorkers" :min="1" :max="30" size="small" />
+        <el-input-number v-model="draftParams.pickingWorkers" :min="1" :max="100" size="small" />
         <em>名拣货员</em>
-        <el-input-number v-model="draftParams.pickingContenders" :min="0" :max="20" size="small" />
+        <el-input-number v-model="draftParams.pickingContenders" :min="0" :max="50" size="small" />
         <em>名抢单者</em>
         <small>使用上一步生成的拣货任务，模拟逐件扫码、多人抢单和防超拣</small>
       </div>
