@@ -123,7 +123,7 @@
   "templating": { "list": [] },
   "time": { "from": "now-30m", "to": "now" },
   "timezone": "browser",
-  "title": "GoWMS Overview",
+  "title": "WMS Overview",
   "uid": "gowms-overview",
   "version": 1,
   "weekStart": ""

@@ -1,11 +1,11 @@
-# GoWMS 监控说明
+# WMS 监控说明
 
 监控链路：
 
 ```text
 WMS /metrics
   -> Prometheus 每 15 秒采集
-  -> Grafana 展示 GoWMS Overview
+  -> Grafana 展示 WMS Overview
 ```
 
 ## 启动

@@ -1,4 +1,4 @@
-# GoWMS 系统架构设计
+# WMS 系统架构设计
 
 > 版本：v1.0 ｜ 配套代码：本仓库 `internal/` 目录
 
@@ -11,7 +11,7 @@ flowchart LR
     subgraph Client
         FE["Vue3 + TS + Element Plus\n(web/)"]
     end
-    subgraph Server["GoWMS 单体进程"]
+    subgraph Server["WMS 单体进程"]
         direction TB
         MW["中间件链\nRequestID/CORS/Recovery/AccessLog\nAuth(JWT) → OperLog(异步审计) → Permission"]
         subgraph Modules["业务模块 internal/modules"]

@@ -21,11 +21,11 @@ try {
     Write-Step "Checking Docker"
     Assert-Docker
 
-    Write-Step "Removing containers and all GoWMS volumes"
+    Write-Step "Removing containers and all WMS volumes"
     Invoke-WmsCompose @("down", "-v", "--remove-orphans")
     Write-Ok "Old data was removed"
 
-    Write-Step "Starting a clean GoWMS instance"
+    Write-Step "Starting a clean WMS instance"
     $startArgs = @{}
     if ($NoBrowser) {
         $startArgs["NoBrowser"] = $true

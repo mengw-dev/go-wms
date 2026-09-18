@@ -114,7 +114,7 @@ if (-not $NoBuild) {
     $composeArgs += '--build'
 }
 
-Write-Step "Starting GoWMS demo instance $instance"
+Write-Step "Starting WMS demo instance $instance"
 & docker @composeArgs
 if ($LASTEXITCODE -ne 0) {
     throw "docker compose failed with exit code $LASTEXITCODE"

@@ -1,9 +1,9 @@
 apiVersion: 1
 
 providers:
-  - name: GoWMS
+  - name: WMS
     orgId: 1
-    folder: GoWMS
+    folder: WMS
     type: file
     disableDeletion: true
     updateIntervalSeconds: 30

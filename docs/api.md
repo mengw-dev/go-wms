@@ -1,4 +1,4 @@
-# GoWMS API 接口文档
+# WMS API 接口文档
 
 > Base URL：`/api/v1` ｜ 数据格式：JSON ｜ 前后端同构：本仓库 `web/src/api/` 即可调用 SDK 参考
 

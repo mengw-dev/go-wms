@@ -1,4 +1,4 @@
-# GoWMS Web
+# WMS Web
 
 Vue 3 + TypeScript + Vite + Element Plus 前端。
 

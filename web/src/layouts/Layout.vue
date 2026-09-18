@@ -95,7 +95,7 @@ async function submitPassword() {
       <div class="logo">
         <div class="logo-mark">W</div>
         <div class="logo-text">
-          <b>GoWMS</b>
+          <b>WMS</b>
           <small>仓储管理系统</small>
         </div>
       </div>
@@ -166,7 +166,7 @@ async function submitPassword() {
       <el-header class="header">
         <div class="header-left">
           <el-breadcrumb separator="/">
-            <el-breadcrumb-item>GoWMS</el-breadcrumb-item>
+            <el-breadcrumb-item>WMS</el-breadcrumb-item>
             <el-breadcrumb-item>{{ pageTitle }}</el-breadcrumb-item>
           </el-breadcrumb>
         </div>

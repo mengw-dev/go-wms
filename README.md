@@ -1,6 +1,6 @@
-# GoWMS 仓储管理系统
+# WMS 仓储管理系统
 
-GoWMS 是一个前后端分离的轻量级 WMS，覆盖仓库、库位、货品、入库、库存、出库、盘点、任务和系统管理。项目重点处理库存并发、FIFO 分配、单据状态机、库存流水和异步 Excel 导入。
+WMS 是一个前后端分离的轻量级 WMS，覆盖仓库、库位、货品、入库、库存、出库、盘点、任务和系统管理。项目重点处理库存并发、FIFO 分配、单据状态机、库存流水和异步 Excel 导入。
 
 > 适合作为 Go + Vue 全栈学习项目、毕业设计或中小型仓储系统二次开发基础。生产环境使用前请按本文的安全配置完成加固。
 
@@ -268,7 +268,7 @@ make compose-monitoring
 - Grafana：`http://127.0.0.1:3000`
 - Grafana 用户名/密码：见 `.env` 中的 `WMS_GRAFANA_ADMIN_USER`、`WMS_GRAFANA_ADMIN_PASSWORD`
 
-Grafana 会自动加载 `GoWMS Overview` 仪表盘，包含服务状态、QPS、5xx 错误率、P95 延迟、并发请求、MySQL 连接池、Goroutine 和内存。停止监控不会停止 WMS：
+Grafana 会自动加载 `WMS Overview` 仪表盘，包含服务状态、QPS、5xx 错误率、P95 延迟、并发请求、MySQL 连接池、Goroutine 和内存。停止监控不会停止 WMS：
 
 ```powershell
 .\scripts\windows\stop-monitoring.ps1

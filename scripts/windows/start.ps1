@@ -119,7 +119,7 @@ try {
     $apiPort = [int]$values["WMS_API_PORT"]
     $webPort = [int]$values["WMS_WEB_PORT"]
 
-    Write-Step "Building and starting GoWMS"
+    Write-Step "Building and starting WMS"
     $composeArgs = @("up", "-d")
     if (-not $NoBuild) {
         $composeArgs += "--build"
@@ -133,10 +133,10 @@ try {
     if (-not $apiReady -or -not $webReady) {
         Write-Host "Service health check timed out. Current container status:" -ForegroundColor Yellow
         Invoke-WmsCompose ps
-        throw "GoWMS did not become healthy in time."
+        throw "WMS did not become healthy in time."
     }
 
-    Write-Ok "GoWMS is ready"
+    Write-Ok "WMS is ready"
     Write-Host ""
     Write-Host "Web:  http://127.0.0.1:$webPort" -ForegroundColor Green
     Write-Host "API:  http://127.0.0.1:$apiPort" -ForegroundColor Green

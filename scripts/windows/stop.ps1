@@ -8,9 +8,9 @@ Set-Location $WmsRoot
 try {
     Write-Step "Checking Docker"
     Assert-Docker
-    Write-Step "Stopping GoWMS"
+    Write-Step "Stopping WMS"
     Invoke-WmsCompose @("down", "--remove-orphans")
-    Write-Ok "GoWMS stopped. Database and upload volumes were preserved."
+    Write-Ok "WMS stopped. Database and upload volumes were preserved."
 }
 catch {
     Write-Host "Stop failed: $($_.Exception.Message)" -ForegroundColor Red

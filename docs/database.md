@@ -1,4 +1,4 @@
-# GoWMS 数据库设计
+# WMS 数据库设计
 
 > MySQL 8.0.16+（依赖 CHECK 约束强制执行）｜ 全表 InnoDB / utf8mb4
 > 生产结构以 `migrations/versions` 中的版本化迁移为准；开发 debug 模式可使用 AutoMigrate。

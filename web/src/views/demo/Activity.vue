@@ -37,7 +37,7 @@ useAutoRefresh(() => load(true), 5000)
     <div class="page-head">
       <div>
         <h2>业务操作记录</h2>
-        <p>展示当前演示账号最近发生的接口操作、业务单据、任务和库存流水。</p>
+        <p>记录当前账号最近的操作，包括业务单据、任务和库存流水。</p>
       </div>
       <div class="head-actions">
         <el-button :icon="TrendCharts" @click="router.push('/demo/performance')">性能指标</el-button>

@@ -1,4 +1,4 @@
--- Roll back the initial GoWMS schema.
+-- Roll back the initial WMS schema.
 SET FOREIGN_KEY_CHECKS = 0;
 DROP TABLE IF EXISTS wms_stocktake_detail;
 DROP TABLE IF EXISTS wms_stocktake_order;

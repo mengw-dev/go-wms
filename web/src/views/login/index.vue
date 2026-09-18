@@ -53,7 +53,7 @@ async function submit() {
       <div class="brand-head">
         <div class="brand-logo">W</div>
         <div>
-          <b>GoWMS</b>
+          <b>WMS</b>
           <small>轻量级仓储管理系统</small>
         </div>
       </div>
