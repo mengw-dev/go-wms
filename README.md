@@ -1,8 +1,23 @@
 # WMS 仓储管理系统
 
+[![CI](https://github.com/mengw-seek/wms-learn/actions/workflows/ci.yml/badge.svg)](https://github.com/mengw-seek/wms-learn/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Go](https://img.shields.io/badge/Go-1.26-00ADD8.svg)](https://go.dev/)
+[![Vue](https://img.shields.io/badge/Vue-3-42b883.svg)](https://vuejs.org/)
+
 WMS 是一个前后端分离的轻量级 WMS，覆盖仓库、库位、货品、入库、库存、出库、盘点、任务和系统管理。项目重点处理库存并发、FIFO 分配、单据状态机、库存流水和异步 Excel 导入。
 
 > 适合作为 Go + Vue 全栈学习项目、毕业设计或中小型仓储系统二次开发基础。生产环境使用前请按本文的安全配置完成加固。
+
+## 界面预览
+
+**业务流程中心**：内置一键完整流程、Excel 批量入库、上游批量出库、并发审核分配与 PDA 并发拣货演示，可直观展示 FIFO 锁库与防超卖。
+
+![业务流程中心](docs/images/demo-console.png)
+
+**架构全景图**：涵盖技术分层、单据状态机、数据模型与架构能力视图，点击图片可查看在线交互页面（GitHub Pages，无需克隆项目）。
+
+[![架构全景图](docs/images/overview.png)](https://mengw-seek.github.io/wms-learn/)
 
 ## 技术栈
 
@@ -78,6 +93,8 @@ mysql -uroot -p -e "CREATE DATABASE IF NOT EXISTS gowms DEFAULT CHARACTER SET ut
 go run ./cmd/migrate -seed up
 go run ./cmd/wms
 ```
+
+> 数据库名沿用历史名称 `gowms`（仅内部标识符，与项目显示名 WMS 无关）。Docker 部署可通过 `.env` 的 `MYSQL_DATABASE` 修改；本地开发需同步修改 `configs/config.yaml` 中的 DSN。
 
 服务默认监听 `http://127.0.0.1:8080`。首次启动会通过 AutoMigrate 建表并创建管理员：
 
@@ -206,7 +223,7 @@ make compose-down
 
 默认地址分别为 `http://服务器IP:18081` 和 `http://服务器IP:18082`。启动脚本会在 `deploy/env.demo-a`、`deploy/env.demo-b` 中生成随机数据库密码和 JWT 密钥。
 
-> 演示模式不是多租户功能，不应承载真实业务数据。生产环境请按“安全配置”章节加固后关闭或限制演示账号。
+> 演示模式不是多租户功能，不应承载真实业务数据。生产环境请按“安全配置”章节加固，并设置 `WMS_DEMO_ENABLED=false` 整体关闭演示模块：后端不再挂载任何 `/demo` 路由（直接 404），演示账号被禁用，登录页自动隐藏演示账号提示。
 
 ## 配置
 
@@ -228,7 +245,7 @@ make compose-down
 | `WMS_REDIS_ADDR` | Redis 地址 | `127.0.0.1:6379` |
 | `WMS_JWT_SECRET` | JWT 密钥，生产环境至少 32 字符 | 开发配置 |
 | `WMS_INTEGRATION_API_KEY` | 外部 OMS/ERP API Key | 开发占位值 |
-| `WMS_DEMO_ENABLED` | 是否启用演示模式 | `false` |
+| `WMS_DEMO_ENABLED` | 演示模式总开关（账号 + `/demo` 接口，`false` 时路由完全不挂载） | `true` |
 | `WMS_DEMO_USERNAME` | 演示账号用户名 | `demo` |
 | `WMS_DEMO_PASSWORD` | 演示账号密码 | `demo123456` |
 | `WMS_DEMO_SESSION_TTL_SECONDS` | 演示会话空闲超时秒数 | `300` |
