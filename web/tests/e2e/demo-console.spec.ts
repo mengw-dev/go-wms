@@ -50,3 +50,12 @@ test('business center creates drafts, runs flows, shows metrics and records, the
   await confirmMessageBox(page, '退出并重置')
   await expect(page).toHaveURL(/\/login(?:\?|$)/)
 })
+
+test('demo account is logged out after a page reload', async ({ page }) => {
+  await loginByUi(page, demoUsername, demoPassword)
+  await expect(page.getByRole('button', { name: /业务流程中心/ })).toBeVisible()
+
+  await page.reload()
+
+  await expect(page).toHaveURL(/\/login(?:\?|$)/)
+})

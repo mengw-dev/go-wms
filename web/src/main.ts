@@ -32,12 +32,15 @@ import App from './App.vue'
 import router from './router'
 import { permission } from './directives/permission'
 import './style.css'
+import { useAuthStore } from './stores/auth'
 import { useThemeStore } from './stores/theme'
 
 const app = createApp(App)
 
 app.use(createPinia())
 useThemeStore().init()
+// 演示账号刷新页面即登出：必须在路由首次导航前执行。
+useAuthStore().enforceDemoReloadLogout()
 app.use(router)
 app.directive('permission', permission)
 

@@ -66,31 +66,37 @@ function clearTimers() {
 
 /**
  * 启动倒计时与心跳：
- * - 倒计时每秒递减，仅用于显示；
- * - 心跳每 30 秒向后端续期并同步剩余时间，保证页面存活期间会话不过期。
+ * - 倒计时每秒递减，纯前端控制，保证显示稳定；
+ * - 心跳每 60 秒向后端续期（不更新倒计时，避免视觉上"时间回跳"）；
+ * - 当剩余时间 <= 60 秒时，心跳后续期并同步剩余时间。
  */
 function startTimers() {
   clearTimers()
   if (remaining.value <= 0) remaining.value = auth.demoSessionExpiresIn || 300
   countdownTimer = window.setInterval(() => {
     remaining.value = Math.max(0, remaining.value - 1)
+    if (remaining.value <= 60 && remaining.value % 10 === 0) {
+      void refreshSession(true)
+    }
   }, 1000)
   heartbeatTimer = window.setInterval(() => {
-    void refreshSession()
-  }, 30_000)
+    void refreshSession(false)
+  }, 60_000)
 }
 
 /**
- * 向后端续期演示会话并同步倒计时。并发安全：同一时刻只允许一个心跳请求。
- * 失败时统一跳转登录页，由 request.ts 拦截器兜底防止刷屏。
+ * 向后端续期演示会话。
+ * @param syncRemaining 是否用心跳返回的剩余时间更新倒计时（仅在快到期时为 true）。
  */
-async function refreshSession() {
+async function refreshSession(syncRemaining: boolean) {
   if (refreshing || busy.value || !auth.demoSessionId) return
   refreshing = true
   try {
     const info = await heartbeatDemoSession()
     auth.setDemoSession(info)
-    remaining.value = info.expires_in
+    if (syncRemaining) {
+      remaining.value = info.expires_in
+    }
   } catch {
     if (redirectingToLogin) return
     redirectingToLogin = true
@@ -325,16 +331,13 @@ async function releaseAndExit() {
 }
 
 /**
- * 页面关闭/刷新时：
- * 1. 同步清理演示账号登录态（token 在 sessionStorage，关闭即消失，刷新也立即登出）；
- * 2. 尽力向后端发送释放请求，重置演示数据并让出会话锁。
+ * 页面关闭/刷新时尽力释放演示会话，重置演示数据并让出会话锁。
+ * 登录态由 auth store 处理：关闭标签页即登出，刷新页面也会在启动时强制登出。
  */
 function releaseKeepalive() {
   if (!auth.isDemo || !auth.token) return
   const token = auth.token
   const sessionId = auth.demoSessionId
-  // 先同步清理本地登录态，确保刷新后回到登录页。
-  auth.clear()
   if (!sessionId) return
   const baseURL = (import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(/\/$/, '')
   void window
@@ -350,13 +353,16 @@ function releaseKeepalive() {
 }
 
 onMounted(() => {
+  // beforeunload 覆盖刷新/关闭，pagehide 覆盖 bfcache 等场景，双重保险确保登出。
   window.addEventListener('beforeunload', releaseKeepalive)
+  window.addEventListener('pagehide', releaseKeepalive)
   void initialize()
 })
 
 onBeforeUnmount(() => {
   clearTimers()
   window.removeEventListener('beforeunload', releaseKeepalive)
+  window.removeEventListener('pagehide', releaseKeepalive)
 })
 </script>
 
