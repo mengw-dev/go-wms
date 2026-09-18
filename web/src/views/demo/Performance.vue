@@ -18,9 +18,11 @@ const poolUsage = computed(() => {
   if (!pool || pool.max_open_connections <= 0) return 0
   return Math.min(100, Math.round((pool.open_connections / pool.max_open_connections) * 100))
 })
+// 容器未设置内存上限，占用比例以 512 MB 为基准折算，仅用于观察趋势。
+const MEMORY_BASELINE_MB = 512
 const memoryUsage = computed(() => {
   if (!data.value) return 0
-  return Math.min(100, Math.round((data.value.runtime.memory_sys_mb / 512) * 100))
+  return Math.min(100, Math.round((data.value.runtime.memory_sys_mb / MEMORY_BASELINE_MB) * 100))
 })
 
 async function load(silent = false) {
@@ -49,7 +51,7 @@ useAutoRefresh(() => load(true), 3000)
     <div class="page-head">
       <div>
         <h2>系统性能指标</h2>
-        <p>页面每 3 秒自动刷新，可直接向体验者展示数据库、Redis、连接池和业务实时状态。</p>
+        <p>页面每 3 秒自动刷新，实时反映数据库、Redis、连接池和业务数据的变化。</p>
       </div>
       <div class="head-actions">
         <el-button :icon="Tickets" @click="router.push('/demo/activity')">操作记录</el-button>
@@ -156,7 +158,7 @@ useAutoRefresh(() => load(true), 3000)
             <b>进程内存</b>
           </div>
           <div class="progress-row">
-            <span>系统内存占用</span>
+            <span>进程内存占用（基准 512 MB）</span>
             <strong>{{ memoryUsage }}%</strong>
           </div>
           <el-progress :percentage="memoryUsage" :stroke-width="12" color="#10b981" />
