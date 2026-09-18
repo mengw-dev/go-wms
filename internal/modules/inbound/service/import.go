@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -117,6 +118,14 @@ func (s *Service) processImport(taskID string) {
 }
 
 func (s *Service) doImport(ctx context.Context, t *model.ImportTask) (total, success, fail int, errMsg string) {
+	// 导入文件属于不可信输入，excelize 解析畸形 xlsx 可能直接 panic（如 GO-2026-6452 负数共享字符串下标）。
+	// 兜底恢复并返回失败原因：否则任务会卡在 PROCESSING，被补偿器复位后再次 panic，形成无限重启。
+	defer func() {
+		if r := recover(); r != nil {
+			log.L().Error("parse import file panic recovered", "task_id", t.TaskID, "file", t.FilePath, "panic", r, "stack", string(debug.Stack()))
+			total, success, fail, errMsg = 1, 0, 1, "文件解析失败，请确认文件未损坏后重新上传"
+		}
+	}()
 	f, err := excelizeOpenFile(t.FilePath)
 	if err != nil {
 		return 0, 0, 1, "打开文件失败: " + err.Error()

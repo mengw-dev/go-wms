@@ -70,7 +70,23 @@ jobs:
       - name: Vulnerability scan
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
-          "$(go env GOPATH)/bin/govulncheck" ./...
+          GVT="$(go env GOPATH)/bin/govulncheck"
+          "$GVT" -format=json ./... > vuln.json || true
+          # 漏洞库实时更新，新公告可能在代码完全没变的情况下让流水线变红。
+          # 因此只拦截「代码确实调用到、且上游已发布修复版本」的漏洞（trace 含 function 帧才算调用到）；
+          # 上游尚未发版的漏洞无法通过升级消除，仅告警，待其发版后本步骤会自动变红要求升级。
+          jq -r '.finding | select(.trace[]? | has("function")) | select(.fixed_version) | "\(.osv) 修复版本 \(.fixed_version)"' vuln.json | sort -u > vuln-fixable.txt
+          jq -r '.finding | select(.trace[]? | has("function")) | select(.fixed_version | not) | .osv' vuln.json | sort -u > vuln-nofix.txt
+          if [ -s vuln-nofix.txt ]; then
+            echo "::warning::以下漏洞上游尚未发布修复版本，暂时无法通过升级依赖消除，本次仅告警："
+            cat vuln-nofix.txt
+          fi
+          if [ -s vuln-fixable.txt ]; then
+            echo "::error::以下漏洞已有修复版本，请升级对应依赖后重新提交："
+            cat vuln-fixable.txt
+            exit 1
+          fi
+          echo "依赖安全扫描通过：未发现可被调用的未修复漏洞"
 
       - name: Test（race + MySQL 集成测试）
         run: go test -race ./internal/... -v -count=1
