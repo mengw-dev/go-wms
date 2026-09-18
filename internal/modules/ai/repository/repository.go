@@ -86,9 +86,9 @@ func (r *Repository) GetOverview(ctx context.Context) (*Overview, error) {
 	}
 	var agg Overview
 	err := r.db.WithContext(ctx).Model(&invmodel.Inventory{}).
-		Select("COUNT(*) AS inventory_rows, "+
-			"COALESCE(SUM(stock_quantity),0) AS stock_total, "+
-			"COALESCE(SUM(available_quantity),0) AS available_total, "+
+		Select("COUNT(*) AS inventory_rows, " +
+			"COALESCE(SUM(stock_quantity),0) AS stock_total, " +
+			"COALESCE(SUM(available_quantity),0) AS available_total, " +
 			"COALESCE(SUM(allocated_quantity),0) AS allocated_total").
 		Scan(&agg).Error
 	if err != nil {

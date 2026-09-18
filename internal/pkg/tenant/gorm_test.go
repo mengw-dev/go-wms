@@ -134,8 +134,8 @@ func TestTenantScanIsolation(t *testing.T) {
 
 // TestFromContext 覆盖与缺省语义。
 func TestFromContext(t *testing.T) {
-	if FromContext(nil) != 0 {
-		t.Fatal("nil ctx should be 0")
+	if FromContext(context.TODO()) != 0 {
+		t.Fatal("empty ctx should be 0")
 	}
 	if FromContext(context.Background()) != 0 {
 		t.Fatal("plain ctx should be 0")

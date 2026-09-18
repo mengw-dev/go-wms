@@ -16,8 +16,8 @@ const (
 type StocktakeOrder struct {
 	model.Base
 	model.Versioned
-	TenantID     int64      `json:"tenant_id,string" gorm:"not null;default:0;uniqueIndex:uk_stocktake_no,priority:1;index:idx_sto_tenant"`
-	OrderNo      string     `json:"order_no" gorm:"size:64;uniqueIndex:uk_stocktake_no,priority:2;not null"`
+	TenantID     int64       `json:"tenant_id,string" gorm:"not null;default:0;uniqueIndex:uk_stocktake_no,priority:1;index:idx_sto_tenant"`
+	OrderNo      string      `json:"order_no" gorm:"size:64;uniqueIndex:uk_stocktake_no,priority:2;not null"`
 	WarehouseID  int64       `json:"warehouse_id,string" gorm:"not null"`
 	LocationID   int64       `json:"location_id,string"` // 0 表示整仓盘点
 	LocationCode string      `json:"location_code" gorm:"size:64"`

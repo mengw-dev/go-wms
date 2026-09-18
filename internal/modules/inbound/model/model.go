@@ -94,8 +94,8 @@ const (
 // ImportTask 异步导入任务：CAS 更新防重复执行，悬挂任务由定时补偿扫描重跑。
 type ImportTask struct {
 	model.Base
-	TenantID    int64           `json:"tenant_id,string" gorm:"not null;default:0;uniqueIndex:uk_import_task,priority:1;index:idx_import_tenant"`
-	TaskID      string          `json:"task_id" gorm:"size:64;uniqueIndex:uk_import_task,priority:2;not null"`
+	TenantID    int64            `json:"tenant_id,string" gorm:"not null;default:0;uniqueIndex:uk_import_task,priority:1;index:idx_import_tenant"`
+	TaskID      string           `json:"task_id" gorm:"size:64;uniqueIndex:uk_import_task,priority:2;not null"`
 	Status      ImportTaskStatus `json:"status" gorm:"size:16;index;not null;default:'PENDING'"`
 	FileName    string           `json:"file_name" gorm:"size:255"`
 	FilePath    string           `json:"file_path" gorm:"size:255"`

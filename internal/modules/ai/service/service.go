@@ -159,7 +159,7 @@ func (s *Service) buildSnapshot(ctx context.Context, question string) (string, e
 		fmt.Fprintf(&b, "  %d. %s %s: 库存 %d，可用 %d\n", i+1, sk.SKUCode, sk.SKUName, sk.StockQty, sk.AvailableQty)
 	}
 
-	b.WriteString(fmt.Sprintf("- 低可用库存（可用 <= %d，升序，最多 %d 条）:\n", lowAvailableThreshold, lowAvailableLimit))
+	fmt.Fprintf(&b, "- 低可用库存（可用 <= %d，升序，最多 %d 条）:\n", lowAvailableThreshold, lowAvailableLimit)
 	if len(lowSKU) == 0 {
 		b.WriteString("  （无低可用库存）\n")
 	}
@@ -167,7 +167,7 @@ func (s *Service) buildSnapshot(ctx context.Context, question string) (string, e
 		fmt.Fprintf(&b, "  * %s %s: 可用 %d（库存 %d）\n", sk.SKUCode, sk.SKUName, sk.AvailableQty, sk.StockQty)
 	}
 
-	b.WriteString(fmt.Sprintf("- SKU 目录（编码 | 名称 | 规格 | 单位，最多 %d 条）:\n", skuCatalogLimit))
+	fmt.Fprintf(&b, "- SKU 目录（编码 | 名称 | 规格 | 单位，最多 %d 条）:\n", skuCatalogLimit)
 	if len(catalog) == 0 {
 		b.WriteString("  （暂无 SKU）\n")
 	}
