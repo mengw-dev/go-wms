@@ -4,9 +4,10 @@ import (
 	"context"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 
-	"github.com/google/uuid"
+	"gowms/internal/pkg/log"
 )
 
 // Locker Redis 分布式锁：SET NX EX 加锁 + Lua 校验持有者后释放（防止误删他人的锁）。
@@ -31,7 +32,9 @@ func (l *Locker) Lock(ctx context.Context, key string, ttl time.Duration) (relea
 		return nil, false, err
 	}
 	release = func() {
-		_ = unlockScript.Run(context.Background(), l.rdb, []string{key}, token).Err()
+		if err := unlockScript.Run(context.Background(), l.rdb, []string{key}, token).Err(); err != nil {
+			log.L().Warn("failed to release distributed lock", "key", key, "err", err)
+		}
 	}
 	return release, true, nil
 }

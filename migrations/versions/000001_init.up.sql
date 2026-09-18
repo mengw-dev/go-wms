@@ -76,6 +76,7 @@ CREATE TABLE IF NOT EXISTS wms_location (
   updated_at   DATETIME(3),
   deleted_at   DATETIME(3),
   KEY idx_loc_wh (warehouse_id),
+  UNIQUE KEY uk_location_warehouse_code (warehouse_id, code),
   KEY idx_loc_deleted (deleted_at)
 ) ENGINE=InnoDB;
 
@@ -156,6 +157,10 @@ CREATE TABLE IF NOT EXISTS wms_task (
   KEY idx_task_order (order_id),
   KEY idx_task_type (task_type),
   KEY idx_task_status (status),
+  KEY idx_task_order_no (order_no),
+  KEY idx_task_detail (detail_id),
+  KEY idx_task_allocation (allocation_id),
+  KEY idx_task_sku (sku_id),
   KEY idx_task_deleted (deleted_at)
 ) ENGINE=InnoDB;
 
@@ -274,6 +279,7 @@ CREATE TABLE IF NOT EXISTS wms_allocation (
   updated_at    DATETIME(3),
   deleted_at    DATETIME(3),
   KEY idx_alloc_order (order_id),
+  KEY idx_alloc_detail (detail_id),
   KEY idx_alloc_inv (inventory_id),
   KEY idx_alloc_status (status),
   KEY idx_alloc_deleted (deleted_at)
