@@ -340,6 +340,12 @@ async function goActivity() {
   visible.value = false
 }
 
+/** 打开项目架构全景图（技术架构分层 + 业务流程 + 数据模型） */
+function goArchitecture() {
+  window.open('/overview.html', '_blank', 'noopener,noreferrer')
+  visible.value = false
+}
+
 async function goTarget(path?: string) {
   if (!path) return
   await router.push(path)
@@ -493,6 +499,12 @@ onBeforeUnmount(() => {
       </el-button>
       <el-button :disabled="busy" @click="goPerformance">性能指标</el-button>
       <el-button :disabled="busy" @click="goActivity">操作记录</el-button>
+      <el-tooltip placement="top" :show-after="150">
+        <template #content>
+          项目架构全景图 — 技术分层架构图 + 业务流程图（入库/出库）+ 库存三数量模型 + 核心数据表分组图 + 安全可观测矩阵 + 技术栈清单 + 核心技术设计卡片，依据仓库实际代码生成
+        </template>
+        <el-button :disabled="busy" type="primary" plain @click="goArchitecture">架构全景图</el-button>
+      </el-tooltip>
     </div>
 
     <div class="demo-params">

@@ -50,7 +50,15 @@ if ($Mode -in @('smoke', 'stress', 'wave') -and (-not $WarehouseId -or -not $Sku
     throw "Mode $Mode requires -WarehouseId and -SkuId. Run -Mode check first."
 }
 
+# k6 的 console 日志输出到 stderr，而 PowerShell 5.1 在 $ErrorActionPreference='Stop' 下
+# 会把原生命令的 stderr 输出当成终止性错误，导致脚本在第一条日志就中断。
+# 因此调用期间临时放开，改用退出码判断成败。
+$previousErrorAction = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
 & $k6.Source @k6Args
-if ($LASTEXITCODE -ne 0) {
-    throw "k6 failed with exit code $LASTEXITCODE"
+$k6ExitCode = $LASTEXITCODE
+$ErrorActionPreference = $previousErrorAction
+
+if ($k6ExitCode -ne 0) {
+    throw "k6 failed with exit code $k6ExitCode"
 }
