@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -32,15 +31,8 @@ func (s *Service) AcquireSession(ctx context.Context) (*SessionInfo, error) {
 		return nil, err
 	}
 	if !ok {
-		remaining := ttl
-		if currentTTL, ttlErr := s.rdb.TTL(ctx, activeSessionKey).Result(); ttlErr == nil && currentTTL > 0 {
-			remaining = currentTTL
-		}
-		seconds := int(remaining.Seconds())
-		if seconds < 1 {
-			seconds = 1
-		}
-		return nil, errcode.New(errcode.DemoBusy.Code, fmt.Sprintf("演示环境正在被使用，请约 %d 秒后重试", seconds))
+		// 会话 TTL 会随对方操作动态续期，给不出准确的等待时间，统一提示稍后重试。
+		return nil, errcode.DemoBusy
 	}
 
 	dirty, err := s.rdb.Exists(ctx, dirtyDataKey).Result()
