@@ -21,9 +21,11 @@ type Versioned struct {
 	Version int `json:"version" gorm:"default:1"`
 }
 
+// SysUser 用户（多租户：tenant_id 联合唯一用户名，各租户内独立）。
 type SysUser struct {
 	Base
-	Username     string          `json:"username" gorm:"size:64;uniqueIndex;not null"`
+	TenantID     int64           `json:"tenant_id,string" gorm:"not null;default:0;uniqueIndex:uk_user_username,priority:1"`
+	Username     string          `json:"username" gorm:"size:64;uniqueIndex:uk_user_username,priority:2;not null"`
 	PasswordHash string          `json:"-" gorm:"size:128;not null"`
 	Nickname     string          `json:"nickname" gorm:"size:64"`
 	Status       int             `json:"status" gorm:"default:1"`     // 1 启用 0 禁用
@@ -33,25 +35,30 @@ type SysUser struct {
 
 func (SysUser) TableName() string { return "sys_user" }
 
+// SysRole 角色（tenant_id 联合唯一角色名）。
 type SysRole struct {
 	Base
-	Name   string `json:"name" gorm:"size:64;uniqueIndex;not null"`
-	Perms  string `json:"perms" gorm:"size:1024"` // 逗号分隔，如 wms:inbound:approve；* 表示全部
-	Remark string `json:"remark" gorm:"size:255"`
+	TenantID int64  `json:"tenant_id,string" gorm:"not null;default:0;uniqueIndex:uk_role_name,priority:1"`
+	Name     string `json:"name" gorm:"size:64;uniqueIndex:uk_role_name,priority:2;not null"`
+	Perms    string `json:"perms" gorm:"size:1024"` // 逗号分隔，如 wms:inbound:approve；* 表示全部
+	Remark   string `json:"remark" gorm:"size:255"`
 }
 
 func (SysRole) TableName() string { return "sys_role" }
 
+// SysUserRole 用户-角色关联（user_id 全局唯一，天然按租户隔离，无需 tenant 复合）。
 type SysUserRole struct {
-	ID     int64 `gorm:"primaryKey"`
-	UserID int64 `gorm:"uniqueIndex:uk_user_role"`
-	RoleID int64 `gorm:"uniqueIndex:uk_user_role"`
+	ID       int64 `gorm:"primaryKey"`
+	TenantID int64 `json:"tenant_id,string" gorm:"not null;default:0"`
+	UserID   int64 `gorm:"uniqueIndex:uk_user_role"`
+	RoleID   int64 `gorm:"uniqueIndex:uk_user_role"`
 }
 
 func (SysUserRole) TableName() string { return "sys_user_role" }
 
 type SysOperLog struct {
 	ID        int64     `json:"id,string" gorm:"primaryKey"`
+	TenantID  int64     `json:"tenant_id,string" gorm:"not null;default:0;index:idx_oper_log_tenant"`
 	UserID    int64     `json:"user_id,string"`
 	Username  string    `json:"username" gorm:"size:64"`
 	Path      string    `json:"path" gorm:"size:255"`

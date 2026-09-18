@@ -37,7 +37,7 @@ func (s *Service) Login(ctx context.Context, req *dto.LoginReq, clientIP string)
 		return nil, errcode.UserOrPwdWrong
 	}
 	s.clearLoginFailures(attemptKey)
-	token, err := jwt.Generate(s.jwtSecret, s.jwtExpire, u.ID, u.Username, u.TokenVersion)
+	token, err := jwt.Generate(s.jwtSecret, s.jwtExpire, u.ID, u.Username, u.TokenVersion, u.TenantID)
 	if err != nil {
 		return nil, err
 	}

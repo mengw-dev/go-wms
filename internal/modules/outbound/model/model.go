@@ -42,8 +42,9 @@ func CanTransit(from, to OrderStatus) bool {
 type ShipmentOrder struct {
 	model.Base
 	model.Versioned
-	OrderNo      string      `json:"order_no" gorm:"size:64;uniqueIndex;not null"`
-	BizOrderNo   string      `json:"biz_order_no" gorm:"size:64;uniqueIndex;not null"` // 幂等键：业务订单号
+	TenantID     int64       `json:"tenant_id,string" gorm:"not null;default:0;uniqueIndex:uk_shipment_no,priority:1;uniqueIndex:uk_shipment_biz,priority:1;index:idx_so_tenant"`
+	OrderNo      string      `json:"order_no" gorm:"size:64;uniqueIndex:uk_shipment_no,priority:2;not null"`
+	BizOrderNo   string      `json:"biz_order_no" gorm:"size:64;uniqueIndex:uk_shipment_biz,priority:2;not null"` // 幂等键：业务订单号
 	WarehouseID  int64       `json:"warehouse_id,string" gorm:"not null"`
 	Status       OrderStatus `json:"status" gorm:"size:16;index;not null;default:'DRAFT'"`
 	Remark       string      `json:"remark" gorm:"size:255"`
@@ -57,6 +58,7 @@ func (ShipmentOrder) TableName() string { return "wms_shipment_order" }
 
 type ShipmentOrderDetail struct {
 	model.Base
+	TenantID     int64  `json:"tenant_id,string" gorm:"not null;default:0"`
 	OrderID      int64  `json:"order_id,string" gorm:"index;not null"`
 	SKUID        int64  `json:"sku_id,string" gorm:"column:sku_id;not null"`
 	SKUCode      string `json:"sku_code" gorm:"size:64"`
@@ -82,6 +84,7 @@ const (
 type Allocation struct {
 	model.Base
 	model.Versioned
+	TenantID     int64            `json:"tenant_id,string" gorm:"not null;default:0;index:idx_alloc_tenant"`
 	OrderID      int64            `json:"order_id,string" gorm:"index;not null"`
 	DetailID     int64            `json:"detail_id,string" gorm:"index;not null"`
 	InventoryID  int64            `json:"inventory_id,string" gorm:"index;not null"`

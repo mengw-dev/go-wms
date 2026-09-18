@@ -48,7 +48,8 @@ func CanTransit(from, to OrderStatus) bool {
 type ReceiptOrder struct {
 	model.Base
 	model.Versioned
-	OrderNo      string      `json:"order_no" gorm:"size:64;uniqueIndex;not null"`
+	TenantID     int64       `json:"tenant_id,string" gorm:"not null;default:0;uniqueIndex:uk_receipt_no,priority:1;uniqueIndex:uk_import_row,priority:1;index:idx_ro_tenant"`
+	OrderNo      string      `json:"order_no" gorm:"size:64;uniqueIndex:uk_receipt_no,priority:2;not null"`
 	WarehouseID  int64       `json:"warehouse_id,string" gorm:"not null"`
 	Status       OrderStatus `json:"status" gorm:"size:16;index;not null;default:'DRAFT'"`
 	Source       string      `json:"source" gorm:"size:16;default:'MANUAL'"` // MANUAL / IMPORT
@@ -58,8 +59,8 @@ type ReceiptOrder struct {
 	DefectiveQty int         `json:"defective_qty" gorm:"not null;default:0"`
 	// 导入幂等键（导入任务 ID + Excel 行号），补偿扫描重跑已处理行时据此去重；
 	// 手工单为 NULL，MySQL 唯一索引对 NULL 不去重，不影响手工建单。
-	ImportTaskID *string `json:"import_task_id" gorm:"size:64;uniqueIndex:uk_import_row,priority:1"`
-	ImportRow    int     `json:"import_row" gorm:"uniqueIndex:uk_import_row,priority:2"`
+	ImportTaskID *string `json:"import_task_id" gorm:"size:64;uniqueIndex:uk_import_row,priority:2"`
+	ImportRow    int     `json:"import_row" gorm:"uniqueIndex:uk_import_row,priority:3"`
 	CreatedBy    string  `json:"created_by" gorm:"size:64"`
 }
 
@@ -67,6 +68,7 @@ func (ReceiptOrder) TableName() string { return "wms_receipt_order" }
 
 type ReceiptOrderDetail struct {
 	model.Base
+	TenantID     int64  `json:"tenant_id,string" gorm:"not null;default:0"`
 	OrderID      int64  `json:"order_id,string" gorm:"index;not null"`
 	SKUID        int64  `json:"sku_id,string" gorm:"column:sku_id;not null"`
 	SKUCode      string `json:"sku_code" gorm:"size:64"`
@@ -92,7 +94,8 @@ const (
 // ImportTask 异步导入任务：CAS 更新防重复执行，悬挂任务由定时补偿扫描重跑。
 type ImportTask struct {
 	model.Base
-	TaskID      string           `json:"task_id" gorm:"size:64;uniqueIndex;not null"`
+	TenantID    int64           `json:"tenant_id,string" gorm:"not null;default:0;uniqueIndex:uk_import_task,priority:1;index:idx_import_tenant"`
+	TaskID      string          `json:"task_id" gorm:"size:64;uniqueIndex:uk_import_task,priority:2;not null"`
 	Status      ImportTaskStatus `json:"status" gorm:"size:16;index;not null;default:'PENDING'"`
 	FileName    string           `json:"file_name" gorm:"size:255"`
 	FilePath    string           `json:"file_path" gorm:"size:255"`

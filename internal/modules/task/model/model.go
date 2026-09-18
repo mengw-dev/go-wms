@@ -44,7 +44,8 @@ func CanTransit(from, to TaskStatus) bool {
 type Task struct {
 	model.Base
 	model.Versioned
-	TaskNo       string     `json:"task_no" gorm:"size:64;uniqueIndex;not null"`
+	TenantID    int64      `json:"tenant_id,string" gorm:"not null;default:0;uniqueIndex:uk_task_no,priority:1;index:idx_task_tenant"`
+	TaskNo      string     `json:"task_no" gorm:"size:64;uniqueIndex:uk_task_no,priority:2;not null"`
 	TaskType     TaskType   `json:"task_type" gorm:"size:16;index;not null"`
 	Status       TaskStatus `json:"status" gorm:"size:16;index;not null;default:'CREATED'"`
 	OrderID      int64      `json:"order_id,string" gorm:"index;not null"` // 来源单据 id（入库单/出库单）

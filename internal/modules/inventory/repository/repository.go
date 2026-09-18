@@ -8,6 +8,7 @@ import (
 
 	"gowms/internal/modules/inventory/model"
 	"gowms/internal/pkg/dbutil"
+	"gowms/internal/pkg/tenant"
 )
 
 type Repository struct{}
@@ -146,10 +147,14 @@ func (r *Repository) List(ctx context.Context, db *gorm.DB, f *QueryFilter) ([]*
 }
 
 // SummaryBySKU 按 SKU 汇总视图。
+// Table 别名联查无 Schema（全局租户回调不注入），此处手动按 ctx 租户过滤。
 func (r *Repository) SummaryBySKU(ctx context.Context, db *gorm.DB, warehouseID int64, page, size int) ([]map[string]any, int64, error) {
 	q := db.WithContext(ctx).Table("wms_inventory i").
-		Joins("JOIN wms_sku s ON s.id = i.sku_id AND s.deleted_at IS NULL").
+		Joins("JOIN wms_sku s ON s.id = i.sku_id AND s.deleted_at IS NULL AND s.tenant_id = i.tenant_id").
 		Where("i.deleted_at IS NULL")
+	if tid := tenant.FromContext(ctx); tid > 0 {
+		q = q.Where("i.tenant_id = ?", tid)
+	}
 	if warehouseID > 0 {
 		q = q.Where("i.warehouse_id = ?", warehouseID)
 	}

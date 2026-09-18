@@ -14,6 +14,7 @@ import (
 	"gowms/internal/pkg/jwt"
 	"gowms/internal/pkg/log"
 	"gowms/internal/pkg/response"
+	"gowms/internal/pkg/tenant"
 )
 
 // context key 与取值辅助。
@@ -23,6 +24,7 @@ const (
 	ctxRequestID ctxKey = "request_id"
 	ctxUserID    ctxKey = "user_id"
 	ctxUsername  ctxKey = "username"
+	ctxTenantID  ctxKey = "tenant_id"
 )
 
 func RequestID() gin.HandlerFunc {
@@ -56,6 +58,13 @@ func RequestIDOf(c *gin.Context) string {
 	return s
 }
 
+// TenantIDOf 取当前请求的租户 ID（来自 JWT claims；0 表示平台/默认租户）。
+func TenantIDOf(c *gin.Context) int64 {
+	v, _ := c.Get(string(ctxTenantID))
+	id, _ := v.(int64)
+	return id
+}
+
 // AuthValidator 在签名校验后复核用户状态和 Token 版本，使禁用用户/改密后的旧 Token 立即失效。
 type AuthValidator interface {
 	ValidateToken(ctx context.Context, userID int64, tokenVersion int) error
@@ -87,7 +96,10 @@ func Auth(secret string, validator AuthValidator) gin.HandlerFunc {
 		}
 		c.Set(string(ctxUserID), claims.UserID)
 		c.Set(string(ctxUsername), claims.Username)
-		c.Request = c.Request.WithContext(log.WithUserID(c.Request.Context(), claims.UserID))
+		c.Set(string(ctxTenantID), claims.TenantID)
+		// ctx 链式叠加：保留 RequestID，再挂 UserID（日志）与租户 ID（GORM 隔离回调）
+		c.Request = c.Request.WithContext(
+			tenant.WithTenant(log.WithUserID(c.Request.Context(), claims.UserID), claims.TenantID))
 		c.Next()
 	}
 }

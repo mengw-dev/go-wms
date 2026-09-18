@@ -18,6 +18,7 @@ import (
 	"gowms/internal/pkg/errcode"
 	"gowms/internal/pkg/log"
 	"gowms/internal/pkg/snowflake"
+	"gowms/internal/pkg/tenant"
 )
 
 // Excel 异步导入与悬挂任务补偿。
@@ -54,7 +55,9 @@ func (s *Service) Import(ctx context.Context, fileName string, data []byte) (*dt
 	if err := s.repo.CreateImportTask(ctx, s.tm.DB(), t); err != nil {
 		return nil, err
 	}
-	concurrent.SafeGo(ctx, func() { s.processImport(taskID) }) // 异步执行，带 panic 恢复
+	// 异步处理必须延续上传者的租户上下文，否则建单会落到默认租户（tenant_id=0）
+	tenantID := tenant.FromContext(ctx)
+	concurrent.SafeGo(ctx, func() { s.processImport(taskID, tenantID) }) // 异步执行，带 panic 恢复
 	return &dto.ImportResp{TaskID: taskID}, nil
 }
 
@@ -74,8 +77,10 @@ func (s *Service) ListImports(ctx context.Context, limit int) ([]*model.ImportTa
 	return s.repo.ListImportTasks(ctx, s.tm.DB(), limit)
 }
 
-func (s *Service) processImport(taskID string) {
-	ctx := context.Background()
+// processImport 抢占并处理导入任务。tenantID 来自任务发起者：异步/补偿路径
+// 脱离了请求生命周期，必须显式回填租户，保证仓库/SKU 解析与建单都落在正确租户内。
+func (s *Service) processImport(taskID string, tenantID int64) {
+	ctx := tenant.WithTenant(context.Background(), tenantID)
 	n, err := s.repo.CASImportStatus(s.tm.DB(), taskID, model.ImportPending, model.ImportProcessing)
 	if err != nil || n == 0 { // 已被其他 goroutine/节点抢占
 		return
@@ -232,7 +237,7 @@ func (s *Service) compensateOnce() {
 			}
 			log.L().Warn("stale processing import reset", "task_id", t.TaskID)
 		}
-		// PENDING：CAS 抢占后重跑
-		concurrent.SafeGo(ctx, func() { s.processImport(t.TaskID) })
+		// PENDING：CAS 抢占后重跑（用任务落库的租户，恢复发起者的隔离上下文）
+		concurrent.SafeGo(ctx, func() { s.processImport(t.TaskID, t.TenantID) })
 	}
 }

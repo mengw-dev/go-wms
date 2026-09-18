@@ -7,10 +7,20 @@ import (
 
 	basicmodel "gowms/internal/modules/basic/model"
 	invmodel "gowms/internal/modules/inventory/model"
+	"gowms/internal/pkg/tenant"
 )
 
 // 只读检索层：为 AI 问答提供真实库存快照（检索增强）。
 // 所有查询均走 GORM（软删除自动过滤主模型表；联查表手动补 deleted_at 条件）。
+
+// tenantScope 别名联查手动注入租户条件：Table("... i") 的裸表查询无 Schema，
+// 全局 GORM 回调不会注入 tenant_id，必须在此显式过滤（AI 快照绝不能跨租户泄漏）。
+func tenantScope(ctx context.Context, q *gorm.DB, alias string) *gorm.DB {
+	if tid := tenant.FromContext(ctx); tid > 0 {
+		return q.Where(alias+".tenant_id = ?", tid)
+	}
+	return q
+}
 
 // Overview 全局库存概览。
 type Overview struct {
@@ -94,12 +104,12 @@ func (r *Repository) GetOverview(ctx context.Context) (*Overview, error) {
 // ListWarehouseStock 各仓库库存分布。
 func (r *Repository) ListWarehouseStock(ctx context.Context) ([]WarehouseStock, error) {
 	var list []WarehouseStock
-	err := r.db.WithContext(ctx).Table("wms_inventory i").
+	q := tenantScope(ctx, r.db.WithContext(ctx).Table("wms_inventory i").
 		Select("w.code AS warehouse_code, w.name AS warehouse_name, "+
 			"SUM(i.stock_quantity) AS stock_qty, SUM(i.available_quantity) AS available_qty").
-		Joins("JOIN wms_warehouse w ON w.id = i.warehouse_id AND w.deleted_at IS NULL").
-		Where("i.deleted_at IS NULL").
-		Group("w.id, w.code, w.name").
+		Joins("JOIN wms_warehouse w ON w.id = i.warehouse_id AND w.deleted_at IS NULL AND w.tenant_id = i.tenant_id").
+		Where("i.deleted_at IS NULL"), "i")
+	err := q.Group("w.id, w.code, w.name").
 		Order("stock_qty DESC").
 		Scan(&list).Error
 	return list, err
@@ -108,12 +118,12 @@ func (r *Repository) ListWarehouseStock(ctx context.Context) ([]WarehouseStock, 
 // TopSKUByStock 库存总量最多的前 N 个 SKU。
 func (r *Repository) TopSKUByStock(ctx context.Context, limit int) ([]SKUStock, error) {
 	var list []SKUStock
-	err := r.db.WithContext(ctx).Table("wms_inventory i").
+	q := tenantScope(ctx, r.db.WithContext(ctx).Table("wms_inventory i").
 		Select("s.code AS sku_code, s.name AS sku_name, s.spec, s.unit, "+
 			"SUM(i.stock_quantity) AS stock_qty, SUM(i.available_quantity) AS available_qty").
-		Joins("JOIN wms_sku s ON s.id = i.sku_id AND s.deleted_at IS NULL").
-		Where("i.deleted_at IS NULL").
-		Group("s.id, s.code, s.name, s.spec, s.unit").
+		Joins("JOIN wms_sku s ON s.id = i.sku_id AND s.deleted_at IS NULL AND s.tenant_id = i.tenant_id").
+		Where("i.deleted_at IS NULL"), "i")
+	err := q.Group("s.id, s.code, s.name, s.spec, s.unit").
 		Order("stock_qty DESC").
 		Limit(limit).
 		Scan(&list).Error
@@ -123,12 +133,12 @@ func (r *Repository) TopSKUByStock(ctx context.Context, limit int) ([]SKUStock, 
 // LowAvailableSKU 可用库存偏低的 SKU（升序，含可用为 0）。
 func (r *Repository) LowAvailableSKU(ctx context.Context, threshold, limit int) ([]SKUStock, error) {
 	var list []SKUStock
-	err := r.db.WithContext(ctx).Table("wms_inventory i").
+	q := tenantScope(ctx, r.db.WithContext(ctx).Table("wms_inventory i").
 		Select("s.code AS sku_code, s.name AS sku_name, s.spec, s.unit, "+
 			"SUM(i.stock_quantity) AS stock_qty, SUM(i.available_quantity) AS available_qty").
-		Joins("JOIN wms_sku s ON s.id = i.sku_id AND s.deleted_at IS NULL").
-		Where("i.deleted_at IS NULL AND i.available_quantity <= ?", threshold).
-		Group("s.id, s.code, s.name, s.spec, s.unit").
+		Joins("JOIN wms_sku s ON s.id = i.sku_id AND s.deleted_at IS NULL AND s.tenant_id = i.tenant_id").
+		Where("i.deleted_at IS NULL AND i.available_quantity <= ?", threshold), "i")
+	err := q.Group("s.id, s.code, s.name, s.spec, s.unit").
 		Order("available_qty ASC").
 		Limit(limit).
 		Scan(&list).Error
@@ -149,13 +159,13 @@ func (r *Repository) ListSKUBrief(ctx context.Context, limit int) ([]SKUBrief, e
 // ListInventoryDetailBySKU 指定 SKU 的库存明细（库位/批次粒度，可用量降序）。
 func (r *Repository) ListInventoryDetailBySKU(ctx context.Context, skuID int64, limit int) ([]InventoryDetail, error) {
 	var list []InventoryDetail
-	err := r.db.WithContext(ctx).Table("wms_inventory i").
+	q := tenantScope(ctx, r.db.WithContext(ctx).Table("wms_inventory i").
 		Select("w.code AS warehouse_code, l.code AS location_code, i.batch_no, "+
 			"i.stock_quantity AS stock_qty, i.available_quantity AS available_qty, i.allocated_quantity AS allocated_qty").
-		Joins("JOIN wms_warehouse w ON w.id = i.warehouse_id AND w.deleted_at IS NULL").
-		Joins("JOIN wms_location l ON l.id = i.location_id AND l.deleted_at IS NULL").
-		Where("i.deleted_at IS NULL AND i.sku_id = ?", skuID).
-		Order("i.available_quantity DESC, i.id ASC").
+		Joins("JOIN wms_warehouse w ON w.id = i.warehouse_id AND w.deleted_at IS NULL AND w.tenant_id = i.tenant_id").
+		Joins("JOIN wms_location l ON l.id = i.location_id AND l.deleted_at IS NULL AND l.tenant_id = i.tenant_id").
+		Where("i.deleted_at IS NULL AND i.sku_id = ?", skuID), "i")
+	err := q.Order("i.available_quantity DESC, i.id ASC").
 		Limit(limit).
 		Scan(&list).Error
 	return list, err

@@ -24,9 +24,10 @@ import (
 	taskmodel "gowms/internal/modules/task/model"
 	"gowms/internal/pkg/config"
 	"gowms/internal/pkg/log"
+	"gowms/internal/pkg/tenant"
 )
 
-// InitDB 初始化 GORM MySQL 连接。
+// InitDB 初始化 GORM MySQL 连接，并注册多租户全局回调。
 func InitDB(cfg *config.Config) (*gorm.DB, error) {
 	logLevel := logger.Warn
 	if cfg.Server.Mode == "debug" {
@@ -40,6 +41,11 @@ func InitDB(cfg *config.Config) (*gorm.DB, error) {
 	})
 	if err != nil {
 		return nil, err
+	}
+	// 多租户全局隔离：ctx 有租户时自动注入 WHERE tenant_id = ?；
+	// 迁移/种子等 context.Background() 场景天然旁路（tenant_id=0）。
+	if err := tenant.RegisterGORMCallbacks(db); err != nil {
+		return nil, fmt.Errorf("register tenant callbacks: %w", err)
 	}
 	sqlDB, err := db.DB()
 	if err != nil {
