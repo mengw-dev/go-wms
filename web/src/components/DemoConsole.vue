@@ -59,11 +59,16 @@ const ACTIVITY_THROTTLE_MS = 1_000
 // 续期检查周期与两次续期之间的最小间隔。
 const RENEW_CHECK_INTERVAL_MS = 10_000
 const RENEW_MIN_INTERVAL_MS = 20_000
+// 悬浮球上的倒计时只在临近释放时出现，避免一直跳数字影响观感。
+const FAB_COUNTDOWN_THRESHOLD_SECONDS = 60
 
 const remainingText = computed(() => {
   const seconds = Math.max(0, remaining.value)
   return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`
 })
+const showFabCountdown = computed(
+  () => remaining.value > 0 && remaining.value <= FAB_COUNTDOWN_THRESHOLD_SECONDS,
+)
 const busy = computed(
   () => acquiring.value || running.value !== '' || concurrentRunning.value || pickingRunning.value || restockRunning.value,
 )
@@ -433,7 +438,7 @@ onBeforeUnmount(() => {
   <button v-if="auth.isDemo" class="demo-fab" type="button" @click="visible = true">
     <el-icon><VideoPlay /></el-icon>
     <span>业务流程中心</span>
-    <small>{{ remainingText }}</small>
+    <small v-if="showFabCountdown" class="fab-countdown">{{ remainingText }}</small>
   </button>
 
   <el-dialog
@@ -618,6 +623,23 @@ onBeforeUnmount(() => {
   border-left: 1px solid rgba(255, 255, 255, 0.35);
   font-variant-numeric: tabular-nums;
   font-weight: 500;
+}
+
+/* 临近释放才出现的倒计时，用暖色提醒用户回来操作 */
+.demo-fab .fab-countdown {
+  color: #ffe08a;
+  animation: fab-countdown-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes fab-countdown-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.55;
+  }
 }
 
 .demo-tip {

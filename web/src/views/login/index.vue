@@ -12,10 +12,9 @@ const auth = useAuthStore()
 
 const formRef = ref<FormInstance>()
 const loading = ref(false)
-const form = reactive({
-  username: 'admin',
-  password: 'admin123',
-})
+// 默认填充演示账号，访客打开登录页即可直接进入演示环境。
+const DEMO_LOGIN = { username: 'demo', password: 'demo123456' }
+const form = reactive({ ...DEMO_LOGIN })
 
 const rules: FormRules = {
   username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
@@ -76,7 +75,13 @@ async function submit() {
         <div class="mini-logo">W</div>
         <h2>欢迎登录</h2>
         <p class="sub">输入账号进入工作台</p>
-        <el-alert type="info" :closable="false" show-icon title="默认账号：admin / admin123" class="tip" />
+        <el-alert
+          type="info"
+          :closable="false"
+          show-icon
+          :title="`演示账号：${DEMO_LOGIN.username} / ${DEMO_LOGIN.password}`"
+          class="tip"
+        />
         <el-form ref="formRef" :model="form" :rules="rules" size="large" @keyup.enter="submit">
           <el-form-item prop="username">
             <el-input v-model="form.username" placeholder="用户名">
