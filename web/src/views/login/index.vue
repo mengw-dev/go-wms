@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { login } from '@/api/auth'
 import { acquireDemoSession } from '@/api/demo'
+import { getVersion } from '@/api/version'
 import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
@@ -12,9 +13,24 @@ const auth = useAuthStore()
 
 const formRef = ref<FormInstance>()
 const loading = ref(false)
+// 演示模块开关：后端 demo.enabled=false 时（生产部署）隐藏演示账号提示并不再预填。
+const demoEnabled = ref(true)
 // 默认填充演示账号，访客打开登录页即可直接进入演示环境。
 const DEMO_LOGIN = { username: 'demo', password: 'demo123456' }
 const form = reactive({ ...DEMO_LOGIN })
+
+onMounted(async () => {
+  try {
+    const version = await getVersion()
+    demoEnabled.value = version.demo_enabled !== false
+    if (!demoEnabled.value) {
+      form.username = ''
+      form.password = ''
+    }
+  } catch {
+    // /version 不可用时保持默认（演示开启），不影响登录功能
+  }
+})
 
 const rules: FormRules = {
   username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
@@ -76,6 +92,7 @@ async function submit() {
         <h2>欢迎登录</h2>
         <p class="sub">输入账号进入工作台</p>
         <el-alert
+          v-if="demoEnabled"
           type="info"
           :closable="false"
           show-icon

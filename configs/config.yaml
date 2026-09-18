@@ -42,6 +42,9 @@ metrics:
 integration:
   api_key: "change-this-integration-api-key"
 
+# 演示模块总开关（特性门控）：
+#   true  = 提供公开演示账号 + 业务流程中心 /demo 接口（演示/体验部署）
+#   false = 不挂载任何 /demo 路由，演示账号被禁用（生产默认；演示部署用 WMS_DEMO_ENABLED=true 覆盖）
 demo:
   enabled: false
   username: "demo"

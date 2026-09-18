@@ -24,7 +24,7 @@
 
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
-| `WMS_DEMO_ENABLED` | `false` | 是否启用演示模式；本地一键启动脚本会设置为 `true` |
+| `WMS_DEMO_ENABLED` | `false` | 演示模式总开关；`false` 时后端不挂载任何 `/demo` 路由、演示账号被禁用、登录页隐藏演示提示（生产部署保持关闭，本地一键启动脚本通过 `.env` 设为 `true`） |
 | `WMS_DEMO_USERNAME` | `demo` | 演示账号 |
 | `WMS_DEMO_PASSWORD` | `demo123456` | 演示密码 |
 | `WMS_DEMO_SESSION_TTL_SECONDS` | `300` | 演示会话空闲超时时间 |

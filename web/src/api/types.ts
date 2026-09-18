@@ -48,6 +48,15 @@ export interface ChangePasswordParams {
   new_password: string
 }
 
+/** GET /version 公开返回的构建信息与特性开关 */
+export interface VersionResult {
+  version: string
+  commit?: string
+  build_time?: string
+  /** 演示模块总开关（demo.enabled），false 时前端隐藏演示相关入口 */
+  demo_enabled?: boolean
+}
+
 // ---------- 系统：用户 ----------
 
 export interface UserItem {

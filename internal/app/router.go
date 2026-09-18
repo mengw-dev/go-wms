@@ -32,13 +32,16 @@ func (a *App) NewRouter() (*gin.Engine, error) {
 		middleware.AccessLog(),
 	)
 
-	r.GET("/version", func(c *gin.Context) {
+	// 版本与特性开关：根路径供运维/探针使用，/api/v1 供前端公开查询（免登录）。
+	versionHandler := func(c *gin.Context) {
 		response.OK(c, gin.H{
-			"version":    version.Version,
-			"commit":     version.Commit,
-			"build_time": version.BuildTime,
+			"version":      version.Version,
+			"commit":       version.Commit,
+			"build_time":   version.BuildTime,
+			"demo_enabled": a.Config.Demo.Enabled,
 		})
-	})
+	}
+	r.GET("/version", versionHandler)
 
 	// 健康检查：DB 不可用必须返回非 2xx，K8s 探针/负载均衡才能摘除故障实例
 	r.GET("/healthz", func(c *gin.Context) {
@@ -52,9 +55,9 @@ func (a *App) NewRouter() (*gin.Engine, error) {
 	api := r.Group("/api/v1")
 	// 登录路由：仅鉴权链路之外
 	pub := api.Group("")
+	pub.GET("/version", versionHandler)
 	// 需登录的路由：JWT → 操作日志审计
 	auth := api.Group("", middleware.Auth(a.Config.JWT.Secret, a.SystemAPI), middleware.OperLog(a.SystemAPI))
-	auth.Use(middleware.DemoSession(a.DemoService))
 
 	a.SysHandler.RegisterRoutes(pub, auth, a.SystemAPI)
 	a.BasicHandler.RegisterRoutes(auth, a.SystemAPI)
@@ -64,7 +67,13 @@ func (a *App) NewRouter() (*gin.Engine, error) {
 	a.OutboundHandler.RegisterRoutes(auth, a.SystemAPI)
 	a.OutboundHandler.RegisterIntegrationRoutes(pub, a.Config.Integration.APIKey)
 	a.StocktakeHandler.RegisterRoutes(auth, a.SystemAPI)
-	a.DemoHandler.RegisterRoutes(auth, a.SystemAPI)
+
+	// 演示模块特性门控：demo.enabled=false 时不挂载任何 /demo 路由与
+	// DemoSession 中间件（生产环境直接 404，演示代码零暴露）。
+	if a.Config.Demo.Enabled {
+		auth.Use(middleware.DemoSession(a.DemoService))
+		a.DemoHandler.RegisterRoutes(auth, a.SystemAPI)
+	}
 
 	return r, nil
 }
