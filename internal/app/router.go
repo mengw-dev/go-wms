@@ -67,6 +67,7 @@ func (a *App) NewRouter() (*gin.Engine, error) {
 	a.OutboundHandler.RegisterRoutes(auth, a.SystemAPI)
 	a.OutboundHandler.RegisterIntegrationRoutes(pub, a.Config.Integration.APIKey)
 	a.StocktakeHandler.RegisterRoutes(auth, a.SystemAPI)
+	a.AIHandler.RegisterRoutes(auth, a.SystemAPI)
 
 	// 演示模块特性门控：demo.enabled=false 时不挂载任何 /demo 路由与
 	// DemoSession 中间件（生产环境直接 404，演示代码零暴露）。

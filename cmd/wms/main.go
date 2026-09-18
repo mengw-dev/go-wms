@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -18,7 +20,40 @@ import (
 	"gowms/internal/pkg/observability"
 )
 
+// loadDotEnv 本地原生开发便利：若项目根存在 .env（已 gitignore）则注入进程环境变量，
+// 使 ZHIPU_API_KEY 等密钥与 Docker 部署（compose --env-file 注入）行为一致。
+// 真实环境变量优先于 .env；容器内没有 .env 文件时自动跳过，不影响生产。
+func loadDotEnv(path string) {
+	f, err := os.Open(path)
+	if err != nil {
+		return // 无 .env 属正常（CI/容器/纯环境变量部署）
+	}
+	defer func() { _ = f.Close() }()
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		key, value, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		key = strings.TrimSpace(key)
+		value = strings.TrimSpace(value)
+		value = strings.Trim(value, `"'`)
+		if key == "" {
+			continue
+		}
+		if _, exists := os.LookupEnv(key); !exists {
+			_ = os.Setenv(key, value)
+		}
+	}
+}
+
 func main() {
+	// 0. 本地开发：加载 .env（存在时），密钥不进代码库
+	loadDotEnv(".env")
 	// 1. 加载配置
 	cfg, err := config.Load("configs/config.yaml")
 	if err != nil {

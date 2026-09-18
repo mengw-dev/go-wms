@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/spf13/viper"
@@ -17,6 +18,7 @@ type Config struct {
 	Metrics     MetricsConfig     `mapstructure:"metrics"`
 	Integration IntegrationConfig `mapstructure:"integration"`
 	Demo        DemoConfig        `mapstructure:"demo"`
+	AI          AIConfig          `mapstructure:"ai"`
 }
 
 type ServerConfig struct {
@@ -72,6 +74,18 @@ type DemoConfig struct {
 	Username          string `mapstructure:"username"`
 	Password          string `mapstructure:"password"`
 	SessionTTLSeconds int    `mapstructure:"session_ttl_seconds"`
+}
+
+// AIConfig AI 库存问答（智谱 BigModel，OpenAI 兼容接口）。
+// APIKey 只从环境变量 ZHIPU_API_KEY 读取，绝不写入配置文件；
+// 模型名可被 ZHIPU_LLM_MODEL / ZHIPU_LLM_BACKUP_MODEL 环境变量覆盖。
+type AIConfig struct {
+	APIKey          string `mapstructure:"-"`
+	Model           string `mapstructure:"model"`        // 主模型（优先最强免费模型）
+	BackupModel     string `mapstructure:"backup_model"` // 备用模型：主模型拥堵(1305/429)时自动降级
+	TimeoutSeconds  int    `mapstructure:"timeout_seconds"`
+	BaseURL         string `mapstructure:"base_url"`
+	RateLimitPerMin int    `mapstructure:"rate_limit_per_min"` // 每用户每分钟提问上限（Redis 计数）
 }
 
 // Load 读取 configs/config.yaml；支持环境变量覆盖（WMS_ 前缀，. 分隔，如 WMS_MYSQL_DSN）。
@@ -161,6 +175,29 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.Demo.SessionTTLSeconds <= 0 {
 		cfg.Demo.SessionTTLSeconds = 300
+	}
+	// AI 段：密钥只走环境变量（ZHIPU_ 前缀与 viper 的 WMS_ 前缀不同，需单独读取）
+	cfg.AI.APIKey = strings.TrimSpace(os.Getenv("ZHIPU_API_KEY"))
+	if v := strings.TrimSpace(os.Getenv("ZHIPU_LLM_MODEL")); v != "" {
+		cfg.AI.Model = v
+	}
+	if v := strings.TrimSpace(os.Getenv("ZHIPU_LLM_BACKUP_MODEL")); v != "" {
+		cfg.AI.BackupModel = v
+	}
+	if cfg.AI.Model == "" {
+		cfg.AI.Model = "glm-4.7-flash"
+	}
+	if cfg.AI.BackupModel == "" {
+		cfg.AI.BackupModel = "glm-4-flash-250414"
+	}
+	if cfg.AI.BaseURL == "" {
+		cfg.AI.BaseURL = "https://open.bigmodel.cn/api/paas/v4"
+	}
+	if cfg.AI.TimeoutSeconds <= 0 {
+		cfg.AI.TimeoutSeconds = 30
+	}
+	if cfg.AI.RateLimitPerMin <= 0 {
+		cfg.AI.RateLimitPerMin = 10
 	}
 	return &cfg, nil
 }

@@ -1,4 +1,4 @@
-import axios from 'axios'
+import axios, { type AxiosRequestConfig } from 'axios'
 import { ElMessage } from 'element-plus'
 import router from '@/router'
 import { useAuthStore } from '@/stores/auth'
@@ -109,8 +109,8 @@ export function get<T = unknown>(url: string, params?: Record<string, unknown>):
   return service.get(url, { params }) as unknown as Promise<T>
 }
 
-export function post<T = unknown>(url: string, data?: unknown): Promise<T> {
-  return service.post(url, data) as unknown as Promise<T>
+export function post<T = unknown>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T> {
+  return service.post(url, data, config) as unknown as Promise<T>
 }
 
 export function put<T = unknown>(url: string, data?: unknown): Promise<T> {

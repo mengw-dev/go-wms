@@ -181,3 +181,10 @@ var (
 	DemoPickTaskMissing = New(70005, "没有可拣货任务，请先执行并发出库审核分配测试")
 	DemoStockNotEnough  = New(70006, "可用库存不足，请先点击“一键补货入库”或减少并发数量")
 )
+
+// AI 问答 80000+
+var (
+	AIServiceUnavailable = New(80001, "AI 服务暂时不可用，请稍后重试")
+	AIRateLimited        = New(80002, "提问过于频繁，请稍后再试")
+	AIKeyMissing         = New(80003, "AI 服务未配置，请联系管理员设置 API Key")
+)

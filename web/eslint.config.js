@@ -18,6 +18,9 @@ export default tseslint.config(
         FormData: 'readonly',
         Blob: 'readonly',
         crypto: 'readonly',
+        // .vue <script> 中引用的 DOM 类型（.ts 文件由 tseslint 豁免 no-undef，.vue 不会）
+        HTMLElement: 'readonly',
+        KeyboardEvent: 'readonly',
       },
     },
   },

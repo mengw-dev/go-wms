@@ -13,6 +13,8 @@ import (
 	basicservice "gowms/internal/modules/basic/service"
 	demohandler "gowms/internal/modules/demo/handler"
 	demoservice "gowms/internal/modules/demo/service"
+	aihandler "gowms/internal/modules/ai/handler"
+	aiservice "gowms/internal/modules/ai/service"
 	inboundhandler "gowms/internal/modules/inbound/handler"
 	inboundrepo "gowms/internal/modules/inbound/repository"
 	inboundservice "gowms/internal/modules/inbound/service"
@@ -61,6 +63,7 @@ type App struct {
 	InboundHandler   *inboundhandler.Handler
 	OutboundHandler  *outhandler.Handler
 	StocktakeHandler *stocktakehandler.Handler
+	AIHandler        *aihandler.Handler
 	DemoService      *demoservice.Service
 	DemoHandler      *demohandler.Handler
 
@@ -91,6 +94,7 @@ func New(cfg *config.Config, db *gorm.DB, rdb *redis.Client, metrics *observabil
 	inboundSvc := inboundservice.New(inboundrepo.New(), tm, no, basicSvc, invSvc, taskSvc, cfg.Upload.Dir, lock.New(rdb))
 	outSvc := outservice.New(outrepo.New(), tm, no, basicSvc, invSvc, taskSvc)
 	stocktakeSvc := stocktakeservice.New(stocktakerepo.New(), tm, no, invSvc)
+	aiSvc := aiservice.New(cfg.AI, db, rdb)
 	demoSvc := demoservice.New(cfg, db, rdb, inboundSvc, outSvc, stocktakeSvc)
 
 	return &App{
@@ -110,6 +114,7 @@ func New(cfg *config.Config, db *gorm.DB, rdb *redis.Client, metrics *observabil
 		InboundHandler:   inboundhandler.New(inboundSvc),
 		OutboundHandler:  outhandler.New(outSvc),
 		StocktakeHandler: stocktakehandler.New(stocktakeSvc),
+		AIHandler:        aihandler.New(aiSvc),
 		DemoService:      demoSvc,
 		DemoHandler:      demohandler.New(demoSvc),
 

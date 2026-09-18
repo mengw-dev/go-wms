@@ -132,6 +132,7 @@ async function submitPassword() {
             <span>库存管理</span>
           </template>
           <el-menu-item v-if="auth.hasPerm('wms:inventory')" index="/inventory">库存查询</el-menu-item>
+          <el-menu-item v-if="auth.hasPerm('wms:inventory')" index="/ai">AI 问答</el-menu-item>
           <el-menu-item v-if="auth.hasPerm('wms:task')" index="/tasks">任务中心</el-menu-item>
         </el-sub-menu>
         <el-sub-menu v-if="auth.hasPerm('wms:stocktake:view')" index="stocktake">

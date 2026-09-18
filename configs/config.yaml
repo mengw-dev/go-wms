@@ -50,3 +50,13 @@ demo:
   username: "demo"
   password: "demo123456"
   session_ttl_seconds: 300
+
+# AI 库存问答（智谱 BigModel，OpenAI 兼容接口）
+# 注意：api_key 不写入本文件——只从环境变量 ZHIPU_API_KEY 读取（放在 .env，已 gitignore）；
+# 模型名可用环境变量 ZHIPU_LLM_MODEL / ZHIPU_LLM_BACKUP_MODEL 覆盖下面的默认值。
+ai:
+  model: "glm-4.7-flash"              # 主模型（当前最强免费模型）
+  backup_model: "glm-4-flash-250414"  # 备用模型：主模型拥堵（错误码 1305/429）时自动降级重试一次
+  timeout_seconds: 30                 # 单次 LLM 调用超时
+  base_url: "https://open.bigmodel.cn/api/paas/v4"
+  rate_limit_per_min: 10              # 每用户每分钟提问上限（Redis 计数；Redis 不可用时自动放行）
