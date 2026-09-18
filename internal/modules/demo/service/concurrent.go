@@ -347,8 +347,19 @@ func (s *Service) RunConcurrentPicking(ctx context.Context, sessionID string, wo
 	workerWG.Wait()
 	contenderWG.Wait()
 
-	for _, task := range tasks {
-		pickRemaining(ctx, s, task.ID, task.TargetQty-task.DoneQty, operator, &workerSuccess, &workerRejected)
+	// 兜底补齐前必须重新读库：内存里的 DoneQty 是并发开始前的旧值，
+	// 直接拿它算剩余量，会把拣货员已经拣满的任务再补一遍，凭空产生一批"并发拒绝"。
+	var pendingTasks []*taskmodel.Task
+	if err := s.db.WithContext(ctx).Where("id IN ?", taskIDs).Order("id ASC").Find(&pendingTasks).Error; err != nil {
+		return nil, err
+	}
+	for _, task := range pendingTasks {
+		if task.Status == taskmodel.TaskCompleted {
+			continue
+		}
+		if remaining := task.TargetQty - task.DoneQty; remaining > 0 {
+			pickRemaining(ctx, s, task.ID, remaining, operator, &workerSuccess, &workerRejected)
+		}
 	}
 
 	var finalTasks []*taskmodel.Task
