@@ -159,6 +159,8 @@ var (
 	ShipConflict           = New(50202, "发货并发冲突，请重试")
 	ShipShippedForbidden   = New(50006, "出库单已进入拣货/发货，禁止取消")
 	ShipDetailDuplicateSKU = New(50007, "同一货品请合并为一行明细")
+	PickBatchMismatch      = New(50008, "扫描的批次与任务不一致，请核对后再拣货")
+	PickLocationMismatch   = New(50009, "扫描的库位与任务不一致，请核对后再拣货")
 )
 
 // 盘点 60000+

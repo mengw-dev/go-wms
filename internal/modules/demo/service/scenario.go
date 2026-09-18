@@ -47,7 +47,7 @@ type ScenarioOptions struct {
 }
 
 // Run 先恢复默认演示数据，再执行指定场景。单实例内由演示会话锁保证只有
-// 一个 HR 能触发；runMu 进一步避免同一进程内的场景请求交叉执行。
+// 一个体验者能触发；runMu 进一步避免同一进程内的场景请求交叉执行。
 func (s *Service) Run(ctx context.Context, sessionID, scenario string, options ...ScenarioOptions) (*ScenarioResult, error) {
 	if err := s.ValidateSession(ctx, sessionID); err != nil {
 		return nil, err
@@ -175,7 +175,7 @@ func (s *Service) runInboundDemo(ctx context.Context, refs *demoRefs) (*Scenario
 	if len(detail.Details) == 0 {
 		return nil, errcode.DemoDataMissing
 	}
-	batchNo := fmt.Sprintf("DEMO-IN-%s", time.Now().Format("20060102-150405"))
+	batchNo := demoBatchNo()
 	if err := s.inbound.Receive(ctx, order.ID, detail.Details[0].ID, &inbounddto.ReceiveReq{
 		DetailID: detail.Details[0].ID, Qty: qty, BatchNo: batchNo,
 	}, operator); err != nil {
@@ -219,7 +219,7 @@ func (s *Service) runOutboundDemo(ctx context.Context, refs *demoRefs) (*Scenari
 	operator := s.Username()
 	order, err := s.outbound.Create(ctx, &outbounddto.CreateOrderReq{
 		WarehouseID: refs.Warehouse.ID,
-		BizOrderNo:  fmt.Sprintf("DEMO-OUT-%d", time.Now().UnixNano()),
+		BizOrderNo:  demoBizOrderNo(1),
 		Remark:      "一键演示：出库审核、FIFO 分配、拣货出库",
 		Details: []outbounddto.OrderDetailItem{{
 			SKUID: refs.SKU.ID, ExpectedQty: qty,
@@ -248,7 +248,7 @@ func (s *Service) runOutboundDemo(ctx context.Context, refs *demoRefs) (*Scenari
 		if pickQty <= 0 {
 			continue
 		}
-		if err := s.outbound.Pick(ctx, t.ID, pickQty, operator); err != nil {
+		if err := s.outbound.Pick(ctx, t.ID, pickQty, operator, nil); err != nil {
 			return nil, err
 		}
 		picked += pickQty
@@ -312,6 +312,18 @@ func (s *Service) runStocktakeDemo(ctx context.Context, refs *demoRefs) (*Scenar
 			{Title: "审核并调整", Detail: "差异数量已写入库存流水"},
 		},
 	}, nil
+}
+
+// demoBatchNo 生成正常格式的批次号，例如 B20260918150405。
+// 演示数据需要与真实业务数据外观一致，不带任何演示标记。
+func demoBatchNo() string {
+	return "B" + time.Now().Format("20060102150405")
+}
+
+// demoBizOrderNo 生成正常格式的上游业务单号，例如 CUST20260918150405-01。
+// seq 用于同一次批量操作内区分多张单据。
+func demoBizOrderNo(seq int) string {
+	return fmt.Sprintf("CUST%s-%02d", time.Now().Format("20060102150405"), seq)
 }
 
 func mergeScenarioResults(results ...*ScenarioResult) *ScenarioResult {

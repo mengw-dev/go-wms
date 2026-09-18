@@ -124,6 +124,18 @@ test('outbound UI flow allocates FIFO stock and ships it', async ({ page, reques
 
   await row.getByRole('button', { name: '拣货' }).click()
   const pickDialog = dialog(page, '拣货')
+  // 弹窗透出作业库位与应拣批次，拣货员据此直达库位
+  await expect(
+    pickDialog.locator('.el-form-item').filter({ hasText: '作业库位' }).locator('input'),
+  ).toHaveValue(seed.location.code)
+  await expect(
+    pickDialog.locator('.el-form-item').filter({ hasText: '应拣批次' }).locator('input'),
+  ).toHaveValue(seed.batchNo)
+  // 批次不符时不允许提交
+  await pickDialog.getByPlaceholder('扫描或输入批次号核对').fill('WRONG-BATCH')
+  await pickDialog.getByRole('button', { name: '确定拣货' }).click()
+  await expect(page.getByText(/批次不符/)).toBeVisible()
+  await pickDialog.getByPlaceholder('扫描或输入批次号核对').fill(seed.batchNo)
   await pickDialog.getByRole('button', { name: '确定拣货' }).click()
   await expect(page.getByText('拣货成功')).toBeVisible()
   await expect(row).toContainText('已发货')
@@ -131,6 +143,9 @@ test('outbound UI flow allocates FIFO stock and ships it', async ({ page, reques
   await page.goto('/inventory')
   await page.getByPlaceholder('编码/名称/条码').fill(seed.sku.code)
   await page.getByRole('button', { name: '查询' }).first().click()
+  // 默认「只看有货」，已清空的批次不再展示
+  await expect(tableRow(page, seed.sku.name)).toBeHidden()
+  await page.locator('.el-form-item').filter({ hasText: '只看有货' }).locator('.el-switch').click()
   const inventoryRow = tableRow(page, seed.sku.name)
   await expect(inventoryRow).toBeVisible()
   await expect(inventoryRow.locator('td').nth(4)).toHaveText('0')

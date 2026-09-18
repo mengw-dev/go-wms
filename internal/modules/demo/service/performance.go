@@ -11,7 +11,7 @@ import (
 	taskmodel "gowms/internal/modules/task/model"
 )
 
-// PerformanceSnapshot HR 性能页使用的实时快照，不依赖 Prometheus 是否启动。
+// PerformanceSnapshot 演示性能页使用的实时快照，不依赖 Prometheus 是否启动。
 type PerformanceSnapshot struct {
 	CheckedAt time.Time       `json:"checked_at"`
 	Database  ComponentHealth `json:"database"`

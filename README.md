@@ -184,7 +184,7 @@ make compose-down
 
 ## 演示模式
 
-项目内置独立演示模式，适合把项目临时开放给 HR 或面试官体验：
+项目内置独立演示模式，适合把项目临时开放给体验者或面试官体验：
 
 - 演示账号默认：`demo / demo123456`
 - 右下角“业务流程中心”可选择一键完整流程、批量创建草稿或并发出库测试
@@ -195,7 +195,7 @@ make compose-down
 - 同一实例同一时间只允许一个演示会话，避免多个体验者互相覆盖数据
 - 支持 A/B 两套完全隔离的演示实例，端口和 Volume 均不共享
 
-详细配置、双实例启动命令和 HR 使用说明见 [docs/demo.md](docs/demo.md)。
+详细配置、双实例启动命令和体验者使用说明见 [docs/demo.md](docs/demo.md)。
 
 一键启动两个独立演示实例：
 
@@ -351,7 +351,7 @@ Windows 一键运行（需要本机安装 `k6`）：
 .\scripts\windows\run-k6.ps1 -Mode wave -BaseUrl http://127.0.0.1:18080 -WarehouseId 21 -SkuId 69
 ```
 
-完整说明、压测指标和给 HR 的演示顺序见 [docs/load-testing.md](docs/load-testing.md)。
+完整说明、压测指标和给体验者的演示顺序见 [docs/load-testing.md](docs/load-testing.md)。
 
 ## 示例数据与第三方系统对接
 

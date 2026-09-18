@@ -17,6 +17,10 @@ type CreateTask struct {
 	AllocationID int64 // 拣货任务对应的分配行
 	SKUID        int64
 	WarehouseID  int64
+	// 拣货任务的作业位置（来自分配行），收货/上架任务留空。
+	LocationID   int64
+	LocationCode string
+	BatchNo      string
 	TargetQty    int
 }
 

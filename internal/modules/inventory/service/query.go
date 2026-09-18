@@ -13,7 +13,7 @@ import (
 func (s *Service) List(ctx context.Context, q *dto.InventoryQuery) ([]*model.Inventory, int64, error) {
 	return s.repo.List(ctx, s.tm.DB(), &repository.QueryFilter{
 		WarehouseID: q.WarehouseID, LocationID: q.LocationID, SKUID: q.SKUID,
-		SKUKeyword: q.SKUKeyword, Page: q.Page, Size: q.PageSize,
+		SKUKeyword: q.SKUKeyword, InStockOnly: q.InStockOnly, Page: q.Page, Size: q.PageSize,
 	})
 }
 

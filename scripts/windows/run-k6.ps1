@@ -32,7 +32,7 @@ $env:ORDER_QTY = "$OrderQty"
 
 $scriptPath = switch ($Mode) {
     'check'  { Join-Path $k6Root 'check-env.js' }
-    'flow'   { Join-Path $k6Root 'hr-flow.js' }
+    'flow'   { Join-Path $k6Root 'demo-flow.js' }
     'smoke'  { Join-Path $k6Root 'outbound-e2e.js' }
     'stress' { Join-Path $k6Root 'outbound-stress.js' }
     'wave'   { Join-Path $k6Root 'pick-stress.js' }

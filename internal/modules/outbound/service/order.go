@@ -150,6 +150,7 @@ func (s *Service) Approve(ctx context.Context, id int64, operator string) error 
 			tasks = append(tasks, &taskapi.CreateTask{
 				TaskType: taskmodel.TaskPick, OrderID: o.ID, OrderNo: o.OrderNo,
 				AllocationID: a.ID, SKUID: a.SKUID, WarehouseID: o.WarehouseID, TargetQty: a.AllocatedQty,
+				LocationID: a.LocationID, LocationCode: a.LocationCode, BatchNo: a.BatchNo,
 			})
 		}
 		return s.taskAPI.Create(ctx, tx, tasks)

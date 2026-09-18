@@ -221,7 +221,7 @@ func (s *Service) RestockDemo(ctx context.Context, sessionID string, qty int) (*
 	if len(detail.Details) == 0 {
 		return nil, errcode.DemoDataMissing
 	}
-	batchNo := fmt.Sprintf("DEMO-RESTOCK-%s", time.Now().Format("20060102-150405"))
+	batchNo := demoBatchNo()
 	if err := s.inbound.Receive(ctx, order.ID, detail.Details[0].ID, &inbounddto.ReceiveReq{
 		DetailID: detail.Details[0].ID, Qty: qty, BatchNo: batchNo,
 	}, operator); err != nil {
@@ -335,7 +335,7 @@ func (s *Service) RunConcurrentPicking(ctx context.Context, sessionID string, wo
 			attempts := len(tasks) * 2
 			for j := 0; j < attempts; j++ {
 				task := tasks[rng.Intn(len(tasks))]
-				if err := s.outbound.Pick(ctx, task.ID, 1, operator); err == nil {
+				if err := s.outbound.Pick(ctx, task.ID, 1, operator, nil); err == nil {
 					contenderSuccess.Add(1)
 				} else {
 					contenderRejected.Add(1)
@@ -411,7 +411,7 @@ func (s *Service) prepareConcurrentOutbound(ctx context.Context, refs *demoRefs,
 	operator := s.Username()
 	order, err := s.outbound.Create(ctx, &outbounddto.CreateOrderReq{
 		WarehouseID: refs.Warehouse.ID,
-		BizOrderNo:  fmt.Sprintf("DEMO-ALLOC-%d-%d", time.Now().UnixNano(), index),
+		BizOrderNo:  demoBizOrderNo(index + 1),
 		Remark:      "并发审核分配：库存锁、FIFO 与防超卖",
 		Details:     []outbounddto.OrderDetailItem{{SKUID: refs.SKU.ID, ExpectedQty: qtyPerOrder}},
 	}, operator)
@@ -452,7 +452,7 @@ func (s *Service) loadRestockLocation(ctx context.Context, warehouseID, skuID in
 func pickRemaining(ctx context.Context, s *Service, taskID int64, remaining int, operator string, success, rejected *atomic.Int64) {
 	consecutiveRejects := 0
 	for i := 0; i < remaining; i++ {
-		if err := s.outbound.Pick(ctx, taskID, 1, operator); err != nil {
+		if err := s.outbound.Pick(ctx, taskID, 1, operator, nil); err != nil {
 			rejected.Add(1)
 			consecutiveRejects++
 			if consecutiveRejects >= 3 {

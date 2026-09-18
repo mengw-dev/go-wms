@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"strings"
 
 	"gorm.io/gorm"
 
@@ -14,7 +15,15 @@ import (
 
 // 拣货和发货扣减。
 
-func (s *Service) Pick(ctx context.Context, taskID int64, qty int, operator string) error {
+// PickScan 拣货前的扫码核对信息，为空字段表示该维度不校验。
+type PickScan struct {
+	LocationCode string
+	BatchNo      string
+}
+
+// Pick 按分配行拣货。scan 非空时校验扫描的库位/批次与任务一致，
+// 避免同一库位下不同批次被拣错。
+func (s *Service) Pick(ctx context.Context, taskID int64, qty int, operator string, scan *PickScan) error {
 	// 事务外只读不可变路由信息（OrderID/AllocationID/TaskType/TaskNo 建后不变）
 	routing, err := s.taskAPI.Get(ctx, taskID)
 	if err != nil {
@@ -46,6 +55,9 @@ func (s *Service) Pick(ctx context.Context, taskID int64, qty int, operator stri
 		}
 		if a.Status != model.AllocAllocated {
 			return errcode.TaskStatusWrong
+		}
+		if err := checkPickScan(scan, t); err != nil {
+			return err
 		}
 		// 推进拣货任务（内部行锁 + 校验数量不超剩余 + 任务状态机）
 		if err := s.taskAPI.AddProgress(ctx, tx, taskID, qty, operator); err != nil {
@@ -97,4 +109,18 @@ func (s *Service) Pick(ctx context.Context, taskID int64, qty int, operator stri
 		}
 		return nil
 	})
+}
+
+// checkPickScan 核对拣货员扫描的库位和批次是否与任务要求一致（忽略大小写和首尾空格）。
+func checkPickScan(scan *PickScan, t *taskmodel.Task) error {
+	if scan == nil {
+		return nil
+	}
+	if code := strings.TrimSpace(scan.LocationCode); code != "" && !strings.EqualFold(code, t.LocationCode) {
+		return errcode.PickLocationMismatch
+	}
+	if batch := strings.TrimSpace(scan.BatchNo); batch != "" && !strings.EqualFold(batch, t.BatchNo) {
+		return errcode.PickBatchMismatch
+	}
+	return nil
 }

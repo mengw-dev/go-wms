@@ -29,6 +29,9 @@ type OrderQuery struct {
 type PickReq struct {
 	TaskID int64 `json:"task_id,string" binding:"required"`
 	Qty    int   `json:"qty" binding:"required,min=1"`
+	// 扫码核对字段（可选）：填写时后端校验必须与任务要求的库位/批次一致。
+	LocationCode string `json:"location_code"`
+	BatchNo      string `json:"batch_no"`
 }
 
 type ExternalOrderDetailItem struct {

@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"fmt"
-	"time"
 
 	inbounddto "gowms/internal/modules/inbound/dto"
 	outbounddto "gowms/internal/modules/outbound/dto"
@@ -34,7 +33,7 @@ func (s *Service) createInboundDrafts(ctx context.Context, refs *demoRefs, count
 		TargetLabel: "前往入库单处理",
 		Steps: []ScenarioStep{
 			{Title: "批量创建入库单", Detail: fmt.Sprintf("共 %d 张，每张 %d 件，状态均为草稿", len(orderNos), qty)},
-			{Title: "下一步", Detail: "HR 可在入库单页面勾选草稿，依次执行批量提交、批量审核、收货和上架"},
+			{Title: "下一步", Detail: "体验者可在入库单页面勾选草稿，依次执行批量提交、批量审核、收货和上架"},
 		},
 	}, nil
 }
@@ -46,7 +45,7 @@ func (s *Service) createOutboundDrafts(ctx context.Context, refs *demoRefs, coun
 	for i := 0; i < count; i++ {
 		order, err := s.outbound.Create(ctx, &outbounddto.CreateOrderReq{
 			WarehouseID: refs.Warehouse.ID,
-			BizOrderNo:  fmt.Sprintf("UPSTREAM-DEMO-%d-%d", time.Now().UnixNano(), i+1),
+			BizOrderNo:  demoBizOrderNo(i + 1),
 			Remark:      fmt.Sprintf("模拟上游系统批量导入：第 %d 单，每单 %d 件", i+1, qty),
 			Details: []outbounddto.OrderDetailItem{{
 				SKUID: refs.SKU.ID, ExpectedQty: qty,
@@ -64,12 +63,12 @@ func (s *Service) createOutboundDrafts(ctx context.Context, refs *demoRefs, coun
 		TargetLabel: "前往出库单处理",
 		Steps: []ScenarioStep{
 			{Title: "模拟上游批量导入", Detail: fmt.Sprintf("共 %d 张，每张 %d 件，状态均为草稿", len(orderNos), qty)},
-			{Title: "下一步", Detail: "HR 可在出库单页面批量提交、批量审核；审核时会执行 FIFO 分配并生成拣货任务"},
+			{Title: "下一步", Detail: "体验者可在出库单页面批量提交、批量审核；审核时会执行 FIFO 分配并生成拣货任务"},
 		},
 	}, nil
 }
 
-// createStocktakeDrafts 批量创建盘点草稿，实际盘点数量和审核由 HR 自己完成。
+// createStocktakeDrafts 批量创建盘点草稿，实际盘点数量和审核由体验者自己完成。
 func (s *Service) createStocktakeDrafts(ctx context.Context, refs *demoRefs, count int) (*ScenarioResult, error) {
 	count, _ = normalizeDraftOptions(count, 0, 2, 0)
 	orderNos := make([]string, 0, count)
@@ -90,7 +89,7 @@ func (s *Service) createStocktakeDrafts(ctx context.Context, refs *demoRefs, cou
 		TargetLabel: "前往盘点单处理",
 		Steps: []ScenarioStep{
 			{Title: "批量创建盘点单", Detail: fmt.Sprintf("共 %d 张，已生成库存快照", len(orderNos))},
-			{Title: "下一步", Detail: "HR 可逐张进入详情录入实盘数量，再执行审核和库存调整"},
+			{Title: "下一步", Detail: "体验者可逐张进入详情录入实盘数量，再执行审核和库存调整"},
 		},
 	}, nil
 }

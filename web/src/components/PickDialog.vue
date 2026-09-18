@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { getOutboundOrder, pickOutboundTask } from '@/api/outbound'
 import type { EntityID, TaskItem } from '@/api/types'
@@ -14,6 +14,7 @@ const tasks = ref<TaskItem[]>([])
 const form = reactive({
   task_id: undefined as EntityID | undefined,
   qty: 1,
+  batch_scan: '',
 })
 const submitting = ref(false)
 
@@ -23,12 +24,23 @@ const pendingTasks = computed(() =>
   tasks.value.filter((t) => t.task_type === 'PICK' && (t.status === 'CREATED' || t.status === 'IN_PROGRESS')),
 )
 
+// 任务已指定批次时必须扫码核对，避免同一库位混放多个批次时拣错。
+const requireBatchScan = computed(() => !!selectedTask.value?.batch_no)
+
+watch(
+  () => form.task_id,
+  () => {
+    form.batch_scan = ''
+  },
+)
+
 async function open(id: EntityID, task?: TaskItem) {
   orderId.value = id
   visible.value = true
   loading.value = true
   form.task_id = undefined
   form.qty = 1
+  form.batch_scan = ''
   try {
     const detail = await getOutboundOrder(id)
     tasks.value = detail.tasks ?? []
@@ -58,9 +70,23 @@ async function submit() {
     ElMessage.warning('拣货数量必须大于 0')
     return
   }
+  const expectedBatch = selectedTask.value?.batch_no ?? ''
+  const scannedBatch = form.batch_scan.trim()
+  if (requireBatchScan.value && !scannedBatch) {
+    ElMessage.warning('请扫描或输入批次号核对')
+    return
+  }
+  if (scannedBatch && scannedBatch.toLowerCase() !== expectedBatch.toLowerCase()) {
+    ElMessage.error(`批次不符：该任务应拣批次 ${expectedBatch}`)
+    return
+  }
   submitting.value = true
   try {
-    await pickOutboundTask(form.task_id, { task_id: form.task_id, qty: form.qty })
+    await pickOutboundTask(form.task_id, {
+      task_id: form.task_id,
+      qty: form.qty,
+      batch_no: scannedBatch || undefined,
+    })
     ElMessage.success('拣货成功')
     visible.value = false
     emit('success')
@@ -93,6 +119,21 @@ defineExpose({ open })
           />
         </el-select>
       </el-form-item>
+      <el-form-item label="作业库位">
+        <el-input :model-value="selectedTask?.location_code || '-'" readonly />
+      </el-form-item>
+      <el-form-item label="应拣批次">
+        <el-input :model-value="selectedTask?.batch_no || '-'" readonly />
+      </el-form-item>
+      <el-form-item label="批次核对">
+        <el-input
+          v-model="form.batch_scan"
+          placeholder="扫描或输入批次号核对"
+          :disabled="!requireBatchScan"
+          clearable
+        />
+        <div class="hint">核对一致后才会提交，防止同库位不同批次拣错</div>
+      </el-form-item>
       <el-form-item label="拣货数量">
         <el-input-number v-model="form.qty" :min="1" controls-position="right" />
         <span v-if="selectedTask" class="qty-tip">待拣：{{ selectedTask.target_qty - selectedTask.done_qty }}</span>
@@ -110,5 +151,12 @@ defineExpose({ open })
   margin-left: 10px;
   color: var(--el-text-color-secondary);
   font-size: 12px;
+}
+
+.hint {
+  margin-top: 4px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  line-height: 1.4;
 }
 </style>

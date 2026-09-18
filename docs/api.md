@@ -162,7 +162,7 @@ X-API-Key: <WMS_INTEGRATION_API_KEY>
 | POST | `/outbound/orders/:id/submit` | `wms:outbound:submit` | 提交 |
 | POST | `/outbound/orders/:id/approve` | `wms:outbound:approve` | **审核即分配**：FIFO 锁库 + 分配明细 + 拣货任务；库存不足整体失败 |
 | POST | `/outbound/orders/:id/cancel` | `wms:outbound:cancel` | 取消并释放锁库（已拣货不可取消） |
-| POST | `/outbound/tasks/:id/pick` | `wms:outbound:pick` | 拣货 `{task_id, qty}`，可分次；全部分配行拣完自动发货扣库存 |
+| POST | `/outbound/tasks/:id/pick` | `wms:outbound:pick` | 拣货 `{task_id, qty, batch_no?, location_code?}`，可分次；`batch_no/location_code` 为扫码核对值，与任务不一致返回 50008/50009；全部分配行拣完自动发货扣库存 |
 
 **审核失败（防超卖生效）示例**
 
@@ -235,7 +235,7 @@ X-API-Key: <WMS_INTEGRATION_API_KEY>
 | POST | `/demo/run/outbound` | 执行出库 FIFO 分配、拣货场景 |
 | POST | `/demo/run/stocktake` | 执行盘点、差异调整场景 |
 | POST | `/demo/run/full` | 一键走完入库、出库、盘点完整流程 |
-| POST | `/demo/run/inbound_drafts` | 模拟 Excel 批量入库草稿 `{ "count": 3, "qty": 20 }`，后续由 HR 手工处理 |
+| POST | `/demo/run/inbound_drafts` | 模拟 Excel 批量入库草稿 `{ "count": 3, "qty": 20 }`，后续由体验者手工处理 |
 | POST | `/demo/run/outbound_drafts` | 模拟上游系统批量出库草稿 `{ "count": 3, "qty": 5 }` |
 | POST | `/demo/run/stocktake_drafts` | 批量创建盘点草稿 `{ "count": 2 }` |
 | POST | `/demo/run/concurrent` | 并发出库测试 `{ "concurrency": 20, "qty_per_order": 1 }`，展示库存锁、FIFO 和防超卖 |

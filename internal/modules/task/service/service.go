@@ -53,6 +53,7 @@ func (s *Service) Create(ctx context.Context, tx *gorm.DB, creates []*api.Create
 			OrderID: ct.OrderID, OrderNo: ct.OrderNo,
 			DetailID: ct.DetailID, AllocationID: ct.AllocationID,
 			SKUID: ct.SKUID, WarehouseID: ct.WarehouseID, TargetQty: ct.TargetQty,
+			LocationID: ct.LocationID, LocationCode: ct.LocationCode, BatchNo: ct.BatchNo,
 		})
 	}
 	if len(now) == 0 {

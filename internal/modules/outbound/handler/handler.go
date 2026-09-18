@@ -167,7 +167,8 @@ func (h *Handler) pick(c *gin.Context) {
 	if !httpx.BindJSON(c, &req) {
 		return
 	}
-	if err := h.svc.Pick(c.Request.Context(), req.TaskID, req.Qty, middleware.Username(c)); err != nil {
+	scan := &service.PickScan{LocationCode: req.LocationCode, BatchNo: req.BatchNo}
+	if err := h.svc.Pick(c.Request.Context(), req.TaskID, req.Qty, middleware.Username(c), scan); err != nil {
 		response.Fail(c, err)
 		return
 	}

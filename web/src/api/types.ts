@@ -214,6 +214,8 @@ export interface InventoryListQuery extends PageQuery {
   location_id?: EntityID | ''
   sku_id?: EntityID | ''
   sku_keyword?: string
+  /** 只返回现存量大于 0 的库存行 */
+  in_stock_only?: boolean
 }
 
 export interface InventorySummaryItem {
@@ -264,6 +266,10 @@ export interface TaskItem {
   allocation_id: EntityID
   sku_id: EntityID
   warehouse_id: EntityID
+  /** 拣货任务的作业库位与批次（收货/上架任务为空） */
+  location_id: EntityID
+  location_code: string
+  batch_no: string
   target_qty: number
   done_qty: number
   operator: string
@@ -430,6 +436,9 @@ export interface OutboundOrderListQuery extends PageQuery {
 export interface PickParams {
   task_id: EntityID
   qty: number
+  /** 扫码核对字段（可选）：填写时后端校验必须与任务要求的库位/批次一致 */
+  location_code?: string
+  batch_no?: string
 }
 
 // ---------- 盘点 ----------
@@ -506,7 +515,7 @@ export interface DemoScenarioResult {
   steps: DemoScenarioStep[]
 }
 
-// ---------- HR 演示中心 ----------
+// ---------- 演示中心 ----------
 
 export interface DemoComponentHealth {
   status: string

@@ -1,5 +1,5 @@
 // 环境自检脚本：验证服务可达、能登录，并自动定位演示仓库、SKU 和可用库存。
-// 输出结果可直接用于 outbound-e2e.js / hr-flow.js。
+// 输出结果可直接用于 outbound-e2e.js / demo-flow.js。
 //
 // 运行：
 //   k6 run scripts/k6/check-env.js
@@ -75,7 +75,7 @@ export default function () {
           `  ${summary.sku_code}: stock=${summary.stock_quantity} available=${summary.available_quantity} allocated=${summary.allocated_quantity}`
         );
       } else {
-        console.log('  ⚠ 目标货品暂无库存，审核出库会失败；可以先跑 hr-flow.js 或入库流程备货。');
+        console.log('  ⚠ 目标货品暂无库存，审核出库会失败；可以先跑 demo-flow.js 或入库流程备货。');
       }
     }
   });
@@ -84,6 +84,6 @@ export default function () {
   console.log(`WAREHOUSE_ID=${warehouse?.id || ''}`);
   console.log(`SKU_ID=${sku?.id || ''}`);
   console.log(`可用库存=${summary?.available_quantity ?? 0}`);
-  console.log('完整业务流程: k6 run -e WAREHOUSE_ID=... -e SKU_ID=... scripts/k6/hr-flow.js');
+  console.log('完整业务流程: k6 run -e WAREHOUSE_ID=... -e SKU_ID=... scripts/k6/demo-flow.js');
   console.log('出库冒烟测试: k6 run -e WAREHOUSE_ID=... -e SKU_ID=... -e ORDER_QTY=1 scripts/k6/outbound-e2e.js');
 }

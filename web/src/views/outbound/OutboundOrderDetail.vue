@@ -168,6 +168,12 @@ function canPick(task: { task_type: string; status: string }): boolean {
               <el-tag :type="statusTag(row.status)" size="small">{{ statusText(row.status) }}</el-tag>
             </template>
           </el-table-column>
+          <el-table-column label="作业库位" min-width="110">
+            <template #default="{ row }">{{ row.location_code || '-' }}</template>
+          </el-table-column>
+          <el-table-column label="批次" min-width="150">
+            <template #default="{ row }">{{ row.batch_no || '-' }}</template>
+          </el-table-column>
           <el-table-column prop="target_qty" label="目标数量" width="100" align="right" />
           <el-table-column prop="done_qty" label="完成数量" width="100" align="right" />
           <el-table-column label="操作员" width="110">

@@ -92,6 +92,7 @@ erDiagram
 | task_type | `RECEIVE / PUTAWAY / PICK` |
 | status | `CREATED → IN_PROGRESS → COMPLETED`（单向） |
 | order_id / order_no / detail_id / allocation_id | 来源追溯（拣货任务携带分配行） |
+| location_id / location_code / batch_no | 拣货任务的作业位置（来自分配行），拣货员直达库位并按批次核对 |
 | target_qty / done_qty | 目标/完成量，支持分次作业 |
 | version | 乐观锁，防重复完成 |
 

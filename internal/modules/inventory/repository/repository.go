@@ -113,6 +113,8 @@ type QueryFilter struct {
 	LocationID  int64
 	SKUID       int64
 	SKUKeyword  string
+	// InStockOnly 为 true 时只返回现存量大于 0 的库存行（隐藏已清空的批次）。
+	InStockOnly bool
 	Page, Size  int
 }
 
@@ -130,6 +132,9 @@ func (r *Repository) List(ctx context.Context, db *gorm.DB, f *QueryFilter) ([]*
 	if f.SKUKeyword != "" {
 		q = q.Where("sku_id IN (SELECT id FROM wms_sku WHERE deleted_at IS NULL AND (code LIKE ? OR name LIKE ? OR barcode LIKE ?))",
 			"%"+dbutil.LikePattern(f.SKUKeyword)+"%", "%"+dbutil.LikePattern(f.SKUKeyword)+"%", "%"+dbutil.LikePattern(f.SKUKeyword)+"%")
+	}
+	if f.InStockOnly {
+		q = q.Where("stock_quantity > 0")
 	}
 	var total int64
 	if err := q.Count(&total).Error; err != nil {

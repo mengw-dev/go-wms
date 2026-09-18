@@ -49,7 +49,7 @@ useAutoRefresh(() => load(true), 3000)
     <div class="page-head">
       <div>
         <h2>系统性能指标</h2>
-        <p>页面每 3 秒自动刷新，可直接向 HR 展示数据库、Redis、连接池和业务实时状态。</p>
+        <p>页面每 3 秒自动刷新，可直接向体验者展示数据库、Redis、连接池和业务实时状态。</p>
       </div>
       <div class="head-actions">
         <el-button :icon="Tickets" @click="router.push('/demo/activity')">操作记录</el-button>
@@ -171,11 +171,11 @@ useAutoRefresh(() => load(true), 3000)
       <section class="load-panel">
         <div class="panel-title">
           <el-icon><TrendCharts /></el-icon>
-          <b>怎样向 HR 展示真实压测</b>
+          <b>怎样向体验者展示真实压测</b>
         </div>
         <p class="load-desc">
           页面中的“并发演示”会从后端并发创建并处理出库单，展示库存锁和防超卖；
-          真正的 HTTP 压测使用 k6，在压测进行时 HR 可以停留在这个页面观察连接池、协程和内存变化。
+          真正的 HTTP 压测使用 k6，在压测进行时体验者可以停留在这个页面观察连接池、协程和内存变化。
         </p>
         <div class="command-list">
           <code>.\scripts\windows\run-k6.ps1 -Mode flow -BaseUrl http://127.0.0.1:18080</code>

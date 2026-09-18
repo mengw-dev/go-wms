@@ -1,12 +1,12 @@
-// 面向 HR/面试官演示的完整业务流程脚本：
+// 面向体验者/面试官演示的完整业务流程脚本：
 // 查询基础资料 -> 入库建单 -> 审核 -> 收货 -> 上架 -> 出库审核分配 -> 拣货发货 -> 盘点 -> 结果核对。
 //
 // 这是 1 VU 正常操作流程，适合演示“系统怎么工作”；并发能力请接着运行
 // outbound-stress.js 或 pick-stress.js。
 //
 // 运行：
-//   k6 run scripts/k6/hr-flow.js
-//   k6 run -e BASE_URL=http://127.0.0.1:8080 -e WAREHOUSE_ID=21 -e SKU_ID=69 scripts/k6/hr-flow.js
+//   k6 run scripts/k6/demo-flow.js
+//   k6 run -e BASE_URL=http://127.0.0.1:8080 -e WAREHOUSE_ID=21 -e SKU_ID=69 scripts/k6/demo-flow.js
 import { check, group, sleep } from 'k6';
 import {
   WAREHOUSE_ID,
@@ -101,7 +101,7 @@ export default function (data) {
   group('1. 入库：建单、审核、收货、上架', () => {
     const create = postJSON('/api/v1/inbound/orders', token, {
       warehouse_id: warehouseId,
-      remark: 'HR 演示：正常入库作业',
+      remark: '演示：正常入库作业',
       details: [{ sku_id: skuId, expected_qty: INBOUND_QTY }],
     });
     must(create, '创建入库单');
@@ -118,7 +118,7 @@ export default function (data) {
       throw new Error('入库明细为空');
     }
 
-    const batchNo = `HR${Date.now()}`;
+    const batchNo = `B${Date.now()}`;
     must(
       postJSON(`/api/v1/inbound/orders/${inboundOrderId}/receive`, token, {
         detail_id: inboundDetail.id,
@@ -153,8 +153,8 @@ export default function (data) {
   group('2. 出库：建单、审核 FIFO 分配、拣货发货', () => {
     const create = postJSON('/api/v1/outbound/orders', token, {
       warehouse_id: warehouseId,
-      biz_order_no: uniqueBizNo('HRFLOW'),
-      remark: 'HR 演示：客户订单出库',
+      biz_order_no: uniqueBizNo('CUST'),
+      remark: '演示：客户订单出库',
       details: [{ sku_id: skuId, expected_qty: OUTBOUND_QTY }],
     });
     must(create, '创建出库单');
@@ -196,7 +196,7 @@ export default function (data) {
   group('3. 盘点：快照、实盘、审核调整', () => {
     const create = postJSON('/api/v1/stocktake/orders', token, {
       warehouse_id: warehouseId,
-      remark: 'HR 演示：库存盘点与差异调整',
+      remark: '演示：库存盘点与差异调整',
     });
     must(create, '创建盘点单');
     stocktakeOrderId = create.json('data.id');

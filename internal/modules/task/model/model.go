@@ -53,9 +53,13 @@ type Task struct {
 	AllocationID int64      `json:"allocation_id,string" gorm:"index"` // 拣货任务对应的分配行
 	SKUID        int64      `json:"sku_id,string" gorm:"column:sku_id;index;not null"`
 	WarehouseID  int64      `json:"warehouse_id,string" gorm:"not null"`
-	TargetQty    int        `json:"target_qty" gorm:"not null"`
-	DoneQty      int        `json:"done_qty" gorm:"not null;default:0"`
-	Operator     string     `json:"operator" gorm:"size:64"`
+	// 拣货任务的作业位置：库位 + 批次来自分配行，供拣货员直达库位并按批次核对。
+	LocationID   int64  `json:"location_id,string" gorm:"index"`
+	LocationCode string `json:"location_code" gorm:"size:64"`
+	BatchNo      string `json:"batch_no" gorm:"size:64"`
+	TargetQty    int    `json:"target_qty" gorm:"not null"`
+	DoneQty      int    `json:"done_qty" gorm:"not null;default:0"`
+	Operator     string `json:"operator" gorm:"size:64"`
 }
 
 func (Task) TableName() string { return "wms_task" }

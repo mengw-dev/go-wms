@@ -45,9 +45,20 @@ const draftParams = reactive({
   restockQty: 500,
 })
 let countdownTimer: number | undefined
-let heartbeatTimer: number | undefined
+let renewTimer: number | undefined
 let redirectingToLogin = false
 let refreshing = false
+// 最近一次用户交互与最近一次向后端续期的时间戳（毫秒）。
+let lastActivityAt = 0
+let lastRenewAt = 0
+// 有交互后置为 true，等待续期定时器把后端 TTL 同步刷新。
+let renewPending = false
+
+// 交互事件节流：鼠标移动等高频事件最多每秒记录一次。
+const ACTIVITY_THROTTLE_MS = 1_000
+// 续期检查周期与两次续期之间的最小间隔。
+const RENEW_CHECK_INTERVAL_MS = 10_000
+const RENEW_MIN_INTERVAL_MS = 20_000
 
 const remainingText = computed(() => {
   const seconds = Math.max(0, remaining.value)
@@ -56,47 +67,68 @@ const remainingText = computed(() => {
 const busy = computed(
   () => acquiring.value || running.value !== '' || concurrentRunning.value || pickingRunning.value || restockRunning.value,
 )
+const idleTimeoutMinutes = computed(() => Math.max(1, Math.round(idleTTL() / 60)))
+
+/** 会话空闲时长（秒），来源于后端下发的 TTL。 */
+function idleTTL() {
+  return auth.demoSessionExpiresIn || 300
+}
 
 function clearTimers() {
   if (countdownTimer !== undefined) window.clearInterval(countdownTimer)
-  if (heartbeatTimer !== undefined) window.clearInterval(heartbeatTimer)
+  if (renewTimer !== undefined) window.clearInterval(renewTimer)
   countdownTimer = undefined
-  heartbeatTimer = undefined
+  renewTimer = undefined
 }
 
 /**
- * 启动倒计时与心跳：
- * - 倒计时每秒递减，纯前端控制，保证显示稳定；
- * - 心跳每 60 秒向后端续期（不更新倒计时，避免视觉上"时间回跳"）；
- * - 当剩余时间 <= 60 秒时，心跳后续期并同步剩余时间。
+ * 记录一次用户交互：把空闲倒计时重置为完整的会话时长，并标记需要向后端续期。
+ * 高频事件通过时间戳节流，避免频繁触发。
+ */
+function markActivity() {
+  if (!auth.isDemo || !auth.demoSessionId) return
+  const now = Date.now()
+  if (now - lastActivityAt < ACTIVITY_THROTTLE_MS) return
+  lastActivityAt = now
+  remaining.value = idleTTL()
+  renewPending = true
+}
+
+/**
+ * 启动空闲倒计时与续期定时器：
+ * - 倒计时每秒递减，表示"无操作"的剩余时间，归零即自动释放会话；
+ * - 只有发生过用户交互（renewPending）时才向后端续期，且两次续期至少间隔
+ *   20 秒，挂机期间不会续期，会话锁会随 TTL 到期自动释放。
  */
 function startTimers() {
   clearTimers()
-  if (remaining.value <= 0) remaining.value = auth.demoSessionExpiresIn || 300
+  if (remaining.value <= 0) remaining.value = idleTTL()
+  lastRenewAt = Date.now()
+  renewPending = false
   countdownTimer = window.setInterval(() => {
-    remaining.value = Math.max(0, remaining.value - 1)
-    if (remaining.value <= 60 && remaining.value % 10 === 0) {
-      void refreshSession(true)
+    if (remaining.value <= 0) {
+      void handleIdleTimeout()
+      return
     }
+    remaining.value -= 1
+    if (remaining.value === 0) void handleIdleTimeout()
   }, 1000)
-  heartbeatTimer = window.setInterval(() => {
-    void refreshSession(false)
-  }, 60_000)
+  renewTimer = window.setInterval(() => {
+    if (!renewPending || refreshing || busy.value || !auth.demoSessionId) return
+    if (Date.now() - lastRenewAt < RENEW_MIN_INTERVAL_MS) return
+    void refreshSession()
+  }, RENEW_CHECK_INTERVAL_MS)
 }
 
-/**
- * 向后端续期演示会话。
- * @param syncRemaining 是否用心跳返回的剩余时间更新倒计时（仅在快到期时为 true）。
- */
-async function refreshSession(syncRemaining: boolean) {
-  if (refreshing || busy.value || !auth.demoSessionId) return
+/** 向后端续期演示会话（仅在最近有用户交互时调用）。 */
+async function refreshSession() {
+  if (refreshing || !auth.demoSessionId) return
   refreshing = true
   try {
     const info = await heartbeatDemoSession()
     auth.setDemoSession(info)
-    if (syncRemaining) {
-      remaining.value = info.expires_in
-    }
+    lastRenewAt = Date.now()
+    renewPending = false
   } catch {
     if (redirectingToLogin) return
     redirectingToLogin = true
@@ -106,6 +138,24 @@ async function refreshSession(syncRemaining: boolean) {
   } finally {
     refreshing = false
   }
+}
+
+/**
+ * 空闲超时：主动释放会话（释放锁并恢复演示数据），然后回到登录页。
+ * 若后端 TTL 已先到期，释放接口会返回失败，忽略即可——拦截器会统一处理登出。
+ */
+async function handleIdleTimeout() {
+  if (redirectingToLogin) return
+  redirectingToLogin = true
+  clearTimers()
+  try {
+    await releaseDemoSession()
+  } catch {
+    // 后端会话可能已随 TTL 过期，忽略错误继续本地登出。
+  }
+  auth.clear()
+  ElMessage.warning(`长时间未操作，演示会话已自动释放（数据已恢复初始状态）`)
+  await router.push('/login')
 }
 
 async function acquire() {
@@ -356,6 +406,13 @@ onMounted(() => {
   // beforeunload 覆盖刷新/关闭，pagehide 覆盖 bfcache 等场景，双重保险确保登出。
   window.addEventListener('beforeunload', releaseKeepalive)
   window.addEventListener('pagehide', releaseKeepalive)
+  // 用户交互才会刷新空闲倒计时并向后端续期。
+  window.addEventListener('mousemove', markActivity, { passive: true })
+  window.addEventListener('mousedown', markActivity, { passive: true })
+  window.addEventListener('wheel', markActivity, { passive: true })
+  window.addEventListener('scroll', markActivity, { passive: true })
+  window.addEventListener('touchstart', markActivity, { passive: true })
+  window.addEventListener('keydown', markActivity)
   void initialize()
 })
 
@@ -363,6 +420,12 @@ onBeforeUnmount(() => {
   clearTimers()
   window.removeEventListener('beforeunload', releaseKeepalive)
   window.removeEventListener('pagehide', releaseKeepalive)
+  window.removeEventListener('mousemove', markActivity)
+  window.removeEventListener('mousedown', markActivity)
+  window.removeEventListener('wheel', markActivity)
+  window.removeEventListener('scroll', markActivity)
+  window.removeEventListener('touchstart', markActivity)
+  window.removeEventListener('keydown', markActivity)
 })
 </script>
 
@@ -390,9 +453,12 @@ onBeforeUnmount(() => {
     />
 
     <div class="demo-status">
-      <div>
-        <span class="demo-label">会话剩余时间</span>
-        <strong>{{ remainingText }}</strong>
+      <div class="demo-status-main">
+        <div>
+          <span class="demo-label">空闲剩余时间</span>
+          <strong>{{ remainingText }}</strong>
+        </div>
+        <small class="demo-idle-hint">有操作时自动续期，挂机 {{ idleTimeoutMinutes }} 分钟后自动释放会话并恢复初始数据</small>
       </div>
       <el-tag type="success" effect="plain">数据隔离已启用</el-tag>
     </div>
@@ -568,10 +634,22 @@ onBeforeUnmount(() => {
   background: var(--el-fill-color-lighter);
 }
 
-.demo-status > div {
+.demo-status-main {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.demo-status-main > div {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+.demo-idle-hint {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
 }
 
 .demo-label {

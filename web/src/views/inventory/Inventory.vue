@@ -36,6 +36,8 @@ const detailQuery = reactive({
   page_size: 10,
   warehouse_id: '' as EntityID | '',
   sku_keyword: '',
+  // 默认只看有货，隐藏已经清空的批次
+  in_stock_only: true,
 })
 
 async function loadDetail(silent = false) {
@@ -152,6 +154,9 @@ useAutoRefresh(refreshActiveTab, 0)
           </el-form-item>
           <el-form-item label="SKU关键字">
             <el-input v-model="detailQuery.sku_keyword" placeholder="编码/名称/条码" clearable style="width: 160px" @keyup.enter="searchDetail" @clear="searchDetail" />
+          </el-form-item>
+          <el-form-item label="只看有货">
+            <el-switch v-model="detailQuery.in_stock_only" @change="searchDetail" />
           </el-form-item>
           <el-form-item>
             <el-button type="primary" @click="searchDetail">查询</el-button>
