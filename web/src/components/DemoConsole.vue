@@ -59,16 +59,14 @@ const ACTIVITY_THROTTLE_MS = 1_000
 // 续期检查周期与两次续期之间的最小间隔。
 const RENEW_CHECK_INTERVAL_MS = 10_000
 const RENEW_MIN_INTERVAL_MS = 20_000
-// 悬浮球上的倒计时只在临近释放时出现，避免一直跳数字影响观感。
-const FAB_COUNTDOWN_THRESHOLD_SECONDS = 60
+// 悬浮球与状态区的倒计时只在临近释放时出现，避免一直跳数字影响观感。
+const COUNTDOWN_VISIBLE_SECONDS = 60
 
 const remainingText = computed(() => {
   const seconds = Math.max(0, remaining.value)
   return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`
 })
-const showFabCountdown = computed(
-  () => remaining.value > 0 && remaining.value <= FAB_COUNTDOWN_THRESHOLD_SECONDS,
-)
+const showCountdown = computed(() => remaining.value > 0 && remaining.value <= COUNTDOWN_VISIBLE_SECONDS)
 const busy = computed(
   () => acquiring.value || running.value !== '' || concurrentRunning.value || pickingRunning.value || restockRunning.value,
 )
@@ -438,7 +436,7 @@ onBeforeUnmount(() => {
   <button v-if="auth.isDemo" class="demo-fab" type="button" @click="visible = true">
     <el-icon><VideoPlay /></el-icon>
     <span>业务流程中心</span>
-    <small v-if="showFabCountdown" class="fab-countdown">{{ remainingText }}</small>
+    <small v-if="showCountdown" class="fab-countdown">{{ remainingText }}</small>
   </button>
 
   <el-dialog
@@ -460,8 +458,11 @@ onBeforeUnmount(() => {
     <div class="demo-status">
       <div class="demo-status-main">
         <div>
-          <span class="demo-label">空闲剩余时间</span>
-          <strong>{{ remainingText }}</strong>
+          <template v-if="showCountdown">
+            <span class="demo-label">空闲剩余时间</span>
+            <strong class="is-warning">{{ remainingText }}</strong>
+          </template>
+          <span v-else class="demo-label">演示会话进行中</span>
         </div>
         <small class="demo-idle-hint">有操作时自动续期，挂机 {{ idleTimeoutMinutes }} 分钟后自动释放会话并恢复初始数据</small>
       </div>
@@ -682,6 +683,11 @@ onBeforeUnmount(() => {
 .demo-status strong {
   font-variant-numeric: tabular-nums;
   font-size: 20px;
+}
+
+/* 临近释放才出现的倒计时，用暖色提醒用户回来操作 */
+.demo-status strong.is-warning {
+  color: var(--el-color-warning);
 }
 
 .demo-actions {
