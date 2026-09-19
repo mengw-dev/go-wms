@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [ValidateSet('check', 'flow', 'smoke', 'stress', 'wave')]
     [string]$Mode = 'check',
