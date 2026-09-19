@@ -81,6 +81,7 @@ func fillTenantOnCreate(db *gorm.DB) {
 	case reflect.Struct:
 		setTenantIfZero(db.Statement.ReflectValue, field, tenantID)
 	case reflect.Slice, reflect.Array:
+		// 指针切片（[]*T）的元素在 setTenantIfZero 内解引用处理
 		for i := range db.Statement.ReflectValue.Len() {
 			setTenantIfZero(db.Statement.ReflectValue.Index(i), field, tenantID)
 		}
@@ -88,7 +89,17 @@ func fillTenantOnCreate(db *gorm.DB) {
 }
 
 func setTenantIfZero(row reflect.Value, field *schema.Field, tenantID int64) {
-	if !row.IsValid() || row.Kind() != reflect.Struct {
+	if !row.IsValid() {
+		return
+	}
+	// 切片元素可能是指针（[]*T 是 GORM 常见批量写法），解引用后再判断
+	if row.Kind() == reflect.Pointer {
+		if row.IsNil() {
+			return
+		}
+		row = row.Elem()
+	}
+	if row.Kind() != reflect.Struct {
 		return
 	}
 	fv := row.FieldByIndex(field.StructField.Index)

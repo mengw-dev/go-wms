@@ -132,6 +132,60 @@ func TestTenantScanIsolation(t *testing.T) {
 	}
 }
 
+// TestTenantCreatePointerSliceAndBatches 回归：指针切片（[]*T）与 CreateInBatches
+// 是 GORM 常见批量写法（入库单明细等），租户填充回调必须覆盖
+// （曾因切片元素为指针未解引用导致明细 tenant_id=0，跨租户丢失单据）。
+func TestTenantCreatePointerSliceAndBatches(t *testing.T) {
+	db := newTenantTestDB(t)
+	ctxA := WithTenant(context.Background(), 1001)
+
+	// 指针切片普通 Create
+	slice := []*basicmodel.SKU{
+		{Code: "PTR-1", Barcode: "PTR-1", Name: "指针切片"},
+		{Code: "PTR-2", Barcode: "PTR-2", Name: "指针切片"},
+	}
+	if err := db.WithContext(ctxA).Create(&slice).Error; err != nil {
+		t.Fatalf("create pointer slice: %v", err)
+	}
+	for i, row := range slice {
+		if row.TenantID != 1001 {
+			t.Fatalf("pointer slice row %d tenant=%d, want 1001", i, row.TenantID)
+		}
+	}
+
+	// CreateInBatches（单批与强制分批两种路径）
+	batches := []*basicmodel.SKU{
+		{Code: "BATCH-1", Barcode: "BATCH-1", Name: "批量"},
+		{Code: "BATCH-2", Barcode: "BATCH-2", Name: "批量"},
+	}
+	if err := db.WithContext(ctxA).CreateInBatches(&batches, 100).Error; err != nil {
+		t.Fatalf("create in batches: %v", err)
+	}
+	split := []*basicmodel.SKU{
+		{Code: "SPLIT-1", Barcode: "SPLIT-1", Name: "分批"},
+		{Code: "SPLIT-2", Barcode: "SPLIT-2", Name: "分批"},
+	}
+	if err := db.WithContext(ctxA).CreateInBatches(&split, 1).Error; err != nil {
+		t.Fatalf("create in split batches: %v", err)
+	}
+	for _, group := range [][]*basicmodel.SKU{batches, split} {
+		for _, row := range group {
+			if row.TenantID != 1001 {
+				t.Fatalf("batch row %s tenant=%d, want 1001", row.Code, row.TenantID)
+			}
+		}
+	}
+
+	// 值切片也一并覆盖
+	values := []basicmodel.SKU{{Code: "VAL-1", Barcode: "VAL-1", Name: "值切片"}}
+	if err := db.WithContext(ctxA).Create(&values).Error; err != nil {
+		t.Fatalf("create value slice: %v", err)
+	}
+	if values[0].TenantID != 1001 {
+		t.Fatalf("value slice row tenant=%d, want 1001", values[0].TenantID)
+	}
+}
+
 // TestFromContext 覆盖与缺省语义。
 func TestFromContext(t *testing.T) {
 	if FromContext(context.TODO()) != 0 {
