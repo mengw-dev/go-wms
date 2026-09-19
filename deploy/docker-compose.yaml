@@ -81,6 +81,12 @@ services:
       WMS_PERSONAL_ENABLED: ${WMS_PERSONAL_ENABLED:-false}
       WMS_PERSONAL_INSTANCES: ${WMS_PERSONAL_INSTANCES:-3}
       WMS_PERSONAL_PASSWORD: ${WMS_PERSONAL_PASSWORD:-user123456}
+      # LLM（智谱 BigModel）：config.go 里这三个变量用 os.Getenv 直读，不经过 viper，
+      # 因此必须在这里显式透传；漏掉会导致容器内 AI 问答报"服务未配置"。
+      # 留空时回落到 configs/config.yaml 中的默认模型名。
+      ZHIPU_API_KEY: ${ZHIPU_API_KEY:-}
+      ZHIPU_LLM_MODEL: ${ZHIPU_LLM_MODEL:-}
+      ZHIPU_LLM_BACKUP_MODEL: ${ZHIPU_LLM_BACKUP_MODEL:-}
       WMS_UPLOAD_DIR: /app/data/uploads
       WMS_METRICS_ENABLED: ${WMS_METRICS_ENABLED:-true}
       WMS_METRICS_PORT: ${WMS_METRICS_PORT:-9090}
