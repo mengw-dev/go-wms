@@ -1,0 +1,21 @@
+# Caddy 反向代理 + 自动 HTTPS。
+# 仅在服务器上通过 `--profile tls` 启用（本地开发与 E2E 不启用，行为保持不变）。
+# 证书由 Let's Encrypt 自动申请与续期，持久化在 caddy_data 卷中。
+#
+# 依赖的环境变量（在服务器 /opt/gowms/.env 中配置）：
+#   WMS_SITE_DOMAIN  主域名，如 mengw21.cn
+#   WMS_ACME_EMAIL   证书到期通知邮箱
+{
+	email {$WMS_ACME_EMAIL}
+}
+
+# 主域名：静态站点与 /api/ 都转发给 web 容器内的 nginx（监听 8080）。
+{$WMS_SITE_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy web:8080
+}
+
+# www 子域：永久跳转到主域名，避免同一站点出现两个地址。
+www.{$WMS_SITE_DOMAIN} {
+	redir https://{$WMS_SITE_DOMAIN}{uri} permanent
+}

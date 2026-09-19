@@ -1,3 +1,8 @@
+# 自有镜像（migrate / wms / web）同时声明了 image 与 build：
+#   - 服务器部署：CI 在 GitHub 上构建好并推送到 GHCR，服务器只 `docker compose pull`，不在本机编译；
+#     部署 workflow 会通过 WMS_IMAGE_TAG 传入本次 commit 的镜像标签。
+#   - 本地开发与 E2E：脚本一律带 --build，Compose 会以本地 Dockerfile 构建并用上面的名字打标签，
+#     因此改代码后必须 --build（否则 Compose 可能去 GHCR 拉取旧镜像）。
 services:
   mysql:
     image: mysql:8.0
@@ -27,6 +32,7 @@ services:
       retries: 20
 
   migrate:
+    image: ghcr.io/mengw-dev/gowms-api:${WMS_IMAGE_TAG:-latest}
     build:
       context: ..
       dockerfile: Dockerfile
@@ -49,6 +55,7 @@ services:
         condition: service_healthy
 
   wms:
+    image: ghcr.io/mengw-dev/gowms-api:${WMS_IMAGE_TAG:-latest}
     build:
       context: ..
       dockerfile: Dockerfile
@@ -96,15 +103,38 @@ services:
       retries: 10
 
   web:
+    image: ghcr.io/mengw-dev/gowms-web:${WMS_IMAGE_TAG:-latest}
     build:
       context: ../web
       dockerfile: Dockerfile
     restart: unless-stopped
+    # 服务器上 WMS_WEB_BIND=127.0.0.1：web 只监听回环，由 Caddy 容器对外提供 80/443。
     ports:
-      - "${WMS_WEB_PORT:-80}:8080"
+      - "${WMS_WEB_BIND:-0.0.0.0}:${WMS_WEB_PORT:-80}:8080"
     depends_on:
       wms:
         condition: service_healthy
+
+  # Caddy 只在服务器上启用（--profile tls），本地开发与 E2E 不带该 profile，行为完全不变。
+  # 它独占宿主机的 80/443，负责申请续期 Let's Encrypt 证书并把流量转发给 web 容器。
+  caddy:
+    image: caddy:2-alpine
+    profiles: ["tls"]
+    restart: unless-stopped
+    environment:
+      WMS_SITE_DOMAIN: ${WMS_SITE_DOMAIN:-}
+      WMS_ACME_EMAIL: ${WMS_ACME_EMAIL:-}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      web:
+        condition: service_started
 
   prometheus:
     image: prom/prometheus:v2.54.1
@@ -147,5 +177,8 @@ volumes:
   mysql_data:
   redis_data:
   upload_data:
+  # 证书与 ACME 账户数据，必须持久化：丢失会触发重新申请，可能撞上 Let's Encrypt 速率限制。
+  caddy_data:
+  caddy_config:
   prometheus_data:
   grafana_data:

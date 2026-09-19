@@ -1,5 +1,8 @@
-# 自动部署（CD）：CI 在 main 上跑绿后，SSH 到服务器拉取最新代码并重建容器。
-# 流程：CI（lint / 单测 / race / e2e / 容器构建 / 漏洞扫描）通过 -> 本 workflow 触发 -> 服务器上线。
+# 自动部署（CD）：CI 在 main 上跑绿后，先在 GitHub 侧构建镜像推送到 GHCR，再 SSH 到服务器拉取镜像并重启容器。
+# 流程：CI（lint / 单测 / race / e2e / 容器构建 / 漏洞扫描）通过 -> 本 workflow 触发 -> 构建并推送镜像 -> 服务器上线。
+#
+# 镜像在 GitHub 的 runner 上构建，服务器只负责拉取运行。这样做是因为目标机器是 2 核 2G：
+# 在上面跑 Go 编译 + Vite 打包极易 OOM，而 MySQL 本身就占掉数百 MB。
 #
 # ── 一次性配置（GitHub 仓库 Settings -> Secrets and variables -> Actions）──
 #   Secrets:
@@ -9,11 +12,25 @@
 #     DEPLOY_PORT     SSH 端口，可选，默认 22
 #   Variables（非敏感，也可放进 Secrets）:
 #     DEPLOY_PATH         服务器上仓库目录，默认 /opt/gowms
-#     DEPLOY_HEALTH_URL   部署后健康检查地址，默认 http://127.0.0.1/healthz
+#     DEPLOY_HEALTH_URL   部署后健康检查地址，默认 http://127.0.0.1:8081/healthz
+#
+# ── HTTPS（服务器上一次性配置）──
+#   服务器 .env 里配置 WMS_SITE_DOMAIN / WMS_ACME_EMAIL / WMS_WEB_BIND=127.0.0.1 /
+#   WMS_WEB_PORT=8081 后，部署命令会带 --profile tls 启动 Caddy 容器：
+#   web 只监听回环 8081，Caddy 独占宿主机 80/443 并自动申请 Let's Encrypt 证书。
+#   域名需提前把 A 记录解析到本机公网 IP，且 80/443 已在安全组放行，证书才能签发成功。
+#
+# ── GHCR 镜像可见性（首次部署前做一次）──
+#   推送到 GHCR 的包默认是 private，服务器匿名拉取会报 denied。
+#   打开 https://github.com/users/mengw-dev/packages/container/gowms-api/settings
+#   与 https://github.com/users/mengw-dev/packages/container/gowms-web/settings，
+#   在页面底部 Danger Zone 把 visibility 改为 Public。
+#   本仓库代码本就是公开的，镜像公开不额外暴露信息。若坚持私有，则改为在服务器上
+#   `docker login ghcr.io`，使用一个仅含 read:packages 权限的 PAT。
 #
 # ── 服务器一次性准备 ──
 #   1. 安装 git / curl / Docker + compose 插件
-#   2. git clone https://github.com/mengw-seek/wms-learn.git /opt/gowms
+#   2. git clone https://github.com/mengw-dev/go-wms.git /opt/gowms
 #   3. 在 /opt/gowms/.env 生成全新密钥（不要复用本地 .env）
 #   4. 本地 ssh-keygen 生成部署密钥，公钥追加到服务器 ~/.ssh/authorized_keys
 name: Deploy
@@ -30,13 +47,71 @@ concurrency:
   group: deploy-main
   cancel-in-progress: false
 
+permissions:
+  contents: read
+
 jobs:
-  deploy:
-    name: Deploy to server
+  build:
+    name: Build and push images
     runs-on: ubuntu-latest
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      # workflow_run 触发时 github.sha 指向默认分支的最新提交，而不是触发 CI 的那一次提交，
+      # 必须显式 checkout workflow_run.head_sha，否则可能构建到错误的代码。
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Compute image tag
+        id: meta
+        env:
+          REVISION: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: echo "tag=sha-${REVISION::7}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # 同时打 latest 与 sha-xxxxxxx 两个标签：部署按 sha 精确拉取，
+      # latest 仅用于人工排查和手动回滚时的参照。
+      - name: Build and push backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/mengw-dev/gowms-api:latest
+            ghcr.io/mengw-dev/gowms-api:${{ steps.meta.outputs.tag }}
+          cache-from: type=gha,scope=gowms-api
+          cache-to: type=gha,mode=max,scope=gowms-api
+
+      - name: Build and push frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./web
+          push: true
+          tags: |
+            ghcr.io/mengw-dev/gowms-web:latest
+            ghcr.io/mengw-dev/gowms-web:${{ steps.meta.outputs.tag }}
+          cache-from: type=gha,scope=gowms-web
+          cache-to: type=gha,mode=max,scope=gowms-web
+
+  deploy:
+    name: Deploy to server
+    runs-on: ubuntu-latest
+    needs: [build]
     steps:
       # 未配置 DEPLOY_HOST 时跳过部署而不是失败：仓库先合入 workflow、服务器后续再接入，
       # 避免每次 push 都出现一条红色失败记录（配置好 Secrets 后本步骤自动放行）。
@@ -55,14 +130,15 @@ jobs:
         uses: appleboy/ssh-action@v1.2.0
         env:
           DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/opt/gowms' }}
-          HEALTH_URL: ${{ vars.DEPLOY_HEALTH_URL || 'http://127.0.0.1/healthz' }}
+          HEALTH_URL: ${{ vars.DEPLOY_HEALTH_URL || 'http://127.0.0.1:8081/healthz' }}
+          IMAGE_TAG: ${{ needs.build.outputs.tag }}
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: ${{ secrets.DEPLOY_PORT || 22 }}
           script_stop: true
-          envs: DEPLOY_PATH,HEALTH_URL
+          envs: DEPLOY_PATH,HEALTH_URL,IMAGE_TAG
           script: |
             set -eu
             cd "$DEPLOY_PATH"
@@ -72,13 +148,21 @@ jobs:
               exit 1
             fi
 
-            echo "==> 拉取 origin/main"
+            echo "==> 同步 origin/main（更新 compose 文件与迁移脚本）"
             git fetch --prune origin main
             git reset --hard origin/main
 
-            # 显式 --env-file：compose 默认只找本目录的 .env，而 compose 文件在 deploy/ 下。
-            echo "==> 重建并启动容器（migrate 容器会自动执行数据库迁移）"
-            docker compose --env-file .env -f deploy/docker-compose.yaml up -d --build --remove-orphans
+            # 指定本次 commit 对应的镜像标签；shell 变量优先于 --env-file 中的同名变量。
+            export WMS_IMAGE_TAG="$IMAGE_TAG"
+
+            # 只拉自有镜像，避免浮动 tag（mysql:8.0 / redis:7-alpine）被顺带升级。
+            # 镜像不存在或仓库未公开时这里会直接失败退出，不会退化成在服务器上编译。
+            echo "==> 拉取镜像（tag=$IMAGE_TAG）"
+            docker compose --env-file .env -f deploy/docker-compose.yaml --profile tls pull migrate wms web caddy
+
+            # --no-build：即使镜像缺失也绝不在服务器上构建，宁可报错暴露问题。
+            echo "==> 启动容器（migrate 容器会自动执行数据库迁移，--profile tls 会一并启动 Caddy）"
+            docker compose --env-file .env -f deploy/docker-compose.yaml --profile tls up -d --no-build --remove-orphans
 
             echo "==> 清理悬空镜像"
             docker image prune -f
@@ -93,6 +177,6 @@ jobs:
             done
 
             echo "健康检查失败，最近容器状态与日志如下："
-            docker compose --env-file .env -f deploy/docker-compose.yaml ps
-            docker compose --env-file .env -f deploy/docker-compose.yaml logs --tail=100
+            docker compose --env-file .env -f deploy/docker-compose.yaml --profile tls ps
+            docker compose --env-file .env -f deploy/docker-compose.yaml --profile tls logs --tail=100
             exit 1

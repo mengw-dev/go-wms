@@ -1,6 +1,6 @@
-﻿# WMS 仓储管理系统
+# WMS 仓储管理系统
 
-[![CI](https://github.com/mengw-seek/wms-learn/actions/workflows/ci.yml/badge.svg)](https://github.com/mengw-seek/wms-learn/actions/workflows/ci.yml)
+[![CI](https://github.com/mengw-dev/go-wms/actions/workflows/ci.yml/badge.svg)](https://github.com/mengw-dev/go-wms/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.26-00ADD8.svg)](https://go.dev/)
 [![Vue](https://img.shields.io/badge/Vue-3-42b883.svg)](https://vuejs.org/)
@@ -17,7 +17,7 @@ WMS 是一个前后端分离的轻量级 WMS，覆盖仓库、库位、货品、
 
 **架构全景图**：涵盖技术分层、单据状态机、数据模型与架构能力视图，点击图片可查看在线交互页面（GitHub Pages，无需克隆项目）。
 
-[![架构全景图](docs/images/overview.png)](https://mengw-seek.github.io/wms-learn/)
+[![架构全景图](docs/images/overview.png)](https://mengw-dev.github.io/go-wms/)
 
 ## 技术栈
 
