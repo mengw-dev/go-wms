@@ -1,0 +1,98 @@
+# 自动部署（CD）：CI 在 main 上跑绿后，SSH 到服务器拉取最新代码并重建容器。
+# 流程：CI（lint / 单测 / race / e2e / 容器构建 / 漏洞扫描）通过 -> 本 workflow 触发 -> 服务器上线。
+#
+# ── 一次性配置（GitHub 仓库 Settings -> Secrets and variables -> Actions）──
+#   Secrets:
+#     DEPLOY_HOST     服务器 IP 或域名（阿里云香港实例的公网 IP）
+#     DEPLOY_USER     SSH 用户，如 root 或 deploy
+#     DEPLOY_SSH_KEY  本地生成的部署私钥【全文】，含 BEGIN/END 两行
+#     DEPLOY_PORT     SSH 端口，可选，默认 22
+#   Variables（非敏感，也可放进 Secrets）:
+#     DEPLOY_PATH         服务器上仓库目录，默认 /opt/gowms
+#     DEPLOY_HEALTH_URL   部署后健康检查地址，默认 http://127.0.0.1/healthz
+#
+# ── 服务器一次性准备 ──
+#   1. 安装 git / curl / Docker + compose 插件
+#   2. git clone https://github.com/mengw-seek/wms-learn.git /opt/gowms
+#   3. 在 /opt/gowms/.env 生成全新密钥（不要复用本地 .env）
+#   4. 本地 ssh-keygen 生成部署密钥，公钥追加到服务器 ~/.ssh/authorized_keys
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+# 同一时间只允许一个部署；不取消进行中的部署，避免升级到一半被打断。
+concurrency:
+  group: deploy-main
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to server
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    steps:
+      # 未配置 DEPLOY_HOST 时跳过部署而不是失败：仓库先合入 workflow、服务器后续再接入，
+      # 避免每次 push 都出现一条红色失败记录（配置好 Secrets 后本步骤自动放行）。
+      - name: Check deploy configuration
+        id: guard
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          if [ -z "$DEPLOY_HOST" ]; then
+            echo "DEPLOY_HOST 未配置，跳过自动部署（配置 Secrets 后自动生效）"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: SSH deploy
+        if: steps.guard.outputs.skip != 'true'
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/opt/gowms' }}
+          HEALTH_URL: ${{ vars.DEPLOY_HEALTH_URL || 'http://127.0.0.1/healthz' }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_PORT || 22 }}
+          script_stop: true
+          envs: DEPLOY_PATH,HEALTH_URL
+          script: |
+            set -eu
+            cd "$DEPLOY_PATH"
+
+            if [ ! -f .env ]; then
+              echo "服务器上缺少 $DEPLOY_PATH/.env，请在服务器生成后再部署（密钥不要复用本地）。"
+              exit 1
+            fi
+
+            echo "==> 拉取 origin/main"
+            git fetch --prune origin main
+            git reset --hard origin/main
+
+            # 显式 --env-file：compose 默认只找本目录的 .env，而 compose 文件在 deploy/ 下。
+            echo "==> 重建并启动容器（migrate 容器会自动执行数据库迁移）"
+            docker compose --env-file .env -f deploy/docker-compose.yaml up -d --build --remove-orphans
+
+            echo "==> 清理悬空镜像"
+            docker image prune -f
+
+            echo "==> 健康检查 $HEALTH_URL"
+            for attempt in $(seq 1 30); do
+              if curl -fsS "$HEALTH_URL" >/dev/null; then
+                echo "部署成功：服务已通过健康检查"
+                exit 0
+              fi
+              sleep 5
+            done
+
+            echo "健康检查失败，最近容器状态与日志如下："
+            docker compose --env-file .env -f deploy/docker-compose.yaml ps
+            docker compose --env-file .env -f deploy/docker-compose.yaml logs --tail=100
+            exit 1
