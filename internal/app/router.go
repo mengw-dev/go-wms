@@ -72,6 +72,8 @@ func (a *App) NewRouter() (*gin.Engine, error) {
 	// 演示模块特性门控：demo.enabled=false 时不挂载任何 /demo 路由与
 	// DemoSession 中间件（生产环境直接 404，演示代码零暴露）。
 	if a.Config.Demo.Enabled {
+		// 免登录：登录页"在线体验"领取空闲演示账号（多租户多账号自动分配）
+		a.DemoHandler.RegisterPublicRoutes(pub)
 		auth.Use(middleware.DemoSession(a.DemoService))
 		a.DemoHandler.RegisterRoutes(auth, a.SystemAPI)
 	}

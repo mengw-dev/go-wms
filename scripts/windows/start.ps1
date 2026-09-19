@@ -96,8 +96,8 @@ try {
         $values["WMS_DEMO_ENABLED"] = "true"
         $changed = $true
     }
-    if (-not $values.Contains("WMS_DEMO_USERNAME") -or [string]::IsNullOrWhiteSpace($values["WMS_DEMO_USERNAME"])) {
-        $values["WMS_DEMO_USERNAME"] = "demo"
+    if (-not $values.Contains("WMS_DEMO_INSTANCES") -or [string]::IsNullOrWhiteSpace($values["WMS_DEMO_INSTANCES"])) {
+        $values["WMS_DEMO_INSTANCES"] = "5"
         $changed = $true
     }
     if (-not $values.Contains("WMS_DEMO_PASSWORD") -or [string]::IsNullOrWhiteSpace($values["WMS_DEMO_PASSWORD"])) {
@@ -143,7 +143,7 @@ try {
     Write-Host "User: admin" -ForegroundColor Green
     Write-Host "Pass: admin123" -ForegroundColor Green
     if ($values["WMS_DEMO_ENABLED"] -eq "true") {
-        Write-Host "Demo: $($values['WMS_DEMO_USERNAME']) / $($values['WMS_DEMO_PASSWORD'])" -ForegroundColor Green
+        Write-Host "Demo: demo1..demo$($values['WMS_DEMO_INSTANCES']) / $($values['WMS_DEMO_PASSWORD']) (each account isolated by tenant)" -ForegroundColor Green
     }
     Write-Host "Integration API Key is stored in .env as WMS_INTEGRATION_API_KEY." -ForegroundColor Green
     Write-Host "Change the default password immediately after first login." -ForegroundColor Yellow

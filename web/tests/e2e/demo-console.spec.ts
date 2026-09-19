@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { confirmMessageBox, loginByUi } from './support/api'
 
-const demoUsername = process.env.E2E_DEMO_USERNAME || process.env.WMS_DEMO_USERNAME || 'demo'
+const demoUsername = process.env.E2E_DEMO_USERNAME || process.env.WMS_DEMO_USERNAME || 'demo1'
 const demoPassword = process.env.E2E_DEMO_PASSWORD || process.env.WMS_DEMO_PASSWORD || 'demo123456'
 
 test('business center creates drafts, runs flows, shows metrics and records, then releases', async ({ page }) => {

@@ -166,7 +166,8 @@ jobs:
       WMS_INTEGRATION_API_KEY: e2e-integration-api-key-0123456789abcdef
       WMS_SERVER_MODE: debug
       WMS_DEMO_ENABLED: "true"
-      WMS_DEMO_USERNAME: demo
+      WMS_DEMO_INSTANCES: "5"
+      WMS_DEMO_USERNAME: demo1
       WMS_DEMO_PASSWORD: demo123456
       E2E_BASE_URL: http://127.0.0.1:5173
     steps:

@@ -13,14 +13,15 @@ import (
 // DemoSessionValidator 由 demo 模块实现，验证当前用户是否持有有效演示会话。
 type DemoSessionValidator interface {
 	Enabled() bool
-	Username() string
+	// IsDemoUser 判断用户名是否属于演示账号（demo1..demoN，多租户多账号）。
+	IsDemoUser(username string) bool
 	ValidateSession(ctx context.Context, sessionID string) error
 }
 
-// DemoSession 限制演示账号同时只能有一个有效会话。
+// DemoSession 限制每个演示账号同时只能有一个有效会话（会话锁按租户隔离）。
 func DemoSession(validator DemoSessionValidator) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if validator == nil || !validator.Enabled() || Username(c) != validator.Username() {
+		if validator == nil || !validator.Enabled() || !validator.IsDemoUser(Username(c)) {
 			c.Next()
 			return
 		}

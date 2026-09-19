@@ -3,7 +3,7 @@ import { onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { login } from '@/api/auth'
-import { acquireDemoSession } from '@/api/demo'
+import { acquireDemoSession, claimDemoAccount } from '@/api/demo'
 import { getVersion } from '@/api/version'
 import { useAuthStore } from '@/stores/auth'
 
@@ -13,20 +13,15 @@ const auth = useAuthStore()
 
 const formRef = ref<FormInstance>()
 const loading = ref(false)
-// 演示模块开关：后端 demo.enabled=false 时（生产部署）隐藏演示账号提示并不再预填。
+const demoLoading = ref(false)
+// 演示模块开关：后端 demo.enabled=false 时（生产部署）隐藏演示入口，表单不预填。
 const demoEnabled = ref(true)
-// 默认填充演示账号，访客打开登录页即可直接进入演示环境。
-const DEMO_LOGIN = { username: 'demo', password: 'demo123456' }
-const form = reactive({ ...DEMO_LOGIN })
+const form = reactive({ username: '', password: '' })
 
 onMounted(async () => {
   try {
     const version = await getVersion()
     demoEnabled.value = version.demo_enabled !== false
-    if (!demoEnabled.value) {
-      form.username = ''
-      form.password = ''
-    }
   } catch {
     // /version 不可用时保持默认（演示开启），不影响登录功能
   }
@@ -57,6 +52,33 @@ async function submit() {
     auth.clear()
   } finally {
     loading.value = false
+  }
+}
+
+// 在线体验：自动领取一个空闲演示账号（demo1~demoN，各占独立租户）并登录。
+// 多个访客同时点击会分配到不同账号，数据互不影响，退出后该账号数据自动重置。
+async function startDemo() {
+  if (demoLoading.value) return
+  demoLoading.value = true
+  try {
+    const account = await claimDemoAccount()
+    const result = await login({ username: account.username, password: account.password })
+    auth.setAuth(result)
+    if ((result.perms ?? []).includes('wms:demo')) {
+      const session = await acquireDemoSession()
+      auth.setDemoSession(session)
+      sessionStorage.setItem('WMS_DEMO_AUTO_OPEN', '1')
+    }
+    ElMessage({
+      message: `已为你分配空闲演示账号 ${account.username}（共 ${account.total} 席，数据独立、退出自动重置）`,
+      type: 'success',
+      duration: 5000,
+    })
+    router.push('/')
+  } catch {
+    // 错误提示由 request.ts 拦截器统一弹出（如 70002 演示席位已满）
+  } finally {
+    demoLoading.value = false
   }
 }
 
@@ -96,7 +118,8 @@ async function submit() {
           type="info"
           :closable="false"
           show-icon
-          :title="`演示账号：${DEMO_LOGIN.username} / ${DEMO_LOGIN.password}`"
+          title="演示环境已开放：多个独立演示席位，点击下方按钮自动分配"
+          description="每位访客分配独立账号（数据互不影响），退出后自动重置；也可手动输入 demo1、demo2… 登录。"
           class="tip"
         />
         <el-form ref="formRef" :model="form" :rules="rules" size="large" @keyup.enter="submit">
@@ -114,6 +137,16 @@ async function submit() {
             登 录
           </el-button>
         </el-form>
+        <el-button
+          v-if="demoEnabled"
+          size="large"
+          plain
+          class="login-btn demo-btn"
+          :loading="demoLoading"
+          @click="startDemo"
+        >
+          在线体验（自动分配演示账号）
+        </el-button>
       </div>
     </div>
   </div>
@@ -275,6 +308,12 @@ async function submit() {
   width: 100%;
   margin-top: 4px;
   letter-spacing: 4px;
+}
+
+.demo-btn {
+  margin-left: 0;
+  margin-top: 12px;
+  letter-spacing: normal;
 }
 
 /* 小屏隐藏品牌区，登录卡内显示品牌标识 */

@@ -75,8 +75,8 @@ func main() {
 			if err := bootstrap.Seed(db); err != nil {
 				log.Fatalf("seed: %v", err)
 			}
-			if err := bootstrap.SeedDemoAccount(db, cfg); err != nil {
-				log.Fatalf("seed demo account: %v", err)
+			if err := bootstrap.SeedDemoAccounts(db, cfg); err != nil {
+				log.Fatalf("seed demo accounts: %v", err)
 			}
 		}
 		log.Println("migration up completed")

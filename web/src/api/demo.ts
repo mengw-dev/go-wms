@@ -12,6 +12,19 @@ export function acquireDemoSession() {
   return post<DemoSessionInfo>('/demo/session/acquire')
 }
 
+/** 空闲演示账号信息（多租户多账号，登录页"在线体验"自动分配） */
+export interface DemoAccountInfo {
+  username: string
+  password: string
+  total: number
+  occupied: number
+}
+
+/** 领取一个空闲演示账号（免登录接口；全部占用时后端返回 70002） */
+export function claimDemoAccount() {
+  return get<DemoAccountInfo>('/demo/account')
+}
+
 export function heartbeatDemoSession() {
   return post<DemoSessionInfo>('/demo/session/heartbeat')
 }

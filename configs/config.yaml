@@ -43,12 +43,12 @@ integration:
   api_key: "change-this-integration-api-key"
 
 # 演示模块总开关（特性门控）：
-#   true  = 提供公开演示账号 + 业务流程中心 /demo 接口（演示/体验部署）
+#   true  = 提供多演示账号（demo1..demoN，各占独立租户）+ 业务流程中心 /demo 接口
 #   false = 不挂载任何 /demo 路由，演示账号被禁用（生产默认；演示部署用 WMS_DEMO_ENABLED=true 覆盖）
 demo:
   enabled: false
-  username: "demo"
-  password: "demo123456"
+  instances: 5           # 演示账号数量：demo1~demo5，各自独立租户（10001~10005），数据互不影响
+  password: "demo123456" # 所有演示账号共用密码
   session_ttl_seconds: 300
 
 # AI 库存问答（智谱 BigModel，OpenAI 兼容接口）

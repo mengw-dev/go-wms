@@ -29,7 +29,7 @@ func (s *Service) Activity(ctx context.Context, limit int) (*ActivitySnapshot, e
 	if limit > 50 {
 		limit = 50
 	}
-	username := s.Username()
+	username := s.Username(ctx)
 	result := &ActivitySnapshot{}
 
 	if err := s.db.WithContext(ctx).

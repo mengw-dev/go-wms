@@ -17,6 +17,24 @@ type Handler struct {
 
 func New(svc *service.Service) *Handler { return &Handler{svc: svc} }
 
+// RegisterPublicRoutes 免登录路由：登录页"在线体验"领取空闲演示账号。
+// 演示未启用时不挂载（生产环境直接 404）。
+func (h *Handler) RegisterPublicRoutes(pub *gin.RouterGroup) {
+	if !h.svc.Enabled() {
+		return
+	}
+	pub.GET("/demo/account", h.claimAccount)
+}
+
+func (h *Handler) claimAccount(c *gin.Context) {
+	info, err := h.svc.ClaimAccount(c.Request.Context())
+	if err != nil {
+		response.Fail(c, err)
+		return
+	}
+	response.OK(c, info)
+}
+
 func (h *Handler) RegisterRoutes(auth *gin.RouterGroup, checker middleware.PermsChecker) {
 	g := auth.Group("/demo")
 	perm := middleware.Permission(checker, "wms:demo")

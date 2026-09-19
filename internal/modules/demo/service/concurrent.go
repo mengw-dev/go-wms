@@ -196,7 +196,7 @@ func (s *Service) RestockDemo(ctx context.Context, sessionID string, qty int) (*
 		return nil, err
 	}
 
-	operator := s.Username()
+	operator := s.Username(ctx)
 	order, err := s.inbound.Create(ctx, &inbounddto.CreateOrderReq{
 		WarehouseID: refs.Warehouse.ID,
 		Remark:      fmt.Sprintf("一键补货入库：为并发演示补充 %d 件库存", qty),
@@ -304,7 +304,7 @@ func (s *Service) RunConcurrentPicking(ctx context.Context, sessionID string, wo
 		totalTarget += task.TargetQty
 	}
 	skuID := tasks[0].SKUID
-	operator := s.Username()
+	operator := s.Username(ctx)
 	start := time.Now()
 
 	var workerSuccess, workerRejected, contenderSuccess, contenderRejected atomic.Int64
@@ -419,7 +419,7 @@ func (s *Service) RunConcurrentPicking(ctx context.Context, sessionID string, wo
 }
 
 func (s *Service) prepareConcurrentOutbound(ctx context.Context, refs *demoRefs, index, qtyPerOrder int) error {
-	operator := s.Username()
+	operator := s.Username(ctx)
 	order, err := s.outbound.Create(ctx, &outbounddto.CreateOrderReq{
 		WarehouseID: refs.Warehouse.ID,
 		BizOrderNo:  demoBizOrderNo(index + 1),

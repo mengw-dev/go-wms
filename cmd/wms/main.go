@@ -78,8 +78,8 @@ func main() {
 	} else {
 		logger.Info("AutoMigrate disabled in release mode; run cmd/migrate before startup")
 		// 每次启动同步演示账号状态：开启时创建/修复，关闭时禁用旧账号。
-		if err := bootstrap.SeedDemoAccount(db, cfg); err != nil {
-			logger.Error("sync demo account failed", "err", err)
+		if err := bootstrap.SeedDemoAccounts(db, cfg); err != nil {
+			logger.Error("sync demo accounts failed", "err", err)
 			os.Exit(1)
 		}
 	}

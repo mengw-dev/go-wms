@@ -150,7 +150,7 @@ func (s *Service) loadDemoRefs(ctx context.Context) (*demoRefs, error) {
 
 func (s *Service) runInboundDemo(ctx context.Context, refs *demoRefs) (*ScenarioResult, error) {
 	const qty = 10
-	operator := s.Username()
+	operator := s.Username(ctx)
 	order, err := s.inbound.Create(ctx, &inbounddto.CreateOrderReq{
 		WarehouseID: refs.Warehouse.ID,
 		Remark:      "一键演示：入库、收货、上架完整流程",
@@ -216,7 +216,7 @@ func (s *Service) runInboundDemo(ctx context.Context, refs *demoRefs) (*Scenario
 
 func (s *Service) runOutboundDemo(ctx context.Context, refs *demoRefs) (*ScenarioResult, error) {
 	const qty = 20
-	operator := s.Username()
+	operator := s.Username(ctx)
 	order, err := s.outbound.Create(ctx, &outbounddto.CreateOrderReq{
 		WarehouseID: refs.Warehouse.ID,
 		BizOrderNo:  demoBizOrderNo(1),
@@ -269,7 +269,7 @@ func (s *Service) runOutboundDemo(ctx context.Context, refs *demoRefs) (*Scenari
 }
 
 func (s *Service) runStocktakeDemo(ctx context.Context, refs *demoRefs) (*ScenarioResult, error) {
-	operator := s.Username()
+	operator := s.Username(ctx)
 	order, err := s.stocktake.Create(ctx, &stocktakedto.CreateOrderReq{
 		WarehouseID: refs.Warehouse.ID,
 		Remark:      "一键演示：库存快照、录入实盘、审核调整",

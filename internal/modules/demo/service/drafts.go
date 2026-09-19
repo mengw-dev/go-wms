@@ -20,7 +20,7 @@ func (s *Service) createInboundDrafts(ctx context.Context, refs *demoRefs, count
 			Details: []inbounddto.OrderDetailItem{{
 				SKUID: refs.SKU.ID, ExpectedQty: qty,
 			}},
-		}, s.Username())
+		}, s.Username(ctx))
 		if err != nil {
 			return nil, err
 		}
@@ -50,7 +50,7 @@ func (s *Service) createOutboundDrafts(ctx context.Context, refs *demoRefs, coun
 			Details: []outbounddto.OrderDetailItem{{
 				SKUID: refs.SKU.ID, ExpectedQty: qty,
 			}},
-		}, s.Username())
+		}, s.Username(ctx))
 		if err != nil {
 			return nil, err
 		}
@@ -76,7 +76,7 @@ func (s *Service) createStocktakeDrafts(ctx context.Context, refs *demoRefs, cou
 		order, err := s.stocktake.Create(ctx, &stocktakedto.CreateOrderReq{
 			WarehouseID: refs.Warehouse.ID,
 			Remark:      fmt.Sprintf("模拟盘点任务：第 %d 批", i+1),
-		}, s.Username())
+		}, s.Username(ctx))
 		if err != nil {
 			return nil, err
 		}

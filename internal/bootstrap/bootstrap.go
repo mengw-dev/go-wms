@@ -78,7 +78,7 @@ func Migrate(db *gorm.DB, cfg *config.Config) error {
 	if err := Seed(db); err != nil {
 		return err
 	}
-	return SeedDemoAccount(db, cfg)
+	return SeedDemoAccounts(db, cfg)
 }
 
 // AutoMigrate 自动迁移表结构 + CHECK 约束。生产环境应使用 cmd/migrate。
@@ -312,83 +312,98 @@ func seedDemoData(db *gorm.DB) error {
 	})
 }
 
-// SeedDemoAccount 幂等创建公开演示账号。只有 WMS_DEMO_ENABLED=true 时才创建。
-func SeedDemoAccount(db *gorm.DB, cfg *config.Config) error {
+// demoPerms 演示账号权限集合（只读 + 业务操作 + 演示中心，无系统管理权限）。
+const demoPerms = "wms:basic,wms:inventory,wms:task," +
+	"wms:inbound:view,wms:inbound:create,wms:inbound:submit,wms:inbound:approve,wms:inbound:cancel,wms:inbound:receive,wms:inbound:putaway," +
+	"wms:outbound:view,wms:outbound:create,wms:outbound:submit,wms:outbound:approve,wms:outbound:cancel,wms:outbound:pick," +
+	"wms:stocktake:view,wms:stocktake:create,wms:stocktake:stocktake,wms:stocktake:approve,wms:stocktake:cancel,wms:demo"
+
+// SeedDemoAccounts 幂等创建多演示账号（demo1..demoN）：每个账号独占一个租户（10001+）
+// 与一份该租户内的演示角色（角色查询走租户过滤，必须与用户同租户），数据互不影响。
+// 同时禁用不在当前名单内的历史演示账号（数量收缩后多余的账号、旧的单 demo 账号），
+// 避免旧账号绕过按租户的会话锁。只有 WMS_DEMO_ENABLED=true 时才创建。
+func SeedDemoAccounts(db *gorm.DB, cfg *config.Config) error {
 	if cfg == nil {
 		return nil
 	}
-	if !cfg.Demo.Enabled {
-		// 关闭演示模式时同步禁用既有演示账号，避免旧账号绕过 DemoSession 中间件。
-		return db.Model(&sysmodel.SysUser{}).Where("username = ?", cfg.Demo.Username).
+	if !cfg.Demo.Enabled || cfg.Demo.Instances <= 0 {
+		// 关闭演示模式：禁用全部历史演示账号，避免旧账号绕过 DemoSession 中间件。
+		return db.Model(&sysmodel.SysUser{}).
+			Where("username = ? OR username REGEXP ?", "demo", "^demo[0-9]+$").
 			Update("status", 0).Error
-	}
-	const demoPerms = "wms:basic,wms:inventory,wms:task," +
-		"wms:inbound:view,wms:inbound:create,wms:inbound:submit,wms:inbound:approve,wms:inbound:cancel,wms:inbound:receive,wms:inbound:putaway," +
-		"wms:outbound:view,wms:outbound:create,wms:outbound:submit,wms:outbound:approve,wms:outbound:cancel,wms:outbound:pick," +
-		"wms:stocktake:view,wms:stocktake:create,wms:stocktake:stocktake,wms:stocktake:approve,wms:stocktake:cancel,wms:demo"
-
-	var role sysmodel.SysRole
-	err := db.Where("name = ?", "demo").First(&role).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		role = sysmodel.SysRole{Name: "demo", Perms: demoPerms, Remark: "公开业务体验账号，仅允许业务操作"}
-		if err := db.Create(&role).Error; err != nil {
-			return err
-		}
-	} else if err != nil {
-		return err
-	} else if err := db.Model(&role).Updates(map[string]any{
-		"perms": demoPerms, "remark": "公开业务体验账号，仅允许业务操作",
-	}).Error; err != nil {
-		return err
-	}
-
-	// 每个实例只保留当前配置的演示账号，避免改用户名后旧演示账号继续绕过单会话锁。
-	var linkedUserIDs []int64
-	if err := db.Model(&sysmodel.SysUserRole{}).Where("role_id = ?", role.ID).
-		Pluck("user_id", &linkedUserIDs).Error; err != nil {
-		return err
-	}
-	if len(linkedUserIDs) > 0 {
-		if err := db.Model(&sysmodel.SysUser{}).
-			Where("id IN ? AND username <> ?", linkedUserIDs, cfg.Demo.Username).
-			Update("status", 0).Error; err != nil {
-			return err
-		}
 	}
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(cfg.Demo.Password), bcrypt.DefaultCost)
 	if err != nil {
 		return err
 	}
-	var user sysmodel.SysUser
-	err = db.Where("username = ?", cfg.Demo.Username).First(&user).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		user = sysmodel.SysUser{
-			Username: cfg.Demo.Username, PasswordHash: string(hash), Nickname: "业务体验账号", Status: 1,
-		}
-		if err := db.Create(&user).Error; err != nil {
+	current := make([]string, 0, cfg.Demo.Instances)
+	for i := 1; i <= cfg.Demo.Instances; i++ {
+		username := cfg.Demo.AccountUsername(i)
+		tenantID := cfg.Demo.AccountTenantID(i)
+		nickname := fmt.Sprintf("演示访客%d", i)
+		current = append(current, username)
+
+		// 演示角色（每租户一份，幂等：存在则同步权限）
+		var role sysmodel.SysRole
+		err := db.Where("tenant_id = ? AND name = ?", tenantID, "demo").First(&role).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			role = sysmodel.SysRole{TenantID: tenantID, Name: "demo", Perms: demoPerms, Remark: "公开业务体验账号，仅允许业务操作"}
+			if err := db.Create(&role).Error; err != nil {
+				return err
+			}
+		} else if err != nil {
+			return err
+		} else if err := db.Model(&role).Updates(map[string]any{
+			"perms": demoPerms, "remark": "公开业务体验账号，仅允许业务操作",
+		}).Error; err != nil {
 			return err
 		}
-	} else if err != nil {
-		return err
-	} else if err := db.Model(&user).Updates(map[string]any{
-		"password_hash": string(hash), "nickname": "业务体验账号", "status": 1,
-	}).Error; err != nil {
-		return err
+
+		// 演示用户（幂等：存在则同步密码/昵称并启用）
+		var user sysmodel.SysUser
+		err = db.Where("tenant_id = ? AND username = ?", tenantID, username).First(&user).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			user = sysmodel.SysUser{
+				TenantID: tenantID, Username: username, PasswordHash: string(hash),
+				Nickname: nickname, Status: 1,
+			}
+			if err := db.Create(&user).Error; err != nil {
+				return err
+			}
+		} else if err != nil {
+			return err
+		} else if err := db.Model(&user).Updates(map[string]any{
+			"password_hash": string(hash), "nickname": nickname, "status": 1,
+		}).Error; err != nil {
+			return err
+		}
+
+		// 用户-角色关联（幂等）
+		var link sysmodel.SysUserRole
+		err = db.Where("user_id = ? AND role_id = ?", user.ID, role.ID).First(&link).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			if err := db.Create(&sysmodel.SysUserRole{TenantID: tenantID, UserID: user.ID, RoleID: role.ID}).Error; err != nil {
+				return err
+			}
+		} else if err != nil {
+			return err
+		}
 	}
 
-	var link sysmodel.SysUserRole
-	err = db.Where("user_id = ? AND role_id = ?", user.ID, role.ID).First(&link).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return db.Create(&sysmodel.SysUserRole{UserID: user.ID, RoleID: role.ID}).Error
-	}
-	return err
+	// 禁用不在当前名单内的历史演示账号（收缩数量后多余的 demoN+1.. 与旧 demo）
+	return db.Model(&sysmodel.SysUser{}).
+		Where("(username = ? OR username REGEXP ?) AND username NOT IN ?", "demo", "^demo[0-9]+$", current).
+		Update("status", 0).Error
 }
 
-// ResetDemoData 硬删除所有演示业务数据并重新写入默认演示数据。
+// ResetDemoData 硬删除指定租户的演示业务数据并重新写入默认演示数据。
 // 用户、角色、迁移记录和操作日志不会删除。
-func ResetDemoData(db *gorm.DB) error {
-	return db.Transaction(func(tx *gorm.DB) error {
+// 租户 ID 经 ctx 传播：删除和种子都由 GORM 租户回调自动限定在该租户内，
+// 各演示账号互不影响；tenantID <= 0（默认租户/平台旁路）时保持全局重置的旧行为。
+func ResetDemoData(ctx context.Context, db *gorm.DB, tenantID int64) error {
+	ctx = tenant.WithTenant(ctx, tenantID)
+	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		models := []any{
 			&taskmodel.Task{},
 			&outboundmodel.Allocation{},

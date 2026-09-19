@@ -1,4 +1,4 @@
-# 业务流程模拟与 k6 压测
+﻿# 业务流程模拟与 k6 压测
 
 这个页面用于把 WMS 的“正常操作”和“并发压测”讲清楚，适合演示给体验者、面试官或技术评审。
 
@@ -12,13 +12,13 @@
 
 ## 前置条件
 
-启动一个演示实例：
+启动服务：
 
 ```powershell
-.\scripts\windows\start-demo-a.ps1
+.\scripts\windows\start.ps1
 ```
 
-推荐使用 A 实例做压测，B 实例保留给体验者正常操作，避免压测数据影响演示体验。
+压测建议使用独立环境（如 `scripts/e2e.ps1` 启动的 e2e 环境）或专用的管理员账号，避免压测数据影响演示账号（demo1~demoN）的体验数据。
 
 确认 k6 可用：
 
@@ -31,7 +31,7 @@ k6 version
 ## 第一步：环境自检
 
 ```powershell
-.\scripts\windows\run-k6.ps1 -Mode check -BaseUrl http://127.0.0.1:18080
+.\scripts\windows\run-k6.ps1 -Mode check -BaseUrl http://127.0.0.1:8080
 ```
 
 脚本会自动找到：
@@ -45,7 +45,7 @@ k6 version
 ## 第二步：跑正常业务流程
 
 ```powershell
-.\scripts\windows\run-k6.ps1 -Mode flow -BaseUrl http://127.0.0.1:18080
+.\scripts\windows\run-k6.ps1 -Mode flow -BaseUrl http://127.0.0.1:8080
 ```
 
 脚本执行：
@@ -69,7 +69,7 @@ k6 version
 ## 第三步：出库冒烟
 
 ```powershell
-.\scripts\windows\run-k6.ps1 -Mode smoke -BaseUrl http://127.0.0.1:18080 -WarehouseId 21 -SkuId 69 -OrderQty 1
+.\scripts\windows\run-k6.ps1 -Mode smoke -BaseUrl http://127.0.0.1:8080 -WarehouseId 21 -SkuId 69 -OrderQty 1
 ```
 
 替换成第一步输出的真实 `WAREHOUSE_ID` 和 `SKU_ID`。
@@ -86,7 +86,7 @@ k6 version
 - 库存不足时整体回滚，不产生负库存
 
 ```powershell
-.\scripts\windows\run-k6.ps1 -Mode stress -BaseUrl http://127.0.0.1:18080 -WarehouseId 21 -SkuId 69
+.\scripts\windows\run-k6.ps1 -Mode stress -BaseUrl http://127.0.0.1:8080 -WarehouseId 21 -SkuId 69
 ```
 
 快速演练可以先缩小规模：
@@ -96,7 +96,7 @@ $env:STRESS_VUS = "5"
 $env:STRESS_RAMP = "2s"
 $env:STRESS_PEAK = "5s"
 $env:STRESS_DOWN = "2s"
-k6 run -e BASE_URL=http://127.0.0.1:18080 -e WAREHOUSE_ID=21 -e SKU_ID=69 scripts/k6/outbound-stress.js
+k6 run -e BASE_URL=http://127.0.0.1:8080 -e WAREHOUSE_ID=21 -e SKU_ID=69 scripts/k6/outbound-stress.js
 ```
 
 ### 真实波次拣货压测
@@ -104,7 +104,7 @@ k6 run -e BASE_URL=http://127.0.0.1:18080 -e WAREHOUSE_ID=21 -e SKU_ID=69 script
 40 个库位铺货，40 个拣货员逐件扫码，20 个抢单 VU 模拟重复扫码。默认数据规模较大，适合在专用压测实例运行：
 
 ```powershell
-.\scripts\windows\run-k6.ps1 -Mode wave -BaseUrl http://127.0.0.1:18080 -WarehouseId 21 -SkuId 69
+.\scripts\windows\run-k6.ps1 -Mode wave -BaseUrl http://127.0.0.1:8080 -WarehouseId 21 -SkuId 69
 ```
 
 该脚本最终重点核对：
@@ -126,7 +126,7 @@ k6 run -e BASE_URL=http://127.0.0.1:18080 -e WAREHOUSE_ID=21 -e SKU_ID=69 script
 在另一个终端运行时把 k6 指标写入 Prometheus：
 
 ```powershell
-.\scripts\windows\run-k6.ps1 -Mode stress -BaseUrl http://127.0.0.1:18080 -WarehouseId 21 -SkuId 69 -RemoteWrite
+.\scripts\windows\run-k6.ps1 -Mode stress -BaseUrl http://127.0.0.1:8080 -WarehouseId 21 -SkuId 69 -RemoteWrite
 ```
 
 同时打开 Grafana：

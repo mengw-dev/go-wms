@@ -1,4 +1,4 @@
-# WMS 仓储管理系统
+﻿# WMS 仓储管理系统
 
 [![CI](https://github.com/mengw-seek/wms-learn/actions/workflows/ci.yml/badge.svg)](https://github.com/mengw-seek/wms-learn/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -203,27 +203,18 @@ make compose-down
 
 项目内置独立演示模式，适合把项目临时开放给体验者或面试官体验：
 
-- 演示账号默认：`demo / demo123456`
+- 多演示账号（默认 5 个：`demo1` ~ `demo5`，密码均为 `demo123456`），每个账号独占一个租户，**数据完全隔离、互不影响**
+- 登录页“在线体验”按钮自动分配一个空闲演示账号；全部占用时提示稍后再试
+- 退出（或 5 分钟无操作）后，该账号的演示数据自动恢复初始状态，不影响其他演示账号
 - 右下角“业务流程中心”可选择一键完整流程、批量创建草稿或并发出库测试
 - 支持受控的并发出库测试，可配置并发张数和每张数量，展示库存锁、FIFO 和防超卖
 - “性能指标”页面实时展示 MySQL、Redis、连接池、协程和业务数量
 - “操作记录”页面展示演示账号的接口操作、单据、任务和库存流水
-- “重置数据”和“退出并重置”会恢复初始演示数据
-- 同一实例同一时间只允许一个演示会话，避免多个体验者互相覆盖数据
-- 支持 A/B 两套完全隔离的演示实例，端口和 Volume 均不共享
+- “重置数据”和“退出并重置”只影响当前演示账号的数据
 
-详细配置、双实例启动命令和体验者使用说明见 [docs/demo.md](docs/demo.md)。
+详细配置和体验者使用说明见 [docs/demo.md](docs/demo.md)。演示席位数通过 `WMS_DEMO_INSTANCES` 调整（1~99），调整后重启服务自动生效。
 
-一键启动两个独立演示实例：
-
-```powershell
-.\scripts\windows\start-demo-a.ps1
-.\scripts\windows\start-demo-b.ps1
-```
-
-默认地址分别为 `http://服务器IP:18081` 和 `http://服务器IP:18082`。启动脚本会在 `deploy/env.demo-a`、`deploy/env.demo-b` 中生成随机数据库密码和 JWT 密钥。
-
-> 演示模式不是多租户功能，不应承载真实业务数据。生产环境请按“安全配置”章节加固，并设置 `WMS_DEMO_ENABLED=false` 整体关闭演示模块：后端不再挂载任何 `/demo` 路由（直接 404），演示账号被禁用，登录页自动隐藏演示账号提示。
+> 演示模式基于多租户隔离实现（演示租户固定号段 10001+），不应承载真实业务数据。生产环境请按“安全配置”章节加固，并设置 `WMS_DEMO_ENABLED=false` 整体关闭演示模块：后端不再挂载任何 `/demo` 路由（直接 404），演示账号被禁用，登录页自动隐藏演示入口。
 
 ## 配置
 
@@ -246,8 +237,8 @@ make compose-down
 | `WMS_JWT_SECRET` | JWT 密钥，生产环境至少 32 字符 | 开发配置 |
 | `WMS_INTEGRATION_API_KEY` | 外部 OMS/ERP API Key | 开发占位值 |
 | `WMS_DEMO_ENABLED` | 演示模式总开关（账号 + `/demo` 接口，`false` 时路由完全不挂载） | `true` |
-| `WMS_DEMO_USERNAME` | 演示账号用户名 | `demo` |
-| `WMS_DEMO_PASSWORD` | 演示账号密码 | `demo123456` |
+| `WMS_DEMO_INSTANCES` | 演示账号数量（demo1~demoN，各自独立租户） | `5` |
+| `WMS_DEMO_PASSWORD` | 演示账号密码（所有演示账号共用） | `demo123456` |
 | `WMS_DEMO_SESSION_TTL_SECONDS` | 演示会话空闲超时秒数 | `300` |
 | `WMS_API_BIND` | API 端口绑定地址 | `127.0.0.1` |
 | `WMS_API_PORT` | API 宿主机映射端口 | `8080` |
@@ -353,19 +344,19 @@ Windows 一键运行（需要本机安装 `k6`）：
 
 ```powershell
 # 环境自检，输出 WAREHOUSE_ID / SKU_ID
-.\scripts\windows\run-k6.ps1 -Mode check -BaseUrl http://127.0.0.1:18080
+.\scripts\windows\run-k6.ps1 -Mode check -BaseUrl http://127.0.0.1:8080
 
 # 正常业务流程：入库→收货→上架→出库 FIFO→拣货→盘点
-.\scripts\windows\run-k6.ps1 -Mode flow -BaseUrl http://127.0.0.1:18080
+.\scripts\windows\run-k6.ps1 -Mode flow -BaseUrl http://127.0.0.1:8080
 
 # 出库冒烟
-.\scripts\windows\run-k6.ps1 -Mode smoke -BaseUrl http://127.0.0.1:18080 -WarehouseId 21 -SkuId 69
+.\scripts\windows\run-k6.ps1 -Mode smoke -BaseUrl http://127.0.0.1:8080 -WarehouseId 21 -SkuId 69
 
 # 并发出库压测
-.\scripts\windows\run-k6.ps1 -Mode stress -BaseUrl http://127.0.0.1:18080 -WarehouseId 21 -SkuId 69 -RemoteWrite
+.\scripts\windows\run-k6.ps1 -Mode stress -BaseUrl http://127.0.0.1:8080 -WarehouseId 21 -SkuId 69 -RemoteWrite
 
 # 真实波次拣货压测
-.\scripts\windows\run-k6.ps1 -Mode wave -BaseUrl http://127.0.0.1:18080 -WarehouseId 21 -SkuId 69
+.\scripts\windows\run-k6.ps1 -Mode wave -BaseUrl http://127.0.0.1:8080 -WarehouseId 21 -SkuId 69
 ```
 
 完整说明、压测指标和给体验者的演示顺序见 [docs/load-testing.md](docs/load-testing.md)。

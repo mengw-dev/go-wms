@@ -149,7 +149,7 @@ function Save-DotEnv {
         "WMS_GRAFANA_ADMIN_USER",
         "WMS_GRAFANA_ADMIN_PASSWORD",
         "WMS_DEMO_ENABLED",
-        "WMS_DEMO_USERNAME",
+        "WMS_DEMO_INSTANCES",
         "WMS_DEMO_PASSWORD",
         "WMS_DEMO_SESSION_TTL_SECONDS"
     )

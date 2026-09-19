@@ -69,11 +69,32 @@ type IntegrationConfig struct {
 	APIKey string `mapstructure:"api_key"`
 }
 
+// DemoConfig 演示模块配置：多演示账号（demo1..demoN），每个账号独占一个租户，
+// 数据互不影响；会话锁/数据重置均按租户隔离，退出（或超时）后该账号数据自动重置。
 type DemoConfig struct {
 	Enabled           bool   `mapstructure:"enabled"`
-	Username          string `mapstructure:"username"`
+	Instances         int    `mapstructure:"instances"` // 演示账号数量（默认 5，最大 99）
 	Password          string `mapstructure:"password"`
 	SessionTTLSeconds int    `mapstructure:"session_ttl_seconds"`
+}
+
+// demoTenantIDBase 演示租户固定号段起点：第 i 个演示账号租户 = 10000+i。
+// 与手工维护的业务租户（建议从 1 开始）错开，避免撞号。
+const demoTenantIDBase int64 = 10000
+
+// AccountUsername 第 i 个演示账号的用户名（i 从 1 开始，如 demo1、demo2）。
+func (d DemoConfig) AccountUsername(i int) string { return fmt.Sprintf("demo%d", i) }
+
+// AccountTenantID 第 i 个演示账号的租户 ID（10001、10002...）。
+func (d DemoConfig) AccountTenantID(i int) int64 { return demoTenantIDBase + int64(i) }
+
+// AccountIndex 由租户 ID 反查演示账号序号；非演示租户（含平台/业务租户）返回 0。
+func (d DemoConfig) AccountIndex(tenantID int64) int {
+	i := int(tenantID - demoTenantIDBase)
+	if i < 1 || i > d.Instances {
+		return 0
+	}
+	return i
 }
 
 // AIConfig AI 库存问答（智谱 BigModel，OpenAI 兼容接口）。
@@ -167,8 +188,11 @@ func Load(path string) (*Config, error) {
 	if !strings.HasPrefix(cfg.Metrics.Path, "/") {
 		cfg.Metrics.Path = "/" + cfg.Metrics.Path
 	}
-	if cfg.Demo.Username == "" {
-		cfg.Demo.Username = "demo"
+	if cfg.Demo.Instances <= 0 {
+		cfg.Demo.Instances = 5
+	}
+	if cfg.Demo.Instances > 99 {
+		return nil, fmt.Errorf("demo.instances must be between 1 and 99")
 	}
 	if cfg.Demo.Password == "" {
 		cfg.Demo.Password = "demo123456"

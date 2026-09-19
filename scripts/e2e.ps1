@@ -21,7 +21,7 @@ $env:WMS_API_BIND = "127.0.0.1"
 $env:WMS_API_PORT = "28080"
 $env:WMS_WEB_PORT = "$webPort"
 $env:WMS_DEMO_ENABLED = "true"
-$env:WMS_DEMO_USERNAME = "demo"
+$env:WMS_DEMO_INSTANCES = "5"
 $env:WMS_DEMO_PASSWORD = "demo123456"
 $env:E2E_BASE_URL = "http://127.0.0.1:$webPort"
 
