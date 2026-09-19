@@ -85,15 +85,15 @@ func New(cfg *config.Config, db *gorm.DB, rdb *redis.Client, metrics *observabil
 	invSvc := invsrvc.New(invrepo.New(), tm)
 
 	// basic：依赖 inventory 暴露的 StockChecker
-	basicSvc := basicservice.New(basicrepo.New(), tm, newRedisAdapter(rdb), invSvc)
+	basicSvc := basicservice.New(basicrepo.New(), tm, newRedisAdapter(rdb), invSvc, cfg.Limits)
 
 	// task：统一任务模块
 	taskSvc := taskservice.New(taskrepo.New(), no, db)
 
 	// inbound / outbound / stocktake：依赖 basic + inventory + task 接口
-	inboundSvc := inboundservice.New(inboundrepo.New(), tm, no, basicSvc, invSvc, taskSvc, cfg.Upload.Dir, lock.New(rdb))
-	outSvc := outservice.New(outrepo.New(), tm, no, basicSvc, invSvc, taskSvc)
-	stocktakeSvc := stocktakeservice.New(stocktakerepo.New(), tm, no, invSvc)
+	inboundSvc := inboundservice.New(inboundrepo.New(), tm, no, basicSvc, invSvc, taskSvc, cfg.Upload.Dir, lock.New(rdb), cfg.Limits)
+	outSvc := outservice.New(outrepo.New(), tm, no, basicSvc, invSvc, taskSvc, cfg.Limits)
+	stocktakeSvc := stocktakeservice.New(stocktakerepo.New(), tm, no, invSvc, cfg.Limits)
 	aiSvc := aiservice.New(cfg.AI, db, rdb)
 	demoSvc := demoservice.New(cfg, db, rdb, inboundSvc, outSvc, stocktakeSvc)
 

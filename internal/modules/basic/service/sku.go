@@ -10,6 +10,7 @@ import (
 	"gowms/internal/modules/basic/model"
 	sysmodel "gowms/internal/modules/system/model"
 	"gowms/internal/pkg/errcode"
+	"gowms/internal/pkg/quota"
 
 	"gorm.io/gorm"
 )
@@ -18,6 +19,10 @@ import (
 
 func (s *Service) CreateSKU(ctx context.Context, req *dto.SKUReq) error {
 	db := s.tm.DB()
+	// 公开租户配额：防止访客脚本批量建货品撑爆数据库。
+	if err := quota.Guard(ctx, db, &model.SKU{}, s.limits.MaxSKUs, 1, "货品"); err != nil {
+		return err
+	}
 	if _, err := s.repo.GetSKUByCode(ctx, db, req.Code); err == nil {
 		return errcode.SKUExist
 	}

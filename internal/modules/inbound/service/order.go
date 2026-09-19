@@ -12,6 +12,7 @@ import (
 	taskmodel "gowms/internal/modules/task/model"
 	"gowms/internal/pkg/errcode"
 	"gowms/internal/pkg/log"
+	"gowms/internal/pkg/quota"
 	"gowms/internal/pkg/snowflake"
 	"gowms/internal/pkg/tx"
 )
@@ -43,6 +44,10 @@ func (s *Service) CreateImportOrder(ctx context.Context, taskID string, rowNo in
 }
 
 func (s *Service) createOrder(ctx context.Context, req *dto.CreateOrderReq, operator string, decorate func(*model.ReceiptOrder)) (*model.ReceiptOrder, error) {
+	// 公开租户配额：手动建单与 Excel 导入建单都走这里，统一拦住无限写入。
+	if err := quota.Guard(ctx, s.tm.DB(), &model.ReceiptOrder{}, s.limits.MaxReceiptOrders, 1, "入库单"); err != nil {
+		return nil, err
+	}
 	if err := s.basic.ValidateWarehouse(ctx, req.WarehouseID); err != nil {
 		return nil, err
 	}

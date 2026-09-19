@@ -14,6 +14,7 @@ import (
 	taskmodel "gowms/internal/modules/task/model"
 	"gowms/internal/pkg/errcode"
 	"gowms/internal/pkg/log"
+	"gowms/internal/pkg/quota"
 	"gowms/internal/pkg/snowflake"
 	"gowms/internal/pkg/tx"
 )
@@ -21,6 +22,10 @@ import (
 // 出库单据生命周期与明细构建。
 
 func (s *Service) Create(ctx context.Context, req *dto.CreateOrderReq, operator string) (*model.ShipmentOrder, error) {
+	// 公开租户配额：手动建单与集成推送建单（CreateExternal 复用本方法）都在此拦截。
+	if err := quota.Guard(ctx, s.tm.DB(), &model.ShipmentOrder{}, s.limits.MaxShipmentOrders, 1, "出库单"); err != nil {
+		return nil, err
+	}
 	if err := s.basic.ValidateWarehouse(ctx, req.WarehouseID); err != nil {
 		return nil, err
 	}

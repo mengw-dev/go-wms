@@ -52,6 +52,20 @@ test('admin login, protected account and centered confirmation dialog', async ({
   await messageBox.getByRole('button', { name: '取消' }).click()
 })
 
+test('personal space entry lists persistent accounts and signs in with the chosen one', async ({ page }) => {
+  await page.goto('/login')
+  // "个人空间"入口：访客自己挑选持久账号（user1..userN），数据长期保留
+  await page.getByRole('button', { name: '个人空间' }).click()
+  const account = page.getByRole('button', { name: 'user1', exact: true })
+  await expect(account).toBeVisible()
+  await account.click()
+  await page.getByRole('button', { name: '进入 user1' }).click()
+  await expect(page).toHaveURL(/\/dashboard$/)
+  await expect(page.getByRole('heading', { name: /欢迎回来/ })).toBeVisible()
+  // 持久账号不含 wms:demo：不应出现演示中心的悬浮入口
+  await expect(page.getByText('业务流程中心')).toHaveCount(0)
+})
+
 test('limited user cannot see or open system management', async ({ browser, request }) => {
   const suffix = uniqueSuffix()
   const adminToken = await loginByApi(request)

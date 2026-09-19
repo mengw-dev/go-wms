@@ -15,6 +15,7 @@ import (
 	"gowms/internal/pkg/config"
 	"gowms/internal/pkg/errcode"
 	"gowms/internal/pkg/log"
+	"gowms/internal/pkg/tenant"
 )
 
 // 检索增强常量：控制快照数据量与提示词长度。
@@ -60,6 +61,9 @@ func (s *Service) Chat(ctx context.Context, userID int64, question string) (stri
 	}
 	if !s.allowRate(ctx, userID) {
 		return "", errcode.AIRateLimited
+	}
+	if !s.allowDailyQuota(ctx) {
+		return "", errcode.AIDailyLimited
 	}
 
 	snapshot, err := s.buildSnapshot(ctx, question)
@@ -114,6 +118,31 @@ func (s *Service) allowRate(ctx context.Context, userID int64) bool {
 		}
 	}
 	return n <= int64(s.cfg.RateLimitPerMin)
+}
+
+// allowDailyQuota 每租户每日提问上限：公开体验账号是共享账号（同一账号多人使用），
+// 仅按用户限流挡不住“一个人把当天额度刷完”，因此在租户维度再加一道日限额。
+// 平台租户（tenant_id<=0，如 admin）不限；Redis 不可用时降级放行。
+func (s *Service) allowDailyQuota(ctx context.Context) bool {
+	if s.rdb == nil || s.cfg.DailyLimitPerTenant <= 0 {
+		return true
+	}
+	tid := tenant.FromContext(ctx)
+	if tid <= 0 {
+		return true
+	}
+	// key 带日期：跨天自然失效，无需清理任务
+	key := fmt.Sprintf("wms:ai:daily:%d:%s", tid, time.Now().Format("20060102"))
+	n, err := s.rdb.Incr(ctx, key).Result()
+	if err != nil {
+		return true
+	}
+	if n == 1 {
+		if err := s.rdb.Expire(ctx, key, 24*time.Hour).Err(); err != nil {
+			_ = s.rdb.Del(ctx, key).Err()
+		}
+	}
+	return n <= int64(s.cfg.DailyLimitPerTenant)
 }
 
 // buildSnapshot 检索真实库存并格式化为紧凑文本（供 LLM 阅读）。

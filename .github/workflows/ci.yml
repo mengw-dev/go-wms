@@ -169,6 +169,9 @@ jobs:
       WMS_DEMO_INSTANCES: "5"
       WMS_DEMO_USERNAME: demo1
       WMS_DEMO_PASSWORD: demo123456
+      WMS_PERSONAL_ENABLED: "true"
+      WMS_PERSONAL_INSTANCES: "3"
+      WMS_PERSONAL_PASSWORD: user123456
       E2E_BASE_URL: http://127.0.0.1:5173
     steps:
       - uses: actions/checkout@v4

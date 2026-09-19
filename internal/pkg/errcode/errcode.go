@@ -180,6 +180,8 @@ var (
 	DemoDataMissing     = New(70004, "演示基础数据不存在，请先重置演示数据")
 	DemoPickTaskMissing = New(70005, "没有可拣货任务，请先执行并发出库审核分配测试")
 	DemoStockNotEnough  = New(70006, "可用库存不足，请先点击“一键补货入库”或减少并发数量")
+	PersonalDisabled    = New(70007, "个人体验账号未开放")
+	PersonalNotFound    = New(70008, "个人体验账号不存在")
 )
 
 // AI 问答 80000+
@@ -187,4 +189,10 @@ var (
 	AIServiceUnavailable = New(80001, "AI 服务暂时不可用，请稍后重试")
 	AIRateLimited        = New(80002, "提问过于频繁，请稍后再试")
 	AIKeyMissing         = New(80003, "AI 服务未配置，请联系管理员设置 API Key")
+	AIDailyLimited       = New(80004, "今日 AI 问答额度已用完，请明天再试")
+)
+
+// 数据量配额 90000+（公开租户防刷：达到上限后拒绝继续写入）
+var (
+	QuotaExceeded = New(90001, "数据量已达上限，请先清理部分数据后再操作")
 )

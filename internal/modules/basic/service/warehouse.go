@@ -6,11 +6,16 @@ import (
 	"gowms/internal/modules/basic/dto"
 	"gowms/internal/modules/basic/model"
 	"gowms/internal/pkg/errcode"
+	"gowms/internal/pkg/quota"
 )
 
 // 仓库业务。
 
 func (s *Service) CreateWarehouse(ctx context.Context, req *dto.WarehouseReq) error {
+	// 公开租户配额：防止访客无限建仓库。
+	if err := quota.Guard(ctx, s.tm.DB(), &model.Warehouse{}, s.limits.MaxWarehouses, 1, "仓库"); err != nil {
+		return err
+	}
 	if _, err := s.repo.GetWarehouseByCode(ctx, s.tm.DB(), req.Code); err == nil {
 		return errcode.WarehouseExist
 	}

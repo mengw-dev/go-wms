@@ -66,7 +66,7 @@ func httpStatus(code int) int {
 		return http.StatusLocked
 	case errcode.AIServiceUnavailable.Code, errcode.AIKeyMissing.Code:
 		return http.StatusServiceUnavailable
-	case errcode.AIRateLimited.Code:
+	case errcode.AIRateLimited.Code, errcode.AIDailyLimited.Code:
 		return http.StatusTooManyRequests
 	case errcode.Internal.Code:
 		return http.StatusInternalServerError

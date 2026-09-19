@@ -35,10 +35,11 @@ func (a *App) NewRouter() (*gin.Engine, error) {
 	// 版本与特性开关：根路径供运维/探针使用，/api/v1 供前端公开查询（免登录）。
 	versionHandler := func(c *gin.Context) {
 		response.OK(c, gin.H{
-			"version":      version.Version,
-			"commit":       version.Commit,
-			"build_time":   version.BuildTime,
-			"demo_enabled": a.Config.Demo.Enabled,
+			"version":          version.Version,
+			"commit":           version.Commit,
+			"build_time":       version.BuildTime,
+			"demo_enabled":     a.Config.Demo.Enabled,
+			"personal_enabled": a.Config.Personal.Enabled,
 		})
 	}
 	r.GET("/version", versionHandler)
@@ -77,6 +78,10 @@ func (a *App) NewRouter() (*gin.Engine, error) {
 		auth.Use(middleware.DemoSession(a.DemoService))
 		a.DemoHandler.RegisterRoutes(auth, a.SystemAPI)
 	}
+
+	// 持久体验账号（user1..userN）：登录页"个人空间"，数据长期保留。
+	// 与演示模块相互独立：关闭演示模式时个人账号仍可单独开放。
+	a.DemoHandler.RegisterPersonalPublicRoutes(pub)
 
 	return r, nil
 }

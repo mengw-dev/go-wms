@@ -82,6 +82,11 @@ func main() {
 			logger.Error("sync demo accounts failed", "err", err)
 			os.Exit(1)
 		}
+		// 同步持久体验账号（user1..userN）：首次创建时种入初始数据，之后数据长期保留。
+		if err := bootstrap.SeedPersonalAccounts(db, cfg); err != nil {
+			logger.Error("sync personal accounts failed", "err", err)
+			os.Exit(1)
+		}
 	}
 	rdb := bootstrap.InitRedis(cfg)
 

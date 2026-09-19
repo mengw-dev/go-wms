@@ -18,6 +18,8 @@ type Config struct {
 	Metrics     MetricsConfig     `mapstructure:"metrics"`
 	Integration IntegrationConfig `mapstructure:"integration"`
 	Demo        DemoConfig        `mapstructure:"demo"`
+	Personal    PersonalConfig    `mapstructure:"personal"`
+	Limits      LimitsConfig      `mapstructure:"limits"`
 	AI          AIConfig          `mapstructure:"ai"`
 }
 
@@ -97,6 +99,51 @@ func (d DemoConfig) AccountIndex(tenantID int64) int {
 	return i
 }
 
+// PersonalConfig 持久体验账号（user1..userN）：与演示账号同构——每个账号独占一个租户、
+// 数据互不影响、共用固定密码；区别是数据长期保留（不参与演示重置），
+// 且登录页由访客自行挑选账号，而不是像演示账号那样自动随机分配。
+type PersonalConfig struct {
+	Enabled   bool   `mapstructure:"enabled"`
+	Instances int    `mapstructure:"instances"` // 账号数量（默认 3，最大 99）
+	Password  string `mapstructure:"password"`  // 所有持久账号共用密码（公开体验账号）
+}
+
+// personalTenantIDBase 持久账号租户号段起点：第 i 个账号租户 = 20000+i。
+// 与演示账号（10001+）、手工维护的业务租户（建议从 1 开始）错开，避免撞号。
+const personalTenantIDBase int64 = 20000
+
+// AccountUsername 第 i 个持久账号的用户名（user1、user2...）。
+// 注意：不能以 demo 开头，否则会被演示会话中间件误判为演示账号。
+func (p PersonalConfig) AccountUsername(i int) string { return fmt.Sprintf("user%d", i) }
+
+// AccountTenantID 第 i 个持久账号的租户 ID（20001、20002...）。
+func (p PersonalConfig) AccountTenantID(i int) int64 { return personalTenantIDBase + int64(i) }
+
+// AccountNickname 第 i 个持久账号的昵称。
+func (p PersonalConfig) AccountNickname(i int) string { return fmt.Sprintf("个人体验%d", i) }
+
+// AccountIndexByUsername 由用户名反查持久账号序号；非持久账号返回 0。
+func (p PersonalConfig) AccountIndexByUsername(username string) int {
+	for i := 1; i <= p.Instances; i++ {
+		if username == p.AccountUsername(i) {
+			return i
+		}
+	}
+	return 0
+}
+
+// LimitsConfig 公开租户（演示/持久账号）的数据量配额：防止访客无限写入撑爆数据库。
+// 仅对租户 ID > 0 的租户生效；平台租户（tenant_id=0，如 admin）不受限。
+type LimitsConfig struct {
+	MaxReceiptOrders   int `mapstructure:"max_receipt_orders"`   // 每租户入库单上限
+	MaxShipmentOrders  int `mapstructure:"max_shipment_orders"`  // 每租户出库单上限
+	MaxStocktakeOrders int `mapstructure:"max_stocktake_orders"` // 每租户盘点单上限
+	MaxSKUs            int `mapstructure:"max_skus"`             // 每租户货品上限
+	MaxWarehouses      int `mapstructure:"max_warehouses"`       // 每租户仓库上限
+	MaxLocations       int `mapstructure:"max_locations"`        // 每租户库位上限
+	MaxImportRows      int `mapstructure:"max_import_rows"`      // 单次 Excel 导入行数上限
+}
+
 // AIConfig AI 库存问答（智谱 BigModel，OpenAI 兼容接口）。
 // APIKey 只从环境变量 ZHIPU_API_KEY 读取，绝不写入配置文件；
 // 模型名可被 ZHIPU_LLM_MODEL / ZHIPU_LLM_BACKUP_MODEL 环境变量覆盖。
@@ -107,6 +154,9 @@ type AIConfig struct {
 	TimeoutSeconds  int    `mapstructure:"timeout_seconds"`
 	BaseURL         string `mapstructure:"base_url"`
 	RateLimitPerMin int    `mapstructure:"rate_limit_per_min"` // 每用户每分钟提问上限（Redis 计数）
+	// DailyLimitPerTenant 每租户每日提问上限：共享体验账号下防止单个访客刷爆当天额度；
+	// 仅对租户 ID > 0 生效（平台租户不限），Redis 不可用时降级放行。
+	DailyLimitPerTenant int `mapstructure:"daily_limit_per_tenant"`
 }
 
 // Load 读取 configs/config.yaml；支持环境变量覆盖（WMS_ 前缀，. 分隔，如 WMS_MYSQL_DSN）。
@@ -200,6 +250,38 @@ func Load(path string) (*Config, error) {
 	if cfg.Demo.SessionTTLSeconds <= 0 {
 		cfg.Demo.SessionTTLSeconds = 300
 	}
+	// 持久体验账号（user1..userN）：与演示账号同构但数据不清零。
+	if cfg.Personal.Instances <= 0 {
+		cfg.Personal.Instances = 3
+	}
+	if cfg.Personal.Instances > 99 {
+		return nil, fmt.Errorf("personal.instances must be between 1 and 99")
+	}
+	if cfg.Personal.Password == "" {
+		cfg.Personal.Password = "user123456"
+	}
+	// 公开租户数据量配额：未配置时给保守默认值，防止访客无限写入。
+	if cfg.Limits.MaxReceiptOrders <= 0 {
+		cfg.Limits.MaxReceiptOrders = 200
+	}
+	if cfg.Limits.MaxShipmentOrders <= 0 {
+		cfg.Limits.MaxShipmentOrders = 200
+	}
+	if cfg.Limits.MaxStocktakeOrders <= 0 {
+		cfg.Limits.MaxStocktakeOrders = 100
+	}
+	if cfg.Limits.MaxSKUs <= 0 {
+		cfg.Limits.MaxSKUs = 500
+	}
+	if cfg.Limits.MaxWarehouses <= 0 {
+		cfg.Limits.MaxWarehouses = 20
+	}
+	if cfg.Limits.MaxLocations <= 0 {
+		cfg.Limits.MaxLocations = 500
+	}
+	if cfg.Limits.MaxImportRows <= 0 {
+		cfg.Limits.MaxImportRows = 200
+	}
 	// AI 段：密钥只走环境变量（ZHIPU_ 前缀与 viper 的 WMS_ 前缀不同，需单独读取）
 	cfg.AI.APIKey = strings.TrimSpace(os.Getenv("ZHIPU_API_KEY"))
 	if v := strings.TrimSpace(os.Getenv("ZHIPU_LLM_MODEL")); v != "" {
@@ -222,6 +304,9 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.AI.RateLimitPerMin <= 0 {
 		cfg.AI.RateLimitPerMin = 10
+	}
+	if cfg.AI.DailyLimitPerTenant <= 0 {
+		cfg.AI.DailyLimitPerTenant = 100
 	}
 	return &cfg, nil
 }

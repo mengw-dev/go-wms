@@ -51,6 +51,26 @@ demo:
   password: "demo123456" # 所有演示账号共用密码
   session_ttl_seconds: 300
 
+# 持久体验账号（普通账号）总开关：
+#   true  = 提供 user1..userN（各占独立租户 20001+），登录页"个人空间"由访客自行挑选账号；
+#           数据长期保留（不重置、无会话锁），权限与演示账号一致但不含 wms:demo
+#   false = 禁用（生产默认；公开演示部署用 WMS_PERSONAL_ENABLED=true 覆盖）
+personal:
+  enabled: false
+  instances: 3            # 账号数量：user1~user3（可与演示账号并存）
+  password: "user123456"  # 所有持久账号共用密码（公开体验账号，请勿存放敏感数据）
+
+# 公开租户数据量配额：演示/持久账号都对外开放，防止访客无限写入把数据库塞爆。
+# 仅对租户 ID > 0 生效；平台租户（admin，tenant_id=0）不受限。
+limits:
+  max_receipt_orders: 200    # 每租户入库单上限
+  max_shipment_orders: 200   # 每租户出库单上限
+  max_stocktake_orders: 100  # 每租户盘点单上限
+  max_skus: 500              # 每租户货品上限
+  max_warehouses: 20         # 每租户仓库上限
+  max_locations: 500         # 每租户库位上限
+  max_import_rows: 200       # 单次 Excel 导入行数上限
+
 # AI 库存问答（智谱 BigModel，OpenAI 兼容接口）
 # 注意：api_key 不写入本文件——只从环境变量 ZHIPU_API_KEY 读取（放在 .env，已 gitignore）；
 # 模型名可用环境变量 ZHIPU_LLM_MODEL / ZHIPU_LLM_BACKUP_MODEL 覆盖下面的默认值。
@@ -60,3 +80,4 @@ ai:
   timeout_seconds: 30                 # 单次 LLM 调用超时
   base_url: "https://open.bigmodel.cn/api/paas/v4"
   rate_limit_per_min: 10              # 每用户每分钟提问上限（Redis 计数；Redis 不可用时自动放行）
+  daily_limit_per_tenant: 100         # 每租户每日提问上限（共享体验账号防“一个人刷爆当天额度”；平台租户不限）

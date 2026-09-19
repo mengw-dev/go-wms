@@ -108,6 +108,18 @@ try {
         $values["WMS_DEMO_SESSION_TTL_SECONDS"] = "300"
         $changed = $true
     }
+    if (-not $values.Contains("WMS_PERSONAL_ENABLED") -or [string]::IsNullOrWhiteSpace($values["WMS_PERSONAL_ENABLED"])) {
+        $values["WMS_PERSONAL_ENABLED"] = "true"
+        $changed = $true
+    }
+    if (-not $values.Contains("WMS_PERSONAL_INSTANCES") -or [string]::IsNullOrWhiteSpace($values["WMS_PERSONAL_INSTANCES"])) {
+        $values["WMS_PERSONAL_INSTANCES"] = "3"
+        $changed = $true
+    }
+    if (-not $values.Contains("WMS_PERSONAL_PASSWORD") -or [string]::IsNullOrWhiteSpace($values["WMS_PERSONAL_PASSWORD"])) {
+        $values["WMS_PERSONAL_PASSWORD"] = "user123456"
+        $changed = $true
+    }
     if ($changed -or -not (Test-Path -LiteralPath $envPath)) {
         Save-DotEnv -Path $envPath -Values $values
         Write-Ok "Generated or repaired .env with secure random values"
@@ -144,6 +156,9 @@ try {
     Write-Host "Pass: admin123" -ForegroundColor Green
     if ($values["WMS_DEMO_ENABLED"] -eq "true") {
         Write-Host "Demo: demo1..demo$($values['WMS_DEMO_INSTANCES']) / $($values['WMS_DEMO_PASSWORD']) (each account isolated by tenant)" -ForegroundColor Green
+    }
+    if ($values["WMS_PERSONAL_ENABLED"] -eq "true") {
+        Write-Host "Personal: user1..user$($values['WMS_PERSONAL_INSTANCES']) / $($values['WMS_PERSONAL_PASSWORD']) (persistent data, kept after logout)" -ForegroundColor Green
     }
     Write-Host "Integration API Key is stored in .env as WMS_INTEGRATION_API_KEY." -ForegroundColor Green
     Write-Host "Change the default password immediately after first login." -ForegroundColor Yellow

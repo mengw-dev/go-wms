@@ -9,6 +9,7 @@ import (
 	"gowms/internal/modules/basic/model"
 	"gowms/internal/pkg/errcode"
 	"gowms/internal/pkg/log"
+	"gowms/internal/pkg/quota"
 
 	"gorm.io/gorm"
 )
@@ -44,6 +45,10 @@ func (s *Service) BatchCreateLocations(ctx context.Context, req *dto.LocationBat
 	}
 	if len(list) == 0 {
 		return 0, nil
+	}
+	// 公开租户配额：批量建库位是本模块一次能写入最多数据的入口，按「存量 + 本批」校验。
+	if err := quota.Guard(ctx, s.tm.DB(), &model.Location{}, s.limits.MaxLocations, len(list), "库位"); err != nil {
+		return 0, err
 	}
 	if err := s.repo.CreateLocationBatch(ctx, s.tm.DB(), list); err != nil {
 		return 0, err

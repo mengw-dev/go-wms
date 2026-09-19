@@ -55,6 +55,8 @@ export interface VersionResult {
   build_time?: string
   /** 演示模块总开关（demo.enabled），false 时前端隐藏演示相关入口 */
   demo_enabled?: boolean
+  /** 持久体验账号开关（personal.enabled），false 时前端隐藏"个人空间"入口 */
+  personal_enabled?: boolean
 }
 
 // ---------- 系统：用户 ----------

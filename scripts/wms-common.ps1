@@ -151,7 +151,10 @@ function Save-DotEnv {
         "WMS_DEMO_ENABLED",
         "WMS_DEMO_INSTANCES",
         "WMS_DEMO_PASSWORD",
-        "WMS_DEMO_SESSION_TTL_SECONDS"
+        "WMS_DEMO_SESSION_TTL_SECONDS",
+        "WMS_PERSONAL_ENABLED",
+        "WMS_PERSONAL_INSTANCES",
+        "WMS_PERSONAL_PASSWORD"
     )
 
     $lines = New-Object System.Collections.Generic.List[string]

@@ -35,6 +35,41 @@ func (h *Handler) claimAccount(c *gin.Context) {
 	response.OK(c, info)
 }
 
+// RegisterPersonalPublicRoutes 免登录路由：登录页"个人空间"列出并领取持久体验账号（user1..userN）。
+// 与演示账号的区别：账号由访客自己挑选，数据长期保留，不重置、不占会话锁。
+func (h *Handler) RegisterPersonalPublicRoutes(pub *gin.RouterGroup) {
+	if !h.svc.PersonalEnabled() {
+		return
+	}
+	pub.GET("/personal/accounts", h.listPersonalAccounts)
+	pub.POST("/personal/login", h.claimPersonalAccount)
+}
+
+func (h *Handler) listPersonalAccounts(c *gin.Context) {
+	list, err := h.svc.PersonalAccounts()
+	if err != nil {
+		response.Fail(c, err)
+		return
+	}
+	response.OK(c, list)
+}
+
+func (h *Handler) claimPersonalAccount(c *gin.Context) {
+	var req struct {
+		Username string `json:"username" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Fail(c, errcode.ParamError)
+		return
+	}
+	info, err := h.svc.ClaimPersonalAccount(req.Username)
+	if err != nil {
+		response.Fail(c, err)
+		return
+	}
+	response.OK(c, info)
+}
+
 func (h *Handler) RegisterRoutes(auth *gin.RouterGroup, checker middleware.PermsChecker) {
 	g := auth.Group("/demo")
 	perm := middleware.Permission(checker, "wms:demo")

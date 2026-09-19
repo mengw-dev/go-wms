@@ -23,6 +23,9 @@ $env:WMS_WEB_PORT = "$webPort"
 $env:WMS_DEMO_ENABLED = "true"
 $env:WMS_DEMO_INSTANCES = "5"
 $env:WMS_DEMO_PASSWORD = "demo123456"
+$env:WMS_PERSONAL_ENABLED = "true"
+$env:WMS_PERSONAL_INSTANCES = "3"
+$env:WMS_PERSONAL_PASSWORD = "user123456"
 $env:E2E_BASE_URL = "http://127.0.0.1:$webPort"
 
 function Wait-WebReady {

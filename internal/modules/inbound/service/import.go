@@ -17,6 +17,7 @@ import (
 	"gowms/internal/pkg/concurrent"
 	"gowms/internal/pkg/errcode"
 	"gowms/internal/pkg/log"
+	"gowms/internal/pkg/quota"
 	"gowms/internal/pkg/snowflake"
 	"gowms/internal/pkg/tenant"
 )
@@ -143,6 +144,11 @@ func (s *Service) doImport(ctx context.Context, t *model.ImportTask) (total, suc
 	header := rows[0]
 	if len(header) < 3 || header[0] != "仓库编码" || header[1] != "货品编码" || header[2] != "预期数量" {
 		return 0, 0, 1, errcode.ImportTemplateHeader.Msg
+	}
+	// 单次导入行数上限：Excel 是一次能塞最多数据的入口，必须在逐行建单前拦住。
+	if err := quota.GuardImportRows(ctx, len(rows)-1, s.limits.MaxImportRows); err != nil {
+		e := errcode.From(err)
+		return len(rows) - 1, 0, len(rows) - 1, e.Msg
 	}
 	var failMsgs []string
 	for i, row := range rows[1:] {
