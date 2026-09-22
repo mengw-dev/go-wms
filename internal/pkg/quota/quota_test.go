@@ -29,7 +29,7 @@ func newQuotaTestDB(t *testing.T) *gorm.DB {
 	return db
 }
 
-func seedSKU(t *testing.T, db *gorm.DB, ctx context.Context, code string) {
+func seedSKU(ctx context.Context, t *testing.T, db *gorm.DB, code string) {
 	t.Helper()
 	// 条码在租户内唯一（uk_sku_barcode），测试数据按编码派生避免撞唯一键
 	if err := db.WithContext(ctx).Create(&basicmodel.SKU{Code: code, Barcode: "BC-" + code, Name: "货品 " + code}).Error; err != nil {
@@ -41,8 +41,8 @@ func seedSKU(t *testing.T, db *gorm.DB, ctx context.Context, code string) {
 func TestGuardBlocksWhenLimitReached(t *testing.T) {
 	db := newQuotaTestDB(t)
 	ctx := tenant.WithTenant(context.Background(), 1001)
-	seedSKU(t, db, ctx, "SKU-1")
-	seedSKU(t, db, ctx, "SKU-2")
+	seedSKU(ctx, t, db, "SKU-1")
+	seedSKU(ctx, t, db, "SKU-2")
 
 	err := Guard(ctx, db, &basicmodel.SKU{}, 2, 1, "货品")
 	var bizErr *errcode.Error
@@ -59,7 +59,7 @@ func TestGuardCountsWithinTenantOnly(t *testing.T) {
 	db := newQuotaTestDB(t)
 	ctxA := tenant.WithTenant(context.Background(), 1001)
 	ctxB := tenant.WithTenant(context.Background(), 2002)
-	seedSKU(t, db, ctxA, "SKU-A")
+	seedSKU(ctxA, t, db, "SKU-A")
 
 	if err := Guard(ctxB, db, &basicmodel.SKU{}, 1, 1, "货品"); err != nil {
 		t.Fatalf("tenant B has its own quota, got %v", err)
@@ -73,7 +73,7 @@ func TestGuardSkipsPlatformAndUnlimited(t *testing.T) {
 		t.Fatalf("platform tenant should bypass quota, got %v", err)
 	}
 	ctx := tenant.WithTenant(context.Background(), 1001)
-	seedSKU(t, db, ctx, "SKU-X")
+	seedSKU(ctx, t, db, "SKU-X")
 	if err := Guard(ctx, db, &basicmodel.SKU{}, 0, 10, "货品"); err != nil {
 		t.Fatalf("limit<=0 means unlimited, got %v", err)
 	}

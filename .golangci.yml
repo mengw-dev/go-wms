@@ -20,9 +20,21 @@ linters:
     - wastedassign   # 无效赋值
     - copyloopvar    # Go 1.22+ 循环变量语义
     - nilerr         # 错误变量被改成 nil 的常见误用
+    - revive         # 选择性启用命名、context 与错误规则
   settings:
     staticcheck:
       checks: ["all"]
+    revive:
+      rules:
+        - name: var-naming
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: error-strings
+        - name: error-naming
+        - name: if-return
+        - name: increment-decrement
+        - name: range-val-in-closure
+        - name: unreachable-code
   exclusions:
     rules:
       # 测试文件中允许忽略返回值（如构造测试数据）

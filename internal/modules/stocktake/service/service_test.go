@@ -53,7 +53,7 @@ func stocktakeFixture(t *testing.T) (*Service, *gorm.DB, context.Context, *invmo
 	return New(repository.New(), tm, orderno.New(nil), invservice.New(invrepo.New(), tm), config.LimitsConfig{}), db, ctx, inventory
 }
 
-func countedOrder(t *testing.T, s *Service, ctx context.Context, actual int) (*model.StocktakeOrder, int64) {
+func countedOrder(ctx context.Context, t *testing.T, s *Service, actual int) (*model.StocktakeOrder, int64) {
 	t.Helper()
 	o, err := s.Create(ctx, &dto.CreateOrderReq{WarehouseID: 1}, "test")
 	if err != nil {
@@ -88,7 +88,7 @@ func TestStocktakeRollbackAndMissingInventory(t *testing.T) {
 	for _, missing := range []bool{false, true} {
 		t.Run(map[bool]string{false: "allocated stock", true: "deleted stock"}[missing], func(t *testing.T) {
 			s, db, ctx, inventory := stocktakeFixture(t)
-			o, id := countedOrder(t, s, ctx, 0)
+			o, id := countedOrder(ctx, t, s, 0)
 			want := errcode.AdjustNotAllow
 			if missing {
 				if err := db.WithContext(ctx).Delete(inventory).Error; err != nil {
@@ -119,7 +119,7 @@ func TestStocktakeRollbackAndMissingInventory(t *testing.T) {
 
 func TestStocktakeDifferenceUsesLockedCurrentStock(t *testing.T) {
 	s, db, ctx, inventory := stocktakeFixture(t)
-	o, _ := countedOrder(t, s, ctx, 8)
+	o, _ := countedOrder(ctx, t, s, 8)
 	blocker := db.WithContext(ctx).Begin()
 	if blocker.Error != nil {
 		t.Fatal(blocker.Error)

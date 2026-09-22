@@ -28,10 +28,7 @@ func (r *Repository) LockBasicReferences(tx *gorm.DB, warehouseID, locationID, s
 		return err
 	}
 	var sku basicmodel.SKU
-	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&sku, skuID).Error; err != nil {
-		return err
-	}
-	return nil
+	return tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&sku, skuID).Error
 }
 
 // FindFIFOForUpdate 悲观行锁 + FIFO：锁定指定仓库/SKU 下所有可分配库存行，并联查库位编码。

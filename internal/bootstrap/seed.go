@@ -227,10 +227,6 @@ func seedDemoData(db *gorm.DB) error {
 			Status: outboundmodel.OrderShipped, Remark: "演示数据：客户订单 CUST20260915001",
 			ExpectedQty: 30, PickedQty: 30, CreatedBy: "system-seed",
 		}
-		if err := tx.Create(&outboundOrder).Error; err != nil {
-			return err
-		}
-
-		return nil
+		return tx.Create(&outboundOrder).Error
 	})
 }

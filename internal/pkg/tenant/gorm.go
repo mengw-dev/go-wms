@@ -34,10 +34,7 @@ func RegisterGORMCallbacks(db *gorm.DB) error {
 	if err := db.Callback().Update().Before("gorm:update").Register("tenant:scope_update", tenantWhereScope); err != nil {
 		return err
 	}
-	if err := db.Callback().Delete().Before("gorm:delete").Register("tenant:scope_delete", tenantWhereScope); err != nil {
-		return err
-	}
-	return nil
+	return db.Callback().Delete().Before("gorm:delete").Register("tenant:scope_delete", tenantWhereScope)
 }
 
 // tenantField 返回该表模型上的 TenantID 字段描述；无该列返回 nil。
