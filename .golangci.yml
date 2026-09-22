@@ -3,12 +3,23 @@ version: "2"
 linters:
   default: none
   enable:
-    - errcheck      # 未检查的错误返回
-    - govet         # 官方 vet 检查
-    - staticcheck   # 静态分析（含 dead code 常见模式）
-    - unused        # 未使用的代码
-    - ineffassign   # 无效赋值
-    - misspell      # 拼写错误
+    - errcheck       # 未检查的错误返回
+    - govet          # 官方 vet 检查
+    - staticcheck    # 静态分析（含 dead code 常见模式）
+    - unused         # 未使用的代码
+    - ineffassign    # 无效赋值
+    - misspell       # 拼写错误
+    - bodyclose      # HTTP 响应体关闭
+    - errorlint      # errors.Is/As 与错误包装
+    - gocritic       # 可读性和常见错误模式
+    - gosec          # 常见安全配置问题
+    - rowserrcheck   # 检查 sql.Rows.Err()
+    - sqlclosecheck  # 检查 database/sql 资源关闭
+    - unconvert      # 无意义类型转换
+    - unparam        # 永远收到的相同参数/未使用参数
+    - wastedassign   # 无效赋值
+    - copyloopvar    # Go 1.22+ 循环变量语义
+    - nilerr         # 错误变量被改成 nil 的常见误用
   settings:
     staticcheck:
       checks: ["all"]

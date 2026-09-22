@@ -155,3 +155,23 @@ func TestSeedPersonalAccountsDoesNotTouchDemoAccounts(t *testing.T) {
 		t.Fatalf("disabling personal accounts must not disable demo1, got %+v (err=%v)", demo, err)
 	}
 }
+
+func TestSeedPersonalAccountsDoesNotDisableSameNameInOtherTenant(t *testing.T) {
+	db := newPersonalTestDB(t)
+	if err := db.Create(&sysmodel.SysUser{
+		TenantID: 42, Username: "user9", PasswordHash: "unused", Status: 1,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	off := &config.Config{Personal: config.PersonalConfig{Enabled: false, Instances: 3}}
+	if err := SeedPersonalAccounts(db, off); err != nil {
+		t.Fatal(err)
+	}
+	var user sysmodel.SysUser
+	if err := db.Where("tenant_id = ? AND username = ?", 42, "user9").First(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	if user.Status != 1 {
+		t.Fatal("closing personal accounts disabled an ordinary tenant account with the same name")
+	}
+}

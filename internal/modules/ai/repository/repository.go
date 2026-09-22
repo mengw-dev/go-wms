@@ -15,9 +15,9 @@ import (
 
 // tenantScope 别名联查手动注入租户条件：Table("... i") 的裸表查询无 Schema，
 // 全局 GORM 回调不会注入 tenant_id，必须在此显式过滤（AI 快照绝不能跨租户泄漏）。
-func tenantScope(ctx context.Context, q *gorm.DB, alias string) *gorm.DB {
-	if tid := tenant.FromContext(ctx); tid > 0 {
-		return q.Where(alias+".tenant_id = ?", tid)
+func tenantScope(ctx context.Context, q *gorm.DB) *gorm.DB {
+	if tid, scoped := tenant.Scope(ctx); scoped {
+		return q.Where("i.tenant_id = ?", tid)
 	}
 	return q
 }
@@ -108,7 +108,7 @@ func (r *Repository) ListWarehouseStock(ctx context.Context) ([]WarehouseStock, 
 		Select("w.code AS warehouse_code, w.name AS warehouse_name, "+
 			"SUM(i.stock_quantity) AS stock_qty, SUM(i.available_quantity) AS available_qty").
 		Joins("JOIN wms_warehouse w ON w.id = i.warehouse_id AND w.deleted_at IS NULL AND w.tenant_id = i.tenant_id").
-		Where("i.deleted_at IS NULL"), "i")
+		Where("i.deleted_at IS NULL"))
 	err := q.Group("w.id, w.code, w.name").
 		Order("stock_qty DESC").
 		Scan(&list).Error
@@ -122,7 +122,7 @@ func (r *Repository) TopSKUByStock(ctx context.Context, limit int) ([]SKUStock, 
 		Select("s.code AS sku_code, s.name AS sku_name, s.spec, s.unit, "+
 			"SUM(i.stock_quantity) AS stock_qty, SUM(i.available_quantity) AS available_qty").
 		Joins("JOIN wms_sku s ON s.id = i.sku_id AND s.deleted_at IS NULL AND s.tenant_id = i.tenant_id").
-		Where("i.deleted_at IS NULL"), "i")
+		Where("i.deleted_at IS NULL"))
 	err := q.Group("s.id, s.code, s.name, s.spec, s.unit").
 		Order("stock_qty DESC").
 		Limit(limit).
@@ -137,7 +137,7 @@ func (r *Repository) LowAvailableSKU(ctx context.Context, threshold, limit int) 
 		Select("s.code AS sku_code, s.name AS sku_name, s.spec, s.unit, "+
 			"SUM(i.stock_quantity) AS stock_qty, SUM(i.available_quantity) AS available_qty").
 		Joins("JOIN wms_sku s ON s.id = i.sku_id AND s.deleted_at IS NULL AND s.tenant_id = i.tenant_id").
-		Where("i.deleted_at IS NULL AND i.available_quantity <= ?", threshold), "i")
+		Where("i.deleted_at IS NULL AND i.available_quantity <= ?", threshold))
 	err := q.Group("s.id, s.code, s.name, s.spec, s.unit").
 		Order("available_qty ASC").
 		Limit(limit).
@@ -164,7 +164,7 @@ func (r *Repository) ListInventoryDetailBySKU(ctx context.Context, skuID int64, 
 			"i.stock_quantity AS stock_qty, i.available_quantity AS available_qty, i.allocated_quantity AS allocated_qty").
 		Joins("JOIN wms_warehouse w ON w.id = i.warehouse_id AND w.deleted_at IS NULL AND w.tenant_id = i.tenant_id").
 		Joins("JOIN wms_location l ON l.id = i.location_id AND l.deleted_at IS NULL AND l.tenant_id = i.tenant_id").
-		Where("i.deleted_at IS NULL AND i.sku_id = ?", skuID), "i")
+		Where("i.deleted_at IS NULL AND i.sku_id = ?", skuID))
 	err := q.Order("i.available_quantity DESC, i.id ASC").
 		Limit(limit).
 		Scan(&list).Error

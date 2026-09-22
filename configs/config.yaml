@@ -41,6 +41,7 @@ metrics:
 
 integration:
   api_key: "change-this-integration-api-key"
+  tenant_id: 0 # 该 API Key 固定访问的租户，0 只访问平台数据，不跨租户。
 
 # 演示模块总开关（特性门控）：
 #   true  = 提供多演示账号（demo1..demoN，各占独立租户）+ 业务流程中心 /demo 接口

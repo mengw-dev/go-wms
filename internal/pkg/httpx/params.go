@@ -53,13 +53,13 @@ func OptionalQueryID(c *gin.Context, name string) (int64, bool) {
 }
 
 // QueryInt 解析查询整数并限制范围。
-func QueryInt(c *gin.Context, name string, defaultValue, min, max int) (int, bool) {
+func QueryInt(c *gin.Context, name string, defaultValue, minValue, maxValue int) (int, bool) {
 	raw := strings.TrimSpace(c.Query(name))
 	if raw == "" {
 		return defaultValue, true
 	}
 	value, err := strconv.Atoi(raw)
-	if err != nil || value < min || value > max {
+	if err != nil || value < minValue || value > maxValue {
 		response.Fail(c, errcode.ParamError)
 		return 0, false
 	}

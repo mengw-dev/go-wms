@@ -7,6 +7,7 @@ import (
 	jwtlib "github.com/golang-jwt/jwt/v5"
 )
 
+// Claims is the authenticated identity carried by a signed access token.
 type Claims struct {
 	UserID       int64  `json:"uid"`
 	Username     string `json:"username"`
@@ -15,8 +16,10 @@ type Claims struct {
 	jwtlib.RegisteredClaims
 }
 
+// ErrInvalidToken reports a malformed, expired, or otherwise invalid token.
 var ErrInvalidToken = errors.New("invalid token")
 
+// Generate signs an access token for the supplied user and tenant identity.
 func Generate(secret string, expire time.Duration, userID int64, username string, tokenVersion int, tenantID int64) (string, error) {
 	claims := Claims{
 		UserID:       userID,
@@ -32,15 +35,16 @@ func Generate(secret string, expire time.Duration, userID int64, username string
 	return jwtlib.NewWithClaims(jwtlib.SigningMethodHS256, claims).SignedString([]byte(secret))
 }
 
+// Parse verifies the signature and required claims before returning identity data.
 func Parse(secret, tokenStr string) (*Claims, error) {
-	token, err := jwtlib.ParseWithClaims(tokenStr, &Claims{}, func(t *jwtlib.Token) (any, error) {
+	token, err := jwtlib.ParseWithClaims(tokenStr, &Claims{}, func(_ *jwtlib.Token) (any, error) {
 		return []byte(secret), nil
-	}, jwtlib.WithValidMethods([]string{"HS256"}))
+	}, jwtlib.WithValidMethods([]string{"HS256"}), jwtlib.WithIssuer("gowms"), jwtlib.WithExpirationRequired())
 	if err != nil {
 		return nil, ErrInvalidToken
 	}
 	claims, ok := token.Claims.(*Claims)
-	if !ok || !token.Valid {
+	if !ok || !token.Valid || claims.UserID <= 0 || claims.TokenVersion <= 0 || claims.TenantID < 0 {
 		return nil, ErrInvalidToken
 	}
 	return claims, nil

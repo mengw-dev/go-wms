@@ -104,31 +104,31 @@ func (c *Client) Chat(ctx context.Context, model string, messages []Message, tem
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	data, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	responseBody, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
 		return "", fmt.Errorf("zhipu api read body: %w", err)
 	}
 
-	var parsed chatResponse
-	if err := json.Unmarshal(data, &parsed); err != nil {
-		return "", &APIError{HTTPStatus: resp.StatusCode, Message: strings.TrimSpace(string(data))}
+	var response chatResponse
+	if err := json.Unmarshal(responseBody, &response); err != nil {
+		return "", &APIError{HTTPStatus: resp.StatusCode, Message: strings.TrimSpace(string(responseBody))}
 	}
 	if resp.StatusCode != http.StatusOK {
 		apiErr := &APIError{HTTPStatus: resp.StatusCode}
-		if parsed.Error != nil {
-			apiErr.Code = parsed.Error.Code
-			apiErr.Message = parsed.Error.Message
+		if response.Error != nil {
+			apiErr.Code = response.Error.Code
+			apiErr.Message = response.Error.Message
 		}
 		return "", apiErr
 	}
-	if parsed.Error != nil {
+	if response.Error != nil {
 		// 个别错误在 HTTP 200 下仍返回 error 字段
-		return "", &APIError{HTTPStatus: resp.StatusCode, Code: parsed.Error.Code, Message: parsed.Error.Message}
+		return "", &APIError{HTTPStatus: resp.StatusCode, Code: response.Error.Code, Message: response.Error.Message}
 	}
-	if len(parsed.Choices) == 0 {
+	if len(response.Choices) == 0 {
 		return "", fmt.Errorf("zhipu api empty choices")
 	}
-	content := strings.TrimSpace(parsed.Choices[0].Message.Content)
+	content := strings.TrimSpace(response.Choices[0].Message.Content)
 	if content == "" {
 		return "", fmt.Errorf("zhipu api empty content")
 	}

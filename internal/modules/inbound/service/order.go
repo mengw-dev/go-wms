@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 
 	"gorm.io/gorm"
 
@@ -23,19 +24,25 @@ func (s *Service) Create(ctx context.Context, req *dto.CreateOrderReq, operator 
 	return s.createOrder(ctx, req, operator, nil)
 }
 
-func (s *Service) CreateImportOrder(ctx context.Context, taskID string, rowNo int, req *dto.CreateOrderReq, operator string) (*model.ReceiptOrder, error) {
+func (s *Service) createImportOrder(ctx context.Context, task *model.ImportTask, rowNo int, req *dto.CreateOrderReq, operator string) (*model.ReceiptOrder, error) {
 	// 幂等检查：该行已建单则直接复用（补偿重跑）
-	if o, err := s.repo.GetByImportRow(ctx, s.tm.DB(), taskID, rowNo); err == nil {
+	if o, err := s.repo.GetByImportRow(ctx, s.tm.DB(), task.TaskID, rowNo); err == nil {
 		return o, nil
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err
 	}
-	o, err := s.createOrder(ctx, req, operator, func(order *model.ReceiptOrder) {
+	o, err := s.createOrder(ctx, req, operator, func(db *gorm.DB, order *model.ReceiptOrder) error {
+		if err := s.repo.LockImportExecution(db, task); err != nil {
+			return err
+		}
 		order.Source = model.SourceImport
-		order.ImportTaskID = &taskID
+		order.ImportTaskID = &task.TaskID
 		order.ImportRow = rowNo
+		return nil
 	})
 	if err != nil {
 		// 幂等兜底：重跑/并发撞 uk_import_row 唯一键，回读已有单视为成功
-		if exist, gerr := s.repo.GetByImportRow(ctx, s.tm.DB(), taskID, rowNo); gerr == nil {
+		if exist, gerr := s.repo.GetByImportRow(ctx, s.tm.DB(), task.TaskID, rowNo); gerr == nil {
 			return exist, nil
 		}
 		return nil, err
@@ -43,7 +50,7 @@ func (s *Service) CreateImportOrder(ctx context.Context, taskID string, rowNo in
 	return o, nil
 }
 
-func (s *Service) createOrder(ctx context.Context, req *dto.CreateOrderReq, operator string, decorate func(*model.ReceiptOrder)) (*model.ReceiptOrder, error) {
+func (s *Service) createOrder(ctx context.Context, req *dto.CreateOrderReq, operator string, prepare func(*gorm.DB, *model.ReceiptOrder) error) (*model.ReceiptOrder, error) {
 	// 公开租户配额：手动建单与 Excel 导入建单都走这里，统一拦住无限写入。
 	if err := quota.Guard(ctx, s.tm.DB(), &model.ReceiptOrder{}, s.limits.MaxReceiptOrders, 1, "入库单"); err != nil {
 		return nil, err
@@ -63,10 +70,12 @@ func (s *Service) createOrder(ctx context.Context, req *dto.CreateOrderReq, oper
 			WarehouseID: req.WarehouseID, Status: model.OrderDraft,
 			Source: model.SourceManual, Remark: req.Remark, ExpectedQty: expected, CreatedBy: operator,
 		}
-		if decorate != nil {
-			decorate(order)
-		}
 		err = s.tm.Tx(ctx, func(tx *gorm.DB) error {
+			if prepare != nil {
+				if err := prepare(tx, order); err != nil {
+					return err
+				}
+			}
 			return s.repo.CreateOrder(tx, order, details)
 		})
 		if err == nil {
@@ -84,7 +93,10 @@ func (s *Service) Update(ctx context.Context, id int64, req *dto.CreateOrderReq)
 	return s.tm.Tx(ctx, func(tx *gorm.DB) error {
 		o, err := s.repo.GetOrderForUpdate(tx, id)
 		if err != nil {
-			return errcode.OrderNotFound
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return errcode.OrderNotFound
+			}
+			return err
 		}
 		if o.Status != model.OrderDraft {
 			return errcode.OrderStatusWrong
@@ -117,7 +129,10 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 	return s.tm.Tx(ctx, func(tx *gorm.DB) error {
 		o, err := s.repo.GetOrderForUpdate(tx, id)
 		if err != nil {
-			return errcode.OrderNotFound
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return errcode.OrderNotFound
+			}
+			return err
 		}
 		if o.Status != model.OrderDraft {
 			return errcode.OrderStatusWrong
@@ -130,12 +145,14 @@ func (s *Service) Submit(ctx context.Context, id int64) error {
 	return s.transit(ctx, id, model.OrderDraft, model.OrderSubmitted)
 }
 
-func (s *Service) Approve(ctx context.Context, id int64, operator string) error {
-	_ = operator // 预留：任务创建暂不记录操作人，保持与其他生命周期方法签名一致
+func (s *Service) Approve(ctx context.Context, id int64, _ string) error {
 	return s.tm.Tx(ctx, func(tx *gorm.DB) error {
 		o, err := s.repo.GetOrderForUpdate(tx, id)
 		if err != nil {
-			return errcode.OrderNotFound
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return errcode.OrderNotFound
+			}
+			return err
 		}
 		if o.Status != model.OrderSubmitted {
 			return errcode.OrderStatusWrong
@@ -169,7 +186,10 @@ func (s *Service) Cancel(ctx context.Context, id int64) error {
 	return s.tm.Tx(ctx, func(tx *gorm.DB) error {
 		o, err := s.repo.GetOrderForUpdate(tx, id)
 		if err != nil {
-			return errcode.OrderNotFound
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return errcode.OrderNotFound
+			}
+			return err
 		}
 		// 状态机校验：DRAFT/SUBMITTED/APPROVED 可取消；RECEIVING 之后不可取消
 		if !model.CanTransit(o.Status, model.OrderCancelled) {
@@ -191,7 +211,10 @@ func (s *Service) batchOper(ctx context.Context, ids []int64, fn func(context.Co
 	for _, id := range ids {
 		if err := fn(ctx, id); err != nil {
 			resp.Fail++
-			resp.Errors = append(resp.Errors, dto.BatchItemError{ID: id, Msg: err.Error()})
+			if errcode.From(err).Code == errcode.Internal.Code {
+				log.WithContext(ctx).Error("batch operation failed", "order_id", id, "err", err)
+			}
+			resp.Errors = append(resp.Errors, dto.BatchItemError{ID: id, Msg: errcode.From(err).Msg})
 			continue
 		}
 		resp.Success++
@@ -239,7 +262,10 @@ func (s *Service) transit(ctx context.Context, id int64, from, to model.OrderSta
 	return s.tm.Tx(ctx, func(tx *gorm.DB) error {
 		o, err := s.repo.GetOrderForUpdate(tx, id)
 		if err != nil {
-			return errcode.OrderNotFound
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return errcode.OrderNotFound
+			}
+			return err
 		}
 		// 状态机校验：查转换表，非法流转（跨状态、终态再转、重复提交）一律拒绝
 		if !model.CanTransit(o.Status, to) || o.Status != from {

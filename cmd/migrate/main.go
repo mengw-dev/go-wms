@@ -1,3 +1,4 @@
+// Command migrate applies versioned database migrations and optional seed data.
 package main
 
 import (
@@ -20,7 +21,19 @@ import (
 	"gowms/migrations"
 )
 
+var errUsage = errors.New("invalid command usage")
+
 func main() {
+	if err := run(); err != nil {
+		if errors.Is(err, errUsage) {
+			usage()
+			os.Exit(2)
+		}
+		log.Fatal(err)
+	}
+}
+
+func run() error {
 	configPath := flag.String("config", "configs/config.yaml", "path to config file")
 	seed := flag.Bool("seed", false, "seed initial admin after up")
 	steps := flag.Int("steps", 1, "number of migrations for down")
@@ -28,86 +41,102 @@ func main() {
 	flag.Parse()
 
 	if flag.NArg() != 1 {
-		usage()
+		return errUsage
 	}
 
 	cfg, err := config.Load(*configPath)
 	if err != nil {
-		log.Fatalf("load config: %v", err)
+		return fmt.Errorf("load config: %w", err)
 	}
 	sqlDB, err := sql.Open("mysql", migrationDSN(cfg.MySQL.DSN))
 	if err != nil {
-		log.Fatalf("open mysql: %v", err)
+		return fmt.Errorf("open mysql: %w", err)
 	}
+	defer func() {
+		if err := sqlDB.Close(); err != nil {
+			log.Printf("close mysql: %v", err)
+		}
+	}()
 	if err := waitForMySQL(sqlDB, 90*time.Second); err != nil {
-		log.Fatalf("ping mysql: %v", err)
+		return fmt.Errorf("ping mysql: %w", err)
 	}
-	defer sqlDB.Close()
 
 	driver, err := migratemysql.WithInstance(sqlDB, &migratemysql.Config{})
 	if err != nil {
-		log.Fatalf("create migration driver: %v", err)
+		return fmt.Errorf("create migration driver: %w", err)
 	}
 	source, err := iofs.New(migrations.FS, "versions")
 	if err != nil {
-		log.Fatalf("open embedded migrations: %v", err)
+		return fmt.Errorf("open embedded migrations: %w", err)
 	}
 	m, err := migrate.NewWithInstance("iofs", source, "mysql", driver)
 	if err != nil {
-		log.Fatalf("init migrator: %v", err)
+		return fmt.Errorf("init migrator: %w", err)
 	}
 
 	switch flag.Arg(0) {
 	case "up":
 		if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
-			log.Fatalf("migrate up: %v", err)
+			return fmt.Errorf("migrate up: %w", err)
 		}
 		if *seed {
-			db, err := bootstrap.InitDB(cfg)
-			if err != nil {
-				log.Fatalf("init seed database: %v", err)
-			}
-			sqlSeedDB, err := db.DB()
-			if err != nil {
-				log.Fatalf("get seed sql db: %v", err)
-			}
-			defer sqlSeedDB.Close()
-			if err := bootstrap.Seed(db); err != nil {
-				log.Fatalf("seed: %v", err)
-			}
-			if err := bootstrap.SeedDemoAccounts(db, cfg); err != nil {
-				log.Fatalf("seed demo accounts: %v", err)
-			}
-			if err := bootstrap.SeedPersonalAccounts(db, cfg); err != nil {
-				log.Fatalf("seed personal accounts: %v", err)
+			if err := seedData(cfg); err != nil {
+				return err
 			}
 		}
 		log.Println("migration up completed")
 	case "down":
 		if *steps <= 0 {
-			log.Fatal("steps must be positive")
+			return errors.New("steps must be positive")
 		}
 		if err := m.Steps(-*steps); err != nil && !errors.Is(err, migrate.ErrNoChange) {
-			log.Fatalf("migrate down: %v", err)
+			return fmt.Errorf("migrate down: %w", err)
 		}
 		log.Printf("migration down completed: %d steps", *steps)
 	case "force":
 		if *forceVersion < 0 {
-			log.Fatal("version must be non-negative")
+			return errors.New("version must be non-negative")
 		}
 		if err := m.Force(*forceVersion); err != nil {
-			log.Fatalf("migrate force: %v", err)
+			return fmt.Errorf("migrate force: %w", err)
 		}
 		log.Printf("migration version forced to %d", *forceVersion)
 	case "version":
 		version, dirty, err := m.Version()
 		if err != nil {
-			log.Fatalf("migration version: %v", err)
+			return fmt.Errorf("migration version: %w", err)
 		}
 		fmt.Printf("version=%d dirty=%t\n", version, dirty)
 	default:
-		usage()
+		return fmt.Errorf("unknown command %q: %w", flag.Arg(0), errUsage)
 	}
+	return nil
+}
+
+func seedData(cfg *config.Config) error {
+	db, err := bootstrap.InitDB(cfg)
+	if err != nil {
+		return fmt.Errorf("init seed database: %w", err)
+	}
+	sqlSeedDB, err := db.DB()
+	if err != nil {
+		return fmt.Errorf("get seed sql db: %w", err)
+	}
+	defer func() {
+		if err := sqlSeedDB.Close(); err != nil {
+			log.Printf("close seed database: %v", err)
+		}
+	}()
+	if err := bootstrap.Seed(db); err != nil {
+		return fmt.Errorf("seed: %w", err)
+	}
+	if err := bootstrap.SeedDemoAccounts(db, cfg); err != nil {
+		return fmt.Errorf("seed demo accounts: %w", err)
+	}
+	if err := bootstrap.SeedPersonalAccounts(db, cfg); err != nil {
+		return fmt.Errorf("seed personal accounts: %w", err)
+	}
+	return nil
 }
 
 func usage() {
@@ -115,18 +144,17 @@ func usage() {
 	fmt.Fprintln(os.Stderr, "examples:")
 	fmt.Fprintln(os.Stderr, "  migrate -seed up")
 	fmt.Fprintln(os.Stderr, "  migrate -steps 1 down")
-	os.Exit(2)
 }
 
 func waitForMySQL(db *sql.DB, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	var lastErr error
 	for {
-		if err := db.Ping(); err == nil {
+		err := db.Ping()
+		if err == nil {
 			return nil
-		} else {
-			lastErr = err
 		}
+		lastErr = err
 		if time.Now().After(deadline) {
 			return lastErr
 		}

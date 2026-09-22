@@ -83,7 +83,6 @@ async function submit() {
   submitting.value = true
   try {
     await pickOutboundTask(form.task_id, {
-      task_id: form.task_id,
       qty: form.qty,
       batch_no: scannedBatch || undefined,
     })

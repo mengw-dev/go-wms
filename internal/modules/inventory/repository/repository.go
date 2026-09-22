@@ -6,6 +6,7 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
+	basicmodel "gowms/internal/modules/basic/model"
 	"gowms/internal/modules/inventory/model"
 	"gowms/internal/pkg/dbutil"
 	"gowms/internal/pkg/tenant"
@@ -15,17 +16,37 @@ type Repository struct{}
 
 func New() *Repository { return &Repository{} }
 
+// LockBasicReferences 按固定顺序锁定库存依赖的仓库、库位和 SKU。
+// 基础资料删除使用同一行锁协议，避免“删除校验通过后又创建库存”的并发窗口。
+func (r *Repository) LockBasicReferences(tx *gorm.DB, warehouseID, locationID, skuID int64) error {
+	var warehouse basicmodel.Warehouse
+	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&warehouse, warehouseID).Error; err != nil {
+		return err
+	}
+	var location basicmodel.Location
+	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&location, locationID).Error; err != nil {
+		return err
+	}
+	var sku basicmodel.SKU
+	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&sku, skuID).Error; err != nil {
+		return err
+	}
+	return nil
+}
+
 // FindFIFOForUpdate 悲观行锁 + FIFO：锁定指定仓库/SKU 下所有可分配库存行，并联查库位编码。
 // 防超卖第一层：FOR UPDATE 行锁串行化同一库存行的并发分配。
 func (r *Repository) FindFIFOForUpdate(tx *gorm.DB, warehouseID, skuID int64) ([]*model.Inventory, error) {
 	var list []*model.Inventory
-	err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+	q := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
 		Table("wms_inventory i").
 		Select("i.*, l.code AS location_code").
-		Joins("JOIN wms_location l ON l.id = i.location_id").
-		Where("i.warehouse_id = ? AND i.sku_id = ? AND i.available_quantity > 0", warehouseID, skuID).
-		Order("i.stock_in_time ASC, i.id ASC").
-		Scan(&list).Error
+		Joins("JOIN wms_location l ON l.id = i.location_id AND l.tenant_id = i.tenant_id AND l.deleted_at IS NULL").
+		Where("i.warehouse_id = ? AND i.sku_id = ? AND i.available_quantity > 0 AND i.deleted_at IS NULL", warehouseID, skuID)
+	if tenantID, scoped := tenant.Scope(tx.Statement.Context); scoped {
+		q = q.Where("i.tenant_id = ?", tenantID)
+	}
+	err := q.Order("i.stock_in_time ASC, i.id ASC").Scan(&list).Error
 	return list, err
 }
 
@@ -58,48 +79,61 @@ func (r *Repository) Create(tx *gorm.DB, inv *model.Inventory) error {
 
 // IncreaseQty 累加库存（行已锁定，直接更新）。
 func (r *Repository) IncreaseQty(tx *gorm.DB, id int64, stock, available int) error {
-	return tx.Exec("UPDATE wms_inventory SET stock_quantity = stock_quantity + ?, available_quantity = available_quantity + ? WHERE id = ?",
-		stock, available, id).Error
+	return tx.Model(&model.Inventory{}).Where("id = ?", id).Updates(map[string]any{
+		"stock_quantity":     gorm.Expr("stock_quantity + ?", stock),
+		"available_quantity": gorm.Expr("available_quantity + ?", available),
+		"version":            gorm.Expr("version + 1"),
+	}).Error
 }
 
 // AllocateQty 防超卖第二层：WHERE 条件防护，affected rows = 0 判定并发冲突。
 // UPDATE ... SET available = available - ?, allocated = allocated + ? WHERE id = ? AND available >= ?
 func (r *Repository) AllocateQty(tx *gorm.DB, id int64, qty int) (int64, error) {
-	res := tx.Exec(
-		"UPDATE wms_inventory SET available_quantity = available_quantity - ?, allocated_quantity = allocated_quantity + ?, version = version + 1 WHERE id = ? AND available_quantity >= ?",
-		qty, qty, id, qty)
+	res := tx.Model(&model.Inventory{}).Where("id = ? AND available_quantity >= ? AND ? > 0", id, qty, qty).
+		Updates(map[string]any{
+			"available_quantity": gorm.Expr("available_quantity - ?", qty),
+			"allocated_quantity": gorm.Expr("allocated_quantity + ?", qty),
+			"version":            gorm.Expr("version + 1"),
+		})
 	return res.RowsAffected, res.Error
 }
 
 // ShipQty 发货扣减：WHERE stock >= ? AND allocated >= ? 双条件防负。
 func (r *Repository) ShipQty(tx *gorm.DB, id int64, qty int) (int64, error) {
-	res := tx.Exec(
-		"UPDATE wms_inventory SET stock_quantity = stock_quantity - ?, allocated_quantity = allocated_quantity - ?, version = version + 1 WHERE id = ? AND stock_quantity >= ? AND allocated_quantity >= ?",
-		qty, qty, id, qty, qty)
+	res := tx.Model(&model.Inventory{}).Where("id = ? AND stock_quantity >= ? AND allocated_quantity >= ? AND ? > 0", id, qty, qty, qty).
+		Updates(map[string]any{
+			"stock_quantity":     gorm.Expr("stock_quantity - ?", qty),
+			"allocated_quantity": gorm.Expr("allocated_quantity - ?", qty),
+			"version":            gorm.Expr("version + 1"),
+		})
 	return res.RowsAffected, res.Error
 }
 
 // ReleaseQty 取消分配：WHERE allocated >= ?。
 func (r *Repository) ReleaseQty(tx *gorm.DB, id int64, qty int) (int64, error) {
-	res := tx.Exec(
-		"UPDATE wms_inventory SET available_quantity = available_quantity + ?, allocated_quantity = allocated_quantity - ?, version = version + 1 WHERE id = ? AND allocated_quantity >= ?",
-		qty, qty, id, qty)
+	res := tx.Model(&model.Inventory{}).Where("id = ? AND allocated_quantity >= ? AND ? > 0", id, qty, qty).
+		Updates(map[string]any{
+			"available_quantity": gorm.Expr("available_quantity + ?", qty),
+			"allocated_quantity": gorm.Expr("allocated_quantity - ?", qty),
+			"version":            gorm.Expr("version + 1"),
+		})
 	return res.RowsAffected, res.Error
 }
 
 // AdjustNegative 盘点调减：调减量不允许吃掉已分配库存，要求 available >= 减量。
 func (r *Repository) AdjustNegative(tx *gorm.DB, id int64, qty int) (int64, error) {
-	res := tx.Exec(
-		"UPDATE wms_inventory SET stock_quantity = stock_quantity - ?, available_quantity = available_quantity - ?, version = version + 1 WHERE id = ? AND available_quantity >= ?",
-		qty, qty, id, qty)
+	res := tx.Model(&model.Inventory{}).Where("id = ? AND available_quantity >= ? AND ? > 0", id, qty, qty).
+		Updates(map[string]any{
+			"stock_quantity":     gorm.Expr("stock_quantity - ?", qty),
+			"available_quantity": gorm.Expr("available_quantity - ?", qty),
+			"version":            gorm.Expr("version + 1"),
+		})
 	return res.RowsAffected, res.Error
 }
 
 // AdjustPositive 盘点调增（行已锁定）。
 func (r *Repository) AdjustPositive(tx *gorm.DB, id int64, qty int) error {
-	return tx.Exec(
-		"UPDATE wms_inventory SET stock_quantity = stock_quantity + ?, available_quantity = available_quantity + ?, version = version + 1 WHERE id = ?",
-		qty, qty, id).Error
+	return r.IncreaseQty(tx, id, qty, qty)
 }
 
 // InsertTrans 同事务写流水（只增不改）。
@@ -131,8 +165,14 @@ func (r *Repository) List(ctx context.Context, db *gorm.DB, f *QueryFilter) ([]*
 		q = q.Where("sku_id = ?", f.SKUID)
 	}
 	if f.SKUKeyword != "" {
-		q = q.Where("sku_id IN (SELECT id FROM wms_sku WHERE deleted_at IS NULL AND (code LIKE ? OR name LIKE ? OR barcode LIKE ?))",
-			"%"+dbutil.LikePattern(f.SKUKeyword)+"%", "%"+dbutil.LikePattern(f.SKUKeyword)+"%", "%"+dbutil.LikePattern(f.SKUKeyword)+"%")
+		keyword := "%" + dbutil.LikePattern(f.SKUKeyword) + "%"
+		if tenantID, scoped := tenant.Scope(ctx); scoped {
+			q = q.Where("sku_id IN (SELECT id FROM wms_sku WHERE tenant_id = ? AND deleted_at IS NULL AND (code LIKE ? OR name LIKE ? OR barcode LIKE ?))",
+				tenantID, keyword, keyword, keyword)
+		} else {
+			q = q.Where("sku_id IN (SELECT id FROM wms_sku WHERE deleted_at IS NULL AND (code LIKE ? OR name LIKE ? OR barcode LIKE ?))",
+				keyword, keyword, keyword)
+		}
 	}
 	if f.InStockOnly {
 		q = q.Where("stock_quantity > 0")
@@ -152,14 +192,14 @@ func (r *Repository) SummaryBySKU(ctx context.Context, db *gorm.DB, warehouseID 
 	q := db.WithContext(ctx).Table("wms_inventory i").
 		Joins("JOIN wms_sku s ON s.id = i.sku_id AND s.deleted_at IS NULL AND s.tenant_id = i.tenant_id").
 		Where("i.deleted_at IS NULL")
-	if tid := tenant.FromContext(ctx); tid > 0 {
+	if tid, scoped := tenant.Scope(ctx); scoped {
 		q = q.Where("i.tenant_id = ?", tid)
 	}
 	if warehouseID > 0 {
 		q = q.Where("i.warehouse_id = ?", warehouseID)
 	}
 	var total int64
-	if err := q.Count(&total).Error; err != nil {
+	if err := q.Session(&gorm.Session{}).Distinct("i.sku_id").Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 	var list []map[string]any
@@ -192,21 +232,22 @@ func (r *Repository) ListTrans(ctx context.Context, db *gorm.DB, inventoryID int
 	return list, total, err
 }
 
-// HasStockByWarehouse / HasStockByLocation 删除校验。
+// HasStockByWarehouse / HasStockByLocation / HasStockBySKU 删除校验。
+// 只要存在库存行就拒绝删除，即使当前数量为零；库存行本身仍是历史引用。
 func (r *Repository) HasStockByWarehouse(ctx context.Context, db *gorm.DB, warehouseID int64) (bool, error) {
 	var n int64
-	err := db.WithContext(ctx).Model(&model.Inventory{}).Where("warehouse_id = ? AND stock_quantity > 0", warehouseID).Count(&n).Error
+	err := db.WithContext(ctx).Model(&model.Inventory{}).Where("warehouse_id = ?", warehouseID).Count(&n).Error
 	return n > 0, err
 }
 
 func (r *Repository) HasStockByLocation(ctx context.Context, db *gorm.DB, locationID int64) (bool, error) {
 	var n int64
-	err := db.WithContext(ctx).Model(&model.Inventory{}).Where("location_id = ? AND stock_quantity > 0", locationID).Count(&n).Error
+	err := db.WithContext(ctx).Model(&model.Inventory{}).Where("location_id = ?", locationID).Count(&n).Error
 	return n > 0, err
 }
 
 func (r *Repository) HasStockBySKU(ctx context.Context, db *gorm.DB, skuID int64) (bool, error) {
 	var n int64
-	err := db.WithContext(ctx).Model(&model.Inventory{}).Where("sku_id = ? AND stock_quantity > 0", skuID).Count(&n).Error
+	err := db.WithContext(ctx).Model(&model.Inventory{}).Where("sku_id = ?", skuID).Count(&n).Error
 	return n > 0, err
 }

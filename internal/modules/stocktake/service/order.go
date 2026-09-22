@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 
 	"gorm.io/gorm"
 
@@ -35,8 +36,11 @@ func (s *Service) Create(ctx context.Context, req *dto.CreateOrderReq, operator 
 		order = &model.StocktakeOrder{
 			Base: sysmodel.Base{ID: snowflake.Next()}, OrderNo: s.no.Next(ctx, "PD"),
 			WarehouseID: req.WarehouseID, LocationID: req.LocationID,
-			LocationCode: req.LocationCode, Status: model.OrderDraft,
+			Status: model.OrderDraft,
 			Remark: req.Remark, CreatedBy: operator,
+		}
+		if req.LocationID > 0 {
+			order.LocationCode = details[0].LocationCode
 		}
 		return s.repo.CreateOrder(tx, order, details)
 	})
@@ -48,10 +52,17 @@ func (s *Service) Create(ctx context.Context, req *dto.CreateOrderReq, operator 
 
 func (s *Service) Cancel(ctx context.Context, orderID int64) error {
 	return s.tm.Tx(ctx, func(tx *gorm.DB) error {
-		if _, err := s.repo.GetOrderForUpdate(tx, orderID); err != nil {
-			return errcode.StocktakeNotFound
+		o, err := s.repo.GetOrderForUpdate(tx, orderID)
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return errcode.StocktakeNotFound
+			}
+			return err
 		}
-		if n, err := s.repo.UpdateStatus(tx, orderID, model.OrderDraft, model.OrderCancelled); err != nil {
+		if !model.CanTransit(o.Status, model.OrderCancelled) {
+			return errcode.StocktakeStatusWrong
+		}
+		if n, err := s.repo.UpdateStatus(tx, orderID, o.Status, model.OrderCancelled); err != nil {
 			return err
 		} else if n == 0 {
 			return errcode.StocktakeVersionBad

@@ -12,6 +12,7 @@ import (
 
 // PersonalAccountInfo 持久体验账号信息（登录页"个人空间"入口）。
 type PersonalAccountInfo struct {
+	TenantID int64  `json:"tenant_id,string"`
 	Username string `json:"username"`
 	Nickname string `json:"nickname"`
 	Password string `json:"password"`
@@ -30,6 +31,7 @@ func (s *Service) PersonalAccounts() ([]PersonalAccountInfo, error) {
 	list := make([]PersonalAccountInfo, 0, s.cfg.Personal.Instances)
 	for i := 1; i <= s.cfg.Personal.Instances; i++ {
 		list = append(list, PersonalAccountInfo{
+			TenantID: s.cfg.Personal.AccountTenantID(i),
 			Username: s.cfg.Personal.AccountUsername(i),
 			Nickname: s.cfg.Personal.AccountNickname(i),
 		})
@@ -49,6 +51,7 @@ func (s *Service) ClaimPersonalAccount(username string) (*PersonalAccountInfo, e
 		return nil, errcode.PersonalNotFound
 	}
 	return &PersonalAccountInfo{
+		TenantID: s.cfg.Personal.AccountTenantID(index),
 		Username: s.cfg.Personal.AccountUsername(index),
 		Nickname: s.cfg.Personal.AccountNickname(index),
 		Password: s.cfg.Personal.Password,

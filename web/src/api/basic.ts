@@ -20,7 +20,7 @@ export function listWarehouses(params: WarehouseListQuery) {
 }
 
 export function createWarehouse(data: WarehouseParams) {
-  return post<WarehouseItem>('/basic/warehouses', data)
+  return post<void>('/basic/warehouses', data)
 }
 
 export function updateWarehouse(id: EntityID, data: WarehouseParams) {
@@ -42,7 +42,7 @@ export function listLocations(params: LocationListQuery) {
 }
 
 export function batchCreateLocations(data: LocationBatchParams) {
-  return post<void>('/basic/locations/batch', data)
+  return post<{ created: number }>('/basic/locations/batch', data)
 }
 
 export function updateLocationStatus(id: EntityID, status: number) {
@@ -60,7 +60,7 @@ export function listSkus(params: SkuListQuery) {
 }
 
 export function createSku(data: SkuParams) {
-  return post<SkuItem>('/basic/skus', data)
+  return post<void>('/basic/skus', data)
 }
 
 export function updateSku(id: EntityID, data: SkuParams) {

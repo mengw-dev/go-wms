@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 
 	"gorm.io/gorm"
 
@@ -19,7 +20,7 @@ func (s *Service) Putaway(ctx context.Context, taskID, locationID int64, qty int
 	// 事务外只读不可变路由信息（OrderID/DetailID/SKUID/TaskType/TaskNo/仓库 建后不变）
 	routing, err := s.taskAPI.Get(ctx, taskID)
 	if err != nil {
-		return errcode.TaskNotFound
+		return err
 	}
 	if routing.TaskType != taskmodel.TaskPutaway {
 		return errcode.TaskStatusWrong
@@ -31,7 +32,10 @@ func (s *Service) Putaway(ctx context.Context, taskID, locationID int64, qty int
 	return s.tm.TxRetry(ctx, tx.MaxTxRetry, func(tx *gorm.DB) error {
 		o, err := s.repo.GetOrderForUpdate(tx, routing.OrderID)
 		if err != nil {
-			return errcode.OrderNotFound
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return errcode.OrderNotFound
+			}
+			return err
 		}
 		if o.Status != model.OrderPutaway {
 			return errcode.OrderStatusWrong

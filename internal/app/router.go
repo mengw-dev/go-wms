@@ -1,11 +1,14 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
+	"gowms/internal/pkg/log"
 	"gowms/internal/pkg/middleware"
 	"gowms/internal/pkg/response"
 	"gowms/internal/pkg/version"
@@ -46,8 +49,11 @@ func (a *App) NewRouter() (*gin.Engine, error) {
 
 	// 健康检查：DB 不可用必须返回非 2xx，K8s 探针/负载均衡才能摘除故障实例
 	r.GET("/healthz", func(c *gin.Context) {
-		if err := a.healthz(); err != nil {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "down", "error": err.Error()})
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
+		defer cancel()
+		if err := a.healthz(ctx); err != nil {
+			log.WithContext(ctx).Warn("database health check failed", "err", err)
+			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "down"})
 			return
 		}
 		response.OK(c, gin.H{"status": "ok"})
@@ -59,6 +65,10 @@ func (a *App) NewRouter() (*gin.Engine, error) {
 	pub.GET("/version", versionHandler)
 	// 需登录的路由：JWT → 操作日志审计
 	auth := api.Group("", middleware.Auth(a.Config.JWT.Secret, a.SystemAPI), middleware.OperLog(a.SystemAPI))
+	// Gin 在注册路由时复制中间件链，必须先挂载会话校验再注册业务路由。
+	if a.Config.Demo.Enabled {
+		auth.Use(middleware.DemoSession(a.DemoService))
+	}
 
 	a.SysHandler.RegisterRoutes(pub, auth, a.SystemAPI)
 	a.BasicHandler.RegisterRoutes(auth, a.SystemAPI)
@@ -66,7 +76,7 @@ func (a *App) NewRouter() (*gin.Engine, error) {
 	a.TaskHandler.RegisterRoutes(auth, a.SystemAPI)
 	a.InboundHandler.RegisterRoutes(auth, a.SystemAPI)
 	a.OutboundHandler.RegisterRoutes(auth, a.SystemAPI)
-	a.OutboundHandler.RegisterIntegrationRoutes(pub, a.Config.Integration.APIKey)
+	a.OutboundHandler.RegisterIntegrationRoutes(pub, a.Config.Integration.APIKey, a.Config.Integration.TenantID)
 	a.StocktakeHandler.RegisterRoutes(auth, a.SystemAPI)
 	a.AIHandler.RegisterRoutes(auth, a.SystemAPI)
 
@@ -75,7 +85,6 @@ func (a *App) NewRouter() (*gin.Engine, error) {
 	if a.Config.Demo.Enabled {
 		// 免登录：登录页"在线体验"领取空闲演示账号（多租户多账号自动分配）
 		a.DemoHandler.RegisterPublicRoutes(pub)
-		auth.Use(middleware.DemoSession(a.DemoService))
 		a.DemoHandler.RegisterRoutes(auth, a.SystemAPI)
 	}
 
@@ -87,10 +96,10 @@ func (a *App) NewRouter() (*gin.Engine, error) {
 }
 
 // healthz 健康检查：DB 必须可用，Redis 不可用不影响健康（已降级运行）。
-func (a *App) healthz() error {
+func (a *App) healthz(ctx context.Context) error {
 	sqlDB, err := a.DB.DB()
 	if err != nil {
 		return err
 	}
-	return sqlDB.Ping()
+	return sqlDB.PingContext(ctx)
 }

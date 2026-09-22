@@ -10,7 +10,7 @@ import (
 // 三数量模型：stock_quantity = available_quantity + allocated_quantity。
 type Inventory struct {
 	model.Base
-	model.Versioned           // 乐观锁，配合条件更新防并发
+	model.Versioned           // 变更版本号；库存并发控制使用行锁和数量条件更新
 	TenantID        int64     `json:"tenant_id,string" gorm:"not null;default:0;uniqueIndex:uk_inv,priority:1;index:idx_inv_tenant"`
 	WarehouseID     int64     `json:"warehouse_id,string" gorm:"not null;uniqueIndex:uk_inv,priority:2"`
 	LocationID      int64     `json:"location_id,string" gorm:"not null;uniqueIndex:uk_inv,priority:3"`
@@ -19,8 +19,8 @@ type Inventory struct {
 	StockQuantity   int       `json:"stock_quantity" gorm:"not null;default:0"`
 	AvailableQty    int       `json:"available_quantity" gorm:"column:available_quantity;not null;default:0"`
 	AllocatedQty    int       `json:"allocated_quantity" gorm:"column:allocated_quantity;not null;default:0"`
-	StockInTime     time.Time `json:"stock_in_time"`           // FIFO 依据
-	LocationCode    string    `json:"location_code" gorm:"->"` // 联查字段，不落库
+	StockInTime     time.Time `json:"stock_in_time"`                       // FIFO 依据
+	LocationCode    string    `json:"location_code" gorm:"->;-:migration"` // 联查字段，不落库
 }
 
 func (Inventory) TableName() string { return "wms_inventory" }

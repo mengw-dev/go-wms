@@ -19,14 +19,14 @@ func (ids Int64List) MarshalJSON() ([]byte, error) {
 	return json.Marshal(values)
 }
 
-func (ids *Int64List) UnmarshalJSON(data []byte) error {
-	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
+func (ids *Int64List) UnmarshalJSON(raw []byte) error {
+	if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
 		*ids = nil
 		return nil
 	}
 
 	var stringsValue []string
-	if err := json.Unmarshal(data, &stringsValue); err == nil {
+	if err := json.Unmarshal(raw, &stringsValue); err == nil {
 		out := make([]int64, len(stringsValue))
 		for i, value := range stringsValue {
 			id, parseErr := strconv.ParseInt(value, 10, 64)
@@ -40,7 +40,7 @@ func (ids *Int64List) UnmarshalJSON(data []byte) error {
 	}
 
 	var numbersValue []int64
-	if err := json.Unmarshal(data, &numbersValue); err == nil {
+	if err := json.Unmarshal(raw, &numbersValue); err == nil {
 		for _, id := range numbersValue {
 			if id <= 0 {
 				return fmt.Errorf("invalid int64 id %d", id)

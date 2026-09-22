@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
+	"time"
 
 	"gorm.io/gorm"
 
@@ -11,18 +13,16 @@ import (
 	"gowms/internal/modules/task/model"
 	"gowms/internal/modules/task/repository"
 	"gowms/internal/pkg/errcode"
-	"gowms/internal/pkg/orderno"
 	"gowms/internal/pkg/snowflake"
 )
 
 type Service struct {
 	repo *repository.Repository
-	no   *orderno.Generator
 	db   *gorm.DB
 }
 
-func New(repo *repository.Repository, no *orderno.Generator, db *gorm.DB) *Service {
-	return &Service{repo: repo, no: no, db: db}
+func New(repo *repository.Repository, db *gorm.DB) *Service {
+	return &Service{repo: repo, db: db}
 }
 
 // taskNoPrefix 任务单号前缀：收货 SH / 上架 SJ / 拣货 PK。
@@ -35,20 +35,26 @@ func taskNoPrefix(t model.TaskType) string {
 	case model.TaskPick:
 		return "PK"
 	default:
-		return "TK"
+		return ""
 	}
 }
 
 // Create 在业务事务内批量创建任务。
 func (s *Service) Create(ctx context.Context, tx *gorm.DB, creates []*api.CreateTask) error {
-	now := make([]*model.Task, 0, len(creates))
+	tasks := make([]*model.Task, 0, len(creates))
 	for _, ct := range creates {
-		if ct.TargetQty <= 0 {
-			continue
+		if ct == nil || ct.TargetQty <= 0 {
+			return errcode.ParamError
 		}
-		now = append(now, &model.Task{
-			Base:     sysmodel.Base{ID: snowflake.Next()},
-			TaskNo:   s.no.Next(ctx, taskNoPrefix(ct.TaskType)),
+		prefix := taskNoPrefix(ct.TaskType)
+		if prefix == "" {
+			return errcode.ParamError
+		}
+		id := snowflake.Next()
+		// 任务号直接复用任务主键，不在持有业务行锁时访问 Redis。
+		tasks = append(tasks, &model.Task{
+			Base:     sysmodel.Base{ID: id},
+			TaskNo:   fmt.Sprintf("%s%s%d", prefix, time.Now().Format("20060102"), id),
 			TaskType: ct.TaskType, Status: model.TaskCreated,
 			OrderID: ct.OrderID, OrderNo: ct.OrderNo,
 			DetailID: ct.DetailID, AllocationID: ct.AllocationID,
@@ -56,10 +62,10 @@ func (s *Service) Create(ctx context.Context, tx *gorm.DB, creates []*api.Create
 			LocationID: ct.LocationID, LocationCode: ct.LocationCode, BatchNo: ct.BatchNo,
 		})
 	}
-	if len(now) == 0 {
+	if len(tasks) == 0 {
 		return nil
 	}
-	return s.repo.CreateBatch(tx, now)
+	return s.repo.CreateBatch(tx, tasks)
 }
 
 // AddProgress 累加任务完成量并推进状态机（须在业务事务内调用）。
@@ -107,7 +113,7 @@ func (s *Service) progress(tx *gorm.DB, t *model.Task, qty int, operator string)
 	default:
 		return errcode.TaskStatusWrong
 	}
-	if t.DoneQty+qty > t.TargetQty {
+	if qty > t.TargetQty-t.DoneQty {
 		return errcode.TaskQtyOver
 	}
 	t.DoneQty += qty

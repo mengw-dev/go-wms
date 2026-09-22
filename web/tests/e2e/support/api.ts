@@ -256,7 +256,6 @@ export async function seedStockedInventory(
   )
   expect(task, 'putaway task should exist').toBeTruthy()
   await requestApi(request, seed.token, 'POST', `/inbound/tasks/${task!.id}/putaway`, {
-    task_id: task!.id,
     location_id: seed.location.id,
     qty: task!.target_qty - task!.done_qty,
   })

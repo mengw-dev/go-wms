@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 
+	"gorm.io/gorm"
+
 	"gowms/internal/modules/inventory/dto"
 	"gowms/internal/modules/inventory/model"
 	"gowms/internal/modules/inventory/repository"
@@ -25,14 +27,14 @@ func (s *Service) ListTrans(ctx context.Context, q *dto.TransQuery) ([]*model.In
 	return s.repo.ListTrans(ctx, s.tm.DB(), q.InventoryID, q.OrderNo, q.TransType, q.Page, q.PageSize)
 }
 
-func (s *Service) HasStockByWarehouse(ctx context.Context, warehouseID int64) (bool, error) {
-	return s.repo.HasStockByWarehouse(ctx, s.tm.DB(), warehouseID)
+func (s *Service) HasStockByWarehouse(ctx context.Context, db *gorm.DB, warehouseID int64) (bool, error) {
+	return s.repo.HasStockByWarehouse(ctx, db, warehouseID)
 }
 
-func (s *Service) HasStockByLocation(ctx context.Context, locationID int64) (bool, error) {
-	return s.repo.HasStockByLocation(ctx, s.tm.DB(), locationID)
+func (s *Service) HasStockByLocation(ctx context.Context, db *gorm.DB, locationID int64) (bool, error) {
+	return s.repo.HasStockByLocation(ctx, db, locationID)
 }
 
-func (s *Service) HasStockBySKU(ctx context.Context, skuID int64) (bool, error) {
-	return s.repo.HasStockBySKU(ctx, s.tm.DB(), skuID)
+func (s *Service) HasStockBySKU(ctx context.Context, db *gorm.DB, skuID int64) (bool, error) {
+	return s.repo.HasStockBySKU(ctx, db, skuID)
 }

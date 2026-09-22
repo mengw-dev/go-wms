@@ -13,3 +13,17 @@ test-results/
 
 # 个人本机开发脚本（不入库）
 scripts/windows/start-dev.ps1
+
+# 本地 AI 工具状态和上下文交接文件（不入库）
+.codex/
+.trae/
+.cursor/
+.continue/
+.claude/
+.agents/
+AGENTS.md
+CLAUDE.md
+TRAE.md
+docs/context-handoff.md
+docs/go-style.md
+docs/review-progress.md

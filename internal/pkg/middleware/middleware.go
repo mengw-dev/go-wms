@@ -3,8 +3,10 @@ package middleware
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"net/http"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -40,29 +42,32 @@ func RequestID() gin.HandlerFunc {
 	}
 }
 
+// UserID returns the authenticated user ID stored by Auth.
 func UserID(c *gin.Context) int64 {
-	v, _ := c.Get(string(ctxUserID))
-	id, _ := v.(int64)
-	return id
+	value, _ := c.Get(string(ctxUserID))
+	userID, _ := value.(int64)
+	return userID
 }
 
+// Username returns the authenticated username stored by Auth.
 func Username(c *gin.Context) string {
-	v, _ := c.Get(string(ctxUsername))
-	s, _ := v.(string)
-	return s
+	value, _ := c.Get(string(ctxUsername))
+	username, _ := value.(string)
+	return username
 }
 
+// RequestIDOf returns the request ID injected by RequestID.
 func RequestIDOf(c *gin.Context) string {
-	v, _ := c.Get(string(ctxRequestID))
-	s, _ := v.(string)
-	return s
+	value, _ := c.Get(string(ctxRequestID))
+	requestID, _ := value.(string)
+	return requestID
 }
 
 // TenantIDOf 取当前请求的租户 ID（来自 JWT claims；0 表示平台/默认租户）。
 func TenantIDOf(c *gin.Context) int64 {
-	v, _ := c.Get(string(ctxTenantID))
-	id, _ := v.(int64)
-	return id
+	value, _ := c.Get(string(ctxTenantID))
+	tenantID, _ := value.(int64)
+	return tenantID
 }
 
 // AuthValidator 在签名校验后复核用户状态和 Token 版本，使禁用用户/改密后的旧 Token 立即失效。
@@ -87,6 +92,8 @@ func Auth(secret string, validator AuthValidator) gin.HandlerFunc {
 			c.Abort()
 			return
 		}
+		// 签名有效后，数据库复核也必须限定在 Token 声明的租户内。
+		c.Request = c.Request.WithContext(tenant.WithTenant(c.Request.Context(), claims.TenantID))
 		if validator != nil {
 			if err := validator.ValidateToken(c.Request.Context(), claims.UserID, claims.TokenVersion); err != nil {
 				response.Fail(c, err)
@@ -127,7 +134,7 @@ func Recovery() gin.HandlerFunc {
 		defer func() {
 			if r := recover(); r != nil {
 				log.WithContext(c.Request.Context()).Error("gin panic recovered",
-					"err", r, "path", c.Request.URL.Path)
+					"err", r, "path", c.Request.URL.Path, "stack", string(debug.Stack()))
 				response.Fail(c, errcode.Internal)
 				c.Abort()
 			}
@@ -138,20 +145,27 @@ func Recovery() gin.HandlerFunc {
 
 type bodyWriter struct {
 	gin.ResponseWriter
-	body *bytes.Buffer
+	body    *bytes.Buffer
+	omitted bool
 }
 
-func (w *bodyWriter) Write(b []byte) (int, error) {
-	w.body.Write(b)
-	return w.ResponseWriter.Write(b)
+func (w *bodyWriter) Write(chunk []byte) (int, error) {
+	const maxAuditBodyBytes = 64 << 10
+	if !w.omitted && w.body.Len()+len(chunk) <= maxAuditBodyBytes {
+		w.body.Write(chunk)
+	} else {
+		w.omitted = true
+		w.body.Reset()
+	}
+	return w.ResponseWriter.Write(chunk)
 }
+
+func (w *bodyWriter) WriteString(text string) (int, error) { return w.Write([]byte(text)) }
 
 // AccessLog 访问日志：方法/路径/状态/耗时/操作人，>500ms 打 warn。
 func AccessLog() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
-		bw := &bodyWriter{ResponseWriter: c.Writer, body: bytes.NewBuffer(nil)}
-		c.Writer = bw
 
 		c.Next()
 
@@ -159,7 +173,7 @@ func AccessLog() gin.HandlerFunc {
 		attrs := []any{
 			"method", c.Request.Method,
 			"path", c.Request.URL.Path,
-			"status", bw.Status(),
+			"status", c.Writer.Status(),
 			"cost_ms", cost,
 			"ip", c.ClientIP(),
 			"request_id", RequestIDOf(c),
@@ -214,22 +228,38 @@ func OperLog(rec OperLogRecorder) gin.HandlerFunc {
 		start := time.Now()
 		bw := &bodyWriter{ResponseWriter: c.Writer, body: bytes.NewBuffer(nil)}
 		c.Writer = bw
-		params := c.Request.URL.RawQuery
+		params := sanitizeOperLogParams("application/x-www-form-urlencoded", c.Request.URL.RawQuery)
 		// 读取请求体用于审计后必须回填，否则 Handler 的 ShouldBindJSON 拿不到参数；
 		// multipart（文件上传）不读取，避免破坏请求流。
 		if c.Request.Body != nil && !strings.HasPrefix(c.Request.Header.Get("Content-Type"), "multipart/form-data") {
-			data, _ := io.ReadAll(c.Request.Body)
+			requestBody, err := io.ReadAll(c.Request.Body)
 			_ = c.Request.Body.Close()
-			if len(data) > 0 {
-				params = sanitizeOperLogParams(c.GetHeader("Content-Type"), string(data))
+			if err != nil {
+				// 不能把超限请求的截断内容回填后继续执行写操作。
+				var limitErr *http.MaxBytesError
+				if errors.As(err, &limitErr) {
+					response.Fail(c, errcode.PayloadTooLarge)
+					c.Abort()
+				} else {
+					response.Fail(c, errcode.ParamError)
+					c.Abort()
+				}
+				return
 			}
-			c.Request.Body = io.NopCloser(bytes.NewBuffer(data))
+			if len(requestBody) > 0 {
+				params = sanitizeOperLogParams(c.GetHeader("Content-Type"), string(requestBody))
+			}
+			c.Request.Body = io.NopCloser(bytes.NewBuffer(requestBody))
 		}
 
 		c.Next()
 
 		if rec != nil {
-			r := OperLogRecord{
+			responseBody := "[LARGE RESPONSE OMITTED]"
+			if !bw.omitted {
+				responseBody = sanitizeOperLogParams(c.Writer.Header().Get("Content-Type"), bw.body.String())
+			}
+			record := OperLogRecord{
 				UserID:   UserID(c),
 				Username: Username(c),
 				Path:     c.Request.URL.Path,
@@ -238,9 +268,9 @@ func OperLog(rec OperLogRecorder) gin.HandlerFunc {
 				IP:       c.ClientIP(),
 				CostMs:   time.Since(start).Milliseconds(),
 				Status:   bw.Status(),
-				Result:   sanitizeOperLogParams("application/json", bw.body.String()),
+				Result:   responseBody,
 			}
-			rec.Record(context.Background(), r)
+			rec.Record(c.Request.Context(), record)
 		}
 	}
 }

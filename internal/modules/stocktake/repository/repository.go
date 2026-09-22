@@ -7,6 +7,7 @@ import (
 	"gorm.io/gorm/clause"
 
 	"gowms/internal/modules/stocktake/model"
+	"gowms/internal/pkg/tenant"
 )
 
 type Repository struct{}
@@ -42,7 +43,7 @@ func (r *Repository) GetOrder(ctx context.Context, db *gorm.DB, id int64) (*mode
 
 // UpdateStatus 状态推进。
 func (r *Repository) UpdateStatus(tx *gorm.DB, id int64, from, to model.OrderStatus) (int64, error) {
-	res := tx.Model(&model.StocktakeOrder{}).Where("id = ? AND status = ?", id, from).Update("status", to)
+	res := tx.Model(&model.StocktakeOrder{}).Where("id = ? AND status = ?", id, from).Updates(map[string]any{"status": to, "version": gorm.Expr("version + 1")})
 	return res.RowsAffected, res.Error
 }
 
@@ -91,59 +92,21 @@ func (r *Repository) MarkAdjusted(tx *gorm.DB, detailID int64, diff int) error {
 
 // SnapshotInventory 创建快照：按仓库/库位范围取账面库存行。
 func (r *Repository) SnapshotInventory(tx *gorm.DB, warehouseID, locationID int64) ([]*model.StocktakeDetail, error) {
+	// Table + Scan 不依赖 GORM 模型回调，显式限制主表租户及关联表租户。
 	q := tx.Table("wms_inventory i").
-		Select("i.id AS inventory_id, i.sku_id, i.location_id, i.batch_no, i.stock_quantity AS book_qty").
-		Joins("JOIN wms_sku s ON s.id = i.sku_id AND s.deleted_at IS NULL").
+		Select("i.id AS inventory_id, i.sku_id, s.code AS sku_code, s.name AS sku_name, i.location_id, l.code AS location_code, i.batch_no, i.stock_quantity AS book_qty").
+		Joins("JOIN wms_sku s ON s.id = i.sku_id AND s.tenant_id = i.tenant_id AND s.deleted_at IS NULL").
+		Joins("JOIN wms_location l ON l.id = i.location_id AND l.tenant_id = i.tenant_id AND l.deleted_at IS NULL").
 		Where("i.warehouse_id = ? AND i.deleted_at IS NULL AND i.stock_quantity > 0", warehouseID)
+	if tenantID, scoped := tenant.Scope(tx.Statement.Context); scoped {
+		q = q.Where("i.tenant_id = ?", tenantID)
+	}
 	if locationID > 0 {
 		q = q.Where("i.location_id = ?", locationID)
 	}
-	type row struct {
-		InventoryID int64
-		SkuID       int64
-		LocationID  int64
-		BatchNo     string
-		BookQty     int
-	}
-	var rows []row
-	if err := q.Scan(&rows).Error; err != nil {
+	details := make([]*model.StocktakeDetail, 0)
+	if err := q.Order("i.id").Scan(&details).Error; err != nil {
 		return nil, err
-	}
-	// 填充 SKU 编码/名称与库位编码
-	details := make([]*model.StocktakeDetail, 0, len(rows))
-	if len(rows) == 0 {
-		return details, nil
-	}
-	skuMap := map[int64][2]string{}
-	var skus []struct {
-		ID   int64
-		Code string
-		Name string
-	}
-	if err := tx.Table("wms_sku").Where("deleted_at IS NULL").Select("id, code, name").Scan(&skus).Error; err != nil {
-		return nil, err
-	}
-	for _, s := range skus {
-		skuMap[s.ID] = [2]string{s.Code, s.Name}
-	}
-	locMap := map[int64]string{}
-	var locs []struct {
-		ID   int64
-		Code string
-	}
-	if err := tx.Table("wms_location").Where("deleted_at IS NULL").Select("id, code").Scan(&locs).Error; err != nil {
-		return nil, err
-	}
-	for _, l := range locs {
-		locMap[l.ID] = l.Code
-	}
-	for _, row := range rows {
-		code, name := skuMap[row.SkuID][0], skuMap[row.SkuID][1]
-		details = append(details, &model.StocktakeDetail{
-			InventoryID: row.InventoryID, SKUID: row.SkuID, SKUCode: code, SKUName: name,
-			LocationID: row.LocationID, LocationCode: locMap[row.LocationID],
-			BatchNo: row.BatchNo, BookQty: row.BookQty,
-		})
 	}
 	return details, nil
 }

@@ -46,12 +46,12 @@ type SysRole struct {
 
 func (SysRole) TableName() string { return "sys_role" }
 
-// SysUserRole 用户-角色关联（user_id 全局唯一，天然按租户隔离，无需 tenant 复合）。
+// SysUserRole 用户-角色关联。用户 ID 全局唯一；写入及查询仍须核对用户、角色与关联的租户一致。
 type SysUserRole struct {
 	ID       int64 `gorm:"primaryKey"`
-	TenantID int64 `json:"tenant_id,string" gorm:"not null;default:0"`
-	UserID   int64 `gorm:"uniqueIndex:uk_user_role"`
-	RoleID   int64 `gorm:"uniqueIndex:uk_user_role"`
+	TenantID int64 `json:"tenant_id,string" gorm:"not null;default:0;uniqueIndex:uk_user_role,priority:1;index:idx_user_role_tenant_role,priority:1"`
+	UserID   int64 `gorm:"uniqueIndex:uk_user_role,priority:2"`
+	RoleID   int64 `gorm:"uniqueIndex:uk_user_role,priority:3;index:idx_user_role_tenant_role,priority:2"`
 }
 
 func (SysUserRole) TableName() string { return "sys_user_role" }

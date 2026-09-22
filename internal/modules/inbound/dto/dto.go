@@ -28,13 +28,12 @@ type OrderQuery struct {
 
 type ReceiveReq struct {
 	DetailID     int64  `json:"detail_id,string" binding:"required"`
-	Qty          int    `json:"qty" binding:"required,min=1"`
-	DefectiveQty int    `json:"defective_qty" binding:"min=0"`
+	Qty          int    `json:"qty" binding:"required,min=1"`  // 本次收货总量，包含残品
+	DefectiveQty int    `json:"defective_qty" binding:"min=0"` // 总量中的残品，不能大于 Qty
 	BatchNo      string `json:"batch_no" binding:"max=64"`
 }
 
 type PutawayReq struct {
-	TaskID     int64 `json:"task_id,string" binding:"required"`
 	LocationID int64 `json:"location_id,string" binding:"required"`
 	Qty        int   `json:"qty" binding:"required,min=1"`
 }

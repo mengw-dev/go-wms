@@ -226,7 +226,11 @@ func (h *Handler) putaway(c *gin.Context) {
 	if !httpx.BindJSON(c, &req) {
 		return
 	}
-	if err := h.svc.Putaway(c.Request.Context(), req.TaskID, req.LocationID, req.Qty, middleware.Username(c)); err != nil {
+	taskID, ok := httpx.PathID(c)
+	if !ok {
+		return
+	}
+	if err := h.svc.Putaway(c.Request.Context(), taskID, req.LocationID, req.Qty, middleware.Username(c)); err != nil {
 		response.Fail(c, err)
 		return
 	}
@@ -291,7 +295,10 @@ func (h *Handler) importStatus(c *gin.Context) {
 }
 
 func (h *Handler) listImports(c *gin.Context) {
-	limit, _ := httpx.QueryInt(c, "limit", 20, 1, 200)
+	limit, ok := httpx.QueryInt(c, "limit", 20, 1, 200)
+	if !ok {
+		return
+	}
 	list, err := h.svc.ListImports(c.Request.Context(), limit)
 	if err != nil {
 		response.Fail(c, err)

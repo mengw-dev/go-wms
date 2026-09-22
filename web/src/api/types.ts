@@ -24,6 +24,7 @@ export interface PageQuery {
 export interface LoginParams {
   username: string
   password: string
+  tenant_id?: EntityID
 }
 
 export interface LoginResult {
@@ -84,7 +85,7 @@ export interface UserCreateParams {
 }
 
 export interface UserUpdateParams {
-  nickname: string
+  nickname?: string
   status?: number
   role_ids?: EntityID[]
 }
@@ -364,7 +365,6 @@ export interface BatchOperResult {
 }
 
 export interface PutawayParams {
-  task_id: EntityID
   location_id: EntityID
   qty: number
 }
@@ -445,7 +445,6 @@ export interface OutboundOrderListQuery extends PageQuery {
 }
 
 export interface PickParams {
-  task_id: EntityID
   qty: number
   /** 扫码核对字段（可选）：填写时后端校验必须与任务要求的库位/批次一致 */
   location_code?: string

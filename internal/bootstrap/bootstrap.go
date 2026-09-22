@@ -57,10 +57,11 @@ func InitDB(cfg *config.Config) (*gorm.DB, error) {
 	return db, nil
 }
 
-// InitRedis 初始化 Redis（不可用时仅记录告警，业务自动降级）。
+// InitRedis 初始化 Redis。缓存和单号可以降级；会话校验等安全操作仍需拒绝故障请求。
 func InitRedis(cfg *config.Config) *redis.Client {
 	rdb := redis.NewClient(&redis.Options{
 		Addr: cfg.Redis.Addr, Password: cfg.Redis.Password, DB: cfg.Redis.DB,
+		ContextTimeoutEnabled: true,
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -117,28 +118,39 @@ func Seed(db *gorm.DB) error {
 
 // seedAdmin 内置管理员与角色：admin / admin123。
 func seedAdmin(db *gorm.DB) error {
-	var n int64
-
-	if err := db.Model(&sysmodel.SysUser{}).Count(&n).Error; err != nil {
-		return err
-	}
-	if n > 0 {
-		return nil
-	}
-	hash, err := bcrypt.GenerateFromPassword([]byte("admin123"), bcrypt.DefaultCost)
-	if err != nil {
-		return err
-	}
-	admin := &sysmodel.SysUser{Username: "admin", PasswordHash: string(hash), Nickname: "管理员", Status: 1}
-	role := &sysmodel.SysRole{Name: "admin", Perms: "*", Remark: "内置超级管理员"}
 	return db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Create(admin).Error; err != nil {
+		var admin sysmodel.SysUser
+		err := tx.Where("tenant_id = ? AND username = ?", 0, "admin").First(&admin).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			hash, hashErr := bcrypt.GenerateFromPassword([]byte("admin123"), bcrypt.DefaultCost)
+			if hashErr != nil {
+				return hashErr
+			}
+			admin = sysmodel.SysUser{TenantID: 0, Username: "admin", PasswordHash: string(hash), Nickname: "管理员", Status: 1}
+			if err := tx.Create(&admin).Error; err != nil {
+				return err
+			}
+		} else if err != nil {
 			return err
 		}
-		if err := tx.Create(role).Error; err != nil {
+
+		var role sysmodel.SysRole
+		err = tx.Where("tenant_id = ? AND name = ?", 0, "admin").First(&role).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			role = sysmodel.SysRole{TenantID: 0, Name: "admin", Perms: "*", Remark: "内置超级管理员"}
+			if err := tx.Create(&role).Error; err != nil {
+				return err
+			}
+		} else if err != nil {
 			return err
 		}
-		return tx.Create(&sysmodel.SysUserRole{UserID: admin.ID, RoleID: role.ID}).Error
+
+		var link sysmodel.SysUserRole
+		err = tx.Where("tenant_id = ? AND user_id = ? AND role_id = ?", 0, admin.ID, role.ID).First(&link).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return tx.Create(&sysmodel.SysUserRole{TenantID: 0, UserID: admin.ID, RoleID: role.ID}).Error
+		}
+		return err
 	})
 }
 
@@ -332,7 +344,7 @@ func SeedDemoAccounts(db *gorm.DB, cfg *config.Config) error {
 	if !cfg.Demo.Enabled || cfg.Demo.Instances <= 0 {
 		// 关闭演示模式：禁用全部历史演示账号，避免旧账号绕过 DemoSession 中间件。
 		return db.Model(&sysmodel.SysUser{}).
-			Where("username = ? OR username REGEXP ?", "demo", "^demo[0-9]+$").
+			Where("tenant_id IN ? AND (username = ? OR username REGEXP ?)", managedDemoTenantIDs(), "demo", "^demo[0-9]+$").
 			Update("status", 0).Error
 	}
 
@@ -396,8 +408,18 @@ func SeedDemoAccounts(db *gorm.DB, cfg *config.Config) error {
 
 	// 禁用不在当前名单内的历史演示账号（收缩数量后多余的 demoN+1.. 与旧 demo）
 	return db.Model(&sysmodel.SysUser{}).
-		Where("(username = ? OR username REGEXP ?) AND username NOT IN ?", "demo", "^demo[0-9]+$", current).
+		Where("tenant_id IN ? AND (username = ? OR username REGEXP ?) AND username NOT IN ?",
+			managedDemoTenantIDs(), "demo", "^demo[0-9]+$", current).
 		Update("status", 0).Error
+}
+
+func managedDemoTenantIDs() []int64 {
+	ids := make([]int64, 0, 99)
+	var cfg config.DemoConfig
+	for i := 1; i <= 99; i++ {
+		ids = append(ids, cfg.AccountTenantID(i))
+	}
+	return ids
 }
 
 // personalPerms 持久体验账号权限集合：与演示账号一致，但【不含 wms:demo】。
@@ -420,7 +442,7 @@ func SeedPersonalAccounts(db *gorm.DB, cfg *config.Config) error {
 	if !cfg.Personal.Enabled || cfg.Personal.Instances <= 0 {
 		// 关闭持久账号：禁用历史账号（命名与 demoN 区分，避免误伤演示账号）
 		return db.Model(&sysmodel.SysUser{}).
-			Where("username REGEXP ?", "^user[0-9]+$").
+			Where("tenant_id IN ? AND username REGEXP ?", managedPersonalTenantIDs(), "^user[0-9]+$").
 			Update("status", 0).Error
 	}
 
@@ -489,17 +511,25 @@ func SeedPersonalAccounts(db *gorm.DB, cfg *config.Config) error {
 
 	// 禁用不在当前名单内的历史个人账号（收缩数量后多余的 userN+1..）
 	return db.Model(&sysmodel.SysUser{}).
-		Where("username REGEXP ? AND username NOT IN ?", "^user[0-9]+$", current).
+		Where("tenant_id IN ? AND username REGEXP ? AND username NOT IN ?",
+			managedPersonalTenantIDs(), "^user[0-9]+$", current).
 		Update("status", 0).Error
+}
+
+func managedPersonalTenantIDs() []int64 {
+	ids := make([]int64, 0, 99)
+	var cfg config.PersonalConfig
+	for i := 1; i <= 99; i++ {
+		ids = append(ids, cfg.AccountTenantID(i))
+	}
+	return ids
 }
 
 // seedPersonalData 给持久租户种入初始业务数据；必须在租户 ctx 内执行，
 // 否则计数与写入都会落到 tenant_id=0 的平台租户（而非该个人账号的租户）。
 func seedPersonalData(db *gorm.DB, tenantID int64) error {
 	ctx := tenant.WithTenant(context.Background(), tenantID)
-	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		return seedDemoData(tx)
-	})
+	return db.WithContext(ctx).Transaction(seedDemoData)
 }
 
 // ResetDemoData 硬删除指定租户的演示业务数据并重新写入默认演示数据。

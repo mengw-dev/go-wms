@@ -2,10 +2,12 @@ package tenant
 
 import (
 	"context"
+	"errors"
 	"os"
 	"testing"
 
 	"gorm.io/gorm"
+
 	basicmodel "gowms/internal/modules/basic/model"
 	"gowms/internal/testutil"
 )
@@ -88,9 +90,12 @@ func TestTenantIsolation(t *testing.T) {
 		t.Fatalf("tenant B row must survive tenant A delete, got %d", nB)
 	}
 
-	// Create 显式指定租户时不被覆盖（平台代操作语义）
+	// 租户请求不能通过显式字段跨租户创建；平台上下文仍支持代操作。
 	explicit := basicmodel.SKU{TenantID: 3003, Code: "SKU-T2", Barcode: "BC-T2", Name: "显式租户"}
-	if err := db.WithContext(ctxA).Create(&explicit).Error; err != nil {
+	if err := db.WithContext(ctxA).Create(&explicit).Error; !errors.Is(err, ErrMismatch) {
+		t.Fatalf("cross-tenant create: %v", err)
+	}
+	if err := db.WithContext(context.Background()).Create(&explicit).Error; err != nil {
 		t.Fatalf("create with explicit tenant: %v", err)
 	}
 	if explicit.TenantID != 3003 {
@@ -129,6 +134,54 @@ func TestTenantScanIsolation(t *testing.T) {
 	}
 	if countB != 1 {
 		t.Fatalf("tenant B should see exactly its own row, got %d", countB)
+	}
+}
+
+// TestWithExactTenantZeroDoesNotBypass 回归：平台租户 0 必须是精确范围，
+// 不能和“未设置租户”的平台旁路混为一谈。
+func TestWithExactTenantZeroDoesNotBypass(t *testing.T) {
+	db := newTenantTestDB(t)
+
+	if err := db.WithContext(context.Background()).Create(&basicmodel.SKU{
+		TenantID: 0, Code: "PLATFORM", Barcode: "PLATFORM-BC", Name: "平台货品",
+	}).Error; err != nil {
+		t.Fatalf("create platform sku: %v", err)
+	}
+	if err := db.WithContext(WithTenant(context.Background(), 1001)).Create(&basicmodel.SKU{
+		Code: "TENANT-1", Barcode: "TENANT-1-BC", Name: "租户货品",
+	}).Error; err != nil {
+		t.Fatalf("create tenant sku: %v", err)
+	}
+
+	var platformRows []basicmodel.SKU
+	if err := db.WithContext(WithExactTenant(context.Background(), 0)).Find(&platformRows).Error; err != nil {
+		t.Fatalf("query exact tenant 0: %v", err)
+	}
+	if len(platformRows) != 1 || platformRows[0].TenantID != 0 || platformRows[0].Code != "PLATFORM" {
+		t.Fatalf("exact tenant 0 should see only platform rows, got %+v", platformRows)
+	}
+
+	var allRows []basicmodel.SKU
+	if err := db.WithContext(WithTenant(context.Background(), 0)).Find(&allRows).Error; err != nil {
+		t.Fatalf("query platform bypass: %v", err)
+	}
+	if len(allRows) != 2 {
+		t.Fatalf("platform bypass should see all rows, got %d", len(allRows))
+	}
+}
+
+func TestScope(t *testing.T) {
+	if tenantID, scoped := Scope(context.Background()); scoped || tenantID != 0 {
+		t.Fatalf("plain context scope=(%d,%v), want (0,false)", tenantID, scoped)
+	}
+	if tenantID, scoped := Scope(WithTenant(context.Background(), 0)); scoped || tenantID != 0 {
+		t.Fatalf("tenant reset scope=(%d,%v), want (0,false)", tenantID, scoped)
+	}
+	if tenantID, scoped := Scope(WithExactTenant(context.Background(), 0)); !scoped || tenantID != 0 {
+		t.Fatalf("exact tenant 0 scope=(%d,%v), want (0,true)", tenantID, scoped)
+	}
+	if tenantID, scoped := Scope(WithTenant(context.Background(), 42)); !scoped || tenantID != 42 {
+		t.Fatalf("tenant 42 scope=(%d,%v), want (42,true)", tenantID, scoped)
 	}
 }
 

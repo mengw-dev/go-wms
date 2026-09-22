@@ -29,7 +29,7 @@ import (
 //
 // 返回：达到上限时返回 errcode.QuotaExceeded 包装的动态消息；其余情况返回 nil 或查询错误。
 //
-// 注意：检查与写入不在同一事务内，并发下允许极小概率的少量超额（公开演示场景可接受）。
+// 注意：检查与写入不是原子操作，并发请求可能超过上限；这里是软配额，不能作为严格额度保证。
 func Guard(ctx context.Context, db *gorm.DB, model any, limit, add int, label string) error {
 	if limit <= 0 || add <= 0 || db == nil || tenant.FromContext(ctx) <= 0 {
 		return nil

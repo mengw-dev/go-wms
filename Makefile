@@ -16,10 +16,10 @@ test:
 	go test ./... -v
 
 test-required:
-	WMS_TEST_REQUIRED=1 go test ./internal/... -v -count=1
+	WMS_TEST_REQUIRED=1 go test ./... -v -count=1
 
 test-race:
-	CGO_ENABLED=1 go test -race ./internal/... -count=1
+	CGO_ENABLED=1 go test -race ./... -count=1
 
 lint:
 	gofmt -l .
@@ -29,16 +29,16 @@ tidy:
 	go mod tidy
 
 compose-up:
-	docker compose -f deploy/docker-compose.yaml up -d --build
+	docker compose --env-file .env -f deploy/docker-compose.yaml up -d --build
 
 compose-infra:
-	docker compose -f deploy/docker-compose.yaml -f deploy/docker-compose.dev.yaml up -d mysql redis
+	docker compose --env-file .env -f deploy/docker-compose.yaml -f deploy/docker-compose.dev.yaml up -d mysql redis
 
 compose-monitoring:
-	docker compose -f deploy/docker-compose.yaml --profile monitoring up -d prometheus grafana
+	docker compose --env-file .env -f deploy/docker-compose.yaml --profile monitoring up -d prometheus grafana
 
 compose-monitoring-stop:
-	docker compose -f deploy/docker-compose.yaml --profile monitoring stop prometheus grafana
+	docker compose --env-file .env -f deploy/docker-compose.yaml --profile monitoring stop prometheus grafana
 
 compose-down:
-	docker compose -f deploy/docker-compose.yaml down
+	docker compose --env-file .env -f deploy/docker-compose.yaml down

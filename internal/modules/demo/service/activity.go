@@ -30,49 +30,49 @@ func (s *Service) Activity(ctx context.Context, limit int) (*ActivitySnapshot, e
 		limit = 50
 	}
 	username := s.Username(ctx)
-	result := &ActivitySnapshot{}
+	snapshot := &ActivitySnapshot{}
 
 	if err := s.db.WithContext(ctx).
 		Where("username = ?", username).
 		Order("created_at DESC").
 		Limit(limit).
-		Find(&result.Operations).Error; err != nil {
+		Find(&snapshot.Operations).Error; err != nil {
 		return nil, err
 	}
 	if err := s.db.WithContext(ctx).
 		Where("created_by = ?", username).
 		Order("created_at DESC").
 		Limit(limit).
-		Find(&result.InboundOrders).Error; err != nil {
+		Find(&snapshot.InboundOrders).Error; err != nil {
 		return nil, err
 	}
 	if err := s.db.WithContext(ctx).
 		Where("created_by = ?", username).
 		Order("created_at DESC").
 		Limit(limit).
-		Find(&result.OutboundOrders).Error; err != nil {
+		Find(&snapshot.OutboundOrders).Error; err != nil {
 		return nil, err
 	}
 	if err := s.db.WithContext(ctx).
 		Where("created_by = ?", username).
 		Order("created_at DESC").
 		Limit(limit).
-		Find(&result.StocktakeOrders).Error; err != nil {
+		Find(&snapshot.StocktakeOrders).Error; err != nil {
 		return nil, err
 	}
 	if err := s.db.WithContext(ctx).
 		Where("operator = ?", username).
 		Order("created_at DESC").
 		Limit(limit).
-		Find(&result.Tasks).Error; err != nil {
+		Find(&snapshot.Tasks).Error; err != nil {
 		return nil, err
 	}
 	if err := s.db.WithContext(ctx).
 		Where("operator = ?", username).
 		Order("created_at DESC").
 		Limit(limit).
-		Find(&result.InventoryTrans).Error; err != nil {
+		Find(&snapshot.InventoryTrans).Error; err != nil {
 		return nil, err
 	}
-	return result, nil
+	return snapshot, nil
 }

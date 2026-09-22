@@ -68,7 +68,8 @@ type MetricsConfig struct {
 }
 
 type IntegrationConfig struct {
-	APIKey string `mapstructure:"api_key"`
+	APIKey   string `mapstructure:"api_key"`
+	TenantID int64  `mapstructure:"tenant_id"` // API Key 只访问这个租户；0 也精确隔离。
 }
 
 // DemoConfig 演示模块配置：多演示账号（demo1..demoN），每个账号独占一个租户，
@@ -113,7 +114,6 @@ type PersonalConfig struct {
 const personalTenantIDBase int64 = 20000
 
 // AccountUsername 第 i 个持久账号的用户名（user1、user2...）。
-// 注意：不能以 demo 开头，否则会被演示会话中间件误判为演示账号。
 func (p PersonalConfig) AccountUsername(i int) string { return fmt.Sprintf("user%d", i) }
 
 // AccountTenantID 第 i 个持久账号的租户 ID（20001、20002...）。
@@ -166,6 +166,7 @@ func Load(path string) (*Config, error) {
 	v.SetEnvPrefix("WMS")
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
+	v.SetDefault("integration.tenant_id", int64(0))
 
 	if err := v.ReadInConfig(); err != nil {
 		return nil, err
@@ -179,6 +180,9 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.Server.Mode != "debug" && cfg.Server.Mode != "release" {
 		return nil, fmt.Errorf("server.mode must be debug or release")
+	}
+	if cfg.Integration.TenantID < 0 {
+		return nil, fmt.Errorf("integration.tenant_id must be non-negative")
 	}
 	if cfg.Server.ReadTimeoutSeconds <= 0 {
 		cfg.Server.ReadTimeoutSeconds = 15
@@ -204,10 +208,7 @@ func Load(path string) (*Config, error) {
 	if cfg.MySQL.MaxIdleConns <= 0 {
 		cfg.MySQL.MaxIdleConns = 10
 	}
-	if cfg.Server.Node <= 0 {
-		cfg.Server.Node = 1
-	}
-	if cfg.Server.Node > 1023 {
+	if cfg.Server.Node < 0 || cfg.Server.Node > 1023 {
 		return nil, fmt.Errorf("server.node must be between 0 and 1023")
 	}
 	if cfg.JWT.ExpireHours <= 0 {

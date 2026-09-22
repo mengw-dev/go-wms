@@ -11,9 +11,6 @@ import (
 // 权限缓存和权限判断。
 
 func (s *Service) HasPerm(ctx context.Context, userID int64, perm string) bool {
-	if userID == 1 {
-		return true // 内置管理员
-	}
 	perms := s.cachedPerms(ctx, userID)
 	for _, p := range perms {
 		if p == "*" || p == perm {
@@ -33,9 +30,7 @@ func (s *Service) cachedPerms(ctx context.Context, userID int64) []string {
 	perms, err := s.loadPerms(ctx, userID)
 	if err != nil {
 		log.WithContext(ctx).Error("load perms failed", "user_id", userID, "err", err)
-		if ok { // 拉取失败时用旧缓存兜底
-			return item.perms
-		}
+		// 权限缓存过期后不能用旧权限放行，否则数据库故障可能无限延长已撤销的授权。
 		return nil
 	}
 	s.permMu.Lock()

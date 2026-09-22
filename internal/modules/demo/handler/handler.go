@@ -23,16 +23,16 @@ func (h *Handler) RegisterPublicRoutes(pub *gin.RouterGroup) {
 	if !h.svc.Enabled() {
 		return
 	}
-	pub.GET("/demo/account", h.claimAccount)
+	pub.POST("/demo/account", h.claimAccount)
 }
 
 func (h *Handler) claimAccount(c *gin.Context) {
-	info, err := h.svc.ClaimAccount(c.Request.Context())
+	account, err := h.svc.ClaimAccount(c.Request.Context())
 	if err != nil {
 		response.Fail(c, err)
 		return
 	}
-	response.OK(c, info)
+	response.OK(c, account)
 }
 
 // RegisterPersonalPublicRoutes 免登录路由：登录页"个人空间"列出并领取持久体验账号（user1..userN）。
@@ -62,12 +62,12 @@ func (h *Handler) claimPersonalAccount(c *gin.Context) {
 		response.Fail(c, errcode.ParamError)
 		return
 	}
-	info, err := h.svc.ClaimPersonalAccount(req.Username)
+	account, err := h.svc.ClaimPersonalAccount(req.Username)
 	if err != nil {
 		response.Fail(c, err)
 		return
 	}
-	response.OK(c, info)
+	response.OK(c, account)
 }
 
 func (h *Handler) RegisterRoutes(auth *gin.RouterGroup, checker middleware.PermsChecker) {
@@ -94,21 +94,21 @@ func (h *Handler) RegisterRoutes(auth *gin.RouterGroup, checker middleware.Perms
 }
 
 func (h *Handler) acquire(c *gin.Context) {
-	info, err := h.svc.AcquireSession(c.Request.Context())
+	session, err := h.svc.AcquireSession(c.Request.Context())
 	if err != nil {
 		response.Fail(c, err)
 		return
 	}
-	response.OK(c, info)
+	response.OK(c, session)
 }
 
 func (h *Handler) heartbeat(c *gin.Context) {
-	info, err := h.svc.Heartbeat(c.Request.Context(), demoSessionID(c))
+	status, err := h.svc.Heartbeat(c.Request.Context(), demoSessionID(c))
 	if err != nil {
 		response.Fail(c, err)
 		return
 	}
-	response.OK(c, info)
+	response.OK(c, status)
 }
 
 func (h *Handler) release(c *gin.Context) {
@@ -120,12 +120,12 @@ func (h *Handler) release(c *gin.Context) {
 }
 
 func (h *Handler) status(c *gin.Context) {
-	info, ok := h.svc.SessionStatus(c.Request.Context(), demoSessionID(c))
+	status, ok := h.svc.SessionStatus(c.Request.Context(), demoSessionID(c))
 	if !ok {
 		response.Fail(c, errcode.DemoSessionInvalid)
 		return
 	}
-	response.OK(c, info)
+	response.OK(c, status)
 }
 
 func (h *Handler) runInbound(c *gin.Context)   { h.run(c, service.ScenarioInbound) }

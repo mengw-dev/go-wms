@@ -2,6 +2,9 @@ package service
 
 import (
 	"context"
+	"errors"
+
+	"gorm.io/gorm"
 
 	"gowms/internal/modules/stocktake/dto"
 	"gowms/internal/modules/stocktake/model"
@@ -17,9 +20,12 @@ type OrderDetail struct {
 func (s *Service) Get(ctx context.Context, id int64) (*OrderDetail, error) {
 	o, err := s.repo.GetOrder(ctx, s.tm.DB(), id)
 	if err != nil {
-		return nil, errcode.StocktakeNotFound
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, errcode.StocktakeNotFound
+		}
+		return nil, err
 	}
-	details, err := s.repo.ListDetails(s.tm.DB(), id)
+	details, err := s.repo.ListDetails(s.tm.DB().WithContext(ctx), id)
 	if err != nil {
 		return nil, err
 	}

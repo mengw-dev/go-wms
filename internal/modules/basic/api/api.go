@@ -10,9 +10,9 @@ import (
 
 // StockChecker 库存存在性校验，由 inventory 模块实现（app 组装注入）。
 type StockChecker interface {
-	HasStockByWarehouse(ctx context.Context, warehouseID int64) (bool, error)
-	HasStockByLocation(ctx context.Context, locationID int64) (bool, error)
-	HasStockBySKU(ctx context.Context, skuID int64) (bool, error)
+	HasStockByWarehouse(ctx context.Context, db *gorm.DB, warehouseID int64) (bool, error)
+	HasStockByLocation(ctx context.Context, db *gorm.DB, locationID int64) (bool, error)
+	HasStockBySKU(ctx context.Context, db *gorm.DB, skuID int64) (bool, error)
 }
 
 // BasicAPI basic 模块对外接口。

@@ -36,21 +36,19 @@ import (
 	taskrepo "gowms/internal/modules/task/repository"
 	taskservice "gowms/internal/modules/task/service"
 	"gowms/internal/pkg/config"
-	"gowms/internal/pkg/lock"
 	"gowms/internal/pkg/observability"
 	"gowms/internal/pkg/orderno"
-	"gowms/internal/pkg/snowflake"
 	"gowms/internal/pkg/tx"
 )
 
-// App 依赖组装容器：手动构造函数注入，包间仅通过接口通信，预留按包拆分扩展点。
+// App 通过构造函数组装模块依赖，并提供路由注册所需的处理器。
 type App struct {
 	Config  *config.Config
 	DB      *gorm.DB
 	Redis   *redis.Client
 	Metrics *observability.Metrics
 
-	// 模块对外接口（未来拆分微服务时的边界）
+	// 路由与中间件使用的模块接口。
 	SystemAPI    sysapi.SystemAPI
 	BasicAPI     basicapi.BasicAPI
 	InventoryAPI invapi.InventoryAPI
@@ -68,15 +66,19 @@ type App struct {
 	DemoHandler      *demohandler.Handler
 
 	// 供后台任务使用
+	SystemService  *sysservice.Service
 	InboundService *inboundservice.Service
 }
 
 // New 按依赖顺序组装所有模块（无循环依赖：basic→inventory，inbound/outbound→basic+inventory+task）。
-func New(cfg *config.Config, db *gorm.DB, rdb *redis.Client, metrics *observability.Metrics) (*App, error) {
-	// 节点号来自配置（多实例部署时每实例必须配置不同的 server.node，否则会生成重复雪花 ID）
-	snowflake.Init(cfg.Server.Node)
+func New(cfg *config.Config, db *gorm.DB, rdb *redis.Client, metrics *observability.Metrics) *App {
 	tm := tx.New(db)
-	no := orderno.New(rdb)
+	var no *orderno.Generator
+	if rdb == nil {
+		no = orderno.New(nil)
+	} else {
+		no = orderno.New(rdb)
+	}
 
 	// system：无外部模块依赖
 	sysSvc := sysservice.New(sysrepo.New(db), cfg.JWT.Secret, cfg.JWT.ExpireHours)
@@ -88,10 +90,10 @@ func New(cfg *config.Config, db *gorm.DB, rdb *redis.Client, metrics *observabil
 	basicSvc := basicservice.New(basicrepo.New(), tm, newRedisAdapter(rdb), invSvc, cfg.Limits)
 
 	// task：统一任务模块
-	taskSvc := taskservice.New(taskrepo.New(), no, db)
+	taskSvc := taskservice.New(taskrepo.New(), db)
 
 	// inbound / outbound / stocktake：依赖 basic + inventory + task 接口
-	inboundSvc := inboundservice.New(inboundrepo.New(), tm, no, basicSvc, invSvc, taskSvc, cfg.Upload.Dir, lock.New(rdb), cfg.Limits)
+	inboundSvc := inboundservice.New(inboundrepo.New(), tm, no, basicSvc, invSvc, taskSvc, cfg.Upload.Dir, cfg.Limits)
 	outSvc := outservice.New(outrepo.New(), tm, no, basicSvc, invSvc, taskSvc, cfg.Limits)
 	stocktakeSvc := stocktakeservice.New(stocktakerepo.New(), tm, no, invSvc, cfg.Limits)
 	aiSvc := aiservice.New(cfg.AI, db, rdb)
@@ -119,7 +121,8 @@ func New(cfg *config.Config, db *gorm.DB, rdb *redis.Client, metrics *observabil
 		DemoHandler:      demohandler.New(demoSvc),
 
 		InboundService: inboundSvc,
-	}, nil
+		SystemService:  sysSvc,
+	}
 }
 
 // redisAdapter 将 go-redis 适配为 basic 模块定义的 redisClient 接口（依赖倒置）。
@@ -131,8 +134,8 @@ func (a *redisAdapter) Get(ctx context.Context, key string) (string, error) {
 	return a.rdb.Get(ctx, key).Result()
 }
 
-func (a *redisAdapter) Set(ctx context.Context, key string, val any, ttl time.Duration) error {
-	return a.rdb.Set(ctx, key, val, ttl).Err()
+func (a *redisAdapter) Set(ctx context.Context, key string, value any, ttl time.Duration) error {
+	return a.rdb.Set(ctx, key, value, ttl).Err()
 }
 
 func (a *redisAdapter) Del(ctx context.Context, keys ...string) error {

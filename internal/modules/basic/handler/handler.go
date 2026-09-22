@@ -86,7 +86,7 @@ func (h *Handler) updateWarehouse(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := h.svc.UpdateWarehouse(c.Request.Context(), id, &req, nil); err != nil {
+	if err := h.svc.UpdateWarehouse(c.Request.Context(), id, &req); err != nil {
 		response.Fail(c, err)
 		return
 	}
@@ -102,7 +102,7 @@ func (h *Handler) warehouseStatus(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := h.svc.UpdateWarehouse(c.Request.Context(), id, &dto.WarehouseReq{}, req.Status); err != nil {
+	if err := h.svc.UpdateWarehouseStatus(c.Request.Context(), id, *req.Status); err != nil {
 		response.Fail(c, err)
 		return
 	}

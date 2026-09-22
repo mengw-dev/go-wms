@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"sort"
 
 	"gorm.io/gorm"
@@ -9,25 +10,28 @@ import (
 	"gowms/internal/modules/inventory/api"
 	"gowms/internal/modules/stocktake/model"
 	"gowms/internal/pkg/errcode"
+	pkgtx "gowms/internal/pkg/tx"
 )
 
 // 盘点审核和库存调整。
 
 func (s *Service) Approve(ctx context.Context, orderID int64, operator string) error {
-	return s.tm.Tx(ctx, func(tx *gorm.DB) error {
+	return s.tm.TxRetry(ctx, pkgtx.MaxTxRetry, func(tx *gorm.DB) error {
 		o, err := s.repo.GetOrderForUpdate(tx, orderID)
 		if err != nil {
-			return errcode.StocktakeNotFound
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return errcode.StocktakeNotFound
+			}
+			return err
 		}
-		if o.Status != model.OrderDraft {
+		if !model.CanTransit(o.Status, model.OrderCompleted) {
 			return errcode.StocktakeStatusWrong
 		}
 		details, err := s.repo.ListDetails(tx, orderID)
 		if err != nil {
 			return err
 		}
-		// 按库存行 ID 排序后再调整：统一加锁顺序，
-		// 避免与出库审核等并发事务交叉加锁导致死锁
+		// 盘点之间按库存 ID 统一加锁顺序；与其他业务仍可能竞争，死锁由整事务重试处理。
 		sort.Slice(details, func(i, j int) bool { return details[i].InventoryID < details[j].InventoryID })
 		anyCounted := false
 		for _, d := range details {
@@ -35,20 +39,13 @@ func (s *Service) Approve(ctx context.Context, orderID int64, operator string) e
 				continue
 			}
 			anyCounted = true
-			actual := *d.ActualQty
-			// 以当前实时库存重算差异（快照后库存可能已变动）
-			var current int
-			if err := tx.Table("wms_inventory").Where("id = ?", d.InventoryID).Pluck("stock_quantity", &current).Error; err != nil {
-				continue // 库存行已删除，跳过
-			}
-			diff := actual - current
-			if diff != 0 {
-				if err := s.inv.Adjust(ctx, tx, &api.AdjustReq{
-					InventoryID: d.InventoryID, NewStock: actual,
-					OrderNo: o.OrderNo, Operator: operator,
-				}); err != nil {
-					return err
-				}
+			// 差异和流水使用同一份加锁后的库存；零差异也校验库存是否存在。
+			diff, err := s.inv.Adjust(ctx, tx, &api.AdjustReq{
+				InventoryID: d.InventoryID, NewStock: *d.ActualQty,
+				OrderNo: o.OrderNo, Operator: operator,
+			})
+			if err != nil {
+				return err
 			}
 			if err := s.repo.MarkAdjusted(tx, d.ID, diff); err != nil {
 				return err
@@ -57,7 +54,7 @@ func (s *Service) Approve(ctx context.Context, orderID int64, operator string) e
 		if !anyCounted {
 			return errcode.StocktakeNoDetail
 		}
-		if n, err := s.repo.UpdateStatus(tx, orderID, model.OrderDraft, model.OrderCompleted); err != nil {
+		if n, err := s.repo.UpdateStatus(tx, orderID, o.Status, model.OrderCompleted); err != nil {
 			return err
 		} else if n == 0 {
 			return errcode.StocktakeVersionBad

@@ -23,7 +23,7 @@ const personalEnabled = ref(false)
 const entry = ref<'demo' | 'personal'>('demo')
 const personalAccounts = ref<PersonalAccountInfo[]>([])
 const selectedAccount = ref('')
-const form = reactive({ username: '', password: '' })
+const form = reactive({ username: '', password: '', tenant_id: '' })
 
 onMounted(async () => {
   try {
@@ -49,6 +49,7 @@ const showSwitch = computed(() => demoEnabled.value && personalEnabled.value)
 const rules: FormRules = {
   username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
   password: [{ required: true, message: '请输入密码', trigger: 'blur' }],
+  tenant_id: [{ pattern: /^\d{1,19}$/, message: '租户编号应为非负整数', trigger: 'blur' }],
 }
 
 async function submit() {
@@ -57,7 +58,11 @@ async function submit() {
   if (!valid) return
   loading.value = true
   try {
-    const result = await login({ username: form.username, password: form.password })
+    const result = await login({
+      username: form.username,
+      password: form.password,
+      tenant_id: form.tenant_id || undefined,
+    })
     auth.setAuth(result)
     if ((result.perms ?? []).includes('wms:demo')) {
       const session = await acquireDemoSession()
@@ -81,7 +86,11 @@ async function startDemo() {
   demoLoading.value = true
   try {
     const account = await claimDemoAccount()
-    const result = await login({ username: account.username, password: account.password })
+    const result = await login({
+      username: account.username,
+      password: account.password,
+      tenant_id: account.tenant_id,
+    })
     auth.setAuth(result)
     if ((result.perms ?? []).includes('wms:demo')) {
       const session = await acquireDemoSession()
@@ -95,6 +104,7 @@ async function startDemo() {
     })
     router.push('/')
   } catch {
+    auth.clear()
     // 错误提示由 request.ts 拦截器统一弹出（如 70002 演示席位已满）
   } finally {
     demoLoading.value = false
@@ -108,7 +118,11 @@ async function startPersonal() {
   personalLoading.value = true
   try {
     const account = await claimPersonalAccount(selectedAccount.value)
-    const result = await login({ username: account.username, password: account.password ?? '' })
+    const result = await login({
+      username: account.username,
+      password: account.password ?? '',
+      tenant_id: account.tenant_id,
+    })
     auth.setAuth(result)
     ElMessage({
       message: `已进入 ${account.username}（${account.nickname}），数据长期保留，退出后可用同一账号再次登录`,
@@ -235,6 +249,14 @@ async function startPersonal() {
             <el-input v-model="form.password" type="password" show-password placeholder="密码">
               <template #prefix><el-icon><Lock /></el-icon></template>
             </el-input>
+          </el-form-item>
+          <el-form-item prop="tenant_id">
+            <el-input
+              v-model="form.tenant_id"
+              placeholder="租户编号（可选，同名账号必填）"
+              inputmode="numeric"
+              maxlength="19"
+            />
           </el-form-item>
           <!-- 快捷体验可用时，账密登录降为次按钮，避免两个主按钮抢焦点 -->
           <el-button

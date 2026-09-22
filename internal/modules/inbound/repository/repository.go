@@ -2,7 +2,6 @@ package repository
 
 import (
 	"context"
-	"time"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -158,69 +157,4 @@ func (r *Repository) ListIDsByImportTask(ctx context.Context, db *gorm.DB, taskI
 		Where("import_task_id = ? AND status = ?", taskID, model.OrderDraft).
 		Pluck("id", &ids).Error
 	return ids, err
-}
-
-// ---------- 导入任务 ----------
-
-func (r *Repository) CreateImportTask(ctx context.Context, db *gorm.DB, t *model.ImportTask) error {
-	return db.WithContext(ctx).Create(t).Error
-}
-
-func (r *Repository) GetImportTask(ctx context.Context, db *gorm.DB, taskID string) (*model.ImportTask, error) {
-	var t model.ImportTask
-	if err := db.WithContext(ctx).Where("task_id = ?", taskID).First(&t).Error; err != nil {
-		return nil, err
-	}
-	return &t, nil
-}
-
-// CASImportStatus 乐观更新导入任务状态（CAS 防重复执行）。
-func (r *Repository) CASImportStatus(db *gorm.DB, taskID string, from, to model.ImportTaskStatus) (int64, error) {
-	res := db.Model(&model.ImportTask{}).
-		Where("task_id = ? AND status = ?", taskID, from).
-		Update("status", to)
-	return res.RowsAffected, res.Error
-}
-
-// FinishImport 写入结果（仅 PROCESSING 时生效）。
-func (r *Repository) FinishImport(db *gorm.DB, taskID string, status model.ImportTaskStatus, total, success, fail int, errMsg string) error {
-	return db.Model(&model.ImportTask{}).
-		Where("task_id = ? AND status = ?", taskID, model.ImportProcessing).
-		Updates(map[string]any{
-			"status": status, "total_rows": total, "success_rows": success, "fail_rows": fail, "error_msg": errMsg,
-		}).Error
-}
-
-// TouchImport 刷新 updated_at（心跳，防止被悬挂补偿误判）。
-func (r *Repository) TouchImport(db *gorm.DB, taskID string) error {
-	return db.Model(&model.ImportTask{}).Where("task_id = ?", taskID).Update("updated_at", gorm.Expr("NOW()")).Error
-}
-
-// ListStaleImports 悬挂任务扫描：PENDING 超时 / PROCESSING 心跳超时，最多返回 limit 条。
-func (r *Repository) ListStaleImports(ctx context.Context, db *gorm.DB, pendingBefore, processingBefore time.Time, limit int) ([]*model.ImportTask, error) {
-	var list []*model.ImportTask
-	err := db.WithContext(ctx).Model(&model.ImportTask{}).
-		Where("(status = ? AND updated_at < ?) OR (status = ? AND updated_at < ?)",
-			model.ImportPending, pendingBefore, model.ImportProcessing, processingBefore).
-		Limit(limit).Find(&list).Error
-	return list, err
-}
-
-// ResetProcessingToPending 悬挂 PROCESSING 任务复位为 PENDING（CAS）。
-func (r *Repository) ResetProcessingToPending(db *gorm.DB, taskID string) (int64, error) {
-	return r.CASImportStatus(db, taskID, model.ImportProcessing, model.ImportPending)
-}
-
-// ListImportTasks 返回"仍有关联入库单"的历史导入任务（下拉筛选器专用，按创建时间倒序）。
-// 已被删除（全删、作废）的批次会被自动过滤，避免下拉出现空批次。
-func (r *Repository) ListImportTasks(ctx context.Context, db *gorm.DB, returnLimit int) ([]*model.ImportTask, error) {
-	var list []*model.ImportTask
-	q := db.WithContext(ctx).Model(&model.ImportTask{}).
-		Where("EXISTS (SELECT 1 FROM wms_receipt_order o WHERE o.import_task_id = wms_import_task.task_id AND o.deleted_at IS NULL)").
-		Order("created_at DESC")
-	if returnLimit > 0 {
-		q = q.Limit(returnLimit)
-	}
-	err := q.Find(&list).Error
-	return list, err
 }

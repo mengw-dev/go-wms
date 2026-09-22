@@ -37,7 +37,7 @@ WMS 是一个前后端分离的轻量级 WMS，覆盖仓库、库位、货品、
 ## 核心能力
 
 - 三数量库存模型：`stock = available + allocated`
-- `SELECT ... FOR UPDATE` 行锁、条件更新和 CHECK 约束共同防止超卖
+- `SELECT ... FOR UPDATE` 行锁和数量条件更新防止超卖，CHECK 约束作为负库存的最后兜底
 - 出库审核即按入库时间执行 FIFO 锁库
 - 入库、出库、盘点、任务状态机
 - 库存变动全量写入流水，支持来源单据和操作人追溯
@@ -69,7 +69,7 @@ wms/
 │   │   ├── system/          # 用户、角色、权限、操作日志
 │   │   └── task/            # 统一任务中心
 │   └── pkg/                 # 配置、JWT、事务、日志、响应等公共能力
-├── migrations/              # DBA 审阅用初始化 SQL
+├── migrations/versions/     # golang-migrate 版本化迁移（可升级/回退）
 ├── scripts/windows/         # Windows 一键启动/停止/重置（PowerShell + cmd 包装）
 ├── scripts/wms-common.ps1   # PowerShell 公共函数
 ├── scripts/k6/              # k6 压测与端到端脚本
@@ -114,6 +114,24 @@ npm run dev
 ```
 
 访问 `http://127.0.0.1:5173`。开发服务器会将 `/api` 代理到 `http://127.0.0.1:8080`。
+
+### 4. 提交前完整验证
+
+```powershell
+.\scripts\windows\verify.ps1
+```
+
+需要同时运行 Linux race 检查时：
+
+```powershell
+.\scripts\windows\verify.ps1 -WithRace
+```
+
+如果需要额外运行真实后端 Playwright E2E：
+
+```powershell
+.\scripts\windows\verify.ps1 -WithE2E
+```
 
 ## Windows 一键启动
 
@@ -182,7 +200,7 @@ WMS_API_PORT=18080
 ```bash
 cp .env.example .env
 # 修改 .env 中的数据库密码和 JWT_SECRET
-docker compose -f deploy/docker-compose.yaml up -d --build
+docker compose --env-file .env -f deploy/docker-compose.yaml up -d --build
 ```
 
 默认情况下 MySQL 和 Redis 只在 Compose 内部网络中可用，不会暴露到宿主机公网。仅供本机 Go 开发时，可以执行：
@@ -499,7 +517,9 @@ GET /version
 GET /healthz
 ```
 
-## 生产级处理
+## 生产部署注意事项
+
+本章是部署检查项，不表示项目已经替代完整的生产运维体系。上线前仍需按业务规模完成备份恢复演练、密钥轮换、容量评估和告警值班。
 
 - JWT 使用版本号，用户禁用或修改密码后旧 Token 立即失效。
 - 登录失败按用户名和 IP 限流。

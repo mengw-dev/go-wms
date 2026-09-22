@@ -8,6 +8,18 @@ import "context"
 type ctxKey string
 
 const tenantCtxKey ctxKey = "tenant_id"
+const exactScopeKey ctxKey = "exact_tenant_scope"
+
+// WithExactTenant 限定单一租户，包括 tenantID=0。用于 API Key 等不应具有平台旁路权限的入口。
+// 租户 ID 必须非负；调用入口负责校验。后续 WithTenant 不会取消此隔离要求。
+func WithExactTenant(ctx context.Context, tenantID int64) context.Context {
+	return context.WithValue(WithTenant(ctx, tenantID), exactScopeKey, true)
+}
+
+func hasScope(ctx context.Context) bool {
+	exact, _ := ctx.Value(exactScopeKey).(bool)
+	return exact || FromContext(ctx) > 0
+}
 
 // WithTenant 将租户 ID 放入 ctx（覆盖已有值；tenantID <= 0 时清除租户信息）。
 func WithTenant(ctx context.Context, tenantID int64) context.Context {
@@ -24,4 +36,11 @@ func FromContext(ctx context.Context) int64 {
 	}
 	v, _ := ctx.Value(tenantCtxKey).(int64)
 	return v
+}
+
+// Scope 返回当前租户 ID 以及是否要求租户隔离。
+// WithTenant(ctx, 0) 或未设置租户时 scoped=false，表示平台旁路；
+// WithExactTenant(ctx, 0) 时 scoped=true 且 tenantID=0，表示只能访问平台租户数据。
+func Scope(ctx context.Context) (tenantID int64, scoped bool) {
+	return FromContext(ctx), hasScope(ctx)
 }

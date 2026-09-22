@@ -5,6 +5,7 @@ import type {
   DemoPickingResult,
   DemoScenarioResult,
   DemoSessionInfo,
+  EntityID,
 } from './types'
 import { get, post } from './request'
 
@@ -14,6 +15,7 @@ export function acquireDemoSession() {
 
 /** 空闲演示账号信息（多租户多账号，登录页"在线体验"自动分配） */
 export interface DemoAccountInfo {
+  tenant_id: EntityID
   username: string
   password: string
   total: number
@@ -22,7 +24,7 @@ export interface DemoAccountInfo {
 
 /** 领取一个空闲演示账号（免登录接口；全部占用时后端返回 70002） */
 export function claimDemoAccount() {
-  return get<DemoAccountInfo>('/demo/account')
+  return post<DemoAccountInfo>('/demo/account')
 }
 
 export function heartbeatDemoSession() {

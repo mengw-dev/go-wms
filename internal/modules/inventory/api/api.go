@@ -72,5 +72,6 @@ type InventoryAPI interface {
 	Allocate(ctx context.Context, tx *gorm.DB, req *AllocateReq) (*AllocateResult, error)
 	Ship(ctx context.Context, tx *gorm.DB, req *ShipReq) error
 	Release(ctx context.Context, tx *gorm.DB, req *ReleaseReq) error
-	Adjust(ctx context.Context, tx *gorm.DB, req *AdjustReq) error
+	// Adjust 返回在行锁内计算并实际应用的库存差异。
+	Adjust(ctx context.Context, tx *gorm.DB, req *AdjustReq) (int, error)
 }

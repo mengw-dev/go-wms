@@ -43,6 +43,27 @@ jwt:
 	}
 }
 
+func TestLoadNodeZeroAndNegative(t *testing.T) {
+	for _, node := range []string{"0", "-1"} {
+		t.Run(node, func(t *testing.T) {
+			path := writeConfig(t, "server:\n  port: 8080\n  mode: debug\n  node: "+node+"\n")
+			cfg, err := Load(path)
+			if node == "-1" {
+				if err == nil {
+					t.Fatal("negative node accepted")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if cfg.Server.Node != 0 {
+				t.Fatalf("node zero changed to %d", cfg.Server.Node)
+			}
+		})
+	}
+}
+
 func TestLoadReadsEnvironmentOverrides(t *testing.T) {
 	t.Setenv("WMS_SERVER_MODE", "release")
 	t.Setenv("WMS_SERVER_NODE", "9")

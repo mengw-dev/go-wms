@@ -23,7 +23,7 @@ var sensitiveKeys = []string{
 
 func sanitizeOperLogParams(contentType, body string) string {
 	contentType = strings.ToLower(contentType)
-	if strings.Contains(contentType, "application/json") || strings.HasPrefix(strings.TrimSpace(body), "{") {
+	if strings.Contains(contentType, "application/json") || strings.HasPrefix(strings.TrimSpace(body), "{") || strings.HasPrefix(strings.TrimSpace(body), "[") {
 		var value any
 		if err := json.Unmarshal([]byte(body), &value); err == nil {
 			value = redactSensitive(value)
@@ -31,6 +31,11 @@ func sanitizeOperLogParams(contentType, body string) string {
 				return truncateUTF8(string(encoded), auditParamLimit)
 			}
 		}
+		// 无法解析的 JSON 不能可靠脱敏，宁可省略内容也不要记录原文。
+		return "[INVALID JSON OMITTED]"
+	}
+	if contentType != "" && !strings.Contains(contentType, "application/x-www-form-urlencoded") {
+		return "[BODY OMITTED]"
 	}
 	return truncateUTF8(redactRawParams(body), auditParamLimit)
 }
@@ -61,7 +66,7 @@ func redactSensitive(value any) any {
 func redactRawParams(raw string) string {
 	values, err := url.ParseQuery(raw)
 	if err != nil {
-		return raw
+		return "[INVALID FORM OMITTED]"
 	}
 	for key := range values {
 		if isSensitiveKey(key) {

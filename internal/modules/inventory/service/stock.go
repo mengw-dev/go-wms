@@ -22,6 +22,9 @@ func (s *Service) Increase(ctx context.Context, tx *gorm.DB, req *api.IncreaseRe
 	if req.Quantity <= 0 {
 		return errcode.ParamError
 	}
+	if err := s.repo.LockBasicReferences(tx, req.WarehouseID, req.LocationID, req.SKUID); err != nil {
+		return err
+	}
 	const tupleRetry = 3
 	for i := 0; i < tupleRetry; i++ {
 		// 行锁读取：并发上架在 FOR UPDATE 上串行化
@@ -85,7 +88,7 @@ func (s *Service) Allocate(ctx context.Context, tx *gorm.DB, req *api.AllocateRe
 			availableNotEnoughMsg(req.SKUID, req.Quantity, totalAvailable))
 	}
 
-	result := &api.AllocateResult{Rows: make([]api.AllocateRow, 0, 4)}
+	allocation := &api.AllocateResult{Rows: make([]api.AllocateRow, 0, 4)}
 	remaining := req.Quantity
 	for _, inv := range rows {
 		if remaining <= 0 {
@@ -99,15 +102,23 @@ func (s *Service) Allocate(ctx context.Context, tx *gorm.DB, req *api.AllocateRe
 		if affected == 0 { // 理论上行锁内不会发生；命中则说明有未走行锁的写入，防御性回滚
 			return nil, errcode.Conflict
 		}
-		result.Rows = append(result.Rows, api.AllocateRow{
+		if err := s.repo.InsertTrans(tx, &model.InventoryTrans{
+			ID: snowflake.Next(), InventoryID: inv.ID, TransType: model.TransAllocate,
+			QuantityChange: 0, BeforeQuantity: inv.StockQuantity, AfterQuantity: inv.StockQuantity,
+			AvailableBefore: inv.AvailableQty, AvailableAfter: inv.AvailableQty - take,
+			OrderNo: req.OrderNo, Operator: req.Operator,
+		}); err != nil {
+			return nil, err
+		}
+		allocation.Rows = append(allocation.Rows, api.AllocateRow{
 			InventoryID: inv.ID, LocationID: inv.LocationID,
 			LocationCode: inv.LocationCode,
 			BatchNo:      inv.BatchNo, Quantity: take,
 		})
 		remaining -= take
 	}
-	result.Total = req.Quantity
-	return result, nil
+	allocation.Total = req.Quantity
+	return allocation, nil
 }
 
 func (s *Service) Ship(ctx context.Context, tx *gorm.DB, req *api.ShipReq) error {
@@ -166,35 +177,35 @@ func (s *Service) Release(ctx context.Context, tx *gorm.DB, req *api.ReleaseReq)
 	})
 }
 
-func (s *Service) Adjust(ctx context.Context, tx *gorm.DB, req *api.AdjustReq) error {
+func (s *Service) Adjust(ctx context.Context, tx *gorm.DB, req *api.AdjustReq) (int, error) {
 	if req.NewStock < 0 {
-		return errcode.AdjustNotAllow
+		return 0, errcode.AdjustNotAllow
 	}
 	inv, err := s.repo.GetForUpdate(tx, req.InventoryID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return errcode.InventoryNotFound
+			return 0, errcode.InventoryNotFound
 		}
-		return err
+		return 0, err
 	}
 	delta := req.NewStock - inv.StockQuantity
 	if delta == 0 {
-		return nil
+		return 0, nil
 	}
 	if delta > 0 {
 		if err := s.repo.AdjustPositive(tx, inv.ID, delta); err != nil {
-			return err
+			return 0, err
 		}
 	} else {
 		affected, err := s.repo.AdjustNegative(tx, inv.ID, -delta)
 		if err != nil {
-			return err
+			return 0, err
 		}
 		if affected == 0 { // 已分配库存不允许被盘点调减吃掉
-			return errcode.AdjustNotAllow
+			return 0, errcode.AdjustNotAllow
 		}
 	}
-	return s.repo.InsertTrans(tx, &model.InventoryTrans{
+	err = s.repo.InsertTrans(tx, &model.InventoryTrans{
 		ID:          snowflake.Next(),
 		InventoryID: inv.ID, TransType: model.TransAdjust,
 		QuantityChange: delta,
@@ -202,16 +213,13 @@ func (s *Service) Adjust(ctx context.Context, tx *gorm.DB, req *api.AdjustReq) e
 		AvailableBefore: inv.AvailableQty, AvailableAfter: inv.AvailableQty + delta,
 		OrderNo: req.OrderNo, Operator: req.Operator,
 	})
+	if err != nil {
+		return 0, err
+	}
+	return delta, nil
 }
 
 func availableNotEnoughMsg(skuID int64, need, actual int) string {
 	return errcode.AvailableNotEnough.Msg + "：SKU[" + strconv.FormatInt(skuID, 10) + "] 需要" +
 		strconv.Itoa(need) + "，实际可用" + strconv.Itoa(actual)
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

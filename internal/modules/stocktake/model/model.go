@@ -13,6 +13,21 @@ const (
 	OrderCancelled OrderStatus = "CANCELLED"
 )
 
+// StatusTransitions 盘点单状态转换表：草稿可完成或取消，终态无后继。
+var StatusTransitions = map[OrderStatus][]OrderStatus{
+	OrderDraft: {OrderCompleted, OrderCancelled},
+}
+
+// CanTransit 判断盘点单状态转换是否合法。
+func CanTransit(from, to OrderStatus) bool {
+	for _, next := range StatusTransitions[from] {
+		if next == to {
+			return true
+		}
+	}
+	return false
+}
+
 type StocktakeOrder struct {
 	model.Base
 	model.Versioned

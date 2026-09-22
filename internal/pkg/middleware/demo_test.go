@@ -10,23 +10,24 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"gowms/internal/pkg/errcode"
+	"gowms/internal/pkg/tenant"
 )
 
 type demoValidatorStub struct {
-	enabled  bool
-	demoUser string
-	err      error
+	enabled    bool
+	demoTenant int64
+	err        error
 }
 
 func (s demoValidatorStub) Enabled() bool { return s.enabled }
-func (s demoValidatorStub) IsDemoUser(username string) bool {
-	return username != "" && username == s.demoUser
+func (s demoValidatorStub) IsDemoTenant(ctx context.Context) bool {
+	return s.demoTenant > 0 && tenant.FromContext(ctx) == s.demoTenant
 }
 func (s demoValidatorStub) ValidateSession(_ context.Context, _ string) error { return s.err }
 
-func setDemoTestUsername(username string) gin.HandlerFunc {
+func setDemoTestTenant(tenantID int64) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.Set(string(ctxUsername), username)
+		c.Request = c.Request.WithContext(tenant.WithTenant(c.Request.Context(), tenantID))
 		c.Next()
 	}
 }
@@ -34,8 +35,8 @@ func setDemoTestUsername(username string) gin.HandlerFunc {
 func TestDemoSessionRequiresSessionForDemoUser(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.Use(setDemoTestUsername("demo"))
-	router.Use(DemoSession(demoValidatorStub{enabled: true, demoUser: "demo"}))
+	router.Use(setDemoTestTenant(10001))
+	router.Use(DemoSession(demoValidatorStub{enabled: true, demoTenant: 10001}))
 	router.GET("/api/v1/business", func(c *gin.Context) {
 		c.Set(string(ctxUsername), "demo")
 		c.Status(http.StatusNoContent)
@@ -56,8 +57,8 @@ func TestDemoSessionRequiresSessionForDemoUser(t *testing.T) {
 func TestDemoSessionAllowsAcquireWithoutSessionHeader(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.Use(setDemoTestUsername("demo"))
-	router.Use(DemoSession(demoValidatorStub{enabled: true, demoUser: "demo"}))
+	router.Use(setDemoTestTenant(10001))
+	router.Use(DemoSession(demoValidatorStub{enabled: true, demoTenant: 10001}))
 	router.POST("/api/v1/demo/session/acquire", func(c *gin.Context) {
 		c.Set(string(ctxUsername), "demo")
 		c.Status(http.StatusNoContent)
@@ -75,8 +76,8 @@ func TestDemoSessionAllowsAcquireWithoutSessionHeader(t *testing.T) {
 func TestDemoSessionPassesValidSession(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.Use(setDemoTestUsername("demo"))
-	router.Use(DemoSession(demoValidatorStub{enabled: true, demoUser: "demo"}))
+	router.Use(setDemoTestTenant(10001))
+	router.Use(DemoSession(demoValidatorStub{enabled: true, demoTenant: 10001}))
 	router.GET("/api/v1/business", func(c *gin.Context) {
 		c.Set(string(ctxUsername), "demo")
 		c.Status(http.StatusNoContent)
@@ -95,8 +96,8 @@ func TestDemoSessionPassesValidSession(t *testing.T) {
 func TestDemoSessionLeavesNonDemoUsersUntouched(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.Use(setDemoTestUsername("admin"))
-	router.Use(DemoSession(demoValidatorStub{enabled: true, demoUser: "demo"}))
+	router.Use(setDemoTestTenant(0))
+	router.Use(DemoSession(demoValidatorStub{enabled: true, demoTenant: 10001}))
 	router.GET("/api/v1/business", func(c *gin.Context) {
 		c.Status(http.StatusNoContent)
 	})
@@ -113,8 +114,8 @@ func TestDemoSessionLeavesNonDemoUsersUntouched(t *testing.T) {
 func TestDemoSessionLeavesDisabledDemoUntouched(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.Use(setDemoTestUsername("demo"))
-	router.Use(DemoSession(demoValidatorStub{enabled: false, demoUser: "demo"}))
+	router.Use(setDemoTestTenant(10001))
+	router.Use(DemoSession(demoValidatorStub{enabled: false, demoTenant: 10001}))
 	router.GET("/api/v1/business", func(c *gin.Context) {
 		c.Set(string(ctxUsername), "demo")
 		c.Status(http.StatusNoContent)
@@ -132,8 +133,8 @@ func TestDemoSessionLeavesDisabledDemoUntouched(t *testing.T) {
 func TestDemoSessionMapsInvalidSessionError(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.Use(setDemoTestUsername("demo"))
-	router.Use(DemoSession(demoValidatorStub{enabled: true, demoUser: "demo", err: errcode.DemoSessionInvalid}))
+	router.Use(setDemoTestTenant(10001))
+	router.Use(DemoSession(demoValidatorStub{enabled: true, demoTenant: 10001, err: errcode.DemoSessionInvalid}))
 	router.GET("/api/v1/business", func(c *gin.Context) {
 		c.Set(string(ctxUsername), "demo")
 		c.Status(http.StatusNoContent)

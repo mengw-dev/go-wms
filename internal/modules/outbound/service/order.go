@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"sort"
 
 	"gorm.io/gorm"
@@ -31,6 +32,8 @@ func (s *Service) Create(ctx context.Context, req *dto.CreateOrderReq, operator 
 	}
 	if _, err := s.repo.GetOrderByBizNo(ctx, s.tm.DB(), req.BizOrderNo); err == nil {
 		return nil, errcode.BizOrderDuplicate
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err
 	}
 	details, expected, err := s.buildDetails(ctx, req.Details)
 	if err != nil {
@@ -52,6 +55,12 @@ func (s *Service) Create(ctx context.Context, req *dto.CreateOrderReq, operator 
 		if !tx.IsDuplicateErr(err) {
 			return nil, err
 		}
+		// 并发请求可能在预检查之后使用相同业务单号创建成功。重试新 order_no 无法解决它。
+		if _, lookupErr := s.repo.GetOrderByBizNo(ctx, s.tm.DB(), req.BizOrderNo); lookupErr == nil {
+			return nil, errcode.BizOrderDuplicate
+		} else if !errors.Is(lookupErr, gorm.ErrRecordNotFound) {
+			return nil, lookupErr
+		}
 		log.WithContext(ctx).Warn("order_no duplicated, retry", "order_no", order.OrderNo)
 	}
 	return nil, errcode.OrderNoDuplicate
@@ -61,7 +70,10 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 	return s.tm.Tx(ctx, func(tx *gorm.DB) error {
 		o, err := s.repo.GetOrderForUpdate(tx, id)
 		if err != nil {
-			return errcode.ShipOrderNotFound
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return errcode.ShipOrderNotFound
+			}
+			return err
 		}
 		if o.Status != model.OrderDraft {
 			return errcode.ShipOrderStatusWrong
@@ -74,7 +86,10 @@ func (s *Service) Submit(ctx context.Context, id int64) error {
 	return s.tm.Tx(ctx, func(tx *gorm.DB) error {
 		o, err := s.repo.GetOrderForUpdate(tx, id)
 		if err != nil {
-			return errcode.ShipOrderNotFound
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return errcode.ShipOrderNotFound
+			}
+			return err
 		}
 		if !model.CanTransit(o.Status, model.OrderSubmitted) {
 			return errcode.ShipOrderStatusWrong
@@ -89,10 +104,13 @@ func (s *Service) Submit(ctx context.Context, id int64) error {
 }
 
 func (s *Service) Approve(ctx context.Context, id int64, operator string) error {
-	return s.tm.Tx(ctx, func(tx *gorm.DB) error {
+	return s.tm.TxRetry(ctx, tx.MaxTxRetry, func(tx *gorm.DB) error {
 		o, err := s.repo.GetOrderForUpdate(tx, id)
 		if err != nil {
-			return errcode.ShipOrderNotFound
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return errcode.ShipOrderNotFound
+			}
+			return err
 		}
 		if o.Status != model.OrderSubmitted {
 			return errcode.ShipOrderStatusWrong
@@ -101,8 +119,7 @@ func (s *Service) Approve(ctx context.Context, id int64, operator string) error 
 		if err != nil {
 			return err
 		}
-		// 按 SKU_ID 排序后再分配：所有事务库存行加锁顺序全局一致，
-		// 避免并发审核交叉加锁（T1 持 A 等 B，T2 持 B 等 A）导致死锁
+		// 审核之间按相同 SKU 顺序加锁；与盘点等其他业务交错仍可能死锁，由外层整事务重试。
 		sort.Slice(details, func(i, j int) bool { return details[i].SKUID < details[j].SKUID })
 
 		// 逐明细 FIFO 分配（失败即整体回滚）
@@ -163,10 +180,13 @@ func (s *Service) Approve(ctx context.Context, id int64, operator string) error 
 }
 
 func (s *Service) Cancel(ctx context.Context, id int64, operator string) error {
-	return s.tm.Tx(ctx, func(tx *gorm.DB) error {
+	return s.tm.TxRetry(ctx, tx.MaxTxRetry, func(tx *gorm.DB) error {
 		o, err := s.repo.GetOrderForUpdate(tx, id)
 		if err != nil {
-			return errcode.ShipOrderNotFound
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return errcode.ShipOrderNotFound
+			}
+			return err
 		}
 		// 状态机校验：终态 SHIPPED/CANCELLED 不在转换表中，直接拒绝取消
 		if !model.CanTransit(o.Status, model.OrderCancelled) {
@@ -219,12 +239,15 @@ func (s *Service) Cancel(ctx context.Context, id int64, operator string) error {
 }
 
 // batchOper 逐张执行，部分成功不回滚，返回明细。
-func (s *Service) batchOper(ctx context.Context, ids []int64, operator string, fn func(context.Context, int64, string) error) *dto.BatchOperResp {
+func (s *Service) batchOper(ctx context.Context, ids []int64, fn func(context.Context, int64) error) *dto.BatchOperResp {
 	resp := &dto.BatchOperResp{}
 	for _, id := range ids {
-		if err := fn(ctx, id, operator); err != nil {
+		if err := fn(ctx, id); err != nil {
 			resp.Fail++
-			resp.Errors = append(resp.Errors, dto.BatchItemError{ID: id, Msg: err.Error()})
+			if errcode.From(err).Code == errcode.Internal.Code {
+				log.WithContext(ctx).Error("batch operation failed", "order_id", id, "err", err)
+			}
+			resp.Errors = append(resp.Errors, dto.BatchItemError{ID: id, Msg: errcode.From(err).Msg})
 			continue
 		}
 		resp.Success++
@@ -234,40 +257,26 @@ func (s *Service) batchOper(ctx context.Context, ids []int64, operator string, f
 
 // BatchDelete 批量删除（仅 DRAFT）。
 func (s *Service) BatchDelete(ctx context.Context, ids []int64) *dto.BatchOperResp {
-	resp := &dto.BatchOperResp{}
-	for _, id := range ids {
-		if err := s.Delete(ctx, id); err != nil {
-			resp.Fail++
-			resp.Errors = append(resp.Errors, dto.BatchItemError{ID: id, Msg: err.Error()})
-			continue
-		}
-		resp.Success++
-	}
-	return resp
+	return s.batchOper(ctx, ids, s.Delete)
 }
 
 // BatchSubmit 批量提交（DRAFT → SUBMITTED）。
 func (s *Service) BatchSubmit(ctx context.Context, ids []int64) *dto.BatchOperResp {
-	resp := &dto.BatchOperResp{}
-	for _, id := range ids {
-		if err := s.Submit(ctx, id); err != nil {
-			resp.Fail++
-			resp.Errors = append(resp.Errors, dto.BatchItemError{ID: id, Msg: err.Error()})
-			continue
-		}
-		resp.Success++
-	}
-	return resp
+	return s.batchOper(ctx, ids, s.Submit)
 }
 
 // BatchApprove 批量审核（SUBMITTED → PICKING，含库存分配 + 拣货任务生成）。
 func (s *Service) BatchApprove(ctx context.Context, ids []int64, operator string) *dto.BatchOperResp {
-	return s.batchOper(ctx, ids, operator, s.Approve)
+	return s.batchOper(ctx, ids, func(ctx context.Context, id int64) error {
+		return s.Approve(ctx, id, operator)
+	})
 }
 
 // BatchCancel 批量作废（DRAFT/SUBMITTED/APPROVED/PICKING → CANCELLED，释放已分配库存）。
 func (s *Service) BatchCancel(ctx context.Context, ids []int64, operator string) *dto.BatchOperResp {
-	return s.batchOper(ctx, ids, operator, s.Cancel)
+	return s.batchOper(ctx, ids, func(ctx context.Context, id int64) error {
+		return s.Cancel(ctx, id, operator)
+	})
 }
 
 func (s *Service) buildDetails(ctx context.Context, items []dto.OrderDetailItem) ([]*model.ShipmentOrderDetail, int, error) {

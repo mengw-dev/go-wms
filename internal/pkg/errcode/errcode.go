@@ -115,7 +115,9 @@ var (
 	// 20013 在 basic service 中内联定义（单次批量生成库位数量上限）
 	LocationWarehouseMismatch = New(20014, "库位不属于该仓库")
 	SKUHasStock               = New(20015, "货品存在库存，禁止删除")
-	WarehouseHasReferences    = New(20016, "仓库下存在库位，禁止删除")
+	WarehouseHasReferences    = New(20016, "仓库下存在库位、任务或单据引用，禁止删除")
+	LocationHasReferences     = New(20017, "库位存在任务或单据引用，禁止删除")
+	SKUHasReferences          = New(20018, "货品存在任务或单据引用，禁止删除")
 	LocationBatchLimit        = New(20013, "单次批量生成不超过 1000 个库位")
 )
 

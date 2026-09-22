@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -29,7 +30,6 @@ type Service struct {
 	inbound   *inboundservice.Service
 	outbound  *outboundservice.Service
 	stocktake *stocktakeservice.Service
-	resetMu   sync.Mutex
 	runMu     sync.Mutex
 }
 
@@ -40,17 +40,9 @@ func New(cfg *config.Config, db *gorm.DB, rdb *redis.Client,
 
 func (s *Service) Enabled() bool { return s.cfg != nil && s.cfg.Demo.Enabled && s.rdb != nil }
 
-// IsDemoUser 判断用户名是否属于当前配置的演示账号（demo1..demoN）。
-func (s *Service) IsDemoUser(username string) bool {
-	if s.cfg == nil {
-		return false
-	}
-	for i := 1; i <= s.cfg.Demo.Instances; i++ {
-		if username == s.cfg.Demo.AccountUsername(i) {
-			return true
-		}
-	}
-	return false
+// IsDemoTenant 根据已验证 JWT 的租户判断，其他租户的同名用户不是演示账号。
+func (s *Service) IsDemoTenant(ctx context.Context) bool {
+	return s.cfg != nil && s.cfg.Demo.AccountIndex(tenant.FromContext(ctx)) > 0
 }
 
 // Username 返回当前请求租户对应的演示账号名（业务单据的操作人）。
@@ -64,10 +56,10 @@ func (s *Service) Username(ctx context.Context) string {
 	return "demo"
 }
 
-// demoTenantID 从请求 ctx 取演示租户 ID；非演示租户（<= 0，如管理员）无权使用演示会话。
+// demoTenantID 只允许配置中的演示租户，正数租户 ID 本身不代表可重置的演示空间。
 func (s *Service) demoTenantID(ctx context.Context) (int64, error) {
 	tid := tenant.FromContext(ctx)
-	if tid <= 0 {
+	if !s.IsDemoTenant(ctx) {
 		return 0, errcode.Forbidden
 	}
 	return tid, nil
@@ -92,11 +84,14 @@ func (s *Service) ValidateSession(ctx context.Context, sessionID string) error {
 		return errcode.DemoSessionInvalid
 	}
 	current, err := s.rdb.Get(ctx, activeSessionKeyOf(tid)).Result()
-	if err == redis.Nil || current != sessionID {
+	if errors.Is(err, redis.Nil) {
 		return errcode.DemoSessionInvalid
 	}
 	if err != nil {
 		return err
+	}
+	if current != sessionID {
+		return errcode.DemoSessionInvalid
 	}
 	return nil
 }

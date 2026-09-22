@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"strings"
 
 	"gorm.io/gorm"
@@ -27,16 +28,19 @@ func (s *Service) Pick(ctx context.Context, taskID int64, qty int, operator stri
 	// 事务外只读不可变路由信息（OrderID/AllocationID/TaskType/TaskNo 建后不变）
 	routing, err := s.taskAPI.Get(ctx, taskID)
 	if err != nil {
-		return errcode.TaskNotFound
+		return err
 	}
 	if routing.TaskType != taskmodel.TaskPick {
 		return errcode.TaskStatusWrong
 	}
 	return s.tm.TxRetry(ctx, tx.MaxTxRetry, func(tx *gorm.DB) error {
-		// 锁顺序：主单 → 任务 → 分配行（与 Cancel 的 单据→分配行→任务 保持一致，降低死锁概率）
+		// 先锁主单，与 Cancel 串行处理同一张单据，再锁任务和分配行。
 		o, err := s.repo.GetOrderForUpdate(tx, routing.OrderID)
 		if err != nil {
-			return errcode.ShipOrderNotFound
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return errcode.ShipOrderNotFound
+			}
+			return err
 		}
 		if o.Status != model.OrderPicking {
 			return errcode.ShipOrderStatusWrong
@@ -51,7 +55,10 @@ func (s *Service) Pick(ctx context.Context, taskID int64, qty int, operator stri
 		}
 		a, err := s.repo.GetAllocationForUpdate(tx, routing.AllocationID)
 		if err != nil {
-			return errcode.ShipOrderNotFound
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return errcode.ShipOrderNotFound
+			}
+			return err
 		}
 		if a.Status != model.AllocAllocated {
 			return errcode.TaskStatusWrong

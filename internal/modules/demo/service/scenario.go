@@ -6,12 +6,14 @@ import (
 	"strings"
 	"time"
 
+	"gowms/internal/bootstrap"
 	basicmodel "gowms/internal/modules/basic/model"
 	inbounddto "gowms/internal/modules/inbound/dto"
 	outbounddto "gowms/internal/modules/outbound/dto"
 	stocktakedto "gowms/internal/modules/stocktake/dto"
 	taskmodel "gowms/internal/modules/task/model"
 	"gowms/internal/pkg/errcode"
+	"gowms/internal/pkg/tenant"
 )
 
 // 演示场景标识。
@@ -62,6 +64,12 @@ func (s *Service) Run(ctx context.Context, sessionID, scenario string, options .
 
 	s.runMu.Lock()
 	defer s.runMu.Unlock()
+	runCtx, finish, err := s.beginTenantRun(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer finish()
+	ctx = runCtx
 
 	if scenario == ScenarioInboundDrafts || scenario == ScenarioOutboundDrafts || scenario == ScenarioStocktakeDrafts {
 		refs, err := s.loadDemoBaseRefs(ctx)
@@ -82,7 +90,7 @@ func (s *Service) Run(ctx context.Context, sessionID, scenario string, options .
 		}
 	}
 
-	if err := s.resetLocked(ctx); err != nil {
+	if err := bootstrap.ResetDemoData(ctx, s.db, tenant.FromContext(ctx)); err != nil {
 		return nil, err
 	}
 	refs, err := s.loadDemoRefs(ctx)

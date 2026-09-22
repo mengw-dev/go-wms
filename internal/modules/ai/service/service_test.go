@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"os"
 	"strings"
 	"testing"
@@ -96,7 +97,7 @@ func TestBuildSnapshot(t *testing.T) {
 func TestChatKeyMissing(t *testing.T) {
 	s, _ := newTestService(t) // AIConfig.APIKey 为空
 	_, err := s.Chat(context.Background(), 1, "库存总量是多少")
-	if err != errcode.AIKeyMissing {
+	if !errors.Is(err, errcode.AIKeyMissing) {
 		t.Fatalf("expect AIKeyMissing, got %v", err)
 	}
 }

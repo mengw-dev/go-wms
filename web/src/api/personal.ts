@@ -1,7 +1,9 @@
 import { get, post } from './request'
+import type { EntityID } from './types'
 
 /** 持久体验账号（user1..userN）：数据长期保留，登录页"个人空间"由访客自行挑选 */
 export interface PersonalAccountInfo {
+  tenant_id: EntityID
   username: string
   nickname: string
   /** 仅在领取（claimPersonalAccount）时返回；账号列表接口不下发 */

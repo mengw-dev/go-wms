@@ -6,7 +6,7 @@
 
 ### 1.1 认证
 
-除 `POST /login`、`GET /healthz` 和 `/integration/*` API Key 接口外，所有接口需要请求头：
+`POST /login`、`GET /version` 公开；启用相应体验功能时，`GET /demo/account`、`GET /personal/accounts`、`POST /personal/login` 也公开。根路径 `/healthz` 和 `/version` 用于探针与版本查询。`/integration/*` 使用 API Key，其余业务接口需要请求头：
 
 ```text
 Authorization: Bearer <token>     # 登录接口返回，HS256 JWT
@@ -17,6 +17,8 @@ Authorization: Bearer <token>     # 登录接口返回，HS256 JWT
 ```text
 X-API-Key: <WMS_INTEGRATION_API_KEY>
 ```
+
+API Key 在服务端配置中绑定 `WMS_INTEGRATION_TENANT_ID`，请求体、查询参数和自定义请求头中的租户字段都会被忽略。绑定租户为 `0` 时只访问平台数据，不代表可以访问所有租户；绑定为正数时只访问该租户。
 
 ### 1.2 统一响应
 
@@ -47,35 +49,41 @@ X-API-Key: <WMS_INTEGRATION_API_KEY>
 
 | 方法 | 路径 | 权限 | 说明 |
 | --- | --- | --- | --- |
-| POST | `/login` | 公开 | 登录，返回 `{token, user}` |
+| POST | `/login` | 公开 | 登录，返回 token、user_id、username、nickname、roles、perms |
 | GET | `/profile` | 登录 | 当前用户信息（含角色权限串） |
 | PUT | `/password` | 登录 | 修改本人密码 `{old_password, new_password}`，成功后需重新登录 |
-| GET | `/system/users` | 登录 | 用户列表（keyword 过滤） |
+| GET | `/system/users` | `wms:system:user` | 用户列表（keyword 过滤） |
 | POST | `/system/users` | `wms:system:user` | 创建用户 |
 | PUT | `/system/users/:id` | `wms:system:user` | 更新用户 |
 | DELETE | `/system/users/:id` | `wms:system:user` | 删除用户（软删除） |
 | PUT | `/system/users/:id/status` | `wms:system:user` | 启用/停用 `{status}` |
 | PUT | `/system/users/:id/password` | `wms:system:user` | 管理员重置密码 |
-| GET | `/system/roles/all` | 登录 | 全部角色（下拉用，不分页） |
-| GET / POST | `/system/roles` | 登录 / `wms:system:role` | 角色列表 / 创建 |
+| GET | `/system/roles/all` | `wms:system:role` | 全部角色（下拉用，不分页） |
+| GET / POST | `/system/roles` | `wms:system:role` | 角色列表 / 创建 |
 | PUT / DELETE | `/system/roles/:id` | `wms:system:role` | 更新 / 删除角色 |
-| GET | `/system/oper-logs` | 登录 | 操作日志（username、时间范围过滤） |
+| GET | `/system/oper-logs` | `wms:system:log` | 操作日志（username、path 过滤） |
 
 **登录示例**
 
 ```json
 // POST /api/v1/login
-{ "username": "admin", "password": "admin123" }
+{ "username": "admin", "password": "admin123", "tenant_id": "0" }
 
 // 200
 {
   "code": 0, "msg": "ok",
   "data": {
     "token": "eyJhbGciOi...",
-    "user": { "id": 1, "username": "admin", "nickname": "管理员", "roles": ["admin"], "perms": ["*"] }
+    "user_id": "1", "username": "admin", "nickname": "管理员", "roles": ["admin"], "perms": ["*"]
   }
 }
 ```
+
+`tenant_id` 是可选的非负整数**字符串**。省略或传 null 时，仅当用户名在未软删账号中唯一才允许登录；不同租户存在同名账号时需填写所属租户编号。显式 `"0"` 只匹配平台账号，不使用跨租户旁路。账号不存在、租户不匹配、用户名有歧义或密码错误统一返回 10002，不返回其他租户的账号列表。演示与个人空间领取接口返回 `tenant_id`，前端自动携带它登录。上述 admin 密码仅是本地种子示例，部署配置应使用自己的凭据。
+
+登录限流在当前进程内按“规范化用户名 + 客户端 IP”计数，15 分钟窗口内最多预占 5 次；成功后清空，失败、取消和内部错误保留计数。同名账号即使改变租户选择也共用此额度。最多保存 10000 个 key，每分钟在请求到来时清理过期项；容量满时拒绝新 key，已有 key 继续按自身额度判断。这不是跨实例统一限流，也不能替代部署入口的访问频率限制。
+
+用户更新中的 `nickname`、`status`、`role_ids` 都可省略。省略或 null 保留原值；`nickname: ""` 清空昵称，`status: 0` 禁用，`role_ids: []` 清空角色关联。内置管理员禁止通过用户管理修改、删除或重置密码，可通过 `/password` 验证旧密码后修改自己的密码。
 
 ## 3. 基础数据（写入需 `wms:basic`）
 
@@ -130,8 +138,8 @@ X-API-Key: <WMS_INTEGRATION_API_KEY>
 | POST | `/inbound/orders/:id/submit` | `wms:inbound:submit` | 提交 DRAFT→SUBMITTED |
 | POST | `/inbound/orders/:id/approve` | `wms:inbound:approve` | 审核 SUBMITTED→APPROVED，生成收货任务 |
 | POST | `/inbound/orders/:id/cancel` | `wms:inbound:cancel` | 取消（APPROVED 前） |
-| POST | `/inbound/orders/:id/receive` | `wms:inbound:receive` | 收货 `{detail_id, qty, defective_qty?, batch_no}`，按明细多次部分收 |
-| POST | `/inbound/tasks/:id/putaway` | `wms:inbound:putaway` | 上架 `{task_id, location_id, qty}`：库存 Increase + RECEIVE 流水 |
+| POST | `/inbound/orders/:id/receive` | `wms:inbound:receive` | 收货 `{detail_id, qty, defective_qty?, batch_no}`；`qty` 为含残品的总量，`0 ≤ defective_qty ≤ qty`，支持按明细部分收货 |
+| POST | `/inbound/tasks/:id/putaway` | `wms:inbound:putaway` | 上架 `{location_id, qty}`，路径 `:id` 为 task_id：库存 Increase + RECEIVE 流水 |
 | POST | `/inbound/import` | `wms:inbound:create` | multipart 上传 Excel，异步建单，返回 `{task_id}` |
 | GET | `/inbound/import/:taskId` | 登录 | 导入进度 `{status, total_rows, success_rows, fail_rows, error_msg}` |
 
@@ -162,7 +170,7 @@ X-API-Key: <WMS_INTEGRATION_API_KEY>
 | POST | `/outbound/orders/:id/submit` | `wms:outbound:submit` | 提交 |
 | POST | `/outbound/orders/:id/approve` | `wms:outbound:approve` | **审核即分配**：FIFO 锁库 + 分配明细 + 拣货任务；库存不足整体失败 |
 | POST | `/outbound/orders/:id/cancel` | `wms:outbound:cancel` | 取消并释放锁库（已拣货不可取消） |
-| POST | `/outbound/tasks/:id/pick` | `wms:outbound:pick` | 拣货 `{task_id, qty, batch_no?, location_code?}`，可分次；`batch_no/location_code` 为扫码核对值，与任务不一致返回 50008/50009；全部分配行拣完自动发货扣库存 |
+| POST | `/outbound/tasks/:id/pick` | `wms:outbound:pick` | 拣货 `{qty, batch_no?, location_code?}`，路径 `:id` 为 task_id，可分次；`batch_no/location_code` 为扫码核对值，与任务不一致返回 50008/50009；全部分配行拣完自动发货扣库存 |
 
 **审核失败（防超卖生效）示例**
 
@@ -176,7 +184,7 @@ X-API-Key: <WMS_INTEGRATION_API_KEY>
 
 | 方法 | 路径 | 认证 | 说明 |
 | --- | --- | --- | --- |
-| POST | `/integration/outbound-orders` | `X-API-Key` | 按仓库/货品编码创建草稿出库单，`biz_order_no` 幂等 |
+| POST | `/integration/outbound-orders` | `X-API-Key` | 按固定租户的仓库/货品编码创建草稿出库单，`biz_order_no` 幂等 |
 
 请求示例：
 
@@ -209,6 +217,8 @@ X-API-Key: <WMS_INTEGRATION_API_KEY>
 ```
 
 重复推送同一个 `biz_order_no` 时返回原订单，并设置 `idempotent: true`，不会重复建单。
+
+并发推送同一业务单号时，数据库唯一约束保证只创建一张单，另一个请求返回原订单并标记 `idempotent: true`。
 
 ## 8. 盘点管理
 

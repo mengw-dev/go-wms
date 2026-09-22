@@ -37,11 +37,15 @@ services:
       context: ..
       dockerfile: Dockerfile
     restart: "no"
+    # 迁移容器复用应用镜像，但只执行一次性数据库迁移，不应继承 HTTP 健康检查。
+    healthcheck:
+      disable: true
     environment:
       WMS_SERVER_MODE: release
       WMS_MYSQL_DSN: root:${MYSQL_ROOT_PASSWORD:-gowms-root}@tcp(mysql:3306)/${MYSQL_DATABASE:-gowms}?charset=utf8mb4&parseTime=True&loc=Local
       WMS_JWT_SECRET: ${JWT_SECRET:-}
       WMS_INTEGRATION_API_KEY: ${WMS_INTEGRATION_API_KEY:-}
+      WMS_INTEGRATION_TENANT_ID: ${WMS_INTEGRATION_TENANT_ID:-0}
       WMS_DEMO_ENABLED: ${WMS_DEMO_ENABLED:-false}
       WMS_DEMO_INSTANCES: ${WMS_DEMO_INSTANCES:-5}
       WMS_DEMO_PASSWORD: ${WMS_DEMO_PASSWORD:-demo123456}
@@ -60,6 +64,8 @@ services:
       context: ..
       dockerfile: Dockerfile
     restart: unless-stopped
+    # 留出 HTTP 关停、后台任务归还和日志排空时间，避免默认 10 秒后被 SIGKILL。
+    stop_grace_period: ${WMS_STOP_GRACE_PERIOD:-45s}
     environment:
       WMS_SERVER_MODE: release
       WMS_SERVER_TRUSTED_PROXIES: ${WMS_SERVER_TRUSTED_PROXIES:-172.16.0.0/12}
@@ -74,6 +80,7 @@ services:
       WMS_REDIS_ADDR: redis:6379
       WMS_JWT_SECRET: ${JWT_SECRET:-}
       WMS_INTEGRATION_API_KEY: ${WMS_INTEGRATION_API_KEY:-}
+      WMS_INTEGRATION_TENANT_ID: ${WMS_INTEGRATION_TENANT_ID:-0}
       WMS_DEMO_ENABLED: ${WMS_DEMO_ENABLED:-false}
       WMS_DEMO_INSTANCES: ${WMS_DEMO_INSTANCES:-5}
       WMS_DEMO_PASSWORD: ${WMS_DEMO_PASSWORD:-demo123456}

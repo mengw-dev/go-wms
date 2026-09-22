@@ -18,19 +18,31 @@ import (
 // OpenIsolatedMySQL creates a temporary schema, migrates only the requested models,
 // and drops the schema when the test finishes. It never writes test data into the
 // developer's working database.
-func OpenIsolatedMySQL(t *testing.T, baseDSN string, models ...any) *gorm.DB {
+// parseTestDSN keeps test databases on the same time scanning semantics as the
+// application. Tests must not silently change behavior just because a caller's
+// DSN omitted parseTime or an environment wrapper dropped it.
+func parseTestDSN(t *testing.T, baseDSN string) *mysqlDriver.Config {
 	t.Helper()
-
 	cfg, err := mysqlDriver.ParseDSN(baseDSN)
 	if err != nil {
 		t.Fatalf("parse mysql dsn: %v", err)
 	}
+	cfg.ParseTime = true
+	return cfg
+}
+
+func OpenIsolatedMySQL(t *testing.T, baseDSN string, models ...any) *gorm.DB {
+	t.Helper()
+
+	cfg := parseTestDSN(t, baseDSN)
 	adminCfg := *cfg
 	adminCfg.DBName = ""
 	admin, err := sql.Open("mysql", adminCfg.FormatDSN())
 	if err != nil {
 		t.Fatalf("open mysql admin connection: %v", err)
 	}
+	admin.SetMaxOpenConns(1)
+	admin.SetMaxIdleConns(1)
 	if err := admin.Ping(); err != nil {
 		_ = admin.Close()
 		if os.Getenv("WMS_TEST_REQUIRED") == "1" {
@@ -66,6 +78,14 @@ func OpenIsolatedMySQL(t *testing.T, baseDSN string, models ...any) *gorm.DB {
 		}
 		_ = admin.Close()
 	})
+
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatalf("get test database pool: %v", err)
+	}
+	// go test 会并行运行多个包；保留真实事务并发，但不要让单个测试耗尽服务器连接。
+	sqlDB.SetMaxOpenConns(8)
+	sqlDB.SetMaxIdleConns(2)
 
 	if len(models) > 0 {
 		if err := db.AutoMigrate(models...); err != nil {

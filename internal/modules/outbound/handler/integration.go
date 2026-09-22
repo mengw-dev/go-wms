@@ -10,9 +10,9 @@ import (
 )
 
 // RegisterIntegrationRoutes 注册无 JWT、使用 API Key 的外部系统对接路由。
-func (h *Handler) RegisterIntegrationRoutes(pub *gin.RouterGroup, apiKey string) {
+func (h *Handler) RegisterIntegrationRoutes(pub *gin.RouterGroup, apiKey string, tenantID int64) {
 	g := pub.Group("/integration")
-	g.POST("/outbound-orders", middleware.APIKey(apiKey), h.createExternalOrder)
+	g.POST("/outbound-orders", middleware.APIKey(apiKey, tenantID), h.createExternalOrder)
 }
 
 func (h *Handler) createExternalOrder(c *gin.Context) {

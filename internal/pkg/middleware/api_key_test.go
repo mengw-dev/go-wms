@@ -26,7 +26,7 @@ func TestAPIKey(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r := gin.New()
-			r.POST("/integration", APIKey(tt.expected), func(c *gin.Context) {
+			r.POST("/integration", APIKey(tt.expected, 0), func(c *gin.Context) {
 				c.Status(http.StatusOK)
 			})
 			req := httptest.NewRequest(http.MethodPost, "/integration", nil)

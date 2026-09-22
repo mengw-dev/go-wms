@@ -11,6 +11,15 @@ jobs:
     name: Backend (lint + test)
     runs-on: ubuntu-latest
     services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=10
       mysql:
         image: mysql:8.0
         env:
@@ -24,6 +33,7 @@ jobs:
           --health-timeout=5s
           --health-retries=10
     env:
+      WMS_TEST_REDIS_ADDR: "127.0.0.1:6379"
       WMS_TEST_DSN: "root:root@tcp(127.0.0.1:3306)/gowms?charset=utf8mb4&parseTime=True&loc=Local"
       WMS_MYSQL_DSN: "root:root@tcp(127.0.0.1:3306)/gowms?charset=utf8mb4&parseTime=True&loc=Local"
       WMS_TEST_REQUIRED: "1"
@@ -34,6 +44,9 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+
+      - name: Check Go formatting
+        run: test -z "$(gofmt -l .)"
 
       - name: Lint
         uses: golangci/golangci-lint-action@v7
@@ -89,7 +102,7 @@ jobs:
           echo "依赖安全扫描通过：未发现可被调用的未修复漏洞"
 
       - name: Test（race + MySQL 集成测试）
-        run: go test -race ./internal/... -v -count=1
+        run: go test -race ./... -v -count=1
 
   frontend:
     name: Frontend (build)

@@ -3,6 +3,8 @@ package jwt
 import (
 	"testing"
 	"time"
+
+	jwtlib "github.com/golang-jwt/jwt/v5"
 )
 
 func TestGenerateAndParseTokenVersion(t *testing.T) {
@@ -19,6 +21,31 @@ func TestGenerateAndParseTokenVersion(t *testing.T) {
 	}
 	if claims.TenantID != 9 {
 		t.Fatalf("unexpected tenant id: %d", claims.TenantID)
+	}
+}
+
+func TestParseRejectsInvalidClaims(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		change func(*Claims)
+	}{
+		{"missing expiry", func(c *Claims) { c.ExpiresAt = nil }},
+		{"wrong issuer", func(c *Claims) { c.Issuer = "another-service" }},
+		{"missing user", func(c *Claims) { c.UserID = 0 }},
+		{"missing version", func(c *Claims) { c.TokenVersion = 0 }},
+		{"negative tenant", func(c *Claims) { c.TenantID = -1 }},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			claims := Claims{UserID: 1, TokenVersion: 1, RegisteredClaims: jwtlib.RegisteredClaims{Issuer: "gowms", ExpiresAt: jwtlib.NewNumericDate(time.Now().Add(time.Hour))}}
+			tt.change(&claims)
+			token, err := jwtlib.NewWithClaims(jwtlib.SigningMethodHS256, claims).SignedString([]byte("test-secret"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := Parse("test-secret", token); err == nil {
+				t.Fatal("accepted invalid claims")
+			}
+		})
 	}
 }
 

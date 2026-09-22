@@ -65,7 +65,7 @@ erDiagram
 
 索引与约束：
 
-- `UNIQUE uk_inv (warehouse_id, location_id, sku_id, batch_no)` —— 库存行的业务身份，防重复建行；
+- `UNIQUE uk_inv (tenant_id, warehouse_id, location_id, sku_id, batch_no)` —— 租户内库存行的业务身份，防重复建行；
 - `CHECK chk_inv_non_negative (available_quantity >= 0 AND stock_quantity >= 0)` —— 防超卖**最后兜底**，配合行锁 + 条件更新构成三层防护。
 
 > 注意：MySQL 8.0.16 起 CHECK 约束才真正生效，低版本仅语法兼容不执行。
@@ -82,13 +82,13 @@ erDiagram
 
 索引：`inventory_id`（按行查流水）、`trans_type`、`order_no`（按单对账）、`created_at`（时间范围）。
 
-> 每条流水与业务变更**同事务**写入，因此"库存对不上"在本系统被定义为准 impossibility：任何差异都可回放到具体单据/任务/操作人。
+> 正常业务入口将流水与库存变更放在同一事务。分配和释放不改变总库存，`quantity_change=0`，通过可用量前后值反映变化。事务保证同成同败，不能代替业务正确性验证，也不能覆盖人工改库或演示重置。
 
 ### 3.3 wms_task（统一任务）
 
 | 字段 | 说明 |
 | --- | --- |
-| task_no | 任务号（收货 `SH` / 上架 `SJ` / 拣货 `PK` 前缀 + 日期 + 序号），唯一 |
+| task_no | 任务号（收货 `SH` / 上架 `SJ` / 拣货 `PK` 前缀 + 日期 + 任务 ID），唯一；已有历史格式保留 |
 | task_type | `RECEIVE / PUTAWAY / PICK` |
 | status | `CREATED → IN_PROGRESS → COMPLETED`（单向） |
 | order_id / order_no / detail_id / allocation_id | 来源追溯（拣货任务携带分配行） |
@@ -116,19 +116,42 @@ erDiagram
 | book_qty | 创建时快照账面数（不受后续变动影响） |
 | actual_qty | 实盘数（NULL=未盘） |
 | diff_qty | 差异 = 实盘 − 审核时账面（审核时锁内重算） |
-| adjusted | 是否已产生 ADJUST 流水 |
+| adjusted | 该明细是否已审核应用；零差异不产生 ADJUST 流水 |
 
 ## 4. 全局设计约定
 
 | 约定 | 说明 |
 | --- | --- |
-| 主键 | 全部雪花 ID（`BIGINT`），应用层生成，趋势递增 |
-| 乐观锁 | 单据/任务/分配/库存行带 `version`，条件更新 |
-| 软删除 | `deleted_at DATETIME(3)`，业务唯一索引与软删除的组合语义由代码处理 |
+| 主键 | 主要业务单据、任务、库存使用雪花 ID；部分系统表由数据库生成主键 |
+| 版本号 | 单据进度、任务、分配使用版本条件更新；库存使用行锁和数量条件，递增版本号不等于执行乐观锁校验 |
+| 软删除 | `deleted_at DATETIME(3)`；软删记录仍占用唯一键，不能默认认为删除后同编码可重建 |
 | 时间 | `DATETIME(3)` 毫秒精度 |
-| 单号格式 | 入库 `RK`、出库 `CK`、盘点 `PD`、任务 `R/S/P` + 日期 + 序号 |
+| 单号格式 | 入库 `RK`、出库 `CK`、盘点 `PD` + 日期 + Redis 序号；降级为前缀 + 日期 + F + 32 位 UUID。任务为 `SH/SJ/PK` + 日期 + 任务 ID，不调用 Redis |
+
+单号列现有 `VARCHAR(64)` 可容纳上述格式，无需改写历史单号。单号应作为完整字符串使用，不保证连续，也不宜根据尾部位数推算业务量。雪花 ID 在同一进程内处理时钟回拨和序列耗尽；跨实例需分配不同节点号，跨重启仍依赖时钟不回退及主键约束。
 
 ## 5. 与 AutoMigrate 的关系
 
 - 开发/演示环境：启动时 AutoMigrate 建表 + 种子数据（admin/admin123）；
 - 生产环境：运行 `cmd/migrate` 执行版本化迁移，应用 release 模式不自动改表。
+- AutoMigrate 只保证开发所需的基本表结构，不能替代迁移中的复合索引、历史数据修复和回滚脚本；需要真实压力测试时，数据库应先执行 `cmd/migrate`。
+
+## 6. 导入执行标识（迁移 000006）
+
+`wms_import_task.run_token VARCHAR(36) NOT NULL DEFAULT ''` 标识本次领取。任务状态为 `PENDING / PROCESSING / COMPLETED / FAILED`。领取时写入新 token，心跳、完成、归还和异常恢复均核对 token；建单事务还会锁定任务行并检查执行权。单独比较 `PROCESSING` 状态无法区分旧 worker 和重跑 worker。
+
+生产升级需要先停止旧应用及导入 worker，再执行迁移并启动新应用。旧版本不知道执行标识，不能与新版本同时消费任务。导入文件必须持久化；跨主机部署还需要让消费任务的实例读到同一份文件。本次只在隔离测试库验证了迁移，没有执行线上迁移。
+
+## 7. 多租户索引对齐（迁移 000007）
+
+迁移 000007 只调整索引，不修改业务数据和字段语义。多租户查询的复合索引统一把 `tenant_id` 放在最左侧，覆盖以下高频路径：
+
+- 库存 FIFO、库位/SKU 引用检查；
+- 任务按单据、类型、状态推进，以及按仓库、库位、SKU 删除检查；
+- 入库、出库、盘点列表的租户 + 仓库 + 状态过滤；
+- 单据明细、分配行和盘点明细的租户维度引用检查；
+- 库存流水、操作日志和角色删除检查。
+
+`uk_loc_wh_code` 改为 `(tenant_id, warehouse_id, code)`，`uk_user_role` 改为 `(tenant_id, user_id, role_id)`。回滚脚本只恢复旧索引，不删除 `tenant_id` 字段或任何业务数据。
+
+当前没有新增 `stock = available + allocated` 的 MySQL CHECK 约束，因为已有数据的完整性必须先审计；该不变量目前由事务、行锁、条件更新和测试共同保证。

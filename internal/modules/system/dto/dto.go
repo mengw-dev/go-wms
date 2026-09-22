@@ -3,8 +3,10 @@ package dto
 import "gowms/internal/pkg/typex"
 
 type LoginReq struct {
-	Username string `json:"username" binding:"required"`
-	Password string `json:"password" binding:"required"`
+	Username string `json:"username" binding:"required,max=64"`
+	Password string `json:"password" binding:"required,max=72"`
+	// 省略时仅允许唯一用户名登录；显式 0 只匹配平台账号，不表示跨租户查询。
+	TenantID *int64 `json:"tenant_id,string" binding:"omitempty,gte=0"`
 }
 
 type LoginResp struct {
@@ -32,8 +34,8 @@ type UserCreateReq struct {
 }
 
 type UserUpdateReq struct {
-	Nickname string          `json:"nickname" binding:"max=64"`
-	Status   *int            `json:"status"`
+	Nickname *string         `json:"nickname" binding:"omitempty,max=64"`
+	Status   *int            `json:"status" binding:"omitempty,oneof=0 1"`
 	RoleIDs  typex.Int64List `json:"role_ids"`
 }
 
@@ -53,7 +55,7 @@ type ChangePwdReq struct {
 }
 
 type StatusReq struct {
-	Status *int `json:"status" binding:"required"`
+	Status *int `json:"status" binding:"required,oneof=0 1"`
 }
 
 type RoleCreateReq struct {

@@ -20,7 +20,7 @@ export function listUsers(params: UserListQuery) {
 }
 
 export function createUser(data: UserCreateParams) {
-  return post<UserItem>('/system/users', data)
+  return post<void>('/system/users', data)
 }
 
 export function updateUser(id: EntityID, data: UserUpdateParams) {
@@ -51,7 +51,7 @@ export function listRoles(params: RoleListQuery) {
 }
 
 export function createRole(data: RoleParams) {
-  return post<RoleItem>('/system/roles', data)
+  return post<void>('/system/roles', data)
 }
 
 export function updateRole(id: EntityID, data: RoleParams) {

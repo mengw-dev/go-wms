@@ -17,13 +17,14 @@ import (
 	"gowms/internal/modules/inventory/model"
 	"gowms/internal/modules/inventory/repository"
 	sysmodel "gowms/internal/modules/system/model"
+	"gowms/internal/pkg/errcode"
 	"gowms/internal/pkg/snowflake"
 	"gowms/internal/pkg/tx"
 	"gowms/internal/testutil"
 )
 
-// 集成测试：需要本地 MySQL（默认 root:root123@127.0.0.1:3306/gowms）。
-// 可通过环境变量 WMS_TEST_DSN 覆盖；连不上数据库时自动跳过。
+// 集成测试通过 WMS_TEST_DSN 连接 MySQL，并在独立临时库中运行。
+// WMS_TEST_REQUIRED=1 时连接失败会让测试失败，否则跳过。
 func newTestService(t *testing.T) (*Service, *tx.Manager, *gorm.DB) {
 	t.Helper()
 
@@ -31,8 +32,11 @@ func newTestService(t *testing.T) (*Service, *tx.Manager, *gorm.DB) {
 	if dsn == "" {
 		dsn = "root:1234@tcp(127.0.0.1:3306)/gowms?charset=utf8mb4&parseTime=True&loc=Local"
 	}
-	db := testutil.OpenIsolatedMySQL(t, dsn, &model.Inventory{}, &model.InventoryTrans{}, &basicmodel.Location{})
-	snowflake.Init(1)
+	db := testutil.OpenIsolatedMySQL(t, dsn,
+		&model.Inventory{}, &model.InventoryTrans{}, &basicmodel.Warehouse{}, &basicmodel.Location{}, &basicmodel.SKU{})
+	if err := snowflake.Init(1); err != nil {
+		t.Fatal(err)
+	}
 	tm := tx.New(db)
 	return New(repository.New(), tm), tm, db
 }
@@ -42,6 +46,17 @@ func setupStock(t *testing.T, svc *Service, tm *tx.Manager, locationID, skuID in
 	ctx := context.Background()
 	whID := snowflake.Next() // 随机仓库 ID 隔离测试数据
 	err := tm.Tx(ctx, func(tx *gorm.DB) error {
+		if err := tx.Create(&basicmodel.Warehouse{
+			Base: sysmodel.Base{ID: whID}, Code: fmt.Sprintf("W-%d", whID), Name: "test", Status: 1,
+		}).Error; err != nil {
+			return err
+		}
+		if err := tx.Create(&basicmodel.SKU{
+			Base: sysmodel.Base{ID: skuID}, Code: fmt.Sprintf("S-%d", skuID), Barcode: fmt.Sprintf("B-%d", skuID),
+			Name: "test", Unit: "件", Status: 1,
+		}).Error; err != nil {
+			return err
+		}
 		return svc.Increase(ctx, tx, &api.IncreaseReq{
 			WarehouseID: whID, LocationID: locationID, SKUID: skuID,
 			BatchNo: batchNo, Quantity: qty, OrderNo: "TEST", Operator: "test",
@@ -94,10 +109,13 @@ func TestConcurrentAllocateAntiOversell(t *testing.T) {
 				})
 				return err
 			})
-			if err == nil {
+			switch {
+			case err == nil:
 				success.Add(1)
-			} else {
+			case errcode.From(err).Code == errcode.AvailableNotEnough.Code:
 				fail.Add(1)
+			default:
+				t.Errorf("allocate %d: unexpected error: %v", i, err)
 			}
 		}(i)
 	}
@@ -230,7 +248,7 @@ func TestShipReleaseInvariant(t *testing.T) {
 	// 期望：stock=30 available=30 allocated=0（50-发货20，分配30已释放10后全部发货）
 	inv := getInv(t, db, whID, skuID)
 	if inv.StockQuantity != 30 || inv.AvailableQty != 30 || inv.AllocatedQty != 0 {
-		t.Fatalf("final expect 30/20/10, got %d/%d/%d", inv.StockQuantity, inv.AvailableQty, inv.AllocatedQty)
+		t.Fatalf("final expect 30/30/0, got %d/%d/%d", inv.StockQuantity, inv.AvailableQty, inv.AllocatedQty)
 	}
 
 	// 超发防护：再发货 15（已分配仅 0）必须失败
@@ -241,6 +259,22 @@ func TestShipReleaseInvariant(t *testing.T) {
 		t.Fatal("oversell ship should fail")
 	}
 	check("oversell-ship")
+	// 每次成功变更都有流水，包括只改变可用/分配量的审核操作；失败发货没有流水。
+	var flows []*model.InventoryTrans
+	if err := db.Where("inventory_id = ?", invID).Order("id").Find(&flows).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(flows) != 4 {
+		t.Fatalf("flows=%d want=4", len(flows))
+	}
+	for i, typ := range []model.TransType{model.TransReceive, model.TransAllocate, model.TransRelease, model.TransShip} {
+		if flows[i].TransType != typ {
+			t.Fatalf("flow %d type=%s want=%s", i, flows[i].TransType, typ)
+		}
+		if i > 0 && (flows[i].BeforeQuantity != flows[i-1].AfterQuantity || flows[i].AvailableBefore != flows[i-1].AvailableAfter) {
+			t.Fatalf("flow chain is broken at %d", i)
+		}
+	}
 }
 
 // TestConcurrentIncreaseTransFlow 并发上架流水一致性：
@@ -250,14 +284,25 @@ func TestConcurrentIncreaseTransFlow(t *testing.T) {
 	svc, tm, db := newTestService(t)
 	ctx := context.Background()
 
+	whID := snowflake.Next()
 	locID := snowflake.Next()
 	if err := db.Create(&basicmodel.Location{
-		Base: sysmodel.Base{ID: locID}, WarehouseID: 1, Code: fmt.Sprintf("T-%d", locID), Status: 1,
+		Base: sysmodel.Base{ID: locID}, WarehouseID: whID, Code: fmt.Sprintf("T-%d", locID), Status: 1,
 	}).Error; err != nil {
 		t.Fatalf("create location: %v", err)
 	}
 	skuID := snowflake.Next()
-	whID := snowflake.Next()
+	if err := db.Create(&basicmodel.Warehouse{
+		Base: sysmodel.Base{ID: whID}, Code: fmt.Sprintf("W-%d", whID), Name: "test", Status: 1,
+	}).Error; err != nil {
+		t.Fatalf("create warehouse: %v", err)
+	}
+	if err := db.Create(&basicmodel.SKU{
+		Base: sysmodel.Base{ID: skuID}, Code: fmt.Sprintf("S-%d", skuID), Barcode: fmt.Sprintf("B-%d", skuID),
+		Name: "test", Unit: "件", Status: 1,
+	}).Error; err != nil {
+		t.Fatalf("create sku: %v", err)
+	}
 
 	const goroutines, perQty = 8, 10
 	start := make(chan struct{})

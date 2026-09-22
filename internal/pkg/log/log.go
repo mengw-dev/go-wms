@@ -13,7 +13,7 @@ const (
 	ctxUserID    ctxKey = "user_id"
 )
 
-var logger *slog.Logger = slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+var logger = slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
 // Init 初始化全局 slog。
 func Init(level string) {
@@ -31,6 +31,7 @@ func Init(level string) {
 	logger = slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: lv}))
 }
 
+// L returns the process-wide structured logger initialized by Init.
 func L() *slog.Logger { return logger }
 
 // WithContext 从 ctx 提取 request_id / user_id 一并输出。
@@ -48,10 +49,12 @@ func WithContext(ctx context.Context) *slog.Logger {
 	return l
 }
 
+// WithRequestID attaches a request ID to the context for structured logs.
 func WithRequestID(ctx context.Context, requestID string) context.Context {
 	return context.WithValue(ctx, ctxRequestID, requestID)
 }
 
+// WithUserID attaches an authenticated user ID to the context for structured logs.
 func WithUserID(ctx context.Context, userID int64) context.Context {
 	return context.WithValue(ctx, ctxUserID, userID)
 }

@@ -62,7 +62,10 @@ func (r *Repository) CountUnfinished(tx *gorm.DB, orderID int64, taskType model.
 func (r *Repository) CancelByOrder(tx *gorm.DB, orderID int64) error {
 	return tx.Model(&model.Task{}).
 		Where("order_id = ? AND status IN ?", orderID, []model.TaskStatus{model.TaskCreated, model.TaskInProgress}).
-		Update("status", model.TaskCancelled).Error
+		Updates(map[string]any{
+			"status":  model.TaskCancelled,
+			"version": gorm.Expr("version + 1"),
+		}).Error
 }
 
 func (r *Repository) Get(ctx context.Context, db *gorm.DB, id int64) (*model.Task, error) {

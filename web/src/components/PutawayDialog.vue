@@ -73,7 +73,6 @@ async function submit() {
   submitting.value = true
   try {
     await putawayInboundTask(form.task_id, {
-      task_id: form.task_id,
       location_id: form.location_id,
       qty: form.qty,
     })

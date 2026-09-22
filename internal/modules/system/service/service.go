@@ -16,14 +16,15 @@ type Service struct {
 	permMu    sync.Mutex
 	permCache map[int64]permCacheItem // 进程内权限缓存，TTL 60s；角色变更后自动过期
 
-	loginMu       sync.Mutex
-	loginAttempts map[string]loginAttempt
+	loginMu        sync.Mutex
+	loginAttempts  map[string]loginAttempt
+	loginLastSweep time.Time
 
 	logCh chan *model.SysOperLog // 操作日志异步写入通道
 }
 
 type loginAttempt struct {
-	Failures int
+	Attempts int
 	ResetAt  time.Time
 }
 
@@ -34,12 +35,14 @@ type permCacheItem struct {
 
 const (
 	permCacheTTL       = 60 * time.Second
-	maxLoginFailures   = 5
+	maxLoginAttempts   = 5
 	loginFailureWindow = 15 * time.Minute
+	maxTrackedLogins   = 10000
+	loginSweepInterval = time.Minute
 )
 
 func New(repo *repository.Repository, jwtSecret string, expireHours int) *Service {
-	s := &Service{
+	return &Service{
 		repo:          repo,
 		jwtSecret:     jwtSecret,
 		jwtExpire:     time.Duration(expireHours) * time.Hour,
@@ -47,6 +50,4 @@ func New(repo *repository.Repository, jwtSecret string, expireHours int) *Servic
 		loginAttempts: make(map[string]loginAttempt),
 		logCh:         make(chan *model.SysOperLog, 1024),
 	}
-	go s.consumeOperLogs()
-	return s
 }

@@ -2,9 +2,10 @@ package tx
 
 import (
 	"context"
-	"strings"
+	"errors"
 	"time"
 
+	"github.com/go-sql-driver/mysql"
 	"gorm.io/gorm"
 
 	"gowms/internal/pkg/errcode"
@@ -12,13 +13,13 @@ import (
 )
 
 const (
-	// MaxOrderNoRetry 单号唯一索引冲突时的最大重试次数（snowflake 冲突概率极低，兜底用）。
+	// MaxOrderNoRetry 单号唯一索引冲突时的最大尝试次数（包含首次执行）。
 	MaxOrderNoRetry = 3
-	// MaxTxRetry 事务并发冲突（乐观锁版本冲突 / MySQL 死锁 1213）时的最大重试次数。
+	// MaxTxRetry 事务并发冲突时的最大尝试次数（包含首次执行）。
 	MaxTxRetry = 3
 )
 
-// Manager 事务管理器：事务只在 Service 层通过它开启，Handler/Repository 不感知事务。
+// Manager 提供业务事务边界；Repository 使用调用方传入的事务连接。
 type Manager struct {
 	db *gorm.DB
 }
@@ -38,9 +39,15 @@ const retryBackoff = 50 * time.Millisecond
 
 // TxRetry 在事务内执行 fn；遇到并发冲突（乐观锁失败、MySQL 死锁 1213）自动用新事务重试。
 // 每次重试都是全新事务，fn 内必须重新读取数据（不要依赖上一轮的内存状态）。
-func (m *Manager) TxRetry(ctx context.Context, maxRetry int, fn func(tx *gorm.DB) error) error {
+func (m *Manager) TxRetry(ctx context.Context, maxAttempts int, fn func(tx *gorm.DB) error) error {
+	if maxAttempts < 1 {
+		return errors.New("transaction attempts must be positive")
+	}
 	var err error
-	for i := 0; i < maxRetry; i++ {
+	for i := 0; i < maxAttempts; i++ {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		err = m.Tx(ctx, fn)
 		if err == nil {
 			return nil
@@ -48,10 +55,10 @@ func (m *Manager) TxRetry(ctx context.Context, maxRetry int, fn func(tx *gorm.DB
 		if !IsRetryable(err) {
 			return err
 		}
-		log.WithContext(ctx).Warn("tx conflict, retrying", "attempt", i+1, "max", maxRetry, "err", err.Error())
-		if i == maxRetry-1 {
+		if i == maxAttempts-1 {
 			break
 		}
+		log.WithContext(ctx).Warn("tx conflict, retrying", "attempt", i+1, "max", maxAttempts, "err", err)
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -72,12 +79,16 @@ func IsRetryable(err error) bool {
 	if errcode.IsConflict(err) {
 		return true
 	}
-	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "deadlock") || strings.Contains(msg, "error 1213")
+	var mysqlErr *mysql.MySQLError
+	return errors.As(err, &mysqlErr) && mysqlErr.Number == 1213
 }
 
-// IsDuplicateErr 判断是否为唯一索引冲突错误（MySQL 1062 / "Duplicate entry"）。
+// IsDuplicateErr 判断是否为唯一索引冲突，兼容 GORM 的错误翻译与包装错误。
 // 用于单号/业务单号唯一索引兜底重试。
 func IsDuplicateErr(err error) bool {
-	return err != nil && strings.Contains(strings.ToLower(err.Error()), "duplicate")
+	if errors.Is(err, gorm.ErrDuplicatedKey) {
+		return true
+	}
+	var mysqlErr *mysql.MySQLError
+	return errors.As(err, &mysqlErr) && mysqlErr.Number == 1062
 }

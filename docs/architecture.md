@@ -1,277 +1,120 @@
-# WMS 系统架构设计
+# WMS 架构与代码阅读说明
 
-> 版本：v1.0 ｜ 配套代码：本仓库 `internal/` 目录
+这份文档描述当前实现，配合 `docs/go-style.md` 阅读。目录是一种组织方式，不是所有 Go 项目都必须采用的模板。
 
-## 1. 总体架构
+## 1. 保留模块化单体
 
-**模块化单体（Modular Monolith）**：一个进程、一个数据库，内部按业务域划分 7 个模块；模块间**只通过 API 接口层通信**（依赖倒置），与微服务拆分后的服务间调用同构，未来可按模块直接拆出。
+后端使用 Gin、GORM、MySQL 和 Redis，通过普通构造函数组装依赖。业务模块包括 system、basic、inventory、task、inbound、outbound、stocktake，以及演示与 AI 辅助模块。
 
-```mermaid
-flowchart LR
-    subgraph Client
-        FE["Vue3 + TS + Element Plus\n(web/)"]
-    end
-    subgraph Server["WMS 单体进程"]
-        direction TB
-        MW["中间件链\nRequestID/CORS/Recovery/AccessLog\nAuth(JWT) → OperLog(异步审计) → Permission"]
-        subgraph Modules["业务模块 internal/modules"]
-            SYS[system\n用户/角色/权限/日志]
-            BASIC[basic\n仓库/库位/货品]
-            INV[inventory\n三数量库存]
-            TASK[task\n统一任务]
-            IN[inbound\n入库]
-            OUT[outbound\n出库]
-            ST[stocktake\n盘点]
-        end
-        PKG["internal/pkg\nconfig/errcode/response/jwt/tx\nsnowflake/orderno/lock/middleware"]
-    end
-    DB[("MySQL 8\n单库事务")]
-    RD[("Redis\n单号/条码缓存\n可降级")]
-
-    FE -->|"/api/v1 JSON + JWT"| MW --> Modules
-    Modules --> PKG
-    Modules --> DB
-    PKG --> RD
-```
-
-### 1.1 模块依赖关系（编译期强制）
+当前项目适合保留单体：入库、库存、任务、出库分配依赖同一笔 MySQL 事务。把接口换成 RPC 不会自动保留这项保证，拆微服务需要重新设计跨服务一致性，当前没有必要。
 
 ```mermaid
 flowchart TD
-    IN[inbound] -->|"api 接口"| INV_API["inventory/api"]
-    IN -->|"api 接口"| TASK_API["task/api"]
-    OUT[outbound] -->|"api 接口"| INV_API
-    OUT -->|"api 接口"| TASK_API
-    ST[stocktake] -->|"api 接口"| INV_API
-    INV_API -.实现.- INV_IMPL[inventory/service]
-    TASK_API -.实现.- TASK_IMPL[task/service]
-    INV[“inventory 模块自身”] --- INV_IMPL
+    Main[cmd/wms 启动与关闭] --> App[internal/app 依赖组装与路由]
+    App --> Handler[handler 参数与 HTTP 响应]
+    Handler --> Service[service 业务规则与事务]
+    Service --> Repo[repository SQL 操作]
+    Service --> API[跨模块 api 接口]
+    API --> Inventory[inventory / task / basic 实现]
+    Repo --> MySQL[(MySQL)]
+    Service --> Redis[(Redis)]
 ```
 
-规则：
+- `handler` 负责绑定参数、权限、身份和响应；业务规则仍需在 Service 入口维护，因为导入和演示场景也会直接调用 Service。
+- `service` 决定库存相关事务的边界。事务内的 Repository 和跨模块 API 接收同一个 `*gorm.DB`，事务外查询传递请求 context。
+- `repository` 提供具体查询和更新，不引入通用 CRUD 基类。system 目前在 Repository 内封装用户与角色关联事务，可以理解这项局部差异，不必为了目录整齐全部改写。
+- `api` 是进程内 Go 接口，不是 HTTP 或 RPC 接口。已有接口可以保留，没有必要给每个具体类型再加一层接口。
+- demo 作为场景编排模块直接依赖业务 Service；库存和盘点还有明确的跨表联查。因此“所有模块都只通过接口访问自己的表”不是当前代码的事实。
 
-1. **依赖方向单向**：`inbound/outbound/stocktake → inventory/task 的 api 包 → 各自的 service 包`；基础模块（inventory/task）**不知道**业务模块存在；
-2. `api` 包只定义接口 + DTO（如 `IncreaseReq`、`CreateTask`），由 `internal/app` 在启动时把实现注入（手动构造注入，无框架魔法）；
-3. 禁止跨层访问：`inbound/repository` 不可以直接 import `outbound/model`。
+## 2. 库存规则和事务
 
-这样，"拆微服务"时把 `api` 接口换成 RPC 客户端即可，业务代码零改动。
-
-### 1.2 分层设计
-
-| 层 | 职责 | 约束 |
-| --- | --- | --- |
-| handler | 参数绑定/校验、调 Service、组装响应 | **无业务逻辑、不开事务** |
-| service | 业务规则、状态机、**事务边界**（`tx.WithTx`） | 跨模块协作只调其他模块的 api 接口 |
-| repository | 数据访问，只操作本模块表 | 不感知业务状态机 |
-| api | 接口 + DTO | 无实现，供其他模块 import |
-
-事务只允许在 Service 层开启（`internal/pkg/tx`），传递 `*gorm.DB`（nil 则用全局连接）逐层下沉，保证"一个用例一个事务"。
-
-## 2. 技术选型与理由
-
-| 选型 | 理由 |
-| --- | --- |
-| Gin | 生态成熟、中间件模型清晰，学习成本最低 |
-| GORM | AutoMigrate 让项目零 SQL 文件即可启动；同时保留手写 SQL 能力（条件更新/FIFO 锁） |
-| MySQL 8.0.16+ | 唯一使用 `CHECK` 约束强制的版本，防负库存最后一道兜底 |
-| Redis | **增强件而非依赖件**：单号生成（Lua 原子自增）与条码缓存，不可用自动降级，不阻塞业务 |
-| Vue3 + TS + Vite + Pinia + Element Plus | 主流企业前端栈；组合式 API + 类型完备的 API 层 |
-
-**刻意不引入**：消息队列（单库事务已满足一致性）、微服务框架（拆分点已预留）、ORM 拦截器魔法（显式代码优于隐式行为）。
-
-## 3. 核心设计详解
-
-### 3.1 三数量库存模型
-
-```
-stock_quantity（存量） = available_quantity（可用） + allocated_quantity（分配）
-```
-
-- **可用**：还能被新订单分配的数量；
-- **分配**：已被出库单锁定、等待拣货发货的数量（"冻结"语义）；
-- 每次变动写 `wms_inventory_trans` 流水，记录变更前后**存量/可用两组数**，任意时刻可对账。
-
-| 动作 | available | allocated | stock | 流水类型 |
-| --- | --- | --- | --- | --- |
-| 上架入库 | +n | — | +n | RECEIVE |
-| 审核（分配/锁库） | −n | +n | — | ALLOCATE |
-| 发货（扣减） | — | −n | −n | SHIP |
-| 取消（释放） | +n | −n | — | RELEASE |
-| 盘点调整 | ±n | — | ±n | ADJUST |
-
-不变量：`stock = available + allocated` 恒成立，且有集成测试 `TestShipReleaseInvariant` 保证。
-
-### 3.2 双重防超卖（面试高频）
-
-`inventory/service.Allocate` 在**同一个事务**内做两层防护：
+库存行按 `(tenant_id, warehouse_id, location_id, sku_id, batch_no)` 唯一。正常业务需保持：
 
 ```text
-① SELECT ... FOR UPDATE          → 悲观行锁，串行化同一库存行的并发操作
-② UPDATE wms_inventory
-   SET available = available - ?,
-       allocated = allocated + ?,
-       version = version + 1
-   WHERE id = ?
-     AND available >= ?          → 条件更新，即使锁失效也不会扣成负数
-     AND version = ?             → 乐观锁双保险
+stock_quantity = available_quantity + allocated_quantity
+stock_quantity、available_quantity、allocated_quantity 均不小于零
 ```
 
-加上数据库层 `CHECK (available_quantity >= 0)` 约束兜底。**验证**：`TestConcurrentAllocateAntiOversell` 以 100 可用量对抗 200 并发分配，断言恰好成功 100 次、恒等式不破。
+| 操作 | 总库存 | 可用库存 | 已分配库存 |
+| --- | --- | --- | --- |
+| 上架 N | +N | +N | 不变 |
+| 分配 N | 不变 | -N | +N |
+| 释放 N | 不变 | +N | -N |
+| 发货 N | -N | 不变 | -N |
+| 盘点差异 D | +D | +D | 不变 |
 
-### 3.3 FIFO 分配
+业务 Service 开启事务，库存先锁读，再执行数量条件更新，并在同一事务写库存流水。分配流水的总量变化为零，但记录可用量减少。写流水失败时，调用方必须返回错误，使整笔事务回滚。
 
-审核出库时，按 `stock_in_time`（首次上架时间）升序锁定同 SKU 的库存行，逐批扣减可用量，拆分成多条 `wms_allocation`（含库位、批次、数量）。拣货时作业人员按分配行直达库位，不需要自己找货。
+库存 `version` 会递增，但库存 SQL 没有 `WHERE version = ?`，不能把它介绍成“库存乐观锁”。真正使用版本比较的是单据进度、任务和分配等更新；状态转换还会使用期望状态条件。MySQL 的现有 CHECK 仅检查总量与可用量非负，不能代替完整不变量。
 
-### 3.4 单据状态机
+FIFO 按 `stock_in_time, id` 排序。`stock_in_time` 是这一库存四元组首次上架时间；后续补入同一批次会合并到同一行，系统没有逐次收货的独立 FIFO 层。分配后按库位编码排序只改变拣货任务顺序，不改变分配批次。
 
-- 每个模块 `model` 包定义 `StatusTransitions map[Status][]Status`（合法后继状态）；
-- Service 层流转前显式校验，拒绝非法跳转；
-- 状态更新走 `WHERE status = 期望前态 AND version = n`（CAS + 乐观锁），并发双击只会成功一次。
+出库审核内的多个 SKU 按相同顺序加锁，有助于降低审核之间的死锁；与盘点、上架交错时仍可能死锁。`TxRetry` 在可重试错误后重开整笔事务，不能只重试事务中间的一条 SQL。
 
-### 3.5 单号生成器（Redis Lua + 三级降级）
+## 3. 单据流程
 
-`internal/pkg/orderno`，格式 `{前缀}{yyyyMMdd}{5位日内序号}`，如 `RK20260830-00042`：
+入库：草稿 → 提交 → 审核生成收货任务 → 收货 → 上架 → 完成。`qty` 和 `received_qty` 都表示包含不良品的总收货量，`defective_qty` 是其中的不良品；例如总量 10、不良品 2，对应收货进度 10、上架量 8。全是不良品时无上架任务，收齐直接完成。
 
-1. **Redis Lua**：`INCR` 当日序号并设置当日过期，原子且无锁竞争；
-2. **降级本地**：Redis 不可用时进程内原子自增（单实例够用）；
-3. **唯一索引兜底**：插入撞唯一索引时重取序号重试，跨实例降级模式也不产生重复单号。
+出库：提交后审核，在一笔事务中完成 FIFO 分配、分配明细、拣货任务和单据状态推进。按分配行拣满时扣减该行库存，整单拣满后进入 SHIPPED。部分拣货后不允许取消，需要另外设计退货或反向业务，不能直接释放已发库存。
 
-### 3.6 Excel 异步导入（可靠性设计样本）
+盘点：创建时保存账面快照，填写实盘数，审核时锁定库存并将总库存调整到实盘数。差异、实际调整和流水使用同一份锁读结果；不允许调减已分配库存。当前允许部分明细填写后审核，未填写明细跳过。盘点没有冻结仓库，实盘记录与后续作业的业务时间口径仍需要使用者理解，不能把行锁等同于完整的实物盘点流程。
+
+## 4. 导入任务与生命周期
+
+HTTP 上传保存文件和 PENDING 任务后返回。入口显式启动一个 `RunImports(ctx)` 消费者、一个补偿扫描器和操作日志消费者，关闭时取消并等待退出。
 
 ```mermaid
-sequenceDiagram
-    participant U as 前端
-    participant H as inbound/handler
-    participant S as inbound/service
-    participant DB as MySQL
-
-    U->>H: POST /inbound/import (excel)
-    H->>S: Import(file)
-    S->>DB: INSERT wms_import_task(PENDING)
-    S-->>U: task_id（立即返回）
-    S->>S: goroutine: CAS status PENDING→RUNNING
-    Note over S: 仅抢占成功者执行，天然防重复
-    S->>DB: 逐行建单(DRAFT)，统计成功/失败行
-    S->>DB: CAS RUNNING→SUCCESS/FAILED
-    loop 前端每 2s
-        U->>H: GET /inbound/import/:taskId
-        H-->>U: 进度与结果
-    end
-    Note over S,DB: 服务重启补偿：每 2 分钟扫描<br/>RUNNING 且 updated_at 超时的任务<br/>CAS 重新抢占执行（幂等，已建单跳过）
+stateDiagram-v2
+    [*] --> PENDING: 文件及任务保存
+    PENDING --> PROCESSING: CAS 领取并生成 run_token
+    PROCESSING --> COMPLETED: 完成，允许部分行失败
+    PROCESSING --> FAILED: 文件无效、全部行失败或超时
+    PROCESSING --> PENDING: 服务取消或心跳超时后归还
 ```
 
-三个关键点：**状态机**（PENDING/RUNNING/SUCCESS/FAILED）、**CAS 抢占**（goroutine 与补偿扫描互斥）、**悬挂补偿**（重启自愈）。
+- 每次领取产生新的 `run_token`。心跳和终态写入必须属于本次执行，旧 worker 不能覆盖新 worker。
+- 每行建单事务锁住任务行并确认执行权；`(tenant_id, import_task_id, import_row)` 唯一键用于重跑幂等。
+- 每 30 秒心跳；单次执行期限 10 分钟；扫描器每 2 分钟回收心跳超过 5 分钟的任务，并在更新时再次检查时间和 token。
+- 一实例一次处理一个文件，避免每次上传直接创建无上限 goroutine。多实例可以竞争数据库任务，但必须共享文件存储。
+- 文件系统和 MySQL 没有共同事务。保存任务失败会清理本次文件，但崩溃仍可能留下孤立文件，文件保留和清理策略尚需完善。
+- 解析限制解压后文件为 64 MiB。Excel 解析库不支持每一步都接收 context，取消在解析步骤之间生效，不能承诺任意大文件解析都立即停止。
 
-### 3.7 认证 / 权限 / 审计
+## 5. 多租户、认证与 Redis
 
-- **JWT**：登录签发（HS256，可配置过期），`middleware.Auth` 统一解析注入 `user_id/username`；
-- **权限**：`middleware.Permission(checker, "wms:inbound:approve")` 路由级校验，权限串来自用户角色聚合（内置 admin 为 `*`）；
-- **审计**：`middleware.OperLog` 对所有写方法（非 GET）**异步**记录请求参数、IP、耗时、结果，不阻塞主流程。
+JWT 声明用户、租户和 Token 版本。签名、签发方、过期时间校验后，数据库再次复核用户状态、版本和租户。演示会话中间件在注册业务路由之前挂载，缺少会话的演示账号不能调用普通业务 API。
 
-### 3.8 全局工程约定
+账号身份是“租户 + 用户名”。登录支持可选租户编号；为了兼容既有入口，省略时允许唯一用户名登录，重名则拒绝并要求指定租户，不能用 First 任意选一条。显式租户 0 精确匹配平台账号。登录后按账号实际租户加载角色权限；创建用户的重名检查也限定在目标租户。
 
-| 约定 | 实现 |
-| --- | --- |
-| 主键 | 雪花 ID（`internal/pkg/snowflake`），趋势递增、不暴露量级 |
-| 乐观锁 | 单据/任务/分配/库存行均带 `version` |
-| 软删除 | GORM `deleted_at`，业务查询自动过滤 |
-| 统一响应 | `{code, msg, data}`，业务错误码集中于 `internal/pkg/errcode` |
-| 配置 | `configs/config.yaml`，结构体映射 `internal/pkg/config` |
+登录限流在互斥锁内检查并预占次数，再执行数据库查询与密码校验，避免并发检查全部通过。记录容量与过期清理均有界，清理由请求触发，不新增后台 goroutine；具体窗口与容量见 `docs/api.md`。当前是进程内限制，多实例不能把它介绍为统一的防暴力破解方案。
 
-## 4. 关键流程时序
+演示身份依据已验证 JWT 的租户号，不依据用户名是否叫 demo1。会话领取与重置只允许配置的演示租户，不能仅检查 tenant_id 大于 0，否则普通业务租户也可能进入清空数据的演示路径。
 
-### 4.1 入库：审核 → 收货 → 上架
+GORM 回调对带 TenantID 的模型注入查询条件，创建时补全租户并拒绝与请求租户不一致的显式字段。裸表、原生 SQL、关联表条件仍需单独检查。当前没有租户或 tenant_id=0 仍表示平台旁路，这是实现边界，不是一个“永远自动隔离”的保证。
 
-```mermaid
-sequenceDiagram
-    participant H as inbound/handler
-    participant S as inbound/service
-    participant T as task/api
-    participant I as inventory/api
-    participant DB as MySQL(同事务)
+Redis 的故障策略取决于用途：条码缓存可以回源数据库；单号可以降级生成并依赖唯一索引；演示会话验证需要 Redis，不能在 Redis 故障时放行。条码 key 包含租户；更新后删缓存和 TTL 仍是最终一致性。
 
-    H->>S: Receive(orderId, details)
-    S->>DB: 校验单据状态(APPROVED/RECEIVING) + version
-    S->>T: CreateTask(RECEIVE)
-    S->>S: 更新明细 received_qty / 单据 RECEIVING
-    Note over S,DB: —— 上架（任务维度，独立事务）——
-    H->>S: Putaway(taskId, locationId, qty)
-    S->>DB: 任务 CAS 校验
-    S->>I: Increase(location, sku, batch, qty)
-    I->>DB: upsert 库存行(写 stock_in_time) + RECEIVE 流水
-    S->>S: 任务 COMPLETED；全链完成则单据 COMPLETED
-```
+外部 API Key 不是用户 JWT，不携带客户端租户选择。路由中间件先校验密钥，再把服务端配置的租户写入 `WithExactTenant` 上下文；即使租户为 0，也会注入 `WHERE tenant_id = 0`，防止平台旁路扩展为全租户查询。外部出库单的仓库、货品和业务单号都在这个固定范围内解析。
 
-### 4.2 出库：审核即分配（核心）
+演示会话的续期、删除和 TTL 查询通过 Lua 原子核对 token。数据重置使用按租户的 Redis 锁，在取得锁后重新校验会话并延长租期；数据库重置限定在 30 秒内，锁租期 2 分钟。它降低常见过期换主竞态，但不构成应对任意长进程暂停或在途业务请求的数据库级 fencing 协议。
 
-```mermaid
-sequenceDiagram
-    participant H as outbound/handler
-    participant S as outbound/service
-    participant I as inventory/api
-    participant T as task/api
-    participant DB as MySQL
+入库、出库、盘点单号正常格式为前缀、日期、至少六位序号，例如 `RK20260921000001`。Lua 原子自增并补设 48 小时 TTL；Redis 操作使用 500 毫秒超时，失败后生成“前缀 + 日期 + F + 32 位 UUID”。降级不依赖本地计数或跨日重置，数据库唯一键仍是必要约束，单号不保证连续。
 
-    H->>S: Approve(orderId)
-    S->>DB: 校验 SUBMITTED + version（事务开始）
-    loop 每个 SKU 明细
-        S->>I: Allocate(sku, qty)  ← FOR UPDATE + 条件更新
-        I-->>S: 分配结果[(库存行,数量)]（FIFO 拆批次）
-        S->>DB: INSERT wms_allocation(ALLOCATED)
-        S->>T: CreateTask(PICK, allocationId)
-    end
-    S->>DB: 单据 SUBMITTED→PICKING（CAS）
-    Note over DB: 任何一步失败整体回滚，<br/>不会出现"锁了一半"的库存
-```
+收货、上架、拣货任务号采用“SH/SJ/PK + 日期 + 任务 ID”，直接复用雪花主键，避免持有业务行锁时等待 Redis。已有任务号保持原值，使用方应把任务号作为不透明字符串，不解析尾部序号。
 
-## 5. 前端架构（web/）
+雪花 ID 用互斥锁保护节点、逻辑时间和序列。同一进程内时钟回拨时沿用逻辑时间，序列耗尽后推进一毫秒；节点号必须在 0–1023 之间且多实例不能重复。状态没有持久化，因此进程重启后时钟早于上次逻辑时间仍可能冲突，不能承诺跨重启无条件唯一。
 
-```
-web/src/
-├── api/          # 类型完备的请求层：axios 实例 + 按模块 api + DTO 类型
-├── stores/       # Pinia：auth(token/用户) / theme(双主题持久化)
-├── layouts/      # Layout：侧边栏/顶栏/面包屑/主题切换
-├── views/        # 16 个业务页面，按模块分目录
-├── components/   # 业务弹窗组件（拣货/上架）
-├── constants.ts  # 状态→文案/标签色的唯一映射点
-└── router/       # 路由 + meta.title + 登录守卫
-```
+用户更新用可选字段区分“没有修改昵称”和“明确清空昵称”。角色分配核对用户、角色和关联属于同一租户，即使平台代操作也不能跨租户混用角色。分配和删除角色都先锁角色行，删除在同一事务内检查是否被使用；权限查询也显式排除租户不匹配或已删除的关联对象。
 
-工程化亮点：
+## 6. 日志与错误
 
-- **双主题**：CSS 变量令牌（浅色靛紫 / 深色翡翠绿）直接覆盖 Element Plus 变量，16 个页面零改动换肤，`html.dark` + localStorage 持久化；
-- **状态标签单点维护**：`constants.ts` 的 `statusTag()/statusText()` 供全部列表页复用；
-- **异步导入体验**：上传后轮询进度，刷新页面后仍可恢复查看。
+请求日志记录方法、路径、状态、耗时、请求 ID 和用户 ID，不再复制整份响应体。写操作审计保留租户并脱敏；无法安全解析的内容省略，过大响应只保留省略标记。
 
-## 6. 目录结构
+操作日志通过有限容量 channel 尽力异步写入，队列满或数据库失败时可能丢失。库存流水和它不同：库存流水必须与库存更新处于同一事务。
 
-```
-wms/
-├── cmd/wms/main.go          # 入口：配置 → DB/Redis → Migrate → HTTP
-├── configs/config.yaml
-├── deploy/docker-compose.yaml
-├── migrations/versions/     # golang-migrate 版本化迁移
-├── internal/
-│   ├── app/                 # 依赖组装 + 路由（手动构造注入）
-│   ├── bootstrap/           # InitDB/InitRedis/Migrate/seed
-│   ├── modules/
-│   │   ├── system/          # api dto handler model repository service
-│   │   ├── basic/
-│   │   ├── inventory/       # + api/（供其他模块依赖）
-│   │   ├── task/            # + api/
-│   │   ├── inbound/
-│   │   ├── outbound/
-│   │   └── stocktake/
-│   └── pkg/                 # config/errcode/response/jwt/tx/snowflake/orderno/lock/middleware
-├── web/                     # Vue3 前端
-└── docs/                    # 本文档体系
-```
+业务不存在、非法状态和数量不足返回明确业务错误。数据库故障保留原错误，HTTP 层记录内部细节并返回通用消息；不能将所有数据库错误改成“记录不存在”。
 
-## 7. 演进路线（预留的拆分点）
+## 7. 启动和部署
 
-| 方向 | 做法 |
-| --- | --- |
-| 拆库存微服务 | `inventory/api` 换成 gRPC 客户端；库存行已按行锁隔离，天然适合独立部署 |
-| 引入消息队列 | 单号流水/操作日志改为事件异步落库；Excel 导入改 MQ 驱动以支持多实例 |
-| 多仓库隔离 | 模型已含 `warehouse_id`，可按仓分片 |
-| 移动端作业 | 任务中心接口已按作业聚合（收货/上架/拣货），可直接对接 PDA |
+`cmd/wms` 管理配置、MySQL、Redis、HTTP 和 worker 生命周期。`cmd/migrate` 独立执行版本化迁移；release 不运行 AutoMigrate。Docker 使用多阶段构建和非 root 用户，Compose 通过 `mysql:3306`、`redis:6379` 连接容器服务，localhost 仅用于容器自身探针。
+
+迁移 000006 的升级顺序和文件共享限制见 `docs/database.md`。当前保留单体、现有框架和手动依赖组装，不把微服务、通用 Repository 或额外设计模式列为学习前置要求。

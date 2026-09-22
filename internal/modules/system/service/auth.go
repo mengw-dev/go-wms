@@ -4,47 +4,48 @@ import (
 	"context"
 	"errors"
 	"strings"
-	"time"
 
 	"gorm.io/gorm"
 
 	"gowms/internal/modules/system/dto"
+	"gowms/internal/modules/system/repository"
 	"gowms/internal/pkg/errcode"
 	"gowms/internal/pkg/jwt"
+	"gowms/internal/pkg/tenant"
 )
 
 // 登录、Token 校验和个人档案。
 
 func (s *Service) Login(ctx context.Context, req *dto.LoginReq, clientIP string) (*dto.LoginResp, error) {
+	if req == nil || req.Username == "" || req.Password == "" || (req.TenantID != nil && *req.TenantID < 0) {
+		return nil, errcode.ParamError
+	}
 	attemptKey := strings.ToLower(strings.TrimSpace(req.Username)) + "|" + clientIP
-	if !s.allowLogin(attemptKey) {
+	if !s.beginLoginAttempt(attemptKey) {
 		return nil, errcode.TooManyLoginAttempts
 	}
-	u, err := s.repo.GetUserByUsername(ctx, req.Username)
+	u, err := s.repo.GetLoginUser(ctx, req.Username, req.TenantID)
 	if err != nil {
-		s.recordLoginFailure(attemptKey)
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if errors.Is(err, gorm.ErrRecordNotFound) || errors.Is(err, repository.ErrAmbiguousUser) {
 			return nil, errcode.UserOrPwdWrong
 		}
 		return nil, err
 	}
-	if u.Status != 1 {
-		s.recordLoginFailure(attemptKey)
-		return nil, errcode.UserDisabled
-	}
 	if !checkPassword(u.PasswordHash, req.Password) {
-		s.recordLoginFailure(attemptKey)
 		return nil, errcode.UserOrPwdWrong
 	}
-	s.clearLoginFailures(attemptKey)
+	if u.Status != 1 {
+		return nil, errcode.UserDisabled
+	}
 	token, err := jwt.Generate(s.jwtSecret, s.jwtExpire, u.ID, u.Username, u.TokenVersion, u.TenantID)
 	if err != nil {
 		return nil, err
 	}
-	roles, perms, err := s.loadRolesAndPerms(ctx, u.ID)
+	roles, perms, err := s.loadRolesAndPerms(tenant.WithTenant(ctx, u.TenantID), u.ID)
 	if err != nil {
 		return nil, err
 	}
+	s.clearLoginAttempts(attemptKey)
 	return &dto.LoginResp{
 		Token: token, UserID: u.ID, Username: u.Username,
 		Nickname: u.Nickname, Roles: roles, Perms: perms,
@@ -57,9 +58,9 @@ func (s *Service) ValidateToken(ctx context.Context, userID int64, tokenVersion 
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return errcode.Unauthorized
 		}
-		return errcode.Internal
+		return err
 	}
-	if u.Status != 1 || u.TokenVersion != tokenVersion {
+	if u.Status != 1 || u.TokenVersion != tokenVersion || u.TenantID != tenant.FromContext(ctx) {
 		return errcode.Unauthorized
 	}
 	return nil
@@ -68,7 +69,10 @@ func (s *Service) ValidateToken(ctx context.Context, userID int64, tokenVersion 
 func (s *Service) Profile(ctx context.Context, userID int64) (*dto.ProfileResp, error) {
 	u, err := s.repo.GetUserByID(ctx, userID)
 	if err != nil {
-		return nil, errcode.UserIDInvalid
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, errcode.UserIDInvalid
+		}
+		return nil, err
 	}
 	roles, perms, err := s.loadRolesAndPerms(ctx, userID)
 	if err != nil {
@@ -82,7 +86,10 @@ func (s *Service) Profile(ctx context.Context, userID int64) (*dto.ProfileResp, 
 func (s *Service) ChangePassword(ctx context.Context, userID int64, req *dto.ChangePwdReq) error {
 	u, err := s.repo.GetUserByID(ctx, userID)
 	if err != nil {
-		return errcode.UserIDInvalid
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return errcode.UserIDInvalid
+		}
+		return err
 	}
 	if !checkPassword(u.PasswordHash, req.OldPassword) {
 		return errcode.OldPwdWrong
@@ -96,36 +103,4 @@ func (s *Service) ChangePassword(ctx context.Context, userID int64, req *dto.Cha
 	}
 	s.invalidatePermCache()
 	return nil
-}
-
-func (s *Service) allowLogin(key string) bool {
-	s.loginMu.Lock()
-	defer s.loginMu.Unlock()
-	item, ok := s.loginAttempts[key]
-	if !ok {
-		return true
-	}
-	if time.Now().After(item.ResetAt) {
-		delete(s.loginAttempts, key)
-		return true
-	}
-	return item.Failures < maxLoginFailures
-}
-
-func (s *Service) recordLoginFailure(key string) {
-	s.loginMu.Lock()
-	defer s.loginMu.Unlock()
-	now := time.Now()
-	item := s.loginAttempts[key]
-	if now.After(item.ResetAt) {
-		item = loginAttempt{ResetAt: now.Add(loginFailureWindow)}
-	}
-	item.Failures++
-	s.loginAttempts[key] = item
-}
-
-func (s *Service) clearLoginFailures(key string) {
-	s.loginMu.Lock()
-	delete(s.loginAttempts, key)
-	s.loginMu.Unlock()
 }

@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 
 	"gorm.io/gorm"
 
@@ -16,23 +17,33 @@ import (
 // 收货业务。
 
 func (s *Service) Receive(ctx context.Context, orderID, detailID int64, req *dto.ReceiveReq, operator string) error {
+	// qty 是本次收货总量（包含残品），与前端及 received_qty 的含义一致。
+	if req.Qty <= 0 || req.DefectiveQty < 0 || req.DefectiveQty > req.Qty {
+		return errcode.ParamError
+	}
 	return s.tm.TxRetry(ctx, tx.MaxTxRetry, func(tx *gorm.DB) error {
 		o, err := s.repo.GetOrderForUpdate(tx, orderID)
 		if err != nil {
-			return errcode.OrderNotFound
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return errcode.OrderNotFound
+			}
+			return err
 		}
 		if o.Status != model.OrderApproved && o.Status != model.OrderReceiving {
 			return errcode.OrderStatusWrong
 		}
 		d, err := s.repo.GetDetailForUpdate(tx, detailID)
 		if err != nil {
-			return errcode.OrderNotFound
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return errcode.OrderNotFound
+			}
+			return err
 		}
 		if d.OrderID != orderID {
 			return errcode.ParamError
 		}
-		remaining := d.ExpectedQty - d.ReceivedQty - d.DefectiveQty
-		if req.Qty+req.DefectiveQty > remaining {
+		remaining := d.ExpectedQty - d.ReceivedQty
+		if req.Qty > remaining {
 			return errcode.ReceiveQtyOver
 		}
 		// 批次号：首次收货必填并落库；后续保持一致
@@ -48,9 +59,9 @@ func (s *Service) Receive(ctx context.Context, orderID, detailID int64, req *dto
 		if err := s.repo.IncrDetailReceive(tx, d, req.Qty, req.DefectiveQty); err != nil {
 			return err
 		}
-		// 收货任务推进：完成量 = 良品 + 残品（残品同样经过收货作业）。
+		// 收货任务推进：qty 已包含良品和残品，残品不能重复计数。
 		// 收齐时任务完成量恰好等于目标量，任务自动 CREATED → IN_PROGRESS → COMPLETED。
-		if err := s.taskAPI.AddProgressByDetail(ctx, tx, orderID, detailID, taskmodel.TaskReceive, req.Qty+req.DefectiveQty, operator); err != nil {
+		if err := s.taskAPI.AddProgressByDetail(ctx, tx, orderID, detailID, taskmodel.TaskReceive, req.Qty, operator); err != nil {
 			return err
 		}
 
@@ -61,14 +72,15 @@ func (s *Service) Receive(ctx context.Context, orderID, detailID int64, req *dto
 		}
 		fullyReceived := true
 		for _, item := range all {
-			if item.ReceivedQty+item.DefectiveQty < item.ExpectedQty {
+			if item.ReceivedQty < item.ExpectedQty {
 				fullyReceived = false
 				break
 			}
 		}
 		var toStatus model.OrderStatus
 		var putawayTasks []*taskapi.CreateTask
-		if fullyReceived {
+		switch {
+		case fullyReceived:
 			// 上架任务（残品不入库，上架量 = 已收 - 残品）
 			for _, item := range all {
 				putawayQty := item.ReceivedQty - item.DefectiveQty
@@ -90,13 +102,13 @@ func (s *Service) Receive(ctx context.Context, orderID, detailID int64, req *dto
 			if !model.CanTransit(o.Status, toStatus) {
 				return errcode.OrderStatusWrong
 			}
-		} else if o.Status == model.OrderApproved {
+		case o.Status == model.OrderApproved:
 			// 状态机校验：首次部分收货 APPROVED → RECEIVING
 			if !model.CanTransit(o.Status, model.OrderReceiving) {
 				return errcode.OrderStatusWrong
 			}
 			toStatus = model.OrderReceiving
-		} else {
+		default:
 			toStatus = o.Status // RECEIVING 中继续收货，状态不变
 		}
 		// 主单原子累加 + 状态推进（version 乐观锁，冲突由 TxRetry 重试）

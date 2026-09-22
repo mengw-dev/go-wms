@@ -32,7 +32,10 @@ func (l *Locker) Lock(ctx context.Context, key string, ttl time.Duration) (relea
 		return nil, false, err
 	}
 	release = func() {
-		if err := unlockScript.Run(context.Background(), l.rdb, []string{key}, token).Err(); err != nil {
+		// 请求可能已经取消，但释放锁仍需尝试；独立超时限制退出等待。
+		releaseCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		if err := unlockScript.Run(releaseCtx, l.rdb, []string{key}, token).Err(); err != nil {
 			log.L().Warn("failed to release distributed lock", "key", key, "err", err)
 		}
 	}

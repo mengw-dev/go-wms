@@ -18,6 +18,7 @@ import (
 	outboundmodel "gowms/internal/modules/outbound/model"
 	taskmodel "gowms/internal/modules/task/model"
 	"gowms/internal/pkg/errcode"
+	"gowms/internal/pkg/tenant"
 )
 
 type ConcurrentResult struct {
@@ -77,6 +78,12 @@ func (s *Service) RunConcurrentAllocation(ctx context.Context, sessionID string,
 
 	s.runMu.Lock()
 	defer s.runMu.Unlock()
+	runCtx, finish, err := s.beginTenantRun(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer finish()
+	ctx = runCtx
 
 	refs, err := s.loadDemoBaseRefs(ctx)
 	if err != nil {
@@ -186,6 +193,12 @@ func (s *Service) RestockDemo(ctx context.Context, sessionID string, qty int) (*
 
 	s.runMu.Lock()
 	defer s.runMu.Unlock()
+	runCtx, finish, err := s.beginTenantRun(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer finish()
+	ctx = runCtx
 
 	refs, err := s.loadDemoBaseRefs(ctx)
 	if err != nil {
@@ -282,6 +295,12 @@ func (s *Service) RunConcurrentPicking(ctx context.Context, sessionID string, wo
 
 	s.runMu.Lock()
 	defer s.runMu.Unlock()
+	runCtx, finish, err := s.beginTenantRun(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer finish()
+	ctx = runCtx
 
 	var tasks []*taskmodel.Task
 	if err := s.db.WithContext(ctx).
@@ -331,6 +350,7 @@ func (s *Service) RunConcurrentPicking(ctx context.Context, sessionID string, wo
 		contenderWG.Add(1)
 		go func(seed int64) {
 			defer contenderWG.Done()
+			// #nosec G404 -- 仅用于演示并发测试的任务选择，不用于安全用途。
 			rng := rand.New(rand.NewSource(time.Now().UnixNano() + seed))
 			attempts := len(tasks) * 2
 			for j := 0; j < attempts; j++ {
@@ -437,13 +457,16 @@ func (s *Service) prepareConcurrentOutbound(ctx context.Context, refs *demoRefs,
 
 func (s *Service) loadRestockLocation(ctx context.Context, warehouseID, skuID int64) (*basicmodel.Location, error) {
 	var location basicmodel.Location
-	err := s.db.WithContext(ctx).
+	query := s.db.WithContext(ctx).
 		Table("wms_location AS l").
 		Select("l.*").
-		Joins("JOIN wms_inventory AS i ON i.location_id = l.id").
-		Where("l.warehouse_id = ? AND l.status <> ? AND i.sku_id = ?", warehouseID, basicmodel.LocationStatusDisabled, skuID).
-		Order("i.stock_in_time ASC, l.code ASC").
-		First(&location).Error
+		Joins("JOIN wms_inventory AS i ON i.location_id = l.id AND i.tenant_id = l.tenant_id AND i.deleted_at IS NULL").
+		Where("l.deleted_at IS NULL AND l.warehouse_id = ? AND l.status <> ? AND i.sku_id = ?",
+			warehouseID, basicmodel.LocationStatusDisabled, skuID)
+	if tenantID, scoped := tenant.Scope(ctx); scoped {
+		query = query.Where("l.tenant_id = ?", tenantID)
+	}
+	err := query.Order("i.stock_in_time ASC, l.code ASC").First(&location).Error
 	if err == nil {
 		return &location, nil
 	}

@@ -1,9 +1,8 @@
 node_modules
 dist
 coverage
-.vscode
-*.log
-playwright-report
 test-results
-tests
-playwright.config.ts
+playwright-report
+.env
+.env.*
+*.log
