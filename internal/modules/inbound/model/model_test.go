@@ -1,6 +1,9 @@
 package model
 
-import "testing"
+import (
+	"encoding/json"
+	"testing"
+)
 
 // TestCanTransit 入库单状态机：合法流转全通过，非法/跨状态/终态流转全拒绝。
 func TestCanTransit(t *testing.T) {
@@ -42,5 +45,31 @@ func TestCanTransit(t *testing.T) {
 		if CanTransit(c.from, c.to) {
 			t.Errorf("expect illegal: %s -> %s", c.from, c.to)
 		}
+	}
+}
+
+func TestImportTaskJSONDoesNotExposeExecutionSecrets(t *testing.T) {
+	task := ImportTask{
+		RunToken: "run-token-must-not-leak",
+		FileName: "orders.xlsx",
+		FilePath: "/tmp/private/orders.xlsx",
+	}
+
+	got, err := json.Marshal(task)
+	if err != nil {
+		t.Fatalf("marshal import task: %v", err)
+	}
+
+	var fields map[string]any
+	if err := json.Unmarshal(got, &fields); err != nil {
+		t.Fatalf("unmarshal import task: %v", err)
+	}
+	for _, field := range []string{"run_token", "file_path"} {
+		if _, exists := fields[field]; exists {
+			t.Fatalf("internal field %q must not be exposed, got %s", field, got)
+		}
+	}
+	if fields["file_name"] != "orders.xlsx" {
+		t.Fatalf("public file name changed, got %s", got)
 	}
 }

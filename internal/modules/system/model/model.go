@@ -17,9 +17,10 @@ type Base struct {
 	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
 }
 
-// Versioned 在 Base 上增加乐观锁，用于单据防并发状态跳变。
+// Versioned 在 Base 上增加数据库版本号，用于单据防并发状态跳变。
+// Version 只参与持久化更新，不进入 API JSON。
 type Versioned struct {
-	Version int `json:"version" gorm:"default:1"`
+	Version int `json:"-" gorm:"default:1"`
 }
 
 // SysUser 用户（多租户：tenant_id 联合唯一用户名，各租户内独立）。
