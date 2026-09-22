@@ -61,7 +61,7 @@ func (h *Handler) get(c *gin.Context) {
 	if !ok {
 		return
 	}
-	detail, err := h.svc.Get(c.Request.Context(), id)
+	detail, err := h.svc.GetResponse(c.Request.Context(), id)
 	if err != nil {
 		response.Fail(c, err)
 		return
