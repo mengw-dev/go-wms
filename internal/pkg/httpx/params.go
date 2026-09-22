@@ -1,3 +1,4 @@
+// Package httpx 提供 Gin 请求参数的统一解析和校验辅助函数。
 package httpx
 
 import (

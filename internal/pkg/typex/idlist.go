@@ -1,3 +1,4 @@
+// Package typex 提供跨 JSON 数字和字符串场景的 ID 集合类型。
 package typex
 
 import (

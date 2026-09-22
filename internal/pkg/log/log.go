@@ -1,3 +1,4 @@
+// Package log 提供带请求上下文字段的结构化日志入口。
 package log
 
 import (

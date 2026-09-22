@@ -1,3 +1,4 @@
+// Package model 定义入库单、收货明细和异步导入任务的持久化结构。
 package model
 
 import (
@@ -45,6 +46,7 @@ func CanTransit(from, to OrderStatus) bool {
 	return false
 }
 
+// ReceiptOrder 入库单维护收货进度、残品数量和导入幂等信息。
 type ReceiptOrder struct {
 	model.Base
 	model.Versioned
@@ -66,6 +68,7 @@ type ReceiptOrder struct {
 
 func (ReceiptOrder) TableName() string { return "wms_receipt_order" }
 
+// ReceiptOrderDetail 记录单行货品的应收、实收和残品数量。
 type ReceiptOrderDetail struct {
 	model.Base
 	TenantID     int64  `json:"tenant_id,string" gorm:"not null;default:0"`

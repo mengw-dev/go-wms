@@ -96,7 +96,7 @@ go run ./cmd/wms
 
 > 数据库名沿用历史名称 `gowms`（仅内部标识符，与项目显示名 WMS 无关）。Docker 部署可通过 `.env` 的 `MYSQL_DATABASE` 修改；本地开发需同步修改 `configs/config.yaml` 中的 DSN。
 
-服务默认监听 `http://127.0.0.1:8080`。首次启动会通过 AutoMigrate 建表并创建管理员：
+服务默认监听 `http://127.0.0.1:8080`。`debug` 模式首次启动会通过 AutoMigrate 建表并创建管理员；`release` 模式必须先执行版本化迁移：
 
 ```text
 用户名：admin
@@ -126,6 +126,8 @@ npm run dev
 ```powershell
 .\scripts\windows\verify.ps1 -WithRace
 ```
+
+`verify.ps1` 和 `e2e.ps1` 会先检查 Node.js 版本；要求为 20.19+ 或 22.12+。
 
 如果需要额外运行真实后端 Playwright E2E：
 

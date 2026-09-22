@@ -1,3 +1,4 @@
+// Package repository 提供 AI 问答所需的只读库存快照查询。
 package repository
 
 import (

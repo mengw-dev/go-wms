@@ -1,3 +1,4 @@
+// Package api 定义统一任务模块提供给入库和出库流程的操作接口。
 package api
 
 import (

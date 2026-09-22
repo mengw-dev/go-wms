@@ -106,9 +106,9 @@ func (s *Service) GetByBarcode(ctx context.Context, barcode string) (*model.SKU,
 	// 平台旁路查询没有唯一的租户范围，不使用条码缓存。
 	useCache := s.rdb != nil && tenantID > 0
 	if useCache {
-		if val, err := s.rdb.Get(ctx, key); err == nil && val != "" {
+		if cachedJSON, err := s.rdb.Get(ctx, key); err == nil && cachedJSON != "" {
 			var cached model.SKU
-			if err := json.Unmarshal([]byte(val), &cached); err == nil && cached.TenantID == tenantID && cached.Barcode == barcode {
+			if err := json.Unmarshal([]byte(cachedJSON), &cached); err == nil && cached.TenantID == tenantID && cached.Barcode == barcode {
 				return &cached, nil
 			}
 		}

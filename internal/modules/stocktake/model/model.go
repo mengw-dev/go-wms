@@ -1,3 +1,4 @@
+// Package model 定义盘点快照、实盘数量和审核调整结果。
 package model
 
 import (
@@ -28,6 +29,7 @@ func CanTransit(from, to OrderStatus) bool {
 	return false
 }
 
+// StocktakeOrder 保存盘点范围、状态和审核结果。
 type StocktakeOrder struct {
 	model.Base
 	model.Versioned
@@ -43,6 +45,7 @@ type StocktakeOrder struct {
 
 func (StocktakeOrder) TableName() string { return "wms_stocktake_order" }
 
+// StocktakeDetail 保存账面快照并在审核时记录实际调整结果。
 type StocktakeDetail struct {
 	model.Base
 	TenantID     int64  `json:"tenant_id,string" gorm:"not null;default:0"`

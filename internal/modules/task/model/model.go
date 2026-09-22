@@ -1,3 +1,4 @@
+// Package model 定义统一任务表、任务类型和状态转换规则。
 package model
 
 import (

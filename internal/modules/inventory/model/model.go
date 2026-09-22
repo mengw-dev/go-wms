@@ -1,3 +1,4 @@
+// Package model 定义三数量库存模型和不可变库存流水。
 package model
 
 import (

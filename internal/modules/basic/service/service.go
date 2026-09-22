@@ -20,7 +20,7 @@ type Service struct {
 
 type redisClient interface {
 	Get(ctx context.Context, key string) (string, error)
-	Set(ctx context.Context, key string, val any, ttl time.Duration) error
+	Set(ctx context.Context, key string, value any, ttl time.Duration) error
 	Del(ctx context.Context, keys ...string) error
 }
 

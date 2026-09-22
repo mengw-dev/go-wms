@@ -1,3 +1,4 @@
+// Package client 封装兼容 OpenAI 协议的智谱 Chat API 调用。
 package client
 
 import (

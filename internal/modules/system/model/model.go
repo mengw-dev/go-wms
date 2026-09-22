@@ -1,3 +1,4 @@
+// Package model 定义租户内用户、角色、用户角色关联和操作日志。
 package model
 
 import (
@@ -56,6 +57,7 @@ type SysUserRole struct {
 
 func (SysUserRole) TableName() string { return "sys_user_role" }
 
+// SysOperLog 保存脱敏后的写操作审计记录。
 type SysOperLog struct {
 	ID        int64     `json:"id,string" gorm:"primaryKey"`
 	TenantID  int64     `json:"tenant_id,string" gorm:"not null;default:0;index:idx_oper_log_tenant"`

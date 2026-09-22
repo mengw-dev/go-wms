@@ -1,3 +1,4 @@
+// Command wms 启动 HTTP 服务并管理数据库、Redis 和后台任务的资源生命周期。
 package main
 
 import (

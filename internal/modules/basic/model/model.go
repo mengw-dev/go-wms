@@ -1,7 +1,9 @@
+// Package model 定义仓库、库位和 SKU 的持久化结构及编码唯一约束。
 package model
 
 import "gowms/internal/modules/system/model"
 
+// Warehouse 仓库是库存和多数业务单据的租户内范围边界。
 type Warehouse struct {
 	model.Base
 	TenantID int64  `json:"tenant_id,string" gorm:"not null;default:0;uniqueIndex:uk_warehouse_code,priority:1;index:idx_wh_tenant"`
@@ -13,6 +15,7 @@ type Warehouse struct {
 
 func (Warehouse) TableName() string { return "wms_warehouse" }
 
+// Location 库位属于一个仓库，是库存四元组中的实际存放位置。
 type Location struct {
 	model.Base
 	TenantID    int64  `json:"tenant_id,string" gorm:"not null;default:0;index:idx_loc_tenant;uniqueIndex:uk_loc_wh_code,priority:1"`
@@ -31,6 +34,7 @@ const (
 	LocationStatusOccupied = 2
 )
 
+// SKU 货品在租户内以编码和条码分别唯一。
 type SKU struct {
 	model.Base
 	TenantID int64  `json:"tenant_id,string" gorm:"not null;default:0;uniqueIndex:uk_sku_code,priority:1;uniqueIndex:uk_sku_barcode,priority:1"`

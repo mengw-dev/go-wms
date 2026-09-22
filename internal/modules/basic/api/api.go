@@ -1,3 +1,4 @@
+// Package api 定义 basic 模块提供给其他业务模块的仓库、库位和 SKU 能力。
 package api
 
 import (

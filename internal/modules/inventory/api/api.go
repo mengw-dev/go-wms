@@ -1,3 +1,4 @@
+// Package api 定义库存模块在调用方事务内执行的数量变更接口。
 package api
 
 import (
@@ -36,6 +37,7 @@ type AllocateRow struct {
 	Quantity     int
 }
 
+// AllocateResult 返回本次 FIFO 分配实际占用的库存行和总数量。
 type AllocateResult struct {
 	Rows  []AllocateRow
 	Total int

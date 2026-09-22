@@ -117,4 +117,4 @@ Redis 的故障策略取决于用途：条码缓存可以回源数据库；单�
 
 `cmd/wms` 管理配置、MySQL、Redis、HTTP 和 worker 生命周期。`cmd/migrate` 独立执行版本化迁移；release 不运行 AutoMigrate。Docker 使用多阶段构建和非 root 用户，Compose 通过 `mysql:3306`、`redis:6379` 连接容器服务，localhost 仅用于容器自身探针。
 
-迁移 000006 的升级顺序和文件共享限制见 `docs/database.md`。当前保留单体、现有框架和手动依赖组装，不把微服务、通用 Repository 或额外设计模式列为学习前置要求。
+迁移 000006 的升级顺序和文件共享限制、以及 000007 的租户索引调整见 `docs/database.md`。当前保留单体、现有框架和手动依赖组装，不把微服务、通用 Repository 或额外设计模式列为学习前置要求。

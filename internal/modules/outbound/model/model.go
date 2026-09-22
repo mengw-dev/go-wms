@@ -1,3 +1,4 @@
+// Package model 定义出库单、FIFO 分配行和拣货发货状态。
 package model
 
 import (
@@ -39,6 +40,7 @@ func CanTransit(from, to OrderStatus) bool {
 	return false
 }
 
+// ShipmentOrder 出库单以 BizOrderNo 作为租户内幂等业务键。
 type ShipmentOrder struct {
 	model.Base
 	model.Versioned
@@ -56,6 +58,7 @@ type ShipmentOrder struct {
 
 func (ShipmentOrder) TableName() string { return "wms_shipment_order" }
 
+// ShipmentOrderDetail 记录单行货品从待分配到已拣货的进度。
 type ShipmentOrderDetail struct {
 	model.Base
 	TenantID     int64  `json:"tenant_id,string" gorm:"not null;default:0"`

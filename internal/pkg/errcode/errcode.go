@@ -1,3 +1,4 @@
+// Package errcode 定义跨模块业务错误、错误码分类和错误链转换。
 package errcode
 
 import (
@@ -17,6 +18,7 @@ func (e *Error) Error() string { return fmt.Sprintf("[%d] %s", e.Code, e.Msg) }
 // Unwrap 保留底层错误，使 errors.Is/errors.As 可以穿透业务错误。
 func (e *Error) Unwrap() error { return e.cause }
 
+// New 创建不带底层 cause 的稳定业务错误。
 func New(code int, msg string) *Error { return &Error{Code: code, Msg: msg} }
 
 // Wrap 将底层错误包装为稳定的业务错误，同时保留原始错误链。
@@ -35,9 +37,9 @@ func From(err error) *Error {
 	if err == nil {
 		return nil
 	}
-	var e *Error
-	if errors.As(err, &e) {
-		return e
+	var bizErr *Error
+	if errors.As(err, &bizErr) {
+		return bizErr
 	}
 	return Internal
 }
@@ -54,11 +56,11 @@ var conflictCodes = map[int]struct{}{
 
 // IsConflict 判断错误是否为并发冲突类（乐观锁失败、行竞争）——这类错误可以整事务重试。
 func IsConflict(err error) bool {
-	var e *Error
-	if !errors.As(err, &e) {
+	var bizErr *Error
+	if !errors.As(err, &bizErr) {
 		return false
 	}
-	return IsConflictCode(e.Code)
+	return IsConflictCode(bizErr.Code)
 }
 
 // IsConflictCode 判断业务码是否属于可安全重试的并发冲突。

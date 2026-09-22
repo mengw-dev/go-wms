@@ -1,3 +1,4 @@
+// Package lock 提供带持有者校验的 Redis 分布式锁。
 package lock
 
 import (

@@ -1,3 +1,4 @@
+// Package response 定义统一 HTTP 响应体和业务错误到状态码的映射。
 package response
 
 import (
@@ -35,18 +36,18 @@ func OKPage(c *gin.Context, list any, total int64) {
 // 401 未登录、403 无权限、409 并发冲突、500 系统错误，其余业务错误返回 400。
 // 前端依赖 HTTP 401 触发登录失效（清 token 跳登录页），网关/监控依赖非 2xx 感知异常。
 func Fail(c *gin.Context, err error) {
-	var e *errcode.Error
-	if !errors.As(err, &e) {
-		e = errcode.Internal
+	var bizErr *errcode.Error
+	if !errors.As(err, &bizErr) {
+		bizErr = errcode.Internal
 	}
-	if e.Code == errcode.Internal.Code {
+	if bizErr.Code == errcode.Internal.Code {
 		log.WithContext(c.Request.Context()).Error("request failed",
 			"method", c.Request.Method,
 			"path", c.Request.URL.Path,
 			"err", err,
 		)
 	}
-	c.JSON(httpStatus(e.Code), Body{Code: e.Code, Msg: e.Msg, Data: nil})
+	c.JSON(httpStatus(bizErr.Code), Body{Code: bizErr.Code, Msg: bizErr.Msg, Data: nil})
 }
 
 // httpStatus 业务错误码 → HTTP 状态码映射。

@@ -1,3 +1,4 @@
+// Package observability 提供 Prometheus 指标和 HTTP 观测中间件。
 package observability
 
 import (

@@ -1,3 +1,4 @@
+// Package jwt 负责签发和严格校验用户身份 Token。
 package jwt
 
 import (

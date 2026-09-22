@@ -1,3 +1,4 @@
+// Package api 定义 system 模块提供给其他模块的身份、权限和审计能力。
 package api
 
 import (
