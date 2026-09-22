@@ -307,7 +307,8 @@ export interface InboundOrderItem {
   warehouse_id: EntityID
   status: string
   source: string
-  import_task_id?: string
+  /** 手工入库单为 null；由 Excel 导入创建的入库单为批次任务 ID。 */
+  import_task_id: string | null
   remark: string
   expected_qty: number
   received_qty: number
