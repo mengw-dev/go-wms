@@ -23,8 +23,19 @@ func (s *Service) List(ctx context.Context, q *dto.InventoryQuery) ([]*dto.Inven
 	return inventoryResponses(items), total, nil
 }
 
-func (s *Service) SummaryBySKU(ctx context.Context, q *dto.SummaryQuery) ([]map[string]any, int64, error) {
-	return s.repo.SummaryBySKU(ctx, s.tm.DB(), q.WarehouseID, q.Page, q.PageSize)
+func (s *Service) SummaryBySKU(ctx context.Context, q *dto.SummaryQuery) ([]*dto.InventorySummaryResp, int64, error) {
+	rows, total, err := s.repo.SummaryBySKU(ctx, s.tm.DB(), q.WarehouseID, q.Page, q.PageSize)
+	if err != nil {
+		return nil, 0, err
+	}
+	resp := make([]*dto.InventorySummaryResp, 0, len(rows))
+	for _, row := range rows {
+		resp = append(resp, &dto.InventorySummaryResp{
+			SKUID: row.SKUID, SKUCode: row.SKUCode, SKUName: row.SKUName, Unit: row.Unit,
+			StockQuantity: row.StockQuantity, AvailableQty: row.AvailableQty, AllocatedQty: row.AllocatedQty,
+		})
+	}
+	return resp, total, nil
 }
 
 func (s *Service) ListTrans(ctx context.Context, q *dto.TransQuery) ([]*dto.InventoryTransResp, int64, error) {
@@ -70,6 +81,17 @@ func inventoryTransResponses(items []*model.InventoryTrans) []*dto.InventoryTran
 			BeforeQuantity: item.BeforeQuantity, AfterQuantity: item.AfterQuantity,
 			AvailableBefore: item.AvailableBefore, AvailableAfter: item.AvailableAfter,
 			OrderNo: item.OrderNo, TaskNo: item.TaskNo, Operator: item.Operator, CreatedAt: item.CreatedAt,
+		})
+	}
+	return resp
+}
+
+func inventorySummaryResponses(rows []*repository.SummaryRow) []*dto.InventorySummaryResp {
+	resp := make([]*dto.InventorySummaryResp, 0, len(rows))
+	for _, row := range rows {
+		resp = append(resp, &dto.InventorySummaryResp{
+			SKUID: row.SKUID, SKUCode: row.SKUCode, SKUName: row.SKUName, Unit: row.Unit,
+			StockQuantity: row.StockQuantity, AvailableQty: row.AvailableQty, AllocatedQty: row.AllocatedQty,
 		})
 	}
 	return resp

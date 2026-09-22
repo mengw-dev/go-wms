@@ -45,6 +45,17 @@ type InventoryResp struct {
 	UpdatedAt     time.Time `json:"updated_at"`
 }
 
+// InventorySummaryResp 是按 SKU 汇总库存的稳定响应契约。
+type InventorySummaryResp struct {
+	SKUID         int64  `json:"sku_id,string"`
+	SKUCode       string `json:"sku_code"`
+	SKUName       string `json:"sku_name"`
+	Unit          string `json:"unit"`
+	StockQuantity int64  `json:"stock_quantity"`
+	AvailableQty  int64  `json:"available_quantity"`
+	AllocatedQty  int64  `json:"allocated_quantity"`
+}
+
 // InventoryTransResp 是库存流水列表的稳定响应契约。
 type InventoryTransResp struct {
 	ID              int64     `json:"id,string"`

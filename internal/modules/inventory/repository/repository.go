@@ -14,6 +14,17 @@ import (
 
 type Repository struct{}
 
+// SummaryRow 是库存按 SKU 汇总的数据库投影。
+type SummaryRow struct {
+	SKUID         int64  `gorm:"column:sku_id"`
+	SKUCode       string `gorm:"column:sku_code"`
+	SKUName       string `gorm:"column:sku_name"`
+	Unit          string `gorm:"column:unit"`
+	StockQuantity int64  `gorm:"column:stock_quantity"`
+	AvailableQty  int64  `gorm:"column:available_quantity"`
+	AllocatedQty  int64  `gorm:"column:allocated_quantity"`
+}
+
 func New() *Repository { return &Repository{} }
 
 // LockBasicReferences 按固定顺序锁定库存依赖的仓库、库位和 SKU。
@@ -185,7 +196,7 @@ func (r *Repository) List(ctx context.Context, db *gorm.DB, f *QueryFilter) ([]*
 
 // SummaryBySKU 按 SKU 汇总视图。
 // Table 别名联查无 Schema（全局租户回调不注入），此处手动按 ctx 租户过滤。
-func (r *Repository) SummaryBySKU(ctx context.Context, db *gorm.DB, warehouseID int64, page, size int) ([]map[string]any, int64, error) {
+func (r *Repository) SummaryBySKU(ctx context.Context, db *gorm.DB, warehouseID int64, page, size int) ([]*SummaryRow, int64, error) {
 	q := db.WithContext(ctx).Table("wms_inventory i").
 		Joins("JOIN wms_sku s ON s.id = i.sku_id AND s.deleted_at IS NULL AND s.tenant_id = i.tenant_id").
 		Where("i.deleted_at IS NULL")
@@ -199,7 +210,7 @@ func (r *Repository) SummaryBySKU(ctx context.Context, db *gorm.DB, warehouseID 
 	if err := q.Session(&gorm.Session{}).Distinct("i.sku_id").Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	var list []map[string]any
+	var list []*SummaryRow
 	err := q.Select("i.sku_id, s.code AS sku_code, s.name AS sku_name, s.unit, " +
 		"SUM(i.stock_quantity) AS stock_quantity, SUM(i.available_quantity) AS available_quantity, " +
 		"SUM(i.allocated_quantity) AS allocated_quantity").

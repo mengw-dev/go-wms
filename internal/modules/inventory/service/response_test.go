@@ -6,6 +6,7 @@ import (
 	"time"
 
 	invmodel "gowms/internal/modules/inventory/model"
+	"gowms/internal/modules/inventory/repository"
 	sysmodel "gowms/internal/modules/system/model"
 )
 
@@ -51,5 +52,27 @@ func TestInventoryTransResponseKeepsTraceFields(t *testing.T) {
 	resp := inventoryTransResponses([]*invmodel.InventoryTrans{trans})[0]
 	if resp.TransType != string(invmodel.TransAllocate) || resp.AvailableBefore != 10 || resp.AvailableAfter != 4 {
 		t.Fatalf("inventory transaction response changed: %+v", resp)
+	}
+}
+
+func TestInventorySummaryResponseKeepsQuantityContract(t *testing.T) {
+	rows := []*repository.SummaryRow{{
+		SKUID: 42, SKUCode: "SKU01", SKUName: "Item", Unit: "box",
+		StockQuantity: 10, AvailableQty: 6, AllocatedQty: 4,
+	}}
+	resp := inventorySummaryResponses(rows)[0]
+	if resp.SKUID != 42 || resp.StockQuantity != 10 || resp.AvailableQty != 6 || resp.AllocatedQty != 4 {
+		t.Fatalf("summary response changed: %+v", resp)
+	}
+	raw, err := json.Marshal(resp)
+	if err != nil {
+		t.Fatalf("marshal summary response: %v", err)
+	}
+	var fields map[string]any
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		t.Fatalf("unmarshal summary response: %v", err)
+	}
+	if fields["sku_id"] != "42" || fields["stock_quantity"] != float64(10) {
+		t.Fatalf("summary response contract changed: %s", raw)
 	}
 }
