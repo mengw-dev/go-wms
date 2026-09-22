@@ -48,9 +48,9 @@ type ScenarioOptions struct {
 	Qty   int `json:"qty"`
 }
 
-// Run 先恢复默认演示数据，再执行指定场景。单实例内由演示会话锁保证只有
+// RunScenario 先恢复默认演示数据，再执行指定场景。单实例内由演示会话锁保证只有
 // 一个体验者能触发；runMu 进一步避免同一进程内的场景请求交叉执行。
-func (s *Service) Run(ctx context.Context, sessionID, scenario string, options ...ScenarioOptions) (*ScenarioResult, error) {
+func (s *Service) RunScenario(ctx context.Context, sessionID, scenario string, options ...ScenarioOptions) (*ScenarioResult, error) {
 	if err := s.ValidateSession(ctx, sessionID); err != nil {
 		return nil, err
 	}

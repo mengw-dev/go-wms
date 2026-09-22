@@ -128,10 +128,10 @@ func (h *Handler) status(c *gin.Context) {
 	response.OK(c, status)
 }
 
-func (h *Handler) runInbound(c *gin.Context)   { h.run(c, service.ScenarioInbound) }
-func (h *Handler) runOutbound(c *gin.Context)  { h.run(c, service.ScenarioOutbound) }
-func (h *Handler) runStocktake(c *gin.Context) { h.run(c, service.ScenarioStocktake) }
-func (h *Handler) runFull(c *gin.Context)      { h.run(c, service.ScenarioFull) }
+func (h *Handler) runInbound(c *gin.Context)   { h.runScenario(c, service.ScenarioInbound) }
+func (h *Handler) runOutbound(c *gin.Context)  { h.runScenario(c, service.ScenarioOutbound) }
+func (h *Handler) runStocktake(c *gin.Context) { h.runScenario(c, service.ScenarioStocktake) }
+func (h *Handler) runFull(c *gin.Context)      { h.runScenario(c, service.ScenarioFull) }
 func (h *Handler) runInboundDrafts(c *gin.Context) {
 	h.runWithOptions(c, service.ScenarioInboundDrafts)
 }
@@ -220,7 +220,7 @@ func (h *Handler) runWithOptions(c *gin.Context, scenario string) {
 		response.Fail(c, errcode.ParamError)
 		return
 	}
-	result, err := h.svc.Run(c.Request.Context(), demoSessionID(c), scenario, req)
+	result, err := h.svc.RunScenario(c.Request.Context(), demoSessionID(c), scenario, req)
 	if err != nil {
 		response.Fail(c, err)
 		return
@@ -228,8 +228,8 @@ func (h *Handler) runWithOptions(c *gin.Context, scenario string) {
 	response.OK(c, result)
 }
 
-func (h *Handler) run(c *gin.Context, scenario string) {
-	result, err := h.svc.Run(c.Request.Context(), demoSessionID(c), scenario)
+func (h *Handler) runScenario(c *gin.Context, scenario string) {
+	result, err := h.svc.RunScenario(c.Request.Context(), demoSessionID(c), scenario)
 	if err != nil {
 		response.Fail(c, err)
 		return

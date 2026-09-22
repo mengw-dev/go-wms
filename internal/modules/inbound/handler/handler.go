@@ -263,7 +263,7 @@ func (h *Handler) importExcel(c *gin.Context) {
 		return
 	}
 	defer f.Close()
-	data, err := io.ReadAll(f)
+	fileData, err := io.ReadAll(f)
 	if err != nil {
 		if httpx.IsBodyTooLarge(err) {
 			response.Fail(c, errcode.PayloadTooLarge)
@@ -272,12 +272,12 @@ func (h *Handler) importExcel(c *gin.Context) {
 		response.Fail(c, errcode.ImportFileInvalid)
 		return
 	}
-	if len(data) == 0 {
+	if len(fileData) == 0 {
 		response.Fail(c, errcode.ImportFileInvalid)
 		return
 	}
 
-	resp, err := h.svc.Import(c.Request.Context(), file.Filename, data)
+	resp, err := h.svc.Import(c.Request.Context(), file.Filename, fileData)
 	if err != nil {
 		response.Fail(c, err)
 		return
