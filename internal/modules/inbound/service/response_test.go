@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"gowms/internal/modules/inbound/model"
+	sysmodel "gowms/internal/modules/system/model"
 )
 
 func TestImportTaskResponseKeepsPublicFieldsAndHidesInternalPaths(t *testing.T) {
@@ -29,5 +30,42 @@ func TestImportTaskResponseKeepsPublicFieldsAndHidesInternalPaths(t *testing.T) 
 		if _, exists := fields[forbidden]; exists {
 			t.Fatalf("import response exposes %q: %s", forbidden, raw)
 		}
+	}
+}
+func TestOrderResponseKeepsPublicFieldsAndHidesInternalVersion(t *testing.T) {
+	importTaskID := "IMP-1"
+	order := &model.ReceiptOrder{
+		Base:         sysmodel.Base{ID: 42},
+		Versioned:    sysmodel.Versioned{Version: 7},
+		TenantID:     99,
+		OrderNo:      "RK202609230001",
+		WarehouseID:  11,
+		Status:       model.OrderReceiving,
+		Source:       model.SourceImport,
+		Remark:       "test order",
+		ExpectedQty:  10,
+		ReceivedQty:  4,
+		DefectiveQty: 1,
+		ImportTaskID: &importTaskID,
+		ImportRow:    3,
+		CreatedBy:    "operator",
+	}
+	resp := orderResponse(order)
+	if resp.ID != order.ID || resp.OrderNo != order.OrderNo || resp.ReceivedQty != order.ReceivedQty {
+		t.Fatalf("order response fields changed: %+v", resp)
+	}
+	raw, err := json.Marshal(resp)
+	if err != nil {
+		t.Fatalf("marshal order response: %v", err)
+	}
+	var fields map[string]any
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		t.Fatalf("unmarshal order response: %v", err)
+	}
+	if _, exists := fields["version"]; exists {
+		t.Fatalf("order response exposes internal version: %s", raw)
+	}
+	if fields["id"] != "42" || fields["warehouse_id"] != "11" {
+		t.Fatalf("order response ID contract changed: %s", raw)
 	}
 }

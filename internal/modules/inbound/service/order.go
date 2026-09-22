@@ -24,6 +24,15 @@ func (s *Service) Create(ctx context.Context, req *dto.CreateOrderReq, operator 
 	return s.createOrder(ctx, req, operator, nil)
 }
 
+// CreateResponse 返回创建入库单的 HTTP 响应结构。
+func (s *Service) CreateResponse(ctx context.Context, req *dto.CreateOrderReq, operator string) (*dto.OrderResp, error) {
+	order, err := s.Create(ctx, req, operator)
+	if err != nil {
+		return nil, err
+	}
+	return orderResponse(order), nil
+}
+
 func (s *Service) createImportOrder(ctx context.Context, task *model.ImportTask, rowNo int, req *dto.CreateOrderReq, operator string) (*model.ReceiptOrder, error) {
 	// 幂等检查：该行已建单则直接复用（补偿重跑）
 	if o, err := s.repo.GetByImportRow(ctx, s.tm.DB(), task.TaskID, rowNo); err == nil {

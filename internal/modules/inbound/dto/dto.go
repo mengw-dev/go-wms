@@ -4,6 +4,7 @@ package dto
 import (
 	"time"
 
+	"gowms/internal/modules/inbound/model"
 	"gowms/internal/pkg/typex"
 )
 
@@ -75,4 +76,23 @@ type ImportTaskResp struct {
 	ErrorMsg    string    `json:"error_msg"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+// OrderResp 是入库单列表和创建接口的稳定响应契约。
+type OrderResp struct {
+	ID           int64             `json:"id,string"`
+	TenantID     int64             `json:"tenant_id,string"`
+	OrderNo      string            `json:"order_no"`
+	WarehouseID  int64             `json:"warehouse_id,string"`
+	Status       model.OrderStatus `json:"status"`
+	Source       string            `json:"source"`
+	Remark       string            `json:"remark"`
+	ExpectedQty  int               `json:"expected_qty"`
+	ReceivedQty  int               `json:"received_qty"`
+	DefectiveQty int               `json:"defective_qty"`
+	ImportTaskID *string           `json:"import_task_id"`
+	ImportRow    int               `json:"import_row"`
+	CreatedBy    string            `json:"created_by"`
+	CreatedAt    time.Time         `json:"created_at"`
+	UpdatedAt    time.Time         `json:"updated_at"`
 }
