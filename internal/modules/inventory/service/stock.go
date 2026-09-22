@@ -17,6 +17,10 @@ import (
 )
 
 // 库存变动：入库、分配、发货、释放和盘点调整。
+//
+// 三数量不变量：stock_quantity = available_quantity + allocated_quantity。
+// 分配只在 available 与 allocated 之间移动；发货同时扣减 stock 和 allocated；
+// 释放把 allocated 退回 available；盘点调减不能吃掉已分配库存。
 
 func (s *Service) Increase(ctx context.Context, tx *gorm.DB, req *api.IncreaseReq) error {
 	if req.Quantity <= 0 {
@@ -25,8 +29,8 @@ func (s *Service) Increase(ctx context.Context, tx *gorm.DB, req *api.IncreaseRe
 	if err := s.repo.LockBasicReferences(tx, req.WarehouseID, req.LocationID, req.SKUID); err != nil {
 		return err
 	}
-	const tupleRetry = 3
-	for i := 0; i < tupleRetry; i++ {
+	const tupleCreateRetries = 3
+	for attempt := 0; attempt < tupleCreateRetries; attempt++ {
 		// 行锁读取：并发上架在 FOR UPDATE 上串行化
 		inv, err := s.repo.GetByTupleForUpdate(tx, req.WarehouseID, req.LocationID, req.SKUID, req.BatchNo)
 		if err == nil {
