@@ -72,6 +72,32 @@ func (s *Service) ListWarehouses(ctx context.Context, q *dto.WarehouseQuery) ([]
 	return s.repo.ListWarehouses(ctx, s.tm.DB(), q.Keyword, q.Status, q.Page, q.PageSize)
 }
 
+// ListWarehouseResponses 将仓库实体转换为稳定的 HTTP 响应结构。
+func (s *Service) ListWarehouseResponses(ctx context.Context, q *dto.WarehouseQuery) ([]*dto.WarehouseResp, int64, error) {
+	warehouses, total, err := s.ListWarehouses(ctx, q)
+	if err != nil {
+		return nil, 0, err
+	}
+	resp := make([]*dto.WarehouseResp, 0, len(warehouses))
+	for _, warehouse := range warehouses {
+		resp = append(resp, warehouseResponse(warehouse))
+	}
+	return resp, total, nil
+}
+
+func warehouseResponse(warehouse *model.Warehouse) *dto.WarehouseResp {
+	return &dto.WarehouseResp{
+		ID:        warehouse.ID,
+		TenantID:  warehouse.TenantID,
+		Code:      warehouse.Code,
+		Name:      warehouse.Name,
+		Remark:    warehouse.Remark,
+		Status:    warehouse.Status,
+		CreatedAt: warehouse.CreatedAt,
+		UpdatedAt: warehouse.UpdatedAt,
+	}
+}
+
 func (s *Service) ValidateWarehouse(ctx context.Context, id int64) error {
 	w, err := s.repo.GetWarehouse(ctx, s.tm.DB(), id)
 	if err != nil {

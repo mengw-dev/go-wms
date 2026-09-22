@@ -57,7 +57,7 @@ func (h *Handler) listWarehouses(c *gin.Context) {
 		response.Fail(c, errcode.ParamError)
 		return
 	}
-	list, total, err := h.svc.ListWarehouses(c.Request.Context(), &q)
+	list, total, err := h.svc.ListWarehouseResponses(c.Request.Context(), &q)
 	if err != nil {
 		response.Fail(c, err)
 		return
@@ -129,7 +129,7 @@ func (h *Handler) listLocations(c *gin.Context) {
 		response.Fail(c, errcode.ParamError)
 		return
 	}
-	list, total, err := h.svc.ListLocations(c.Request.Context(), &q)
+	list, total, err := h.svc.ListLocationResponses(c.Request.Context(), &q)
 	if err != nil {
 		response.Fail(c, err)
 		return
@@ -186,7 +186,7 @@ func (h *Handler) listSKUs(c *gin.Context) {
 		response.Fail(c, errcode.ParamError)
 		return
 	}
-	list, total, err := h.svc.ListSKUs(c.Request.Context(), &q)
+	list, total, err := h.svc.ListSKUResponses(c.Request.Context(), &q)
 	if err != nil {
 		response.Fail(c, err)
 		return
@@ -195,7 +195,7 @@ func (h *Handler) listSKUs(c *gin.Context) {
 }
 
 func (h *Handler) getByBarcode(c *gin.Context) {
-	sku, err := h.svc.GetByBarcode(c.Request.Context(), c.Param("barcode"))
+	sku, err := h.svc.GetSKUByBarcodeResponse(c.Request.Context(), c.Param("barcode"))
 	if err != nil {
 		response.Fail(c, err)
 		return

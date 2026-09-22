@@ -1,5 +1,7 @@
 package dto
 
+import "time"
+
 type WarehouseReq struct {
 	Code   string `json:"code" binding:"required,max=32"`
 	Name   string `json:"name" binding:"required,max=64"`
@@ -44,4 +46,38 @@ type SKUReq struct {
 	Name    string `json:"name" binding:"required,max=128"`
 	Spec    string `json:"spec" binding:"max=128"`
 	Unit    string `json:"unit" binding:"max=16"`
+}
+type WarehouseResp struct {
+	ID        int64     `json:"id,string"`
+	TenantID  int64     `json:"tenant_id,string"`
+	Code      string    `json:"code"`
+	Name      string    `json:"name"`
+	Remark    string    `json:"remark"`
+	Status    int       `json:"status"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type LocationResp struct {
+	ID          int64     `json:"id,string"`
+	TenantID    int64     `json:"tenant_id,string"`
+	WarehouseID int64     `json:"warehouse_id,string"`
+	Code        string    `json:"code"`
+	Zone        string    `json:"zone"`
+	Status      int       `json:"status"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+type SKUResp struct {
+	ID        int64     `json:"id,string"`
+	TenantID  int64     `json:"tenant_id,string"`
+	Code      string    `json:"code"`
+	Barcode   string    `json:"barcode"`
+	Name      string    `json:"name"`
+	Spec      string    `json:"spec"`
+	Unit      string    `json:"unit"`
+	Status    int       `json:"status"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }

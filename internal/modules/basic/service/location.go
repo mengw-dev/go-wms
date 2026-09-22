@@ -110,6 +110,32 @@ func (s *Service) ListLocations(ctx context.Context, q *dto.LocationQuery) ([]*m
 	return s.repo.ListLocations(ctx, s.tm.DB(), q.WarehouseID, q.Zone, q.Status, q.Keyword, q.Page, q.PageSize)
 }
 
+// ListLocationResponses 将库位实体转换为稳定的 HTTP 响应结构。
+func (s *Service) ListLocationResponses(ctx context.Context, q *dto.LocationQuery) ([]*dto.LocationResp, int64, error) {
+	locations, total, err := s.ListLocations(ctx, q)
+	if err != nil {
+		return nil, 0, err
+	}
+	resp := make([]*dto.LocationResp, 0, len(locations))
+	for _, location := range locations {
+		resp = append(resp, locationResponse(location))
+	}
+	return resp, total, nil
+}
+
+func locationResponse(location *model.Location) *dto.LocationResp {
+	return &dto.LocationResp{
+		ID:          location.ID,
+		TenantID:    location.TenantID,
+		WarehouseID: location.WarehouseID,
+		Code:        location.Code,
+		Zone:        location.Zone,
+		Status:      location.Status,
+		CreatedAt:   location.CreatedAt,
+		UpdatedAt:   location.UpdatedAt,
+	}
+}
+
 func (s *Service) ValidateLocation(ctx context.Context, id int64) error {
 	l, err := s.repo.GetLocation(ctx, s.tm.DB(), id)
 	if err != nil {

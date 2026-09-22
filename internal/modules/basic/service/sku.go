@@ -167,3 +167,40 @@ func (s *Service) GetSKUByCode(ctx context.Context, code string) (*model.SKU, er
 	}
 	return sku, nil
 }
+
+// ListSKUResponses 将货品实体转换为稳定的 HTTP 响应结构。
+func (s *Service) ListSKUResponses(ctx context.Context, q *dto.CommonQuery) ([]*dto.SKUResp, int64, error) {
+	skus, total, err := s.ListSKUs(ctx, q)
+	if err != nil {
+		return nil, 0, err
+	}
+	resp := make([]*dto.SKUResp, 0, len(skus))
+	for _, sku := range skus {
+		resp = append(resp, skuResponse(sku))
+	}
+	return resp, total, nil
+}
+
+// GetSKUByBarcodeResponse 返回条码查询接口使用的 HTTP 响应结构。
+func (s *Service) GetSKUByBarcodeResponse(ctx context.Context, barcode string) (*dto.SKUResp, error) {
+	sku, err := s.GetByBarcode(ctx, barcode)
+	if err != nil {
+		return nil, err
+	}
+	return skuResponse(sku), nil
+}
+
+func skuResponse(sku *model.SKU) *dto.SKUResp {
+	return &dto.SKUResp{
+		ID:        sku.ID,
+		TenantID:  sku.TenantID,
+		Code:      sku.Code,
+		Barcode:   sku.Barcode,
+		Name:      sku.Name,
+		Spec:      sku.Spec,
+		Unit:      sku.Unit,
+		Status:    sku.Status,
+		CreatedAt: sku.CreatedAt,
+		UpdatedAt: sku.UpdatedAt,
+	}
+}
