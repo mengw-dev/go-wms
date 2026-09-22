@@ -17,11 +17,14 @@ type CommonQuery struct {
 }
 
 type WarehouseQuery struct {
+	Status *int `form:"status" binding:"omitempty,oneof=0 1"`
 	CommonQuery
 }
 
 type LocationQuery struct {
-	WarehouseID int64 `form:"warehouse_id"`
+	Zone        string `form:"zone"`
+	Status      *int   `form:"status" binding:"omitempty,oneof=0 1 2"`
+	WarehouseID int64  `form:"warehouse_id"`
 	CommonQuery
 }
 

@@ -41,3 +41,28 @@ func TestUpdateWarehouseStatusDoesNotTouchOtherFields(t *testing.T) {
 		t.Fatalf("status update touched unrelated fields: %q", sql)
 	}
 }
+
+func TestListWarehousesAppliesStatusFilter(t *testing.T) {
+	var output bytes.Buffer
+	db := newDryRunDB(t, &output)
+	status := 0
+	if _, _, err := New().ListWarehouses(context.Background(), db, "", &status, 1, 10); err != nil {
+		t.Fatal(err)
+	}
+	if sql := output.String(); !strings.Contains(sql, "status = 0") {
+		t.Fatalf("warehouse status filter missing: %q", sql)
+	}
+}
+
+func TestListLocationsAppliesZoneStatusAndKeywordFilters(t *testing.T) {
+	var output bytes.Buffer
+	db := newDryRunDB(t, &output)
+	status := 2
+	if _, _, err := New().ListLocations(context.Background(), db, 7, "A01", &status, "A01", 1, 10); err != nil {
+		t.Fatal(err)
+	}
+	sql := output.String()
+	if !strings.Contains(sql, "zone = 'A01'") || !strings.Contains(sql, "status = 2") || !strings.Contains(sql, "code LIKE") {
+		t.Fatalf("location filters missing: %q", sql)
+	}
+}

@@ -64,10 +64,16 @@ func (r *Repository) DeleteLocation(ctx context.Context, db *gorm.DB, id int64) 
 	return nil
 }
 
-func (r *Repository) ListLocations(ctx context.Context, db *gorm.DB, warehouseID int64, keyword string, page, size int) ([]*model.Location, int64, error) {
+func (r *Repository) ListLocations(ctx context.Context, db *gorm.DB, warehouseID int64, zone string, status *int, keyword string, page, size int) ([]*model.Location, int64, error) {
 	q := db.WithContext(ctx).Model(&model.Location{})
 	if warehouseID > 0 {
 		q = q.Where("warehouse_id = ?", warehouseID)
+	}
+	if zone != "" {
+		q = q.Where("zone = ?", zone)
+	}
+	if status != nil {
+		q = q.Where("status = ?", *status)
 	}
 	if keyword != "" {
 		q = q.Where("code LIKE ?", "%"+dbutil.LikePattern(keyword)+"%")

@@ -69,7 +69,7 @@ func (s *Service) DeleteWarehouse(ctx context.Context, id int64) error {
 }
 
 func (s *Service) ListWarehouses(ctx context.Context, q *dto.WarehouseQuery) ([]*model.Warehouse, int64, error) {
-	return s.repo.ListWarehouses(ctx, s.tm.DB(), q.Keyword, q.Page, q.PageSize)
+	return s.repo.ListWarehouses(ctx, s.tm.DB(), q.Keyword, q.Status, q.Page, q.PageSize)
 }
 
 func (s *Service) ValidateWarehouse(ctx context.Context, id int64) error {

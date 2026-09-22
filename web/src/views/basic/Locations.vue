@@ -35,7 +35,7 @@ const query = reactive({
   page_size: 10,
   warehouse_id: '' as EntityID | '',
   zone: '',
-  code: '',
+  keyword: '',
   status: '' as number | '',
 })
 
@@ -194,7 +194,7 @@ async function onDelete(row: LocationItem) {
         <el-input v-model="query.zone" placeholder="库区" clearable style="width: 120px" @keyup.enter="search" @clear="search" />
       </el-form-item>
       <el-form-item label="编码">
-        <el-input v-model="query.code" placeholder="库位编码" clearable style="width: 150px" @keyup.enter="search" @clear="search" />
+        <el-input v-model="query.keyword" placeholder="库位编码" clearable style="width: 150px" @keyup.enter="search" @clear="search" />
       </el-form-item>
       <el-form-item label="状态">
         <el-select v-model="query.status" placeholder="全部" clearable style="width: 110px" @change="search">

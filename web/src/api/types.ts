@@ -168,7 +168,7 @@ export interface LocationItem {
 export interface LocationListQuery extends PageQuery {
   warehouse_id?: EntityID | ''
   zone?: string
-  code?: string
+  keyword?: string
   status?: number | ''
 }
 

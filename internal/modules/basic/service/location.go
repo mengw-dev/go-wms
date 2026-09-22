@@ -107,7 +107,7 @@ func (s *Service) UpdateLocationStatus(ctx context.Context, id int64, status int
 }
 
 func (s *Service) ListLocations(ctx context.Context, q *dto.LocationQuery) ([]*model.Location, int64, error) {
-	return s.repo.ListLocations(ctx, s.tm.DB(), q.WarehouseID, q.Keyword, q.Page, q.PageSize)
+	return s.repo.ListLocations(ctx, s.tm.DB(), q.WarehouseID, q.Zone, q.Status, q.Keyword, q.Page, q.PageSize)
 }
 
 func (s *Service) ValidateLocation(ctx context.Context, id int64) error {

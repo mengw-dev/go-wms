@@ -67,8 +67,11 @@ func (r *Repository) CountLocationsByWarehouse(ctx context.Context, db *gorm.DB,
 	return n, err
 }
 
-func (r *Repository) ListWarehouses(ctx context.Context, db *gorm.DB, keyword string, page, size int) ([]*model.Warehouse, int64, error) {
+func (r *Repository) ListWarehouses(ctx context.Context, db *gorm.DB, keyword string, status *int, page, size int) ([]*model.Warehouse, int64, error) {
 	q := db.WithContext(ctx).Model(&model.Warehouse{})
+	if status != nil {
+		q = q.Where("status = ?", *status)
+	}
 	if keyword != "" {
 		q = q.Where("code LIKE ? OR name LIKE ?", "%"+dbutil.LikePattern(keyword)+"%", "%"+dbutil.LikePattern(keyword)+"%")
 	}
