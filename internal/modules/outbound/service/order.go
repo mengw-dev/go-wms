@@ -22,6 +22,15 @@ import (
 
 // 出库单据生命周期与明细构建。
 
+// CreateResponse 返回创建出库单的 HTTP 响应结构。
+func (s *Service) CreateResponse(ctx context.Context, req *dto.CreateOrderReq, operator string) (*dto.OrderResp, error) {
+	order, err := s.Create(ctx, req, operator)
+	if err != nil {
+		return nil, err
+	}
+	return orderResponse(order), nil
+}
+
 func (s *Service) Create(ctx context.Context, req *dto.CreateOrderReq, operator string) (*model.ShipmentOrder, error) {
 	// 公开租户配额：手动建单与集成推送建单（CreateExternal 复用本方法）都在此拦截。
 	if err := quota.Guard(ctx, s.tm.DB(), &model.ShipmentOrder{}, s.limits.MaxShipmentOrders, 1, "出库单"); err != nil {

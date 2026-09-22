@@ -47,3 +47,33 @@ func (s *Service) Get(ctx context.Context, id int64) (*OrderDetail, error) {
 func (s *Service) List(ctx context.Context, q *dto.OrderQuery) ([]*model.ShipmentOrder, int64, error) {
 	return s.repo.ListOrders(ctx, s.tm.DB(), q.WarehouseID, q.Status, q.Keyword, q.CreatedAtFrom, q.CreatedAtTo, q.Page, q.PageSize)
 }
+
+func (s *Service) ListResponses(ctx context.Context, q *dto.OrderQuery) ([]*dto.OrderResp, int64, error) {
+	orders, total, err := s.List(ctx, q)
+	if err != nil {
+		return nil, 0, err
+	}
+	resp := make([]*dto.OrderResp, 0, len(orders))
+	for _, order := range orders {
+		resp = append(resp, orderResponse(order))
+	}
+	return resp, total, nil
+}
+
+func orderResponse(order *model.ShipmentOrder) *dto.OrderResp {
+	return &dto.OrderResp{
+		ID:           order.ID,
+		TenantID:     order.TenantID,
+		OrderNo:      order.OrderNo,
+		BizOrderNo:   order.BizOrderNo,
+		WarehouseID:  order.WarehouseID,
+		Status:       order.Status,
+		Remark:       order.Remark,
+		ExpectedQty:  order.ExpectedQty,
+		AllocatedQty: order.AllocatedQty,
+		PickedQty:    order.PickedQty,
+		CreatedBy:    order.CreatedBy,
+		CreatedAt:    order.CreatedAt,
+		UpdatedAt:    order.UpdatedAt,
+	}
+}

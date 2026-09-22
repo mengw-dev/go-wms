@@ -1,6 +1,9 @@
 package dto
 
 import (
+	"time"
+
+	"gowms/internal/modules/outbound/model"
 	"gowms/internal/pkg/typex"
 )
 
@@ -67,4 +70,21 @@ type BatchOperResp struct {
 	Success int              `json:"success"`
 	Fail    int              `json:"fail"`
 	Errors  []BatchItemError `json:"errors,omitempty"`
+}
+
+// OrderResp 是出库单列表和创建接口的稳定响应契约。
+type OrderResp struct {
+	ID           int64             `json:"id,string"`
+	TenantID     int64             `json:"tenant_id,string"`
+	OrderNo      string            `json:"order_no"`
+	BizOrderNo   string            `json:"biz_order_no"`
+	WarehouseID  int64             `json:"warehouse_id,string"`
+	Status       model.OrderStatus `json:"status"`
+	Remark       string            `json:"remark"`
+	ExpectedQty  int               `json:"expected_qty"`
+	AllocatedQty int               `json:"allocated_qty"`
+	PickedQty    int               `json:"picked_qty"`
+	CreatedBy    string            `json:"created_by"`
+	CreatedAt    time.Time         `json:"created_at"`
+	UpdatedAt    time.Time         `json:"updated_at"`
 }
