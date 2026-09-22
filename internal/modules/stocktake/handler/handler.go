@@ -41,7 +41,7 @@ func (h *Handler) list(c *gin.Context) {
 		response.Fail(c, errcode.ParamError)
 		return
 	}
-	list, total, err := h.svc.List(c.Request.Context(), &q)
+	list, total, err := h.svc.ListResponses(c.Request.Context(), &q)
 	if err != nil {
 		response.Fail(c, err)
 		return
@@ -54,7 +54,7 @@ func (h *Handler) get(c *gin.Context) {
 	if !ok {
 		return
 	}
-	detail, err := h.svc.Get(c.Request.Context(), id)
+	detail, err := h.svc.GetResponse(c.Request.Context(), id)
 	if err != nil {
 		response.Fail(c, err)
 		return
@@ -67,7 +67,7 @@ func (h *Handler) create(c *gin.Context) {
 	if !httpx.BindJSON(c, &req) {
 		return
 	}
-	order, err := h.svc.Create(c.Request.Context(), &req, middleware.Username(c))
+	order, err := h.svc.CreateResponse(c.Request.Context(), &req, middleware.Username(c))
 	if err != nil {
 		response.Fail(c, err)
 		return

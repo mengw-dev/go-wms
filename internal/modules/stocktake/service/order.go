@@ -51,6 +51,14 @@ func (s *Service) Create(ctx context.Context, req *dto.CreateOrderReq, operator 
 	return order, nil
 }
 
+// CreateResponse 返回创建盘点单的 HTTP 响应结构。
+func (s *Service) CreateResponse(ctx context.Context, req *dto.CreateOrderReq, operator string) (*dto.OrderResp, error) {
+	order, err := s.Create(ctx, req, operator)
+	if err != nil {
+		return nil, err
+	}
+	return orderResponse(order), nil
+}
 func (s *Service) Cancel(ctx context.Context, orderID int64) error {
 	return s.tm.Tx(ctx, func(tx *gorm.DB) error {
 		o, err := s.repo.GetOrderForUpdate(tx, orderID)
