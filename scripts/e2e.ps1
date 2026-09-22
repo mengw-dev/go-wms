@@ -4,6 +4,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "wms-common.ps1")
 $root = Split-Path -Parent $PSScriptRoot
 $composeFile = Join-Path $root "deploy/docker-compose.yaml"
 $projectName = "gowms-e2e"
@@ -12,6 +13,8 @@ $webPort = 28081
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     throw "Docker was not found. Install Docker Desktop first."
 }
+
+Assert-Node
 
 $env:MYSQL_ROOT_PASSWORD = "gowms-e2e-root"
 $env:MYSQL_DATABASE = "gowms_e2e"

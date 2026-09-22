@@ -5,6 +5,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "..\wms-common.ps1")
 $root = Resolve-Path (Join-Path $PSScriptRoot "..\..")
 Set-Location $root
 
@@ -64,6 +65,8 @@ if ($WithRace) {
             golang:1.26-alpine sh -c "apk add --no-cache gcc musl-dev >/dev/null && CGO_ENABLED=1 go test -race ./... -count=1"
     }
 }
+
+Assert-Node
 
 Push-Location web
 try {

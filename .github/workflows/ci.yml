@@ -56,11 +56,12 @@ jobs:
       - name: Validate PowerShell scripts
         shell: pwsh
         run: |
-          foreach ($file in @("scripts/windows/start.ps1", "scripts/windows/stop.ps1", "scripts/windows/reset.ps1", "scripts/wms-common.ps1")) {
+          $files = Get-ChildItem -Path scripts -Recurse -Filter *.ps1 -File
+          foreach ($file in $files) {
             $tokens = $null
             $errors = $null
-            [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $file), [ref]$tokens, [ref]$errors) | Out-Null
-            if ($errors.Count -gt 0) { throw "$file has PowerShell syntax errors" }
+            [System.Management.Automation.Language.Parser]::ParseFile($file.FullName, [ref]$tokens, [ref]$errors) | Out-Null
+            if ($errors.Count -gt 0) { throw "$($file.FullName) has PowerShell syntax errors" }
           }
 
       - name: Validate Docker Compose

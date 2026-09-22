@@ -67,6 +67,31 @@ function Assert-Docker {
     }
 }
 
+function Assert-Node {
+    $node = Get-Command node -ErrorAction SilentlyContinue
+    if (-not $node) {
+        throw "Node.js 20.19+ or 22.12+ is required. Install Node.js and try again."
+    }
+
+    $versionText = (& node --version 2>$null).Trim()
+    if ($LASTEXITCODE -ne 0 -or -not $versionText) {
+        throw "Unable to determine the installed Node.js version."
+    }
+
+    try {
+        $version = [version]$versionText.TrimStart('v')
+    }
+    catch {
+        throw "Unable to parse Node.js version '$versionText'."
+    }
+
+    $supported = ($version.Major -eq 20 -and $version -ge [version]'20.19.0') -or
+        ($version.Major -ge 22 -and $version -ge [version]'22.12.0')
+    if (-not $supported) {
+        throw "Node.js 20.19+ or 22.12+ is required; found $versionText."
+    }
+}
+
 function Get-ComposePath {
     return Join-Path $script:WmsRoot "deploy/docker-compose.yaml"
 }
