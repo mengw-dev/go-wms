@@ -79,3 +79,20 @@ func (s *Service) flushOperLogs(ctx context.Context, batch []*model.SysOperLog) 
 func (s *Service) ListOperLogs(ctx context.Context, q *dto.OperLogQuery) ([]*model.SysOperLog, int64, error) {
 	return s.repo.ListOperLogs(ctx, q.Username, q.Path, q.Page, q.PageSize)
 }
+
+// ListOperLogResponses 返回操作日志查询接口的稳定响应结构。
+func (s *Service) ListOperLogResponses(ctx context.Context, q *dto.OperLogQuery) ([]*dto.OperLogResp, int64, error) {
+	logs, total, err := s.ListOperLogs(ctx, q)
+	if err != nil {
+		return nil, 0, err
+	}
+	resp := make([]*dto.OperLogResp, 0, len(logs))
+	for _, item := range logs {
+		resp = append(resp, &dto.OperLogResp{
+			ID: item.ID, TenantID: item.TenantID, UserID: item.UserID, Username: item.Username,
+			Path: item.Path, Method: item.Method, Params: item.Params, IP: item.IP,
+			CostMs: item.CostMs, Status: item.Status, Result: item.Result, CreatedAt: item.CreatedAt,
+		})
+	}
+	return resp, total, nil
+}

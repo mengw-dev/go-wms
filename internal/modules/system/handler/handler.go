@@ -235,7 +235,7 @@ func (h *Handler) listOperLogs(c *gin.Context) {
 		response.Fail(c, errcode.ParamError)
 		return
 	}
-	list, total, err := h.svc.ListOperLogs(c.Request.Context(), &q)
+	list, total, err := h.svc.ListOperLogResponses(c.Request.Context(), &q)
 	if err != nil {
 		response.Fail(c, err)
 		return

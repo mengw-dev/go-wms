@@ -107,3 +107,19 @@ type OperLogQuery struct {
 	Page     int    `form:"page,default=1" binding:"min=1"`
 	PageSize int    `form:"page_size,default=10" binding:"min=1,max=100"`
 }
+
+// OperLogResp 是操作日志查询接口的稳定响应契约。
+type OperLogResp struct {
+	ID        int64     `json:"id,string"`
+	TenantID  int64     `json:"tenant_id,string"`
+	UserID    int64     `json:"user_id,string"`
+	Username  string    `json:"username"`
+	Path      string    `json:"path"`
+	Method    string    `json:"method"`
+	Params    string    `json:"params"`
+	IP        string    `json:"ip"`
+	CostMs    int64     `json:"cost_ms"`
+	Status    int       `json:"status"`
+	Result    string    `json:"result"`
+	CreatedAt time.Time `json:"created_at"`
+}
