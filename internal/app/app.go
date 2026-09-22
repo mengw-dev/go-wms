@@ -1,3 +1,4 @@
+// Package app 负责应用依赖组装、路由注册和模块连接。
 package app
 
 import (

@@ -1,3 +1,4 @@
+// Package service 提供统一任务创建、领取和进度推进业务规则。
 package service
 
 import (

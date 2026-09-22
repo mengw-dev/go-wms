@@ -1,3 +1,4 @@
+// Package config 加载、覆盖并校验应用配置。
 package config
 
 import (

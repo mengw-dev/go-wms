@@ -1,3 +1,4 @@
+// Package snowflake 提供进程内并发安全的雪花 ID 生成器。
 package snowflake
 
 import (

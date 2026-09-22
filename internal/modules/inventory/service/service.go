@@ -1,3 +1,4 @@
+// Package service 提供库存读写、分配、调整、释放和流水业务规则。
 package service
 
 import (

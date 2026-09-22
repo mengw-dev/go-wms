@@ -1,3 +1,4 @@
+// Package service 提供 AI 库存问答、快照和请求限流逻辑。
 package service
 
 import (

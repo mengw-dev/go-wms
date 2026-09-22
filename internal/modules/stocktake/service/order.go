@@ -1,3 +1,4 @@
+// Package service 提供盘点快照、实盘录入和审核调整业务规则。
 package service
 
 import (

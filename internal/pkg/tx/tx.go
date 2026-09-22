@@ -1,3 +1,4 @@
+// Package tx 提供事务重试、冲突分类和事务错误处理。
 package tx
 
 import (

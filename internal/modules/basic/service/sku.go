@@ -1,3 +1,4 @@
+// Package service 提供仓库、库位和 SKU 的业务规则及缓存处理。
 package service
 
 import (

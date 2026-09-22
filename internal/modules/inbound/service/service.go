@@ -1,3 +1,4 @@
+// Package service 提供入库单、收货、上架和导入任务的业务规则。
 package service
 
 import (

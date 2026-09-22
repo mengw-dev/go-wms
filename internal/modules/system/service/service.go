@@ -1,3 +1,4 @@
+// Package service 提供认证、用户角色权限和操作日志业务规则。
 package service
 
 import (

@@ -1,3 +1,4 @@
+// Package service 提供演示与个人体验账号的会话、配额和数据重置逻辑。
 package service
 
 import (

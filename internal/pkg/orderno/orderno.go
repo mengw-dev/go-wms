@@ -1,3 +1,4 @@
+// Package orderno 提供带 Redis 降级能力的业务单号生成。
 package orderno
 
 import (

@@ -1,3 +1,4 @@
+// Package service 提供出库单、库存分配、拣货和发货业务规则。
 package service
 
 import (
