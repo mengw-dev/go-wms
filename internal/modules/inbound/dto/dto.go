@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"gowms/internal/modules/inbound/model"
+	taskmodel "gowms/internal/modules/task/model"
 	"gowms/internal/pkg/typex"
 )
 
@@ -95,4 +96,46 @@ type OrderResp struct {
 	CreatedBy    string            `json:"created_by"`
 	CreatedAt    time.Time         `json:"created_at"`
 	UpdatedAt    time.Time         `json:"updated_at"`
+}
+type OrderDetailResp struct {
+	Order   *OrderResp            `json:"order"`
+	Details []*OrderDetailRowResp `json:"details"`
+	Tasks   []*OrderTaskResp      `json:"tasks"`
+}
+
+type OrderDetailRowResp struct {
+	ID           int64     `json:"id,string"`
+	TenantID     int64     `json:"tenant_id,string"`
+	OrderID      int64     `json:"order_id,string"`
+	SKUID        int64     `json:"sku_id,string"`
+	SKUCode      string    `json:"sku_code"`
+	SKUName      string    `json:"sku_name"`
+	ExpectedQty  int       `json:"expected_qty"`
+	ReceivedQty  int       `json:"received_qty"`
+	DefectiveQty int       `json:"defective_qty"`
+	BatchNo      string    `json:"batch_no"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+type OrderTaskResp struct {
+	ID           int64                `json:"id,string"`
+	TenantID     int64                `json:"tenant_id,string"`
+	TaskNo       string               `json:"task_no"`
+	TaskType     taskmodel.TaskType   `json:"task_type"`
+	Status       taskmodel.TaskStatus `json:"status"`
+	OrderID      int64                `json:"order_id,string"`
+	OrderNo      string               `json:"order_no"`
+	DetailID     int64                `json:"detail_id,string"`
+	AllocationID int64                `json:"allocation_id,string"`
+	SKUID        int64                `json:"sku_id,string"`
+	WarehouseID  int64                `json:"warehouse_id,string"`
+	LocationID   int64                `json:"location_id,string"`
+	LocationCode string               `json:"location_code"`
+	BatchNo      string               `json:"batch_no"`
+	TargetQty    int                  `json:"target_qty"`
+	DoneQty      int                  `json:"done_qty"`
+	Operator     string               `json:"operator"`
+	CreatedAt    time.Time            `json:"created_at"`
+	UpdatedAt    time.Time            `json:"updated_at"`
 }

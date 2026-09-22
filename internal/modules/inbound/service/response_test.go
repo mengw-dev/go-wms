@@ -2,10 +2,12 @@ package service
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"gowms/internal/modules/inbound/model"
 	sysmodel "gowms/internal/modules/system/model"
+	taskmodel "gowms/internal/modules/task/model"
 )
 
 func TestImportTaskResponseKeepsPublicFieldsAndHidesInternalPaths(t *testing.T) {
@@ -67,5 +69,46 @@ func TestOrderResponseKeepsPublicFieldsAndHidesInternalVersion(t *testing.T) {
 	}
 	if fields["id"] != "42" || fields["warehouse_id"] != "11" {
 		t.Fatalf("order response ID contract changed: %s", raw)
+	}
+}
+func TestOrderDetailResponsesHideInternalVersions(t *testing.T) {
+	detail := &model.ReceiptOrderDetail{
+		Base:         sysmodel.Base{ID: 21},
+		TenantID:     99,
+		OrderID:      42,
+		SKUID:        7,
+		SKUCode:      "SKU-7",
+		SKUName:      "货品 7",
+		ExpectedQty:  10,
+		ReceivedQty:  4,
+		DefectiveQty: 1,
+		BatchNo:      "B001",
+	}
+	task := &taskmodel.Task{
+		Base:        sysmodel.Base{ID: 51},
+		Versioned:   sysmodel.Versioned{Version: 4},
+		TenantID:    99,
+		TaskNo:      "SH-51",
+		TaskType:    taskmodel.TaskReceive,
+		Status:      taskmodel.TaskInProgress,
+		OrderID:     42,
+		DetailID:    21,
+		SKUID:       7,
+		WarehouseID: 11,
+		TargetQty:   10,
+		DoneQty:     4,
+	}
+	responses := map[string]any{
+		"detail": orderDetailRowResponses([]*model.ReceiptOrderDetail{detail})[0],
+		"task":   orderTaskResponses([]*taskmodel.Task{task})[0],
+	}
+	for name, response := range responses {
+		raw, err := json.Marshal(response)
+		if err != nil {
+			t.Fatalf("marshal %s response: %v", name, err)
+		}
+		if strings.Contains(string(raw), `"version"`) {
+			t.Fatalf("%s response exposes internal version: %s", name, raw)
+		}
 	}
 }
