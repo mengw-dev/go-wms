@@ -147,7 +147,7 @@ func (h *Handler) batchCreateLocations(c *gin.Context) {
 		response.Fail(c, err)
 		return
 	}
-	response.OK(c, gin.H{"created": n})
+	response.OK(c, dto.LocationBatchResp{Created: n})
 }
 
 func (h *Handler) locationStatus(c *gin.Context) {

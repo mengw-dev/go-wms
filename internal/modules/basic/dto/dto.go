@@ -81,3 +81,8 @@ type SKUResp struct {
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
+
+// LocationBatchResp 批量创建库位的响应结构。
+type LocationBatchResp struct {
+	Created int `json:"created"`
+}
