@@ -94,6 +94,27 @@ func (s *Service) isBuiltinAdmin(ctx context.Context, id int64) (bool, error) {
 	return user.TenantID == 0 && user.Username == "admin", nil
 }
 
-func (s *Service) ListUsers(ctx context.Context, q *dto.UserListQuery) ([]*model.SysUser, int64, error) {
-	return s.repo.ListUsers(ctx, q.Keyword, q.Page, q.PageSize)
+func (s *Service) ListUsers(ctx context.Context, q *dto.UserListQuery) ([]*dto.UserResp, int64, error) {
+	users, total, err := s.repo.ListUsers(ctx, q.Keyword, q.Page, q.PageSize)
+	if err != nil {
+		return nil, 0, err
+	}
+	resp := make([]*dto.UserResp, 0, len(users))
+	for _, user := range users {
+		resp = append(resp, userResponse(user))
+	}
+	return resp, total, nil
+}
+
+func userResponse(user *model.SysUser) *dto.UserResp {
+	return &dto.UserResp{
+		ID:        user.ID,
+		TenantID:  user.TenantID,
+		Username:  user.Username,
+		Nickname:  user.Nickname,
+		Status:    user.Status,
+		RoleIDs:   user.RoleIDs,
+		CreatedAt: user.CreatedAt,
+		UpdatedAt: user.UpdatedAt,
+	}
 }

@@ -1,6 +1,10 @@
 package dto
 
-import "gowms/internal/pkg/typex"
+import (
+	"time"
+
+	"gowms/internal/pkg/typex"
+)
 
 type LoginReq struct {
 	Username string `json:"username" binding:"required,max=64"`
@@ -45,6 +49,17 @@ type UserListQuery struct {
 	PageSize int    `form:"page_size,default=10" binding:"min=1,max=100"`
 }
 
+type UserResp struct {
+	ID        int64           `json:"id,string"`
+	TenantID  int64           `json:"tenant_id,string"`
+	Username  string          `json:"username"`
+	Nickname  string          `json:"nickname"`
+	Status    int             `json:"status"`
+	RoleIDs   typex.Int64List `json:"role_ids"`
+	CreatedAt time.Time       `json:"created_at"`
+	UpdatedAt time.Time       `json:"updated_at"`
+}
+
 type ResetPwdReq struct {
 	Password string `json:"password" binding:"required,min=6,max=32"`
 }
@@ -74,6 +89,16 @@ type RoleListQuery struct {
 	Keyword  string `form:"keyword"`
 	Page     int    `form:"page,default=1" binding:"min=1"`
 	PageSize int    `form:"page_size,default=10" binding:"min=1,max=100"`
+}
+
+type RoleResp struct {
+	ID        int64     `json:"id,string"`
+	TenantID  int64     `json:"tenant_id,string"`
+	Name      string    `json:"name"`
+	Perms     string    `json:"perms"`
+	Remark    string    `json:"remark"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type OperLogQuery struct {

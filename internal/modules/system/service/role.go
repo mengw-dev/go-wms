@@ -67,10 +67,38 @@ func (s *Service) isBuiltinRole(ctx context.Context, id int64) (bool, error) {
 	return role.TenantID == 0 && role.Name == "admin", nil
 }
 
-func (s *Service) ListRoles(ctx context.Context, q *dto.RoleListQuery) ([]*model.SysRole, int64, error) {
-	return s.repo.ListRoles(ctx, q.Keyword, q.Page, q.PageSize)
+func (s *Service) ListRoles(ctx context.Context, q *dto.RoleListQuery) ([]*dto.RoleResp, int64, error) {
+	roles, total, err := s.repo.ListRoles(ctx, q.Keyword, q.Page, q.PageSize)
+	if err != nil {
+		return nil, 0, err
+	}
+	return roleResponses(roles), total, nil
 }
 
-func (s *Service) ListAllRoles(ctx context.Context) ([]*model.SysRole, error) {
-	return s.repo.ListAllRoles(ctx)
+func (s *Service) ListAllRoles(ctx context.Context) ([]*dto.RoleResp, error) {
+	roles, err := s.repo.ListAllRoles(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return roleResponses(roles), nil
+}
+
+func roleResponses(roles []*model.SysRole) []*dto.RoleResp {
+	resp := make([]*dto.RoleResp, 0, len(roles))
+	for _, role := range roles {
+		resp = append(resp, roleResponse(role))
+	}
+	return resp
+}
+
+func roleResponse(role *model.SysRole) *dto.RoleResp {
+	return &dto.RoleResp{
+		ID:        role.ID,
+		TenantID:  role.TenantID,
+		Name:      role.Name,
+		Perms:     role.Perms,
+		Remark:    role.Remark,
+		CreatedAt: role.CreatedAt,
+		UpdatedAt: role.UpdatedAt,
+	}
 }
