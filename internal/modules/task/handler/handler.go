@@ -4,7 +4,6 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"gowms/internal/modules/task/service"
-	"gowms/internal/pkg/errcode"
 	"gowms/internal/pkg/httpx"
 	"gowms/internal/pkg/middleware"
 	"gowms/internal/pkg/response"
@@ -39,7 +38,7 @@ func (h *Handler) list(c *gin.Context) {
 	if !ok {
 		return
 	}
-	list, total, err := h.svc.List(c.Request.Context(), orderID, taskType, status, keyword, page, size)
+	list, total, err := h.svc.ListResponses(c.Request.Context(), orderID, taskType, status, keyword, page, size)
 	if err != nil {
 		response.Fail(c, err)
 		return
@@ -52,9 +51,9 @@ func (h *Handler) get(c *gin.Context) {
 	if !ok {
 		return
 	}
-	t, err := h.svc.Get(c.Request.Context(), id)
+	t, err := h.svc.GetResponse(c.Request.Context(), id)
 	if err != nil {
-		response.Fail(c, errcode.TaskNotFound)
+		response.Fail(c, err)
 		return
 	}
 	response.OK(c, t)

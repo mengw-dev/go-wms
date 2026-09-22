@@ -11,6 +11,7 @@ import (
 
 	sysmodel "gowms/internal/modules/system/model"
 	"gowms/internal/modules/task/api"
+	"gowms/internal/modules/task/dto"
 	"gowms/internal/modules/task/model"
 	"gowms/internal/modules/task/repository"
 	"gowms/internal/pkg/errcode"
@@ -166,4 +167,54 @@ func (s *Service) Get(ctx context.Context, taskID int64) (*model.Task, error) {
 		return nil, err
 	}
 	return t, nil
+}
+
+// ListResponses 将任务实体转换为稳定的 HTTP 响应结构。
+func (s *Service) ListResponses(ctx context.Context, orderID int64, taskType, status, keyword string, page, size int) ([]*dto.TaskResp, int64, error) {
+	tasks, total, err := s.List(ctx, orderID, taskType, status, keyword, page, size)
+	if err != nil {
+		return nil, 0, err
+	}
+	return taskResponses(tasks), total, nil
+}
+
+// GetResponse 返回单个任务的 HTTP 响应结构。
+func (s *Service) GetResponse(ctx context.Context, taskID int64) (*dto.TaskResp, error) {
+	task, err := s.Get(ctx, taskID)
+	if err != nil {
+		return nil, err
+	}
+	return taskResponse(task), nil
+}
+
+func taskResponses(tasks []*model.Task) []*dto.TaskResp {
+	resp := make([]*dto.TaskResp, 0, len(tasks))
+	for _, task := range tasks {
+		resp = append(resp, taskResponse(task))
+	}
+	return resp
+}
+
+func taskResponse(task *model.Task) *dto.TaskResp {
+	return &dto.TaskResp{
+		ID:           task.ID,
+		TenantID:     task.TenantID,
+		TaskNo:       task.TaskNo,
+		TaskType:     task.TaskType,
+		Status:       task.Status,
+		OrderID:      task.OrderID,
+		OrderNo:      task.OrderNo,
+		DetailID:     task.DetailID,
+		AllocationID: task.AllocationID,
+		SKUID:        task.SKUID,
+		WarehouseID:  task.WarehouseID,
+		LocationID:   task.LocationID,
+		LocationCode: task.LocationCode,
+		BatchNo:      task.BatchNo,
+		TargetQty:    task.TargetQty,
+		DoneQty:      task.DoneQty,
+		Operator:     task.Operator,
+		CreatedAt:    task.CreatedAt,
+		UpdatedAt:    task.UpdatedAt,
+	}
 }
