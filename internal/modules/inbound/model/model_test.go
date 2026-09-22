@@ -2,6 +2,7 @@ package model
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -50,7 +51,7 @@ func TestCanTransit(t *testing.T) {
 
 func TestImportTaskJSONDoesNotExposeExecutionSecrets(t *testing.T) {
 	task := ImportTask{
-		RunToken: "run-token-must-not-leak",
+		RunToken: strings.Repeat("r", 36),
 		FileName: "orders.xlsx",
 		FilePath: "/tmp/private/orders.xlsx",
 	}

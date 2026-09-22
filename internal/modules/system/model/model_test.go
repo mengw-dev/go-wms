@@ -2,6 +2,7 @@ package model
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -33,7 +34,7 @@ func TestVersionedJSONDoesNotExposeInternalVersion(t *testing.T) {
 
 func TestSysUserJSONDoesNotExposeAuthenticationSecrets(t *testing.T) {
 	user := SysUser{
-		PasswordHash: "hash-must-not-leak",
+		PasswordHash: strings.Repeat("p", 60),
 		TokenVersion: 9,
 	}
 
