@@ -151,7 +151,7 @@ func (h *Handler) runConcurrent(c *gin.Context) {
 		response.Fail(c, errcode.ParamError)
 		return
 	}
-	result, err := h.svc.RunConcurrent(c.Request.Context(), demoSessionID(c), req.Concurrency, req.QtyPerOrder)
+	result, err := h.svc.RunConcurrentAllocation(c.Request.Context(), demoSessionID(c), req.Concurrency, req.QtyPerOrder)
 	if err != nil {
 		response.Fail(c, err)
 		return

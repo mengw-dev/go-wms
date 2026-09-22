@@ -145,10 +145,6 @@ func (s *Service) RunConcurrentAllocation(ctx context.Context, sessionID string,
 	}, nil
 }
 
-func (s *Service) RunConcurrent(ctx context.Context, sessionID string, concurrency, qtyPerOrder int) (*ConcurrentResult, error) {
-	return s.RunConcurrentAllocation(ctx, sessionID, concurrency, qtyPerOrder)
-}
-
 func (s *Service) prepareConcurrentOutbound(ctx context.Context, refs *demoRefs, index, qtyPerOrder int) error {
 	operator := s.Username(ctx)
 	order, err := s.outbound.Create(ctx, &outbounddto.CreateOrderReq{
