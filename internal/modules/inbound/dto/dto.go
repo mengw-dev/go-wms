@@ -1,6 +1,9 @@
+// Package dto 定义入库接口的请求和响应结构。
 package dto
 
 import (
+	"time"
+
 	"gowms/internal/pkg/typex"
 )
 
@@ -57,4 +60,19 @@ type BatchOperResp struct {
 	Success int              `json:"success"`
 	Fail    int              `json:"fail"`
 	Errors  []BatchItemError `json:"errors,omitempty"`
+}
+
+// ImportTaskResp 是导入任务查询接口的稳定响应契约，不暴露执行 token 和文件路径。
+type ImportTaskResp struct {
+	ID          int64     `json:"id,string"`
+	TenantID    int64     `json:"tenant_id,string"`
+	TaskID      string    `json:"task_id"`
+	Status      string    `json:"status"`
+	FileName    string    `json:"file_name"`
+	TotalRows   int       `json:"total_rows"`
+	SuccessRows int       `json:"success_rows"`
+	FailRows    int       `json:"fail_rows"`
+	ErrorMsg    string    `json:"error_msg"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }

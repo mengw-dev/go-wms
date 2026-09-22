@@ -70,3 +70,33 @@ func (s *Service) removeImportFile(ctx context.Context, task *model.ImportTask) 
 		log.WithContext(ctx).Warn("remove completed import file failed", "task_id", task.TaskID, "err", err)
 	}
 }
+
+// GetImportResponse 返回导入任务查询接口的稳定响应结构。
+func (s *Service) GetImportResponse(ctx context.Context, taskID string) (*dto.ImportTaskResp, error) {
+	task, err := s.GetImport(ctx, taskID)
+	if err != nil {
+		return nil, err
+	}
+	return importTaskResponse(task), nil
+}
+
+// ListImportResponses 返回最近导入任务的稳定响应结构。
+func (s *Service) ListImportResponses(ctx context.Context, limit int) ([]*dto.ImportTaskResp, error) {
+	tasks, err := s.ListImports(ctx, limit)
+	if err != nil {
+		return nil, err
+	}
+	resp := make([]*dto.ImportTaskResp, 0, len(tasks))
+	for _, task := range tasks {
+		resp = append(resp, importTaskResponse(task))
+	}
+	return resp, nil
+}
+
+func importTaskResponse(task *model.ImportTask) *dto.ImportTaskResp {
+	return &dto.ImportTaskResp{
+		ID: task.ID, TenantID: task.TenantID, TaskID: task.TaskID, Status: string(task.Status),
+		FileName: task.FileName, TotalRows: task.TotalRows, SuccessRows: task.SuccessRows,
+		FailRows: task.FailRows, ErrorMsg: task.ErrorMsg, CreatedAt: task.CreatedAt, UpdatedAt: task.UpdatedAt,
+	}
+}

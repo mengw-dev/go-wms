@@ -286,7 +286,7 @@ func (h *Handler) importExcel(c *gin.Context) {
 }
 
 func (h *Handler) importStatus(c *gin.Context) {
-	task, err := h.svc.GetImport(c.Request.Context(), c.Param("taskId"))
+	task, err := h.svc.GetImportResponse(c.Request.Context(), c.Param("taskId"))
 	if err != nil {
 		response.Fail(c, err)
 		return
@@ -299,7 +299,7 @@ func (h *Handler) listImports(c *gin.Context) {
 	if !ok {
 		return
 	}
-	list, err := h.svc.ListImports(c.Request.Context(), limit)
+	list, err := h.svc.ListImportResponses(c.Request.Context(), limit)
 	if err != nil {
 		response.Fail(c, err)
 		return
