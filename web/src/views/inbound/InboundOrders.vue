@@ -483,7 +483,14 @@ useAutoRefresh(() => load(true), 0, () => selectedRows.value.length === 0)
 
     <div class="toolbar">
       <div class="toolbar-left">
-        <el-button v-permission="'wms:inbound:create'" type="primary" @click="openCreate">新建入库单</el-button>
+        <el-button
+          v-permission="'wms:inbound:create'"
+          data-tour="inbound-create"
+          type="primary"
+          @click="openCreate"
+        >
+          新建入库单
+        </el-button>
         <el-button v-permission="'wms:inbound:create'" type="success" plain @click="openImport">Excel 导入</el-button>
       </div>
       <div class="toolbar-right">

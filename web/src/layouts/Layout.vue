@@ -6,6 +6,7 @@ import { HomeFilled, TrendCharts } from '@element-plus/icons-vue'
 import { changePassword, getProfile } from '@/api/auth'
 import { releaseDemoSession } from '@/api/demo'
 import DemoConsole from '@/components/DemoConsole.vue'
+import ManualGuide from '@/components/demo/ManualGuide.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
 
@@ -231,6 +232,7 @@ async function submitPassword() {
     </el-dialog>
   </el-container>
   <DemoConsole />
+  <ManualGuide />
 </template>
 
 <style scoped>

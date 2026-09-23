@@ -176,7 +176,14 @@ useAutoRefresh(() => load(true), 0)
 
     <div class="toolbar">
       <span />
-      <el-button v-permission="'wms:stocktake:create'" type="primary" @click="openCreate">新建盘点单</el-button>
+      <el-button
+        v-permission="'wms:stocktake:create'"
+        data-tour="stocktake-create"
+        type="primary"
+        @click="openCreate"
+      >
+        新建盘点单
+      </el-button>
     </div>
 
     <el-table v-loading="loading" :data="list" border stripe>

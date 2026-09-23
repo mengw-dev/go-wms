@@ -277,7 +277,14 @@ useAutoRefresh(() => load(true), 0, () => selectedRows.value.length === 0)
 
     <div class="toolbar">
       <div class="toolbar-left">
-        <el-button v-permission="'wms:outbound:create'" type="primary" @click="openCreate">新建出库单</el-button>
+        <el-button
+          v-permission="'wms:outbound:create'"
+          data-tour="outbound-create"
+          type="primary"
+          @click="openCreate"
+        >
+          新建出库单
+        </el-button>
       </div>
       <div class="toolbar-right">
         <span class="selected-hint" :class="{ 'is-hidden': selectedRows.length === 0 }">已选 {{ selectedRows.length }} 项</span>

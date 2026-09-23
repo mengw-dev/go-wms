@@ -20,6 +20,7 @@ import { getDemoActivity, releaseDemoSession, resetDemoData } from '@/api/demo'
 import type { DemoActivitySnapshot } from '@/api/types'
 import DemoTour from '@/components/demo/DemoTour.vue'
 import { useAuthStore } from '@/stores/auth'
+import { useGuideStore, type GuideScenario } from '@/stores/guide'
 import { statusText, taskTypeText } from '@/constants'
 import { formatTime } from '@/utils'
 import { onDataChanged, openDemoConsole } from '@/utils/events'
@@ -34,6 +35,7 @@ interface EvidenceItem {
 
 const router = useRouter()
 const auth = useAuthStore()
+const guide = useGuideStore()
 
 const activity = ref<DemoActivitySnapshot | null>(null)
 const activityLoading = ref(false)
@@ -131,8 +133,9 @@ function startCountdown() {
   }, 1000)
 }
 
-function goExperience() {
-  router.push('/inbound/orders')
+function startManualGuide(scenario: GuideScenario) {
+  const firstStep = guide.start(scenario)
+  void router.push(firstStep.route)
 }
 
 function goPerformance() {
@@ -237,7 +240,9 @@ onBeforeUnmount(() => {
           <el-button type="primary" size="large" :icon="VideoPlay" @click="openDemoConsole">
             开始完整演示
           </el-button>
-          <el-button size="large" :icon="ArrowRight" @click="goExperience">亲自体验</el-button>
+          <el-button size="large" :icon="ArrowRight" @click="startManualGuide('inbound')">
+            亲自体验
+          </el-button>
         </div>
       </div>
       <div class="flow-panel" data-tour="complete-flow">
@@ -273,25 +278,28 @@ onBeforeUnmount(() => {
           <div class="card-icon"><Download /></div>
           <h3>批量入库</h3>
           <p>批量创建入库草稿，再通过真实业务页面完成收货、残品登记与上架。</p>
-          <el-button text type="primary" @click="openDemoConsole">
-            打开批量入库 <ArrowRight />
-          </el-button>
+          <div class="scenario-actions">
+            <el-button text type="primary" @click="openDemoConsole">自动演示</el-button>
+            <el-button text @click="startManualGuide('inbound')">亲自体验入库</el-button>
+          </div>
         </article>
         <article class="scenario-card">
           <div class="card-icon"><Upload /></div>
           <h3>上游出库</h3>
           <p>模拟上游订单批量创建出库单，连续体验审核、FIFO 分配与拣货。</p>
-          <el-button text type="primary" @click="openDemoConsole">
-            打开上游出库 <ArrowRight />
-          </el-button>
+          <div class="scenario-actions">
+            <el-button text type="primary" @click="openDemoConsole">自动演示</el-button>
+            <el-button text @click="startManualGuide('outbound')">亲自体验出库</el-button>
+          </div>
         </article>
         <article class="scenario-card">
           <div class="card-icon"><Tickets /></div>
           <h3>库存盘点</h3>
           <p>批量生成盘点草稿，录入实盘数量并完成盘盈盘亏审核。</p>
-          <el-button text type="primary" @click="openDemoConsole">
-            打开盘点场景 <ArrowRight />
-          </el-button>
+          <div class="scenario-actions">
+            <el-button text type="primary" @click="openDemoConsole">自动演示</el-button>
+            <el-button text @click="startManualGuide('stocktake')">亲自体验盘点</el-button>
+          </div>
         </article>
       </div>
     </section>
@@ -704,6 +712,12 @@ onBeforeUnmount(() => {
 
 .scenario-card .el-button {
   padding-left: 0;
+}
+
+.scenario-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
 }
 
 .verify-grid {
