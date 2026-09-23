@@ -293,6 +293,7 @@ func mergeScenarioResults(results ...*ScenarioResult) *ScenarioResult {
 		Status:  ScenarioStatusCompleted,
 		Steps:   make([]ScenarioStep, 0),
 	}
+	evidenceSets := 0
 	for _, result := range results {
 		if result == nil {
 			continue
@@ -300,8 +301,11 @@ func mergeScenarioResults(results ...*ScenarioResult) *ScenarioResult {
 		merged.Steps = append(merged.Steps, result.Steps...)
 		merged.Evidence = append(merged.Evidence, result.Evidence...)
 		merged.Links = append(merged.Links, result.Links...)
-		if merged.EvidenceTitle == "" && result.EvidenceTitle != "" {
-			merged.EvidenceTitle = result.EvidenceTitle
+		if len(result.Evidence) > 0 {
+			evidenceSets++
+			if merged.EvidenceTitle == "" && result.EvidenceTitle != "" {
+				merged.EvidenceTitle = result.EvidenceTitle
+			}
 		}
 		if merged.Implementation == nil && result.Implementation != nil {
 			merged.Implementation = result.Implementation
@@ -309,6 +313,9 @@ func mergeScenarioResults(results ...*ScenarioResult) *ScenarioResult {
 		if result.Status == ScenarioStatusFailed {
 			merged.Status = ScenarioStatusFailed
 		}
+	}
+	if evidenceSets > 1 {
+		merged.EvidenceTitle = "本次完整业务闭环产生"
 	}
 	if merged.Status == ScenarioStatusFailed {
 		merged.Summary = "完整业务闭环未全部完成，已执行的步骤保留在下方"

@@ -78,7 +78,9 @@ func seedDemoData(db *gorm.DB) error {
 		return t
 	}
 	placements := []demoPlacement{
-		{warehouse: 0, location: "A01-01-01", sku: 0, batch: "B20260901", qty: 100, stockIn: date("2026-09-01")},
+		// SKU000001 保留同 SKU 的两个批次，供自动出库真实展示 FIFO 跨批次分配。
+		{warehouse: 0, location: "A01-01-01", sku: 0, batch: "B20260901", qty: 30, stockIn: date("2026-09-01")},
+		{warehouse: 0, location: "A01-01-01", sku: 0, batch: "B20260905", qty: 70, stockIn: date("2026-09-05")},
 		{warehouse: 0, location: "A01-01-02", sku: 1, batch: "B20260905", qty: 50, stockIn: date("2026-09-05")},
 		{warehouse: 0, location: "A01-02-01", sku: 2, batch: "B20260910", qty: 80, stockIn: date("2026-09-10")},
 	}

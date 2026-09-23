@@ -48,10 +48,29 @@ test('demo quick controller runs the full flow, navigates from business pages an
   await expect(drawer.getByText('状态变化').first()).toBeVisible()
   await expect(drawer.getByText('完成上架', { exact: true })).toBeVisible()
   await expect(drawer.getByText('库存入账', { exact: true })).toBeVisible()
-  await expect(drawer.getByText('本次入库产生', { exact: true })).toBeVisible()
+  await expect(drawer.getByText('本次完整业务闭环产生', { exact: true })).toBeVisible()
   for (const label of ['查看入库单', '查看任务', '查看库存', '查看库存流水']) {
-    await expect(drawer.getByRole('button', { name: label, exact: true })).toBeVisible()
+    await expect(drawer.getByRole('button', { name: label, exact: true }).first()).toBeVisible()
   }
+
+  await expect(drawer.getByText('审核并 FIFO 分配库存', { exact: true })).toBeVisible()
+  await expect(drawer.getByText('FIFO 1', { exact: true })).toBeVisible()
+  await expect(drawer.getByText('FIFO 2', { exact: true })).toBeVisible()
+  await expect(drawer.getByText(/B20260901.*本次分配 30/).first()).toBeVisible()
+  await expect(drawer.getByText(/B20260905.*本次分配 20/).first()).toBeVisible()
+  await expect(drawer.getByText('PICK 任务数量', { exact: true }).first()).toBeVisible()
+  await expect(drawer.getByText('FIFO 分配', { exact: true })).toBeVisible()
+  await expect(drawer.getByText('2 个批次 / 50 件', { exact: true })).toBeVisible()
+  await expect(drawer.getByText('库存变化', { exact: true }).first()).toBeVisible()
+  await expect(drawer.getByRole('button', { name: '查看出库单', exact: true })).toBeVisible()
+  await expect(drawer.getByRole('button', { name: '查看拣货任务', exact: true })).toBeVisible()
+
+  await drawer.getByRole('button', { name: '查看出库单', exact: true }).click()
+  await expect(page).toHaveURL(/\/outbound\/orders\/\d+/)
+  await expect(page.locator('.detail-header .header-title')).toHaveText('出库单详情')
+
+  await consoleButton.click()
+  await expect(drawer).toBeVisible()
 
   await drawer.getByRole('button', { name: '查看入库单', exact: true }).click()
   await expect(page).toHaveURL(/\/inbound\/orders\/\d+/)
