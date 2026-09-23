@@ -20,6 +20,60 @@ describe('manual guide store', () => {
     expect(guide.completed).toBe(false)
   })
 
+  it('walks through every real inbound milestone and resolves each route', () => {
+    const guide = useGuideStore()
+    guide.start('inbound')
+
+    expect(
+      guide.recordBusinessResult(GUIDE_EVENTS.inboundOrderCreated, {
+        orderId: '100',
+        orderNo: 'IN-100',
+        message: '已创建入库单 IN-100。',
+      }),
+    ).toBe(true)
+    expect(guide.next()).toBe(true)
+    expect(guide.currentStepRoute).toBe('/inbound/orders/100')
+
+    guide.recordBusinessResult(GUIDE_EVENTS.inboundOrderSubmitted)
+    guide.next()
+    guide.recordBusinessResult(GUIDE_EVENTS.inboundOrderApproved)
+    guide.next()
+    guide.recordBusinessResult(GUIDE_EVENTS.inboundReceived, {
+      taskId: '7',
+      taskNo: 'PUT-7',
+    })
+    guide.next()
+    expect(guide.reposition('/inbound/orders/100')).toBe(true)
+    expect(guide.currentStepDefinition?.id).toBe('inbound-tasks')
+    guide.recordBusinessResult(GUIDE_EVENTS.inboundPutawayReady)
+    guide.next()
+    guide.recordBusinessResult(GUIDE_EVENTS.inboundPutawayCompleted)
+    guide.next()
+
+    expect(guide.currentStepRoute).toBe('/inventory?order_no=IN-100')
+    expect(guide.recordBusinessResult(GUIDE_EVENTS.inboundInventoryReviewed)).toBe(true)
+    expect(guide.orderNo).toBe('IN-100')
+    expect(guide.taskNo).toBe('PUT-7')
+    expect(guide.next()).toBe(true)
+    expect(guide.completed).toBe(true)
+    expect(guide.active).toBe(false)
+  })
+
+  it('keeps a mismatch until the correct inbound result clears it', () => {
+    const guide = useGuideStore()
+    guide.start('inbound')
+    guide.recordBusinessResult(GUIDE_EVENTS.inboundOrderCreated, {
+      orderId: '100',
+      orderNo: 'IN-100',
+    })
+    guide.next()
+
+    guide.setMismatch('状态不一致')
+    expect(guide.canAdvance).toBe(false)
+    expect(guide.recordBusinessResult(GUIDE_EVENTS.inboundOrderSubmitted)).toBe(true)
+    expect(guide.mismatch).toBe('')
+  })
+
   it('unlocks next only after the matching business result', () => {
     const guide = useGuideStore()
     guide.start('outbound')

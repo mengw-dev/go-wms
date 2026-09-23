@@ -11,10 +11,12 @@ import type {
 } from '@/api/types'
 import { statusTag, statusText, TRANS_TYPE_OPTIONS } from '@/constants'
 import { cleanParams, formatTime } from '@/utils'
+import { GUIDE_EVENTS, useGuideStore } from '@/stores/guide'
 import { loadSkuMap, loadWarehouseOptions, toOptionMap, type IdOption } from '@/utils/options'
 
 const activeTab = ref('detail')
 const route = useRoute()
+const guide = useGuideStore()
 
 // ---------- 仓库下拉 / 货品映射 ----------
 const warehouseOptions = ref<IdOption[]>([])
@@ -110,9 +112,31 @@ async function loadTrans(silent = false) {
     const data = await listInventoryTrans(cleanParams({ ...transQuery }))
     transList.value = data.list ?? []
     transTotal.value = data.total ?? 0
+    syncInboundGuide()
   } finally {
     if (!silent) transLoading.value = false
   }
+}
+
+function syncInboundGuide(): void {
+  if (
+    !guide.active ||
+    guide.scenario !== 'inbound' ||
+    guide.currentStepDefinition?.event !== GUIDE_EVENTS.inboundInventoryReviewed
+  ) {
+    return
+  }
+  if (!guide.orderNo || guide.orderNo !== transQuery.order_no) {
+    guide.setMismatch('当前库存流水与引导中的入库单不一致，请重新定位当前步骤。')
+    return
+  }
+  if (transList.value.length === 0) {
+    guide.setMismatch(`暂未找到入库单 ${guide.orderNo} 的库存流水，请确认上架是否完成。`)
+    return
+  }
+  guide.recordBusinessResult(GUIDE_EVENTS.inboundInventoryReviewed, {
+    message: `已查看入库单 ${guide.orderNo} 的 ${transTotal.value} 条库存流水。`,
+  })
 }
 
 function searchTrans() {
@@ -249,6 +273,7 @@ useAutoRefresh(refreshActiveTab, 0)
     </el-tabs>
 
     <el-drawer v-model="drawerVisible" title="库存流水" size="60%">
+      <div data-tour="inventory-evidence">
       <div v-if="transInventory" class="trans-summary">
         库位：{{ transInventory.location_code || transInventory.location_id }}
         ，货品：{{ skuLabel(transInventory.sku_id) }}
@@ -309,6 +334,7 @@ useAutoRefresh(refreshActiveTab, 0)
         :total="transTotal"
         @current-change="loadTrans"
       />
+      </div>
     </el-drawer>
   </div>
 </template>

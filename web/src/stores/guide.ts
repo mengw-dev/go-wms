@@ -13,12 +13,20 @@ export interface GuideStep {
 
 export interface GuideBusinessResult {
   orderId?: string
+  orderNo?: string
   taskId?: string
+  taskNo?: string
   message?: string
 }
 
 export const GUIDE_EVENTS = {
   inboundOrderCreated: 'inbound.order.created',
+  inboundOrderSubmitted: 'inbound.order.submitted',
+  inboundOrderApproved: 'inbound.order.approved',
+  inboundReceived: 'inbound.received',
+  inboundPutawayReady: 'inbound.putaway.ready',
+  inboundPutawayCompleted: 'inbound.putaway.completed',
+  inboundInventoryReviewed: 'inbound.inventory.reviewed',
   outboundOrderCreated: 'outbound.order.created',
   stocktakeOrderCreated: 'stocktake.order.created',
 } as const
@@ -32,6 +40,54 @@ const GUIDE_STEPS: Record<GuideScenario, readonly GuideStep[]> = {
       title: '创建入库单',
       description: '点击“新建入库单”，填写仓库、货品和数量。保存成功后，引导才会解锁下一步。',
       event: GUIDE_EVENTS.inboundOrderCreated,
+    },
+    {
+      id: 'inbound-submit',
+      route: '/inbound/orders/:orderId',
+      target: '[data-tour="inbound-submit"]',
+      title: '提交入库单',
+      description: '确认刚才创建的入库单，点击“提交”。状态会从草稿变为已提交。',
+      event: GUIDE_EVENTS.inboundOrderSubmitted,
+    },
+    {
+      id: 'inbound-approve',
+      route: '/inbound/orders/:orderId',
+      target: '[data-tour="inbound-approve"]',
+      title: '审核入库单',
+      description: '审核通过后，入库单才能进入收货环节。',
+      event: GUIDE_EVENTS.inboundOrderApproved,
+    },
+    {
+      id: 'inbound-receive',
+      route: '/inbound/orders/:orderId',
+      target: '[data-tour="inbound-receive"]',
+      title: '完成收货',
+      description: '按实收数量登记批次。整单收齐后，系统会生成上架任务。',
+      event: GUIDE_EVENTS.inboundReceived,
+    },
+    {
+      id: 'inbound-tasks',
+      route: '/inbound/orders/:orderId',
+      target: '[data-tour="inbound-tasks"]',
+      title: '查看上架任务',
+      description: '在关联任务中查看系统生成的上架任务和待上架数量。',
+      event: GUIDE_EVENTS.inboundPutawayReady,
+    },
+    {
+      id: 'inbound-putaway',
+      route: '/inbound/orders/:orderId',
+      target: '[data-tour="inbound-putaway"]',
+      title: '完成上架',
+      description: '选择库位并完成上架，库存会在真实业务事务中增加。',
+      event: GUIDE_EVENTS.inboundPutawayCompleted,
+    },
+    {
+      id: 'inbound-inventory',
+      route: '/inventory?order_no=:orderNo',
+      target: '[data-tour="inventory-evidence"]',
+      title: '查看库存与流水',
+      description: '库存页会按本次入库单筛选真实流水，确认数量变化和来源单据。',
+      event: GUIDE_EVENTS.inboundInventoryReviewed,
     },
   ],
   outbound: [
@@ -62,13 +118,21 @@ export const GUIDE_SCENARIO_LABELS: Record<GuideScenario, string> = {
   stocktake: '盘点',
 }
 
+function resolveGuideRoute(route: string, orderId: string, orderNo: string): string {
+  return route
+    .replace(':orderId', encodeURIComponent(orderId))
+    .replace(':orderNo', encodeURIComponent(orderNo))
+}
+
 export const useGuideStore = defineStore('guide', {
   state: () => ({
     active: false,
     scenario: null as GuideScenario | null,
     currentStep: 0,
     orderId: '',
+    orderNo: '',
     taskId: '',
+    taskNo: '',
     startedAt: 0,
     completed: false,
     verifiedStepIds: [] as string[],
@@ -81,6 +145,11 @@ export const useGuideStore = defineStore('guide', {
     },
     currentStepDefinition(state): GuideStep | null {
       return state.scenario ? GUIDE_STEPS[state.scenario][state.currentStep] ?? null : null
+    },
+    currentStepRoute(state): string {
+      const step = state.scenario ? GUIDE_STEPS[state.scenario][state.currentStep] : null
+      if (!step) return ''
+      return resolveGuideRoute(step.route, state.orderId, state.orderNo)
     },
     currentStepNumber(state): number {
       return state.scenario ? state.currentStep + 1 : 0
@@ -102,7 +171,9 @@ export const useGuideStore = defineStore('guide', {
       this.scenario = scenario
       this.currentStep = 0
       this.orderId = ''
+      this.orderNo = ''
       this.taskId = ''
+      this.taskNo = ''
       this.startedAt = Date.now()
       this.completed = false
       this.verifiedStepIds = []
@@ -120,7 +191,9 @@ export const useGuideStore = defineStore('guide', {
 
       if (!this.verifiedStepIds.includes(step.id)) this.verifiedStepIds.push(step.id)
       if (result.orderId) this.orderId = result.orderId
+      if (result.orderNo) this.orderNo = result.orderNo
       if (result.taskId) this.taskId = result.taskId
+      if (result.taskNo) this.taskNo = result.taskNo
       this.lastOutcome = result.message || '当前步骤已在真实业务中完成。'
       this.mismatch = ''
       return true
@@ -146,15 +219,22 @@ export const useGuideStore = defineStore('guide', {
     },
     reposition(routePath: string): boolean {
       if (!this.active || !this.scenario) return false
-      const index = GUIDE_STEPS[this.scenario].findIndex((step) => step.route === routePath)
-      if (index < 0) {
+      const matches = GUIDE_STEPS[this.scenario]
+        .map((step, index) => ({ step, index }))
+        .filter(({ step }) => resolveGuideRoute(step.route, this.orderId, this.orderNo).split('?')[0] === routePath)
+      const target = matches.find(({ step }) => !this.verifiedStepIds.includes(step.id)) ?? matches.at(-1)
+      if (!target) {
         this.mismatch = '当前页面不在本次引导流程中，无法重新定位。'
         return false
       }
-      this.currentStep = index
+      this.currentStep = target.index
       this.mismatch = ''
       this.lastOutcome = ''
       return true
+    },
+    setMismatch(message: string): void {
+      if (!this.active || this.completed) return
+      this.mismatch = message
     },
     restart(): GuideStep | null {
       if (!this.scenario) return null
@@ -166,7 +246,9 @@ export const useGuideStore = defineStore('guide', {
       this.scenario = null
       this.currentStep = 0
       this.orderId = ''
+      this.orderNo = ''
       this.taskId = ''
+      this.taskNo = ''
       this.startedAt = 0
       this.verifiedStepIds = []
       this.lastOutcome = ''

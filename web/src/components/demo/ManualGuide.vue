@@ -32,6 +32,13 @@ const step = computed(() => guide.currentStepDefinition)
 const scenarioLabel = computed(() =>
   guide.scenario ? GUIDE_SCENARIO_LABELS[guide.scenario] : '业务',
 )
+const completionSteps = computed(() =>
+  guide.scenario === 'inbound'
+    ? ['创建', '提交', '审核', '收货', '上架', '库存增加']
+    : guide.scenario
+      ? [GUIDE_SCENARIO_LABELS[guide.scenario] + '单', '业务已完成']
+      : [],
+)
 
 const highlightStyle = computed<CSSProperties>(() => {
   const rect = targetRect.value
@@ -156,14 +163,14 @@ function updateViewport(): void {
 
 async function nextStep(): Promise<void> {
   if (!guide.next()) return
-  if (!guide.completed && guide.currentStepDefinition) {
-    await router.push(guide.currentStepDefinition.route)
+  if (!guide.completed && guide.currentStepRoute) {
+    await router.push(guide.currentStepRoute)
   }
 }
 
 async function previousStep(): Promise<void> {
-  if (!guide.previous() || !guide.currentStepDefinition) return
-  await router.push(guide.currentStepDefinition.route)
+  if (!guide.previous() || !guide.currentStepRoute) return
+  await router.push(guide.currentStepRoute)
 }
 
 async function restartGuide(): Promise<void> {
@@ -250,11 +257,17 @@ onBeforeUnmount(() => {
           aria-label="手动业务引导完成"
         >
           <span class="guide-kicker">{{ scenarioLabel }}手动引导</span>
-          <h2>当前引导已完成</h2>
+          <h2>你刚刚亲自完成</h2>
+          <div class="guide-complete-flow">
+            <template v-for="(item, index) in completionSteps" :key="item">
+              <span>{{ item }}</span>
+              <b v-if="index < completionSteps.length - 1">→</b>
+            </template>
+          </div>
           <p>{{ guide.lastOutcome || '真实业务操作已完成，可以继续在业务页面核对结果。' }}</p>
           <div class="guide-complete-facts">
-            <span v-if="guide.orderId">订单 ID：{{ guide.orderId }}</span>
-            <span v-if="guide.taskId">任务 ID：{{ guide.taskId }}</span>
+            <span v-if="guide.orderNo || guide.orderId">入库单：{{ guide.orderNo || guide.orderId }}</span>
+            <span v-if="guide.taskNo || guide.taskId">上架任务：{{ guide.taskNo || guide.taskId }}</span>
           </div>
           <div class="guide-actions">
             <el-button @click="restartGuide">重新开始</el-button>
@@ -348,6 +361,7 @@ onBeforeUnmount(() => {
 
 .guide-panel {
   z-index: 2602;
+  pointer-events: none;
   padding: 18px;
   border: 1px solid var(--el-border-color-light);
   border-radius: 14px;
@@ -457,8 +471,28 @@ onBeforeUnmount(() => {
   border-top: 1px solid var(--el-border-color-lighter);
 }
 
+.guide-panel button {
+  pointer-events: auto;
+}
+
 .guide-actions .el-button + .el-button {
   margin-left: 8px;
+}
+
+.guide-complete-flow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  margin-top: 12px;
+  color: var(--el-text-color-regular);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.guide-complete-flow b {
+  color: var(--el-text-color-placeholder);
+  font-weight: 400;
 }
 
 .guide-complete-facts {
