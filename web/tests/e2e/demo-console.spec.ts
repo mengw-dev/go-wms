@@ -5,11 +5,14 @@ const demoUsername = process.env.E2E_DEMO_USERNAME || process.env.WMS_DEMO_USERN
 const demoPassword = process.env.E2E_DEMO_PASSWORD || process.env.WMS_DEMO_PASSWORD || 'demo123456'
 
 test('business center creates drafts, runs flows, shows metrics and records, then releases', async ({ page }) => {
-  await loginByUi(page, demoUsername, demoPassword)
+  await loginByUi(page, demoUsername, demoPassword, /从真实业务流程理解这套 WMS/)
+  await expect(page).toHaveURL(/\/demo$/)
 
   const consoleButton = page.getByRole('button', { name: /业务流程中心/ })
   const dialog = page.getByRole('dialog', { name: '业务流程中心' })
   await expect(consoleButton).toBeVisible()
+  await expect(dialog).not.toBeVisible()
+  await page.getByRole('button', { name: '开始完整演示', exact: true }).click()
   await expect(dialog).toBeVisible()
 
   await dialog.getByRole('button', { name: '模拟 Excel 批量入库' }).click()
@@ -52,7 +55,7 @@ test('business center creates drafts, runs flows, shows metrics and records, the
 })
 
 test('demo account is logged out after a page reload', async ({ page }) => {
-  await loginByUi(page, demoUsername, demoPassword)
+  await loginByUi(page, demoUsername, demoPassword, /从真实业务流程理解这套 WMS/)
   await expect(page.getByRole('button', { name: /业务流程中心/ })).toBeVisible()
 
   await page.reload()

@@ -22,6 +22,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '仪表盘' },
       },
       {
+        path: 'demo',
+        name: 'demo-home',
+        component: () => import('@/views/demo/index.vue'),
+        meta: { title: 'Demo 体验中心', perm: 'wms:demo' },
+      },
+      {
         path: 'demo/performance',
         name: 'demo-performance',
         component: () => import('@/views/demo/Performance.vue'),

@@ -67,11 +67,12 @@ async function submit() {
     if ((result.perms ?? []).includes('wms:demo')) {
       const session = await acquireDemoSession()
       auth.setDemoSession(session)
-      sessionStorage.setItem('WMS_DEMO_AUTO_OPEN', '1')
     }
     ElMessage.success('登录成功')
     const redirect = route.query.redirect
-    router.push(typeof redirect === 'string' && redirect.startsWith('/') ? redirect : '/')
+    router.push(
+      auth.isDemo ? '/demo' : typeof redirect === 'string' && redirect.startsWith('/') ? redirect : '/',
+    )
   } catch {
     auth.clear()
   } finally {
@@ -95,14 +96,13 @@ async function startDemo() {
     if ((result.perms ?? []).includes('wms:demo')) {
       const session = await acquireDemoSession()
       auth.setDemoSession(session)
-      sessionStorage.setItem('WMS_DEMO_AUTO_OPEN', '1')
     }
     ElMessage({
       message: `已为你分配空闲演示账号 ${account.username}（共 ${account.total} 席，数据独立、退出自动重置）`,
       type: 'success',
       duration: 5000,
     })
-    router.push('/')
+    router.push('/demo')
   } catch {
     auth.clear()
     // 错误提示由 request.ts 拦截器统一弹出（如 70002 演示席位已满）

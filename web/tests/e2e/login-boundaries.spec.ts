@@ -84,3 +84,66 @@ test('personal login sends the selected account tenant', async ({ page }) => {
     username: 'user1', password: 'personal-password', tenant_id: '20001',
   })
 })
+
+test('demo login enters the dedicated home without auto-opening the legacy console', async ({ page }) => {
+  await page.route('**/api/v1/**', async (route) => {
+    const path = new URL(route.request().url()).pathname
+    let data: unknown
+    switch (path) {
+      case '/api/v1/version':
+        data = { version: 'test', demo_enabled: true, personal_enabled: false }
+        break
+      case '/api/v1/demo/account':
+        data = { username: 'demo1', password: 'demo-password', tenant_id: '10001', total: 1, occupied: 0 }
+        break
+      case '/api/v1/login':
+        data = {
+          token: 'test-demo-token',
+          user_id: '42',
+          username: 'demo1',
+          nickname: '演示用户',
+          roles: ['demo'],
+          perms: ['wms:demo'],
+        }
+        break
+      case '/api/v1/demo/session/acquire':
+      case '/api/v1/demo/session/heartbeat':
+        data = { session_id: 'test-session', expires_in: 300 }
+        break
+      case '/api/v1/profile':
+        data = {
+          user_id: '42',
+          username: 'demo1',
+          nickname: '演示用户',
+          roles: ['demo'],
+          perms: ['wms:demo'],
+        }
+        break
+      case '/api/v1/demo/activity':
+        data = {
+          operations: [],
+          inbound_orders: [],
+          outbound_orders: [],
+          stocktake_orders: [],
+          tasks: [],
+          inventory_trans: [],
+        }
+        break
+      default:
+        await route.abort()
+        return
+    }
+    await route.fulfill({ json: { code: 0, msg: 'ok', data } })
+  })
+
+  await page.goto('/login')
+  await page.getByRole('button', { name: '一键进入演示' }).click()
+
+  await expect(page).toHaveURL(/\/demo$/)
+  await expect(page.getByRole('heading', { name: '从真实业务流程理解这套 WMS' })).toBeVisible()
+  const dialog = page.getByRole('dialog', { name: '业务流程中心' })
+  await expect(dialog).not.toBeVisible()
+
+  await page.getByRole('button', { name: '开始完整演示', exact: true }).click()
+  await expect(dialog).toBeVisible()
+})

@@ -2,7 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
-import { TrendCharts } from '@element-plus/icons-vue'
+import { HomeFilled, TrendCharts } from '@element-plus/icons-vue'
 import { changePassword, getProfile } from '@/api/auth'
 import { releaseDemoSession } from '@/api/demo'
 import DemoConsole from '@/components/DemoConsole.vue'
@@ -103,6 +103,10 @@ async function submitPassword() {
         <el-menu-item index="/dashboard">
           <el-icon><Odometer /></el-icon>
           <span>仪表盘</span>
+        </el-menu-item>
+        <el-menu-item v-if="auth.isDemo" index="/demo">
+          <el-icon><HomeFilled /></el-icon>
+          <span>体验中心</span>
         </el-menu-item>
         <el-sub-menu v-if="auth.isDemo" index="demo-center">
           <template #title>

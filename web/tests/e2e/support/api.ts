@@ -130,13 +130,14 @@ export async function loginByUi(
   page: Page,
   username = adminAccount.username,
   password = adminAccount.password,
+  expectedHeading: string | RegExp = /欢迎回来/,
 ): Promise<void> {
   await page.goto('/login')
   await page.getByPlaceholder('用户名').fill(username)
   await page.getByPlaceholder('密码').fill(password)
   await page.getByRole('button', { name: /登\s*录/ }).click()
   await expect(page).not.toHaveURL(/\/login(?:\?|$)/)
-  await expect(page.getByRole('heading', { name: /欢迎回来/ })).toBeVisible()
+  await expect(page.getByRole('heading', { name: expectedHeading })).toBeVisible()
 }
 
 export function uniqueSuffix(): string {

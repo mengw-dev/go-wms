@@ -16,7 +16,7 @@ import {
 import { ApiError } from '@/api/request'
 import type { DemoConcurrentResult, DemoPickingResult, DemoScenarioResult } from '@/api/types'
 import { useAuthStore } from '@/stores/auth'
-import { emitDataChanged } from '@/utils/events'
+import { emitDataChanged, OPEN_DEMO_CONSOLE_EVENT } from '@/utils/events'
 
 type ScenarioKey = 'inbound_drafts' | 'outbound_drafts' | 'stocktake_drafts' | 'full'
 
@@ -195,17 +195,18 @@ async function acquire() {
   }
 }
 
+function onOpenDemoConsole() {
+  visible.value = true
+}
+
 async function initialize() {
   if (!auth.isDemo) return
-  const autoOpen = sessionStorage.getItem('WMS_DEMO_AUTO_OPEN') === '1'
-  sessionStorage.removeItem('WMS_DEMO_AUTO_OPEN')
   if (auth.demoSessionId) {
     try {
       const info = await heartbeatDemoSession()
       auth.setDemoSession(info)
       remaining.value = info.expires_in
       startTimers()
-      visible.value = autoOpen
       return
     } catch {
       // 会话失效已由 request.ts 拦截器统一跳转登录，这里无需重复处理。
@@ -214,7 +215,6 @@ async function initialize() {
     }
   }
   await acquire()
-  visible.value = autoOpen
 }
 
 async function runScenario(scenario: ScenarioKey) {
@@ -431,6 +431,7 @@ onMounted(() => {
   // beforeunload 覆盖刷新/关闭，pagehide 覆盖 bfcache 等场景，双重保险确保登出。
   window.addEventListener('beforeunload', releaseKeepalive)
   window.addEventListener('pagehide', releaseKeepalive)
+  window.addEventListener(OPEN_DEMO_CONSOLE_EVENT, onOpenDemoConsole)
   // 用户交互才会刷新空闲倒计时并向后端续期。
   window.addEventListener('mousemove', markActivity, { passive: true })
   window.addEventListener('mousedown', markActivity, { passive: true })
@@ -445,6 +446,7 @@ onBeforeUnmount(() => {
   clearTimers()
   window.removeEventListener('beforeunload', releaseKeepalive)
   window.removeEventListener('pagehide', releaseKeepalive)
+  window.removeEventListener(OPEN_DEMO_CONSOLE_EVENT, onOpenDemoConsole)
   window.removeEventListener('mousemove', markActivity)
   window.removeEventListener('mousedown', markActivity)
   window.removeEventListener('wheel', markActivity)
