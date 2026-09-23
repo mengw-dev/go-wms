@@ -1,4 +1,4 @@
-﻿bin/
+bin/
 data/
 tmpgen/
 *.exe
@@ -25,5 +25,3 @@ AGENTS.md
 CLAUDE.md
 TRAE.md
 docs/context-handoff.md
-docs/go-style.md
-docs/review-progress.md
