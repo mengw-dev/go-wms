@@ -378,7 +378,7 @@ onBeforeUnmount(() => {
 
       <section class="result-card">
         <div class="section-title"><b>最近一次执行结果</b></div>
-        <DemoRunViewer v-if="result" :result="result" />
+        <DemoRunViewer v-if="result" :result="result" @navigate="navigateTo" />
         <div v-else-if="scenarioRunning" class="empty-result">
           正在调用真实业务 Service 执行；完成后将按后端返回结果回放步骤。
         </div>

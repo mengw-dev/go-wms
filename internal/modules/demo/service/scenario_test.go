@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	inventorymodel "gowms/internal/modules/inventory/model"
 	"gowms/internal/pkg/errcode"
 )
 
@@ -78,5 +79,59 @@ func TestScenarioExecutionErrorKeepsCompletedAndFailedSteps(t *testing.T) {
 	}
 	if executionErr.Result.Steps[2].Status != ScenarioStepPending {
 		t.Fatalf("future step status = %q, want %q", executionErr.Result.Steps[2].Status, ScenarioStepPending)
+	}
+}
+
+func TestInventoryStockChangeSummaryUsesThreeQuantityInvariant(t *testing.T) {
+	trans := &inventorymodel.InventoryTrans{
+		QuantityChange:  10,
+		BeforeQuantity:  20,
+		AfterQuantity:   30,
+		AvailableBefore: 12,
+		AvailableAfter:  20,
+		TransType:       inventorymodel.TransReceive,
+		TaskNo:          "TASK-1",
+	}
+
+	summary := inventoryStockChangeSummary(trans)
+	want := "库存 +10 / 现存量 20 → 30 / 可用量 12 → 20 / 已分配 8 → 10"
+	if summary != want {
+		t.Fatalf("summary = %q, want %q", summary, want)
+	}
+
+	facts := stockChangeFacts(trans)
+	if len(facts) != 6 {
+		t.Fatalf("facts count = %d, want 6", len(facts))
+	}
+	if facts[0].Label != "库存变化" || facts[0].Value != "+10" {
+		t.Fatalf("stock change fact = %#v", facts[0])
+	}
+	if facts[5].Label != "流水任务" || facts[5].Value != "TASK-1" {
+		t.Fatalf("task fact = %#v", facts[5])
+	}
+}
+
+func TestMergeScenarioResultsKeepsInboundEvidence(t *testing.T) {
+	implementation := &ScenarioImplementation{
+		Orchestration: "scenario_inbound.go",
+		BusinessFiles: []string{"receiving.go"},
+		CallChain:     []string{"Demo Orchestrator", "Inbound Service"},
+	}
+	inbound := &ScenarioResult{
+		Name:           ScenarioInbound,
+		Status:         ScenarioStatusCompleted,
+		EvidenceTitle:  "本次入库产生",
+		Evidence:       []ScenarioEvidence{{Label: "库存流水", Value: "+10"}},
+		Links:          []ScenarioLink{{Label: "查看库存流水", Path: "/inventory"}},
+		Implementation: implementation,
+	}
+
+	merged := mergeScenarioResults(inbound, &ScenarioResult{Name: ScenarioOutbound, Status: ScenarioStatusCompleted})
+
+	if merged.EvidenceTitle != "本次入库产生" || len(merged.Evidence) != 1 {
+		t.Fatalf("merged evidence = %#v", merged.Evidence)
+	}
+	if len(merged.Links) != 1 || merged.Implementation != implementation {
+		t.Fatalf("merged links/implementation = %#v / %#v", merged.Links, merged.Implementation)
 	}
 }

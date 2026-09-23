@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import { useAutoRefresh } from '@/composables/autoRefresh'
 import { listTasks } from '@/api/task'
 import type { EntityID, TaskItem } from '@/api/types'
@@ -12,6 +13,7 @@ import {
 } from '@/constants'
 import { cleanParams, formatTime } from '@/utils'
 
+const route = useRoute()
 const loading = ref(false)
 const list = ref<TaskItem[]>([])
 const total = ref(0)
@@ -20,7 +22,7 @@ const query = reactive({
   page_size: 10,
   task_type: '',
   status: '',
-  order_id: '' as EntityID | '',
+  order_id: (typeof route.query.order_id === 'string' ? route.query.order_id : '') as EntityID | '',
 })
 
 async function load(silent = false) {

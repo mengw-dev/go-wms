@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import { useAutoRefresh } from '@/composables/autoRefresh'
 import { listInventory, listInventorySummary, listInventoryTrans } from '@/api/inventory'
 import type {
@@ -13,19 +14,12 @@ import { cleanParams, formatTime } from '@/utils'
 import { loadSkuMap, loadWarehouseOptions, toOptionMap, type IdOption } from '@/utils/options'
 
 const activeTab = ref('detail')
+const route = useRoute()
 
 // ---------- 仓库下拉 / 货品映射 ----------
 const warehouseOptions = ref<IdOption[]>([])
 const warehouseMap = ref<Record<EntityID, string>>({})
 const skuMap = ref<Record<EntityID, string>>({})
-
-onMounted(async () => {
-  warehouseOptions.value = await loadWarehouseOptions()
-  warehouseMap.value = toOptionMap(warehouseOptions.value)
-  const map = await loadSkuMap()
-  skuMap.value = Object.fromEntries(Object.entries(map).map(([k, v]) => [k, v.name]))
-  await loadDetail()
-})
 
 // ---------- 明细 ----------
 const detailLoading = ref(false)
@@ -129,6 +123,23 @@ function searchTrans() {
 function skuLabel(skuId: EntityID): string {
   return skuMap.value[skuId] || String(skuId)
 }
+
+onMounted(async () => {
+  const skuKeyword = typeof route.query.sku_keyword === 'string' ? route.query.sku_keyword : ''
+  const orderNo = typeof route.query.order_no === 'string' ? route.query.order_no : ''
+  if (skuKeyword) detailQuery.sku_keyword = skuKeyword
+  if (orderNo) {
+    transQuery.order_no = orderNo
+    drawerVisible.value = true
+  }
+
+  warehouseOptions.value = await loadWarehouseOptions()
+  warehouseMap.value = toOptionMap(warehouseOptions.value)
+  const map = await loadSkuMap()
+  skuMap.value = Object.fromEntries(Object.entries(map).map(([k, v]) => [k, v.name]))
+  await loadDetail()
+  if (drawerVisible.value) await loadTrans()
+})
 
 function refreshActiveTab() {
   if (activeTab.value === 'summary') {

@@ -36,24 +36,56 @@ const (
 
 // ScenarioStep 演示中的一个可展示步骤。
 type ScenarioStep struct {
-	Title        string `json:"title"`
-	Detail       string `json:"detail"`
-	Status       string `json:"status"`
-	Object       string `json:"object,omitempty"`
-	DurationMs   int64  `json:"duration_ms,omitempty"`
-	StatusChange string `json:"status_change,omitempty"`
-	Technical    string `json:"technical,omitempty"`
-	Error        string `json:"error,omitempty"`
+	Title        string         `json:"title"`
+	Detail       string         `json:"detail"`
+	Status       string         `json:"status"`
+	Object       string         `json:"object,omitempty"`
+	DurationMs   int64          `json:"duration_ms,omitempty"`
+	StatusChange string         `json:"status_change,omitempty"`
+	Technical    string         `json:"technical,omitempty"`
+	Error        string         `json:"error,omitempty"`
+	Facts        []ScenarioFact `json:"facts,omitempty"`
+}
+
+// ScenarioFact 是步骤执行后返回的具体业务数据。
+type ScenarioFact struct {
+	Label string `json:"label"`
+	Value string `json:"value"`
+}
+
+// ScenarioEvidence 是本次执行产生的可核对业务结果。
+type ScenarioEvidence struct {
+	Label  string `json:"label"`
+	Value  string `json:"value"`
+	Detail string `json:"detail,omitempty"`
+}
+
+// ScenarioLink 指向可继续核对的真实业务页面。
+type ScenarioLink struct {
+	Label string `json:"label"`
+	Path  string `json:"path"`
+}
+
+// ScenarioImplementation 描述场景编排、真实业务文件和核心调用链。
+// 只返回文件路径与调用链，不在接口中暴露大段源码。
+type ScenarioImplementation struct {
+	Orchestration string   `json:"orchestration"`
+	BusinessFiles []string `json:"business_files"`
+	CallChain     []string `json:"call_chain"`
 }
 
 // ScenarioResult 一次演示场景的执行结果。
 type ScenarioResult struct {
-	Name        string         `json:"name"`
-	Summary     string         `json:"summary"`
-	Status      string         `json:"status"`
-	TargetPath  string         `json:"target_path,omitempty"`
-	TargetLabel string         `json:"target_label,omitempty"`
-	Steps       []ScenarioStep `json:"steps"`
+	Name           string                  `json:"name"`
+	Summary        string                  `json:"summary"`
+	Status         string                  `json:"status"`
+	TargetPath     string                  `json:"target_path,omitempty"`
+	TargetLabel    string                  `json:"target_label,omitempty"`
+	EvidenceTitle  string                  `json:"evidence_title,omitempty"`
+	Evidence       []ScenarioEvidence      `json:"evidence,omitempty"`
+	Links          []ScenarioLink          `json:"links,omitempty"`
+	Implementation *ScenarioImplementation `json:"implementation,omitempty"`
+	Steps          []ScenarioStep          `json:"steps"`
 }
 
 // ScenarioExecutionError 表示真实业务步骤已经产生可展示结果但执行失败。
@@ -266,6 +298,14 @@ func mergeScenarioResults(results ...*ScenarioResult) *ScenarioResult {
 			continue
 		}
 		merged.Steps = append(merged.Steps, result.Steps...)
+		merged.Evidence = append(merged.Evidence, result.Evidence...)
+		merged.Links = append(merged.Links, result.Links...)
+		if merged.EvidenceTitle == "" && result.EvidenceTitle != "" {
+			merged.EvidenceTitle = result.EvidenceTitle
+		}
+		if merged.Implementation == nil && result.Implementation != nil {
+			merged.Implementation = result.Implementation
+		}
 		if result.Status == ScenarioStatusFailed {
 			merged.Status = ScenarioStatusFailed
 		}

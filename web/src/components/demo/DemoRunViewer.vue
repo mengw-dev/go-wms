@@ -6,6 +6,7 @@ import type { DemoScenarioResult, DemoScenarioStep } from '@/api/types'
 type StepStatus = 'pending' | 'completed' | 'failed'
 
 const props = defineProps<{ result: DemoScenarioResult }>()
+const emit = defineEmits<{ navigate: [path: string] }>()
 
 const steps = computed(() => props.result.steps || [])
 const runStatus = computed<'completed' | 'failed'>(() =>
@@ -49,6 +50,10 @@ function durationText(duration?: number): string {
   if (duration < 1) return '<1 ms'
   return `${duration} ms`
 }
+
+function navigate(path: string) {
+  emit('navigate', path)
+}
 </script>
 
 <template>
@@ -77,6 +82,20 @@ function durationText(duration?: number): string {
       :show-text="false"
       :stroke-width="7"
     />
+
+    <div v-if="result.evidence?.length" class="run-evidence">
+      <div class="evidence-head">
+        <span>{{ result.evidence_title || '本次执行产生' }}</span>
+        <small>以下数据来自本次真实业务执行</small>
+      </div>
+      <div class="evidence-grid">
+        <div v-for="item in result.evidence" :key="item.label" class="evidence-item">
+          <span>{{ item.label }}</span>
+          <b>{{ item.value }}</b>
+          <small v-if="item.detail">{{ item.detail }}</small>
+        </div>
+      </div>
+    </div>
 
     <ol class="run-steps">
       <li
@@ -107,7 +126,7 @@ function durationText(duration?: number): string {
 
           <p>{{ step.detail }}</p>
 
-          <dl v-if="step.object || step.status_change" class="step-meta">
+          <dl v-if="step.object || step.status_change || step.facts?.length" class="step-meta">
             <div v-if="step.object">
               <dt>业务对象</dt>
               <dd>{{ step.object }}</dd>
@@ -115,6 +134,10 @@ function durationText(duration?: number): string {
             <div v-if="step.status_change">
               <dt>状态变化</dt>
               <dd>{{ step.status_change }}</dd>
+            </div>
+            <div v-for="fact in step.facts || []" :key="fact.label">
+              <dt>{{ fact.label }}</dt>
+              <dd>{{ fact.value }}</dd>
             </div>
           </dl>
 
@@ -135,6 +158,47 @@ function durationText(duration?: number): string {
         </article>
       </li>
     </ol>
+
+    <div v-if="result.links?.length" class="run-actions">
+      <span>继续核对</span>
+      <div>
+        <el-button
+          v-for="link in result.links"
+          :key="link.path"
+          type="primary"
+          plain
+          size="small"
+          @click="navigate(link.path)"
+        >
+          {{ link.label }}
+        </el-button>
+      </div>
+    </div>
+
+    <el-collapse v-if="result.implementation" class="run-implementation">
+      <el-collapse-item title="查看实现" name="implementation">
+        <dl>
+          <div>
+            <dt>场景编排文件</dt>
+            <dd><code>{{ result.implementation.orchestration }}</code></dd>
+          </div>
+          <div>
+            <dt>真实业务文件</dt>
+            <dd>
+              <code v-for="file in result.implementation.business_files" :key="file">{{ file }}</code>
+            </dd>
+          </div>
+          <div>
+            <dt>核心调用链</dt>
+            <dd class="call-chain">
+              <span v-for="stepName in result.implementation.call_chain" :key="stepName">
+                {{ stepName }}
+              </span>
+            </dd>
+          </div>
+        </dl>
+      </el-collapse-item>
+    </el-collapse>
   </section>
 </template>
 
@@ -344,6 +408,151 @@ function durationText(duration?: number): string {
 
 .step-error {
   margin-top: 9px;
+}
+
+.run-evidence {
+  margin-top: 15px;
+  padding: 13px;
+  border: 1px solid var(--el-color-primary-light-7);
+  border-radius: 10px;
+  background: var(--el-color-primary-light-9);
+}
+
+.evidence-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.evidence-head span {
+  color: var(--el-color-primary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.evidence-head small {
+  color: var(--el-text-color-secondary);
+  font-size: 11px;
+  text-align: right;
+}
+
+.evidence-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 11px;
+}
+
+.evidence-item {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--el-color-primary-light-8);
+  border-radius: 8px;
+  background: var(--el-bg-color);
+}
+
+.evidence-item span,
+.evidence-item small {
+  display: block;
+  color: var(--el-text-color-secondary);
+  font-size: 11px;
+}
+
+.evidence-item b {
+  display: block;
+  margin: 3px 0;
+  overflow-wrap: anywhere;
+  color: var(--el-text-color-primary);
+  font-size: 13px;
+}
+
+.run-actions {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 13px;
+  border-top: 1px solid var(--el-border-color-lighter);
+}
+
+.run-actions > span {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+
+.run-actions > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.run-actions .el-button {
+  margin-left: 0;
+}
+
+.run-implementation {
+  margin-top: 10px;
+  border-top: 1px solid var(--el-border-color-lighter);
+}
+
+.run-implementation :deep(.el-collapse-item__header) {
+  height: 36px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+
+.run-implementation :deep(.el-collapse-item__wrap) {
+  border-bottom: 0;
+}
+
+.run-implementation dl {
+  display: grid;
+  gap: 11px;
+  margin: 0;
+}
+
+.run-implementation dl > div {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.run-implementation dt {
+  color: var(--el-text-color-placeholder);
+  font-size: 12px;
+}
+
+.run-implementation dd {
+  min-width: 0;
+  margin: 0;
+}
+
+.run-implementation code {
+  display: block;
+  margin-bottom: 4px;
+  overflow-wrap: anywhere;
+  color: var(--el-text-color-regular);
+  font-size: 11px;
+}
+
+.call-chain {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.call-chain span {
+  padding: 3px 6px;
+  border-radius: 5px;
+  color: var(--el-text-color-secondary);
+  background: var(--el-fill-color-light);
+  font-size: 11px;
+}
+
+.call-chain span:not(:last-child)::after {
+  margin-left: 5px;
+  color: var(--el-text-color-placeholder);
+  content: '→';
 }
 
 @keyframes run-step-fade {

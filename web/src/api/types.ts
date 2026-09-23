@@ -522,6 +522,29 @@ export interface DemoScenarioStep {
   status_change?: string
   technical?: string
   error?: string
+  facts?: DemoScenarioFact[]
+}
+
+export interface DemoScenarioFact {
+  label: string
+  value: string
+}
+
+export interface DemoScenarioEvidence {
+  label: string
+  value: string
+  detail?: string
+}
+
+export interface DemoScenarioLink {
+  label: string
+  path: string
+}
+
+export interface DemoScenarioImplementation {
+  orchestration: string
+  business_files: string[]
+  call_chain: string[]
 }
 
 export interface DemoScenarioResult {
@@ -530,6 +553,10 @@ export interface DemoScenarioResult {
   status?: 'completed' | 'failed'
   target_path?: string
   target_label?: string
+  evidence_title?: string
+  evidence?: DemoScenarioEvidence[]
+  links?: DemoScenarioLink[]
+  implementation?: DemoScenarioImplementation
   steps: DemoScenarioStep[]
 }
 

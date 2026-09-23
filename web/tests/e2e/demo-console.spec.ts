@@ -4,6 +4,24 @@ import { confirmMessageBox, loginByUi } from './support/api'
 const demoUsername = process.env.E2E_DEMO_USERNAME || process.env.WMS_DEMO_USERNAME || 'demo1'
 const demoPassword = process.env.E2E_DEMO_PASSWORD || process.env.WMS_DEMO_PASSWORD || 'demo123456'
 
+test.afterEach(async ({ page }) => {
+  try {
+    const session = await page.evaluate(() => ({
+      token: sessionStorage.getItem('WMS_TOKEN'),
+      sessionId: sessionStorage.getItem('WMS_DEMO_SESSION'),
+    }))
+    if (!session.token || !session.sessionId) return
+    await page.request.post('/api/v1/demo/session/release', {
+      headers: {
+        Authorization: `Bearer ${session.token}`,
+        'X-Demo-Session': session.sessionId,
+      },
+    })
+  } catch {
+    // The page may already be closed; session expiry still releases the lock.
+  }
+})
+
 test('demo quick controller runs the full flow, navigates from business pages and releases', async ({ page }) => {
   await loginByUi(page, demoUsername, demoPassword, /从真实业务流程理解这套 WMS/)
   await expect(page).toHaveURL(/\/demo$/)
@@ -29,6 +47,18 @@ test('demo quick controller runs the full flow, navigates from business pages an
   await expect(drawer.getByText('创建入库单', { exact: true })).toBeVisible()
   await expect(drawer.getByText('状态变化').first()).toBeVisible()
   await expect(drawer.getByText('完成上架', { exact: true })).toBeVisible()
+  await expect(drawer.getByText('库存入账', { exact: true })).toBeVisible()
+  await expect(drawer.getByText('本次入库产生', { exact: true })).toBeVisible()
+  for (const label of ['查看入库单', '查看任务', '查看库存', '查看库存流水']) {
+    await expect(drawer.getByRole('button', { name: label, exact: true })).toBeVisible()
+  }
+
+  await drawer.getByRole('button', { name: '查看入库单', exact: true }).click()
+  await expect(page).toHaveURL(/\/inbound\/orders\/\d+/)
+  await expect(page.locator('.detail-header .header-title')).toHaveText('入库单详情')
+
+  await consoleButton.click()
+  await expect(drawer).toBeVisible()
 
   await drawer.getByRole('button', { name: '查看业务证据', exact: true }).click()
   await expect(page).toHaveURL(/\/demo\/activity/)
