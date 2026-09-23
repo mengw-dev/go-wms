@@ -31,7 +31,7 @@ async function load(silent = false) {
     data.value = await getDemoPerformance()
     loadError.value = ''
   } catch {
-    loadError.value = '性能数据暂时不可用，请稍后重试'
+    loadError.value = '运行状态数据暂时不可用，请稍后重试'
   } finally {
     if (!silent) loading.value = false
   }
@@ -50,8 +50,8 @@ useAutoRefresh(() => load(true), 3000)
   <div v-loading="loading" class="performance-page">
     <div class="page-head">
       <div>
-        <h2>系统性能指标</h2>
-        <p>页面每 3 秒自动刷新，实时反映数据库、Redis、连接池和业务数据的变化。</p>
+        <h2>运行状态与指标快照</h2>
+        <p>这不是压力测试、吞吐量测试或容量证明；页面每 3 秒刷新一次演示环境的运行状态与业务指标。</p>
       </div>
       <div class="head-actions">
         <el-button :icon="Tickets" @click="router.push('/demo/activity')">操作记录</el-button>
@@ -176,9 +176,9 @@ useAutoRefresh(() => load(true), 3000)
           <b>指标说明</b>
         </div>
         <p class="load-desc">
-          这是系统的实时运行指标。执行「并发演示」时，可以在这里看到数据库连接数、协程数、
-          内存占用随并发上升、结束后自行回落。若出现少量「业务拒绝」并非故障：库存不足时
-          系统会主动拒绝出库，这是防超卖规则在生效。
+          这是演示环境在查询时刻的运行状态与业务指标快照，不是压力测试、吞吐量测试或容量证明。
+          执行「并发分配实验」后，可以结合刷新结果观察数据库连接、Go 协程和内存等指标。
+          若出现「业务拒绝」并非故障：可用库存不足时，出库分配会按业务规则拒绝。
         </p>
       </section>
 

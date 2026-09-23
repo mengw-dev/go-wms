@@ -40,7 +40,7 @@ useAutoRefresh(() => load(true), 5000)
         <p>记录当前账号最近的操作，包括业务单据、任务和库存流水。</p>
       </div>
       <div class="head-actions">
-        <el-button :icon="TrendCharts" @click="router.push('/demo/performance')">性能指标</el-button>
+        <el-button :icon="TrendCharts" @click="router.push('/demo/performance')">运行状态与指标</el-button>
         <el-button :icon="Refresh" type="primary" @click="load()">立即刷新</el-button>
       </div>
     </div>

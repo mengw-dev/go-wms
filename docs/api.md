@@ -172,7 +172,7 @@ API Key 在服务端配置中绑定 `WMS_INTEGRATION_TENANT_ID`，请求体、�
 | POST | `/outbound/orders/:id/cancel` | `wms:outbound:cancel` | 取消并释放锁库（已拣货不可取消） |
 | POST | `/outbound/tasks/:id/pick` | `wms:outbound:pick` | 拣货 `{qty, batch_no?, location_code?}`，路径 `:id` 为 task_id，可分次；`batch_no/location_code` 为扫码核对值，与任务不一致返回 50008/50009；全部分配行拣完自动发货扣库存 |
 
-**审核失败（防超卖生效）示例**
+**库存不足导致审核失败的示例**
 
 ```json
 // POST /api/v1/outbound/orders/1861.../approve
@@ -248,8 +248,8 @@ API Key 在服务端配置中绑定 `WMS_INTEGRATION_TENANT_ID`，请求体、�
 | POST | `/demo/run/inbound_drafts` | 模拟 Excel 批量入库草稿 `{ "count": 3, "qty": 20 }`，后续由体验者手工处理 |
 | POST | `/demo/run/outbound_drafts` | 模拟上游系统批量出库草稿 `{ "count": 3, "qty": 5 }` |
 | POST | `/demo/run/stocktake_drafts` | 批量创建盘点草稿 `{ "count": 2 }` |
-| POST | `/demo/run/concurrent` | 并发出库测试 `{ "concurrency": 20, "qty_per_order": 1 }`，展示库存锁、FIFO 和防超卖 |
-| GET | `/demo/performance` | 实时性能快照：DB/Redis、连接池、Go 运行时和业务数量 |
+| POST | `/demo/run/concurrent` | 并发出库分配实验 `{ "concurrency": 20, "qty_per_order": 1 }`，展示库存锁、FIFO 分配及成功/拒绝结果 |
+| GET | `/demo/performance` | 运行状态与指标快照：DB/Redis、连接池、Go 运行时和业务数量 |
 | GET | `/demo/activity?limit=20` | 当前演示账号的接口操作、单据、任务和库存流水 |
 | POST | `/demo/reset` | 手动恢复初始数据，保留当前会话 |
 

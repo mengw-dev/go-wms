@@ -25,7 +25,7 @@ const routes: RouteRecordRaw[] = [
         path: 'demo/performance',
         name: 'demo-performance',
         component: () => import('@/views/demo/Performance.vue'),
-        meta: { title: '性能指标', perm: 'wms:demo' },
+        meta: { title: '运行状态与指标', perm: 'wms:demo' },
       },
       {
         path: 'demo/activity',

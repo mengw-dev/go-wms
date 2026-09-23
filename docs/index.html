@@ -209,7 +209,7 @@
   <div class="arrow-down">▼</div>
 
   <div class="layer">
-    <div class="layer-title">③ 业务模块层（internal/modules，7 大域 · 模块间只通过 api 接口通信）</div>
+    <div class="layer-title">③ 业务模块层（internal/modules，7 大域 · 核心跨模块能力提供进程内 api 接口，场景编排也可直接调用具体 Service）</div>
     <div class="boxes">
       <div class="box b-mod"><b>system</b><small>用户/角色/权限/审计</small></div>
       <div class="box b-mod"><b>basic</b><small>仓库/库位/货品</small></div>
@@ -466,7 +466,7 @@
     <div class="stack-group">
       <h4>测试体系</h4>
       <ul>
-        <li>Go test：并发防超卖、库存恒等式、状态机单测</li>
+        <li>Go test：并发库存分配回归、库存恒等式、状态机单测</li>
         <li>k6：出库 E2E + 拣货/出库压力测试脚本</li>
         <li>Vitest 前端单测 · Playwright E2E（权限/库存生命周期）</li>
       </ul>
@@ -488,8 +488,8 @@
   <h2>九、核心技术设计与可靠性保障</h2>
   <div class="cards">
     <div class="card">
-      <h4>① 双重防超卖</h4>
-      <p>SELECT…FOR UPDATE 悲观行锁 + WHERE available&gt;=n AND version=? 条件更新，加 DB 层 CHECK 约束三道兜底；200 并发抢 100 库存的测试验证恰好成功 100 次。</p>
+      <h4>① 并发分配库存保护</h4>
+      <p>事务内按 FIFO SELECT…FOR UPDATE 锁读，再以 available_quantity &gt;= n 条件更新数量，MySQL CHECK 约束为非负数量提供最后兜底。MySQL 集成回归测试以 100 可用库存承载 200 个并发分配请求，结果成功 100、库存不足失败 100，并校验最终三数量与恒等式。</p>
     </div>
     <div class="card">
       <h4>② 单号生成器三级防线</h4>

@@ -31,9 +31,9 @@ test('business center creates drafts, runs flows, shows metrics and records, the
   await dialog.getByRole('button', { name: 'PDA 并发拣货' }).click()
   await expect(dialog.getByText(/PDA 并发拣货完成/)).toBeVisible({ timeout: 60_000 })
 
-  await dialog.getByRole('button', { name: '性能指标', exact: true }).click()
+  await dialog.getByRole('button', { name: '运行状态与指标', exact: true }).click()
   await expect(page).toHaveURL(/\/demo\/performance/)
-  await expect(page.getByRole('heading', { name: '系统性能指标' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '运行状态与指标快照' })).toBeVisible()
   await expect(page.getByText('MySQL 状态')).toBeVisible()
 
   await page.getByRole('main').getByRole('button', { name: '操作记录', exact: true }).click()

@@ -109,7 +109,7 @@ async function submitPassword() {
             <el-icon><TrendCharts /></el-icon>
             <span>业务中心</span>
           </template>
-          <el-menu-item index="/demo/performance">性能指标</el-menu-item>
+          <el-menu-item index="/demo/performance">运行状态与指标</el-menu-item>
           <el-menu-item index="/demo/activity">操作记录</el-menu-item>
         </el-sub-menu>
         <el-sub-menu v-if="auth.hasPerm('wms:inbound:view')" index="inbound">

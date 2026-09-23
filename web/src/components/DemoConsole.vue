@@ -513,7 +513,7 @@ onBeforeUnmount(() => {
       <el-button type="warning" plain :loading="pickingRunning" :disabled="busy && !pickingRunning" @click="runConcurrentPickingDemo">
         PDA 并发拣货
       </el-button>
-      <el-button :disabled="busy" @click="goPerformance">性能指标</el-button>
+      <el-button :disabled="busy" @click="goPerformance">运行状态与指标</el-button>
       <el-button :disabled="busy" @click="goActivity">操作记录</el-button>
       <el-tooltip placement="top" :show-after="150">
         <template #content>
