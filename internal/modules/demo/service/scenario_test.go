@@ -8,6 +8,7 @@ import (
 
 	inventorymodel "gowms/internal/modules/inventory/model"
 	outboundmodel "gowms/internal/modules/outbound/model"
+	stocktakemodel "gowms/internal/modules/stocktake/model"
 	taskmodel "gowms/internal/modules/task/model"
 	"gowms/internal/pkg/errcode"
 )
@@ -261,5 +262,96 @@ func TestMergeScenarioResultsUsesGenericTitleForMultipleEvidenceSets(t *testing.
 	}
 	if len(merged.Evidence) != 2 {
 		t.Fatalf("evidence count = %d, want 2", len(merged.Evidence))
+	}
+}
+
+func TestStocktakePresentationUsesRecordedBookAndActualQuantities(t *testing.T) {
+	actual27 := 27
+	actual70 := 70
+	details := []*stocktakemodel.StocktakeDetail{
+		{
+			SKUID: 7, SKUCode: "SKU-7", BatchNo: "B-1", LocationCode: "L-1",
+			BookQty: 30, ActualQty: &actual27,
+		},
+		{
+			SKUID: 7, SKUCode: "SKU-7", BatchNo: "B-2", LocationCode: "L-2",
+			BookQty: 70, ActualQty: &actual70,
+		},
+		{
+			SKUID: 8, SKUCode: "SKU-8", BatchNo: "B-3", LocationCode: "L-3",
+			BookQty: 50,
+		},
+	}
+
+	summary := summarizeStocktakeDetails(details, 7)
+	if summary.BookQty != 100 || summary.ActualQty != 97 || summary.DiffQty != -3 {
+		t.Fatalf("stocktake summary = %#v", summary)
+	}
+	if summary.Lines != 2 || summary.Counted != 2 {
+		t.Fatalf("stocktake detail counts = %#v", summary)
+	}
+
+	snapshotFacts := stocktakeSnapshotFacts(details, 7)
+	if len(snapshotFacts) != 3 {
+		t.Fatalf("snapshot facts count = %d, want 3", len(snapshotFacts))
+	}
+	if snapshotFacts[0].Value != "账面合计 100 件 / 2 条批次" {
+		t.Fatalf("snapshot summary fact = %#v", snapshotFacts[0])
+	}
+	if !strings.Contains(snapshotFacts[1].Value, "批次 B-1") ||
+		!strings.Contains(snapshotFacts[1].Value, "账面 30") {
+		t.Fatalf("first snapshot fact = %q", snapshotFacts[1].Value)
+	}
+
+	actualFacts := stocktakeActualFacts(details, 7)
+	if len(actualFacts) != 3 {
+		t.Fatalf("actual facts count = %d, want 3", len(actualFacts))
+	}
+	if actualFacts[0].Label != "实盘明细" || actualFacts[0].Value != "2 条" {
+		t.Fatalf("actual summary fact = %#v", actualFacts[0])
+	}
+	if !strings.Contains(actualFacts[1].Value, "实盘 27") ||
+		!strings.Contains(actualFacts[1].Value, "差异 -3") {
+		t.Fatalf("first actual line fact = %q", actualFacts[1].Value)
+	}
+
+	differenceFacts := stocktakeDifferenceFacts(summary)
+	if len(differenceFacts) != 3 {
+		t.Fatalf("difference facts count = %d, want 3", len(differenceFacts))
+	}
+	if differenceFacts[0].Label != "账面数量" || differenceFacts[0].Value != "100 件" {
+		t.Fatalf("book fact = %#v", differenceFacts[0])
+	}
+	if differenceFacts[1].Label != "实盘数量" || differenceFacts[1].Value != "97 件" {
+		t.Fatalf("actual fact = %#v", differenceFacts[1])
+	}
+	if differenceFacts[2].Label != "盘点差异" || differenceFacts[2].Value != "-3" {
+		t.Fatalf("difference fact = %#v", differenceFacts[2])
+	}
+}
+
+func TestStocktakeAdjustmentFactsUsePersistedInventoryTrans(t *testing.T) {
+	trans := &inventorymodel.InventoryTrans{
+		TransType:       inventorymodel.TransAdjust,
+		QuantityChange:  -3,
+		BeforeQuantity:  30,
+		AfterQuantity:   27,
+		AvailableBefore: 30,
+		AvailableAfter:  27,
+		OrderNo:         "PD-1",
+	}
+
+	facts := stocktakeAdjustmentFacts(trans)
+	if len(facts) != 5 {
+		t.Fatalf("adjustment facts count = %d, want 5", len(facts))
+	}
+	if facts[0].Label != "库存流水" || facts[0].Value != "ADJUST -3" {
+		t.Fatalf("inventory trans fact = %#v", facts[0])
+	}
+	if facts[1].Value != "30 → 27" || facts[2].Value != "30 → 27" {
+		t.Fatalf("stock/available facts = %#v / %#v", facts[1], facts[2])
+	}
+	if facts[4].Label != "流水单号" || facts[4].Value != "PD-1" {
+		t.Fatalf("order fact = %#v", facts[4])
 	}
 }
