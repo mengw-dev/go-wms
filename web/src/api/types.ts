@@ -516,11 +516,18 @@ export interface DemoSessionInfo {
 export interface DemoScenarioStep {
   title: string
   detail: string
+  status?: 'pending' | 'completed' | 'failed'
+  object?: string
+  duration_ms?: number
+  status_change?: string
+  technical?: string
+  error?: string
 }
 
 export interface DemoScenarioResult {
   name: string
   summary: string
+  status?: 'completed' | 'failed'
   target_path?: string
   target_label?: string
   steps: DemoScenarioStep[]

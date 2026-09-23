@@ -25,6 +25,10 @@ test('demo quick controller runs the full flow, navigates from business pages an
 
   await drawer.getByRole('button', { name: '完整业务闭环', exact: true }).click()
   await expect(drawer.getByText('入库、出库、盘点三个核心流程已全部完成')).toBeVisible({ timeout: 60_000 })
+  await expect(drawer.getByLabel('真实执行结果回放')).toBeVisible()
+  await expect(drawer.getByText('创建入库单', { exact: true })).toBeVisible()
+  await expect(drawer.getByText('状态变化').first()).toBeVisible()
+  await expect(drawer.getByText('完成上架', { exact: true })).toBeVisible()
 
   await drawer.getByRole('button', { name: '查看业务证据', exact: true }).click()
   await expect(page).toHaveURL(/\/demo\/activity/)

@@ -36,6 +36,16 @@ func OKPage(c *gin.Context, list any, total int64) {
 // 401 未登录、403 无权限、409 并发冲突、500 系统错误，其余业务错误返回 400。
 // 前端依赖 HTTP 401 触发登录失效（清 token 跳登录页），网关/监控依赖非 2xx 感知异常。
 func Fail(c *gin.Context, err error) {
+	fail(c, err, nil)
+}
+
+// FailWithData 保留 Fail 的业务错误码与 HTTP 状态，同时返回可供调用方展示的
+// 结构化结果。当前用于 Demo 场景失败时回传已经真实执行的步骤。
+func FailWithData(c *gin.Context, err error, data any) {
+	fail(c, err, data)
+}
+
+func fail(c *gin.Context, err error, data any) {
 	var bizErr *errcode.Error
 	if !errors.As(err, &bizErr) {
 		bizErr = errcode.Internal
@@ -47,7 +57,7 @@ func Fail(c *gin.Context, err error) {
 			"err", err,
 		)
 	}
-	c.JSON(httpStatus(bizErr.Code), Body{Code: bizErr.Code, Msg: bizErr.Msg, Data: nil})
+	c.JSON(httpStatus(bizErr.Code), Body{Code: bizErr.Code, Msg: bizErr.Msg, Data: data})
 }
 
 // httpStatus 业务错误码 → HTTP 状态码映射。

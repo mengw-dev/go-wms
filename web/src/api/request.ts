@@ -6,12 +6,14 @@ import { useAuthStore } from '@/stores/auth'
 export class ApiError extends Error {
   code?: number
   status?: number
+  data?: unknown
 
-  constructor(message: string, code?: number, status?: number) {
+  constructor(message: string, code?: number, status?: number, data?: unknown) {
     super(message)
     this.name = 'ApiError'
     this.code = code
     this.status = status
+    this.data = data
   }
 }
 
@@ -64,7 +66,7 @@ service.interceptors.response.use(
       if (body.code !== 0) {
         const msg = body.msg || '操作失败'
         ElMessage.error(msg)
-        return Promise.reject(new ApiError(msg, body.code))
+        return Promise.reject(new ApiError(msg, body.code, undefined, body.data))
       }
       return body.data
     }
@@ -95,6 +97,7 @@ service.interceptors.response.use(
         error?.response?.data?.msg || error?.message || '网络异常',
         error?.response?.data?.code,
         status,
+        error?.response?.data?.data,
       ),
     )
   },

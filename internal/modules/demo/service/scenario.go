@@ -23,19 +23,109 @@ const (
 	ScenarioStocktakeDrafts = "stocktake_drafts"
 )
 
+// 演示执行结果的步骤与整体状态。步骤由后端按真实业务调用顺序记录，
+// 前端只回放这些结果，不根据本地计时器推断执行进度。
+const (
+	ScenarioStatusCompleted = "completed"
+	ScenarioStatusFailed    = "failed"
+
+	ScenarioStepPending   = "pending"
+	ScenarioStepCompleted = "completed"
+	ScenarioStepFailed    = "failed"
+)
+
 // ScenarioStep 演示中的一个可展示步骤。
 type ScenarioStep struct {
-	Title  string `json:"title"`
-	Detail string `json:"detail"`
+	Title        string `json:"title"`
+	Detail       string `json:"detail"`
+	Status       string `json:"status"`
+	Object       string `json:"object,omitempty"`
+	DurationMs   int64  `json:"duration_ms,omitempty"`
+	StatusChange string `json:"status_change,omitempty"`
+	Technical    string `json:"technical,omitempty"`
+	Error        string `json:"error,omitempty"`
 }
 
 // ScenarioResult 一次演示场景的执行结果。
 type ScenarioResult struct {
 	Name        string         `json:"name"`
 	Summary     string         `json:"summary"`
+	Status      string         `json:"status"`
 	TargetPath  string         `json:"target_path,omitempty"`
 	TargetLabel string         `json:"target_label,omitempty"`
 	Steps       []ScenarioStep `json:"steps"`
+}
+
+// ScenarioExecutionError 表示真实业务步骤已经产生可展示结果但执行失败。
+// Handler 会保留原业务错误码，同时把已执行步骤和失败步骤返回给前端。
+type ScenarioExecutionError struct {
+	Result *ScenarioResult
+	Err    error
+}
+
+func (e *ScenarioExecutionError) Error() string {
+	if e == nil || e.Err == nil {
+		return "scenario execution failed"
+	}
+	return e.Err.Error()
+}
+
+func (e *ScenarioExecutionError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Err
+}
+
+// scenarioRun 累积一次场景的真实步骤状态。每个步骤在调用前预置为 pending，
+// execute 成功后记录对象、耗时和完成状态；失败时保留已完成步骤并标记失败原因。
+type scenarioRun struct {
+	result *ScenarioResult
+}
+
+func newScenarioRun(name, summary string, steps ...ScenarioStep) *scenarioRun {
+	for i := range steps {
+		if steps[i].Status == "" {
+			steps[i].Status = ScenarioStepPending
+		}
+	}
+	return &scenarioRun{result: &ScenarioResult{
+		Name:    name,
+		Summary: summary,
+		Status:  ScenarioStatusCompleted,
+		Steps:   steps,
+	}}
+}
+
+func (r *scenarioRun) execute(index int, statusChange, technical string, fn func() (string, error)) error {
+	if index < 0 || index >= len(r.result.Steps) {
+		return errcode.Internal
+	}
+	step := &r.result.Steps[index]
+	step.StatusChange = statusChange
+	step.Technical = technical
+	startedAt := time.Now()
+	object, err := fn()
+	step.DurationMs = time.Since(startedAt).Milliseconds()
+	if err != nil {
+		step.Status = ScenarioStepFailed
+		step.Error = errcode.From(err).Msg
+		r.result.Status = ScenarioStatusFailed
+		return &ScenarioExecutionError{Result: r.result, Err: err}
+	}
+	if object != "" {
+		step.Object = object
+	}
+	step.Status = ScenarioStepCompleted
+	return nil
+}
+
+func (r *scenarioRun) finish(summary string) *ScenarioResult {
+	if strings.TrimSpace(summary) != "" {
+		r.result.Summary = summary
+	}
+	r.result.Status = ScenarioStatusCompleted
+	return r.result
 }
 
 // ScenarioOptions 批量草稿类场景的可选参数。
@@ -104,15 +194,15 @@ func (s *Service) RunScenario(ctx context.Context, sessionID, scenario string, o
 	case ScenarioFull:
 		inbound, err := s.runInboundDemo(ctx, refs)
 		if err != nil {
-			return nil, err
+			return inbound, err
 		}
 		outbound, err := s.runOutboundDemo(ctx, refs)
 		if err != nil {
-			return nil, err
+			return mergeScenarioResults(inbound, outbound), err
 		}
 		stocktake, err := s.runStocktakeDemo(ctx, refs)
 		if err != nil {
-			return nil, err
+			return mergeScenarioResults(inbound, outbound, stocktake), err
 		}
 		return mergeScenarioResults(inbound, outbound, stocktake), nil
 	default:
@@ -168,6 +258,7 @@ func mergeScenarioResults(results ...*ScenarioResult) *ScenarioResult {
 	merged := &ScenarioResult{
 		Name:    ScenarioFull,
 		Summary: "入库、出库、盘点三个核心流程已全部完成",
+		Status:  ScenarioStatusCompleted,
 		Steps:   make([]ScenarioStep, 0),
 	}
 	for _, result := range results {
@@ -175,6 +266,12 @@ func mergeScenarioResults(results ...*ScenarioResult) *ScenarioResult {
 			continue
 		}
 		merged.Steps = append(merged.Steps, result.Steps...)
+		if result.Status == ScenarioStatusFailed {
+			merged.Status = ScenarioStatusFailed
+		}
+	}
+	if merged.Status == ScenarioStatusFailed {
+		merged.Summary = "完整业务闭环未全部完成，已执行的步骤保留在下方"
 	}
 	return merged
 }

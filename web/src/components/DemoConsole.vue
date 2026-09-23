@@ -12,6 +12,7 @@ import {
 } from '@/api/demo'
 import { ApiError } from '@/api/request'
 import type { DemoScenarioResult } from '@/api/types'
+import DemoRunViewer from '@/components/demo/DemoRunViewer.vue'
 import { useAuthStore } from '@/stores/auth'
 import { emitDataChanged, OPEN_DEMO_CONSOLE_EVENT } from '@/utils/events'
 
@@ -202,14 +203,28 @@ async function initialize() {
 async function runFullScenario() {
   if (busy.value) return
   scenarioRunning.value = true
+  result.value = null
   try {
     const demoResult = await runDemoScenario('full')
     result.value = demoResult
     emitDataChanged()
-    ElMessage.success(demoResult.summary)
+    if (demoResult.status !== 'failed') {
+      ElMessage.success(demoResult.summary)
+    }
+  } catch (error) {
+    if (error instanceof ApiError && isDemoScenarioResult(error.data)) {
+      result.value = error.data
+      emitDataChanged()
+    }
   } finally {
     scenarioRunning.value = false
   }
+}
+
+function isDemoScenarioResult(value: unknown): value is DemoScenarioResult {
+  if (!value || typeof value !== 'object') return false
+  const candidate = value as Partial<DemoScenarioResult>
+  return typeof candidate.summary === 'string' && Array.isArray(candidate.steps)
 }
 
 async function navigateTo(path: string) {
@@ -363,13 +378,10 @@ onBeforeUnmount(() => {
 
       <section class="result-card">
         <div class="section-title"><b>最近一次执行结果</b></div>
-        <el-alert
-          v-if="result"
-          type="success"
-          :closable="false"
-          show-icon
-          :title="result.summary"
-        />
+        <DemoRunViewer v-if="result" :result="result" />
+        <div v-else-if="scenarioRunning" class="empty-result">
+          正在调用真实业务 Service 执行；完成后将按后端返回结果回放步骤。
+        </div>
         <div v-else class="empty-result">暂无执行结果，可从下方开始完整业务闭环。</div>
       </section>
 
@@ -558,6 +570,12 @@ onBeforeUnmount(() => {
   color: var(--el-text-color-secondary);
   background: var(--el-fill-color-lighter);
   font-size: 13px;
+}
+
+.result-card :deep(.run-viewer) {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
 }
 
 .quick-grid {

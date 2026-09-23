@@ -115,15 +115,15 @@ func (s *Service) RunConcurrentAllocation(ctx context.Context, sessionID string,
 	}
 	testFocus := "出库单并发创建/提交/审核、库存行锁、FIFO 分配、事务冲突重试、防超卖"
 	steps := []ScenarioStep{
-		{Title: "并发模型", Detail: fmt.Sprintf("同时创建并审核 %d 张出库单，每张 %d 件，总需求 %d 件", concurrency, qtyPerOrder, totalDemand)},
-		{Title: "测试重点", Detail: testFocus},
-		{Title: "审核分配完成", Detail: fmt.Sprintf("%d 张出库单进入 PICKING，生成 %d 个拣货任务", success.Load(), pickTaskCount)},
-		{Title: "业务拒绝", Detail: fmt.Sprintf("%d 张因库存锁或库存不足被业务规则拒绝", failed.Load())},
-		{Title: "库存快照", Detail: fmt.Sprintf("stock=%d available=%d allocated=%d 负数行=%d", stats.StockTotal, stats.AvailableTotal, stats.AllocatedTotal, stats.NegativeRows)},
-		{Title: "下一步", Detail: "点击“PDA 并发拣货”，使用已生成的拣货任务测试逐件扫码、防超拣和任务锁"},
+		{Title: "并发模型", Detail: fmt.Sprintf("同时创建并审核 %d 张出库单，每张 %d 件，总需求 %d 件", concurrency, qtyPerOrder, totalDemand), Status: ScenarioStepCompleted},
+		{Title: "测试重点", Detail: testFocus, Status: ScenarioStepCompleted},
+		{Title: "审核分配完成", Detail: fmt.Sprintf("%d 张出库单进入 PICKING，生成 %d 个拣货任务", success.Load(), pickTaskCount), Status: ScenarioStepCompleted},
+		{Title: "业务拒绝", Detail: fmt.Sprintf("%d 张因库存锁或库存不足被业务规则拒绝", failed.Load()), Status: ScenarioStepCompleted},
+		{Title: "库存快照", Detail: fmt.Sprintf("stock=%d available=%d allocated=%d 负数行=%d", stats.StockTotal, stats.AvailableTotal, stats.AllocatedTotal, stats.NegativeRows), Status: ScenarioStepCompleted},
+		{Title: "下一步", Detail: "点击“PDA 并发拣货”，使用已生成的拣货任务测试逐件扫码、防超拣和任务锁", Status: ScenarioStepPending},
 	}
 	if len(failReasons) > 0 {
-		steps = append(steps, ScenarioStep{Title: "失败样例", Detail: failReasons[0]})
+		steps = append(steps, ScenarioStep{Title: "失败样例", Detail: failReasons[0], Status: ScenarioStepFailed, Error: failReasons[0]})
 	}
 	durationMs := time.Since(start).Milliseconds()
 	summary := fmt.Sprintf("并发出库审核分配完成：%d 张 × %d 件，成功 %d，业务拒绝 %d，生成 %d 个拣货任务", concurrency, qtyPerOrder, success.Load(), failed.Load(), pickTaskCount)

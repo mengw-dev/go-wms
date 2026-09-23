@@ -168,11 +168,11 @@ func (s *Service) RunConcurrentPicking(ctx context.Context, sessionID string, wo
 	summary := fmt.Sprintf("PDA 并发拣货完成：%d 个任务，%d 个拣货员，%d 个抢单者，最终拣货 %d/%d，正常扫码 %d 次，并发拒绝 %d 次",
 		len(tasks), workers, contenders, finalPicked, totalTarget, workerSuccess.Load(), workerRejected.Load()+contenderRejected.Load())
 	steps := []ScenarioStep{
-		{Title: "PDA 并发模型", Detail: fmt.Sprintf("%d 个拣货员逐件扫码，%d 个抢单者模拟重复扫码/误派", workers, contenders)},
-		{Title: "测试重点", Detail: "任务行锁、分配行版本、逐件扫码、同一任务抢拣、防超拣、防负库存"},
-		{Title: "拣货结果", Detail: fmt.Sprintf("正常扫码成功 %d 次，并发/重复扫码拒绝 %d 次", workerSuccess.Load(), workerRejected.Load()+contenderRejected.Load())},
-		{Title: "终态校验", Detail: fmt.Sprintf("任务完成 %d/%d，订单已发货 %d 张，最终拣货 %d/%d", completedTasks, len(finalTasks), shippedOrders, finalPicked, totalTarget)},
-		{Title: "库存快照", Detail: fmt.Sprintf("stock=%d available=%d allocated=%d 负数行=%d", stats.StockTotal, stats.AvailableTotal, stats.AllocatedTotal, stats.NegativeRows)},
+		{Title: "PDA 并发模型", Detail: fmt.Sprintf("%d 个拣货员逐件扫码，%d 个抢单者模拟重复扫码/误派", workers, contenders), Status: ScenarioStepCompleted},
+		{Title: "测试重点", Detail: "任务行锁、分配行版本、逐件扫码、同一任务抢拣、防超拣、防负库存", Status: ScenarioStepCompleted},
+		{Title: "拣货结果", Detail: fmt.Sprintf("正常扫码成功 %d 次，并发/重复扫码拒绝 %d 次", workerSuccess.Load(), workerRejected.Load()+contenderRejected.Load()), Status: ScenarioStepCompleted},
+		{Title: "终态校验", Detail: fmt.Sprintf("任务完成 %d/%d，订单已发货 %d 张，最终拣货 %d/%d", completedTasks, len(finalTasks), shippedOrders, finalPicked, totalTarget), Status: ScenarioStepCompleted},
+		{Title: "库存快照", Detail: fmt.Sprintf("stock=%d available=%d allocated=%d 负数行=%d", stats.StockTotal, stats.AvailableTotal, stats.AllocatedTotal, stats.NegativeRows), Status: ScenarioStepCompleted},
 	}
 	return &PickingResult{
 		Workers:           workers,

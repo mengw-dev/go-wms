@@ -1,7 +1,12 @@
 package response
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+
+	"github.com/gin-gonic/gin"
 
 	"gowms/internal/pkg/errcode"
 )
@@ -38,5 +43,35 @@ func TestHTTPStatus(t *testing.T) {
 		if got := httpStatus(c.code); got != c.want {
 			t.Errorf("httpStatus(%d) = %d, want %d", c.code, got, c.want)
 		}
+	}
+}
+
+func TestFailWithDataKeepsBusinessErrorAndPayload(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/demo/run/full", nil)
+
+	FailWithData(c, errcode.OrderStatusWrong, map[string]any{
+		"status": "failed",
+		"steps":  []map[string]any{{"title": "提交订单", "status": "failed"}},
+	})
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusBadRequest)
+	}
+	var body struct {
+		Code int            `json:"code"`
+		Msg  string         `json:"msg"`
+		Data map[string]any `json:"data"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.Code != errcode.OrderStatusWrong.Code || body.Msg != errcode.OrderStatusWrong.Msg {
+		t.Fatalf("response code/message = %d/%q", body.Code, body.Msg)
+	}
+	if body.Data["status"] != "failed" {
+		t.Fatalf("response data = %#v", body.Data)
 	}
 }

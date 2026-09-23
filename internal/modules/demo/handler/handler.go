@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"errors"
+
 	"github.com/gin-gonic/gin"
 
 	"gowms/internal/modules/demo/service"
@@ -222,7 +224,7 @@ func (h *Handler) runWithOptions(c *gin.Context, scenario string) {
 	}
 	result, err := h.svc.RunScenario(c.Request.Context(), demoSessionID(c), scenario, req)
 	if err != nil {
-		response.Fail(c, err)
+		writeScenarioFailure(c, result, err)
 		return
 	}
 	response.OK(c, result)
@@ -231,10 +233,22 @@ func (h *Handler) runWithOptions(c *gin.Context, scenario string) {
 func (h *Handler) runScenario(c *gin.Context, scenario string) {
 	result, err := h.svc.RunScenario(c.Request.Context(), demoSessionID(c), scenario)
 	if err != nil {
-		response.Fail(c, err)
+		writeScenarioFailure(c, result, err)
 		return
 	}
 	response.OK(c, result)
+}
+
+func writeScenarioFailure(c *gin.Context, result *service.ScenarioResult, err error) {
+	var executionErr *service.ScenarioExecutionError
+	if errors.As(err, &executionErr) && executionErr.Result != nil {
+		if result == nil {
+			result = executionErr.Result
+		}
+		response.FailWithData(c, err, result)
+		return
+	}
+	response.Fail(c, err)
 }
 
 func (h *Handler) reset(c *gin.Context) {
