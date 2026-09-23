@@ -21,8 +21,20 @@ import { OUTBOUND_STATUS_OPTIONS, statusTag, statusText } from '@/constants'
 import { cleanParams, formatTime } from '@/utils'
 import { loadSkuMap, loadWarehouseOptions, toOptionMap, type IdOption } from '@/utils/options'
 import PickDialog from '@/components/PickDialog.vue'
+import { GUIDE_EVENTS, useGuideStore, type GuideBusinessResult } from '@/stores/guide'
 
 const router = useRouter()
+const guide = useGuideStore()
+
+function isGuideStep(event: string): boolean {
+  return guide.active && guide.scenario === 'outbound' && guide.currentStepDefinition?.event === event
+}
+
+function recordGuideEvent(event: string, result: GuideBusinessResult): void {
+  if (!isGuideStep(event)) return
+  if (guide.orderId && result.orderId && guide.orderId !== result.orderId) return
+  guide.recordBusinessResult(event, result)
+}
 
 // ---------- 基础选项 ----------
 const warehouseOptions = ref<IdOption[]>([])
@@ -74,6 +86,11 @@ async function onSubmit(row: OutboundOrderItem) {
     await ElMessageBox.confirm(`确定提交出库单「${row.order_no}」吗？`, '提示', { type: 'warning' })
   } catch { return }
   await submitOutboundOrder(row.id)
+  recordGuideEvent(GUIDE_EVENTS.outboundOrderSubmitted, {
+    orderId: String(row.id),
+    orderNo: row.order_no,
+    message: `提交完成：${row.order_no} 已从草稿变为已提交。`,
+  })
   ElMessage.success('提交成功')
   load()
 }
@@ -83,6 +100,11 @@ async function onApprove(row: OutboundOrderItem) {
     await ElMessageBox.confirm(`确定审核（分配库存）出库单「${row.order_no}」吗？`, '提示', { type: 'warning' })
   } catch { return }
   await approveOutboundOrder(row.id)
+  recordGuideEvent(GUIDE_EVENTS.outboundOrderAllocated, {
+    orderId: String(row.id),
+    orderNo: row.order_no,
+    message: `系统刚刚完成库存分配：${row.order_no} 已按真实库存生成分配结果。下一步：查看拣货任务。`,
+  })
   ElMessage.success('审核完成，库存已分配')
   load()
 }
@@ -230,11 +252,16 @@ async function submitCreate() {
   if (details.length === 0) { ElMessage.warning('请至少填写一行有效的明细'); return }
   createDialog.loading = true
   try {
-    await createOutboundOrder({
+    const created = await createOutboundOrder({
       warehouse_id: createForm.warehouse_id,
       biz_order_no: createForm.biz_order_no.trim(),
       remark: createForm.remark,
       details: details.map((d) => ({ sku_id: d.sku_id!, expected_qty: d.expected_qty })),
+    })
+    recordGuideEvent(GUIDE_EVENTS.outboundOrderCreated, {
+      orderId: String(created.id),
+      orderNo: created.order_no,
+      message: `已创建出库单 ${created.order_no}，当前状态为草稿。`,
     })
     ElMessage.success('创建成功')
     createDialog.visible = false

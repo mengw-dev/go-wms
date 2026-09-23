@@ -113,6 +113,7 @@ async function loadTrans(silent = false) {
     transList.value = data.list ?? []
     transTotal.value = data.total ?? 0
     syncInboundGuide()
+    syncOutboundGuide()
   } finally {
     if (!silent) transLoading.value = false
   }
@@ -136,6 +137,27 @@ function syncInboundGuide(): void {
   }
   guide.recordBusinessResult(GUIDE_EVENTS.inboundInventoryReviewed, {
     message: `已查看入库单 ${guide.orderNo} 的 ${transTotal.value} 条库存流水。`,
+  })
+}
+
+function syncOutboundGuide(): void {
+  if (
+    !guide.active ||
+    guide.scenario !== 'outbound' ||
+    guide.currentStepDefinition?.event !== GUIDE_EVENTS.outboundInventoryReviewed
+  ) {
+    return
+  }
+  if (!guide.orderNo || guide.orderNo !== transQuery.order_no) {
+    guide.setMismatch('当前库存流水与引导中的出库单不一致，请重新定位当前步骤。')
+    return
+  }
+  if (!transList.value.some((item) => item.trans_type === 'SHIP')) {
+    guide.setMismatch(`暂未找到出库单 ${guide.orderNo} 的发货扣减流水，请确认拣货发货是否完成。`)
+    return
+  }
+  guide.recordBusinessResult(GUIDE_EVENTS.outboundInventoryReviewed, {
+    message: `已查看出库单 ${guide.orderNo} 的 ${transTotal.value} 条库存流水，其中包含 SHIP 发货扣减。`,
   })
 }
 

@@ -74,23 +74,45 @@ describe('manual guide store', () => {
     expect(guide.mismatch).toBe('')
   })
 
-  it('unlocks next only after the matching business result', () => {
+  it('walks through every real outbound milestone and resolves each route', () => {
     const guide = useGuideStore()
     guide.start('outbound')
 
     expect(
       guide.recordBusinessResult(GUIDE_EVENTS.outboundOrderCreated, {
         orderId: '42',
-        taskId: 'task-7',
+        orderNo: 'OUT-42',
         message: '出库单已创建。',
       }),
     ).toBe(true)
     expect(guide.canAdvance).toBe(true)
     expect(guide.orderId).toBe('42')
-    expect(guide.taskId).toBe('task-7')
-    expect(guide.lastOutcome).toBe('出库单已创建。')
+    expect(guide.orderNo).toBe('OUT-42')
+    expect(guide.next()).toBe(true)
+    expect(guide.currentStepRoute).toBe('/outbound/orders/42')
+
+    guide.recordBusinessResult(GUIDE_EVENTS.outboundOrderSubmitted)
+    guide.next()
+    guide.recordBusinessResult(GUIDE_EVENTS.outboundOrderAllocated, {
+      taskId: '7',
+      taskNo: 'PICK-7',
+      message: '系统刚刚完成库存分配。',
+    })
+    expect(guide.lastOutcome).toContain('库存分配')
+    guide.next()
+    guide.recordBusinessResult(GUIDE_EVENTS.outboundPickTasksReady)
+    guide.next()
+    guide.recordBusinessResult(GUIDE_EVENTS.outboundPicked)
+    guide.next()
+    guide.recordBusinessResult(GUIDE_EVENTS.outboundShipped)
+    guide.next()
+
+    expect(guide.currentStepRoute).toBe('/inventory?order_no=OUT-42')
+    expect(guide.recordBusinessResult(GUIDE_EVENTS.outboundInventoryReviewed)).toBe(true)
+    expect(guide.taskNo).toBe('PICK-7')
     expect(guide.next()).toBe(true)
     expect(guide.completed).toBe(true)
+    expect(guide.active).toBe(false)
   })
 
   it('reports a mismatch instead of advancing for an unrelated result', () => {

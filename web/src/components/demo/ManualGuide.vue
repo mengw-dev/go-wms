@@ -32,13 +32,17 @@ const step = computed(() => guide.currentStepDefinition)
 const scenarioLabel = computed(() =>
   guide.scenario ? GUIDE_SCENARIO_LABELS[guide.scenario] : '业务',
 )
-const completionSteps = computed(() =>
-  guide.scenario === 'inbound'
-    ? ['创建', '提交', '审核', '收货', '上架', '库存增加']
-    : guide.scenario
-      ? [GUIDE_SCENARIO_LABELS[guide.scenario] + '单', '业务已完成']
-      : [],
-)
+const completionSteps = computed(() => {
+  if (guide.scenario === 'inbound') {
+    return ['创建', '提交', '审核', '收货', '上架', '库存增加']
+  }
+  if (guide.scenario === 'outbound') {
+    return ['创建', '提交', '审核分配', '查看任务', '拣货发货', '库存流水']
+  }
+  return guide.scenario ? [GUIDE_SCENARIO_LABELS[guide.scenario] + '单', '业务已完成'] : []
+})
+const orderFactLabel = computed(() => (guide.scenario === 'outbound' ? '出库单' : '入库单'))
+const taskFactLabel = computed(() => (guide.scenario === 'outbound' ? '拣货任务' : '上架任务'))
 
 const highlightStyle = computed<CSSProperties>(() => {
   const rect = targetRect.value
@@ -266,8 +270,8 @@ onBeforeUnmount(() => {
           </div>
           <p>{{ guide.lastOutcome || '真实业务操作已完成，可以继续在业务页面核对结果。' }}</p>
           <div class="guide-complete-facts">
-            <span v-if="guide.orderNo || guide.orderId">入库单：{{ guide.orderNo || guide.orderId }}</span>
-            <span v-if="guide.taskNo || guide.taskId">上架任务：{{ guide.taskNo || guide.taskId }}</span>
+            <span v-if="guide.orderNo || guide.orderId">{{ orderFactLabel }}：{{ guide.orderNo || guide.orderId }}</span>
+            <span v-if="guide.taskNo || guide.taskId">{{ taskFactLabel }}：{{ guide.taskNo || guide.taskId }}</span>
           </div>
           <div class="guide-actions">
             <el-button @click="restartGuide">重新开始</el-button>

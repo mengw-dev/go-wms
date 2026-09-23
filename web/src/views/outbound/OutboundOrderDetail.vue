@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
@@ -13,23 +13,149 @@ import { statusTag, statusText, taskTypeText } from '@/constants'
 import { formatTime } from '@/utils'
 import { loadWarehouseOptions, toOptionMap } from '@/utils/options'
 import PickDialog from '@/components/PickDialog.vue'
+import { GUIDE_EVENTS, useGuideStore, type GuideBusinessResult } from '@/stores/guide'
 
 const route = useRoute()
 const router = useRouter()
 const orderId = String(route.params.id)
+const guide = useGuideStore()
 
 const loading = ref(false)
 const data = ref<OutboundDetailData | null>(null)
 const warehouseMap = ref<Record<EntityID, string>>({})
+const isGuideOrder = computed(
+  () => guide.active && guide.scenario === 'outbound' && guide.orderId === orderId,
+)
+
+function pendingPickTask() {
+  return data.value?.tasks?.find(
+    (task) => task.task_type === 'PICK' && (task.status === 'CREATED' || task.status === 'IN_PROGRESS'),
+  )
+}
+
+function recordGuideEvent(event: string, result: GuideBusinessResult): void {
+  if (!isGuideOrder.value || guide.currentStepDefinition?.event !== event) return
+  guide.recordBusinessResult(event, result)
+}
+
+function syncGuideState(): void {
+  const order = data.value?.order
+  const step = guide.currentStepDefinition
+  if (!isGuideOrder.value || !order || !step) return
+
+  const status = order.status
+  const allocations = data.value?.allocations ?? []
+  const tasks = data.value?.tasks ?? []
+  const pendingTask = pendingPickTask()
+  const laterThanSubmitted = ['SUBMITTED', 'APPROVED', 'PICKING', 'SHIPPED'].includes(status)
+  const allocationCompleted = ['PICKING', 'SHIPPED'].includes(status) && allocations.length > 0
+
+  if (step.id === 'outbound-submit') {
+    if (status === 'DRAFT') {
+      guide.setMismatch('')
+      return
+    }
+    if (laterThanSubmitted) {
+      recordGuideEvent(GUIDE_EVENTS.outboundOrderSubmitted, {
+        orderId: String(order.id),
+        orderNo: order.order_no,
+        message: `提交完成：${order.order_no} 已从草稿变为已提交。`,
+      })
+      return
+    }
+  }
+
+  if (step.id === 'outbound-allocate') {
+    if (status === 'SUBMITTED') {
+      guide.setMismatch('')
+      return
+    }
+    if (allocationCompleted) {
+      const allocatedQty = allocations.reduce((sum, row) => sum + row.allocated_qty, 0)
+      const pickTaskCount = tasks.filter((task) => task.task_type === 'PICK').length
+      recordGuideEvent(GUIDE_EVENTS.outboundOrderAllocated, {
+        orderId: String(order.id),
+        orderNo: order.order_no,
+        taskId: pendingTask ? String(pendingTask.id) : guide.taskId,
+        taskNo: pendingTask?.task_no || guide.taskNo,
+        message: `系统刚刚完成库存分配：共 ${allocations.length} 条分配记录、${allocatedQty} 件，已生成 ${pickTaskCount} 个拣货任务。下一步：查看拣货任务。`,
+      })
+      return
+    }
+  }
+
+  if (step.id === 'outbound-tasks') {
+    if (pendingTask) {
+      recordGuideEvent(GUIDE_EVENTS.outboundPickTasksReady, {
+        taskId: String(pendingTask.id),
+        taskNo: pendingTask.task_no,
+        message: `已查看真实分配结果和拣货任务 ${pendingTask.task_no}，待拣 ${Math.max(pendingTask.target_qty - pendingTask.done_qty, 0)} 件。`,
+      })
+      return
+    }
+    if (status === 'SHIPPED') {
+      guide.setMismatch('当前出库单已完成拣货发货，没有可查看的待执行拣货任务。请重新开始本次引导。')
+      return
+    }
+  }
+
+  if (step.id === 'outbound-pick') {
+    if (status === 'PICKING') {
+      guide.setMismatch(pendingTask ? '' : '当前没有待执行的拣货任务，请重新定位当前步骤。')
+      return
+    }
+    if (status === 'SHIPPED') {
+      recordGuideEvent(GUIDE_EVENTS.outboundPicked, {
+        orderId: String(order.id),
+        orderNo: order.order_no,
+        message: `拣货完成：${order.order_no} 的所有分配行均已拣满，系统已在真实业务事务中完成发货扣减。`,
+      })
+      return
+    }
+  }
+
+  if (step.id === 'outbound-shipped') {
+    if (status === 'PICKING') {
+      guide.setMismatch('')
+      return
+    }
+    if (status === 'SHIPPED') {
+      recordGuideEvent(GUIDE_EVENTS.outboundShipped, {
+        orderId: String(order.id),
+        orderNo: order.order_no,
+        message: `发货完成：${order.order_no} 已变为已发货。下一步：查看库存流水。`,
+      })
+      return
+    }
+  }
+
+  if (status === 'CANCELED') {
+    guide.setMismatch(`出库单 ${order.order_no} 已取消，当前步骤无法继续。请重新开始本次引导。`)
+    return
+  }
+
+  if (step.id !== 'outbound-create') {
+    guide.setMismatch(`当前业务状态 ${status} 与引导步骤“${step.title}”不一致，请重新定位当前步骤。`)
+  }
+}
 
 async function load() {
   loading.value = true
   try {
     data.value = await getOutboundOrder(orderId)
+    syncGuideState()
   } finally {
     loading.value = false
   }
 }
+
+watch(
+  () => guide.currentStepDefinition?.id,
+  async () => {
+    await nextTick()
+    syncGuideState()
+  },
+)
 
 onMounted(async () => {
   warehouseMap.value = toOptionMap(await loadWarehouseOptions())
@@ -45,7 +171,7 @@ async function onSubmit() {
   }
   await submitOutboundOrder(orderId)
   ElMessage.success('提交成功')
-  load()
+  await load()
 }
 
 async function onApprove() {
@@ -56,7 +182,7 @@ async function onApprove() {
   }
   await approveOutboundOrder(orderId)
   ElMessage.success('审核完成，库存已分配')
-  load()
+  await load()
 }
 
 async function onCancel() {
@@ -72,7 +198,7 @@ async function onCancel() {
   }
   await cancelOutboundOrder(orderId)
   ElMessage.success('已取消')
-  load()
+  await load()
 }
 
 // ---------- 拣货 ----------
@@ -99,16 +225,16 @@ function canPick(task: { task_type: string; status: string }): boolean {
     <template v-if="data?.order">
       <div class="page-card">
         <div class="detail-actions">
-          <el-tag :type="statusTag(data.order.status)" size="large">{{ statusText(data.order.status) }}</el-tag>
+          <el-tag data-tour="outbound-shipped" :type="statusTag(data.order.status)" size="large">{{ statusText(data.order.status) }}</el-tag>
           <template v-if="data.order.status === 'DRAFT'">
-            <el-button v-permission="'wms:outbound:submit'" type="success" plain @click="onSubmit">提交</el-button>
+            <el-button v-permission="'wms:outbound:submit'" data-tour="outbound-submit" type="success" plain @click="onSubmit">提交</el-button>
           </template>
           <template v-else-if="data.order.status === 'SUBMITTED'">
-            <el-button v-permission="'wms:outbound:approve'" type="success" plain @click="onApprove">审核（分配）</el-button>
+            <el-button v-permission="'wms:outbound:approve'" data-tour="outbound-allocate" type="success" plain @click="onApprove">审核（分配）</el-button>
             <el-button v-permission="'wms:outbound:cancel'" type="danger" plain @click="onCancel">取消</el-button>
           </template>
           <template v-else-if="data.order.status === 'APPROVED' || data.order.status === 'PICKING'">
-            <el-button v-permission="'wms:outbound:pick'" type="primary" plain @click="openPick()">拣货</el-button>
+            <el-button v-permission="'wms:outbound:pick'" data-tour="outbound-pick" type="primary" plain @click="openPick()">拣货</el-button>
             <el-button v-permission="'wms:outbound:cancel'" type="danger" plain @click="onCancel">取消</el-button>
           </template>
         </div>
@@ -156,7 +282,7 @@ function canPick(task: { task_type: string; status: string }): boolean {
         </el-table>
       </div>
 
-      <div class="page-card section">
+      <div class="page-card section" data-tour="outbound-tasks">
         <h3 class="section-title">关联任务</h3>
         <el-table :data="data.tasks ?? []" border stripe>
           <el-table-column prop="task_no" label="任务号" min-width="160" />
