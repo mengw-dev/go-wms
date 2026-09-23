@@ -85,7 +85,7 @@ test('personal login sends the selected account tenant', async ({ page }) => {
   })
 })
 
-test('demo login enters the dedicated home without auto-opening the legacy console', async ({ page }) => {
+test('demo login enters the dedicated home with the first-session tour', async ({ page }) => {
   await page.route('**/api/v1/**', async (route) => {
     const path = new URL(route.request().url()).pathname
     let data: unknown
@@ -141,9 +141,19 @@ test('demo login enters the dedicated home without auto-opening the legacy conso
 
   await expect(page).toHaveURL(/\/demo$/)
   await expect(page.getByRole('heading', { name: '从真实业务流程理解这套 WMS' })).toBeVisible()
-  const dialog = page.getByRole('dialog', { name: '业务流程中心' })
+  await expect(page.getByRole('heading', { name: '欢迎体验 WMS' })).toBeVisible()
+  const dialog = page.getByRole('dialog', { name: 'Demo 快捷控制器' })
   await expect(dialog).not.toBeVisible()
 
-  await page.getByRole('button', { name: '开始完整演示', exact: true }).click()
+  await page.getByRole('button', { name: '跳过导览', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '欢迎体验 WMS' })).toHaveCount(0)
+  await expect.poll(() => page.evaluate(() => sessionStorage.getItem('WMS_DEMO_TOUR_SEEN:test-session'))).toBe('1')
+  await page.getByRole('button', { name: '快速导览', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '欢迎体验 WMS' })).toBeVisible()
+  for (const title of ['推荐业务闭环', '结果与证据', '工程验证', '项目与源码']) {
+    await page.getByRole('button', { name: '下一步', exact: true }).click()
+    await expect(page.getByRole('heading', { name: title })).toBeVisible()
+  }
+  await page.getByRole('button', { name: '开始体验完整业务闭环', exact: true }).click()
   await expect(dialog).toBeVisible()
 })

@@ -8,6 +8,10 @@ test('demo quick controller runs the full flow, navigates from business pages an
   await loginByUi(page, demoUsername, demoPassword, /从真实业务流程理解这套 WMS/)
   await expect(page).toHaveURL(/\/demo$/)
 
+  await expect(page.getByRole('heading', { name: '欢迎体验 WMS' })).toBeVisible()
+  await page.getByRole('button', { name: '跳过导览', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '欢迎体验 WMS' })).not.toBeVisible()
+
   const consoleButton = page.getByRole('button', { name: /Demo 快捷控制器/ })
   const drawer = page.getByRole('dialog', { name: 'Demo 快捷控制器' })
   await expect(consoleButton).toBeVisible()
@@ -50,6 +54,38 @@ test('demo quick controller runs the full flow, navigates from business pages an
   await drawer.getByRole('button', { name: '退出 Demo', exact: true }).click()
   await confirmMessageBox(page, '退出并重置')
   await expect(page).toHaveURL(/\/login(?:\?|$)/)
+})
+
+test('demo tour is scoped to one demo session and can be reopened manually', async ({ page }) => {
+  await loginByUi(page, demoUsername, demoPassword, /从真实业务流程理解这套 WMS/)
+  await expect(page).toHaveURL(/\/demo$/)
+
+  await expect(page.getByRole('heading', { name: '欢迎体验 WMS' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '跳过导览', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: '下一步', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '推荐业务闭环' })).toBeVisible()
+  await page.getByRole('button', { name: '上一步', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '欢迎体验 WMS' })).toBeVisible()
+  await page.getByRole('button', { name: '跳过导览', exact: true }).click()
+
+  const sessionStorageKeys = await page.evaluate(() => Object.keys(sessionStorage))
+  expect(sessionStorageKeys.some((key) => key.startsWith('WMS_DEMO_TOUR_SEEN:'))).toBe(true)
+
+  await page.getByRole('button', { name: '亲自体验', exact: true }).click()
+  await expect(page).toHaveURL(/\/inbound\/orders/)
+  await page.getByRole('menuitem', { name: '体验中心', exact: true }).click()
+  await expect(page).toHaveURL(/\/demo$/)
+  await expect(page.getByRole('heading', { name: /从真实业务流程理解这套 WMS/ })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '欢迎体验 WMS' })).toHaveCount(0)
+
+  await page.getByRole('button', { name: '快速导览', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '欢迎体验 WMS' })).toBeVisible()
+  for (const title of ['推荐业务闭环', '结果与证据', '工程验证', '项目与源码']) {
+    await page.getByRole('button', { name: '下一步', exact: true }).click()
+    await expect(page.getByRole('heading', { name: title })).toBeVisible()
+  }
+  await page.getByRole('button', { name: '开始体验完整业务闭环', exact: true }).click()
+  await expect(page.getByRole('dialog', { name: 'Demo 快捷控制器' })).toBeVisible()
 })
 
 test('demo account is logged out after a page reload', async ({ page }) => {

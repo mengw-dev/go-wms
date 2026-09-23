@@ -9,6 +9,7 @@ import {
   Document,
   Download,
   Monitor,
+  QuestionFilled,
   Refresh,
   Tickets,
   TrendCharts,
@@ -17,6 +18,7 @@ import {
 } from '@element-plus/icons-vue'
 import { getDemoActivity, releaseDemoSession, resetDemoData } from '@/api/demo'
 import type { DemoActivitySnapshot } from '@/api/types'
+import DemoTour from '@/components/demo/DemoTour.vue'
 import { useAuthStore } from '@/stores/auth'
 import { statusText, taskTypeText } from '@/constants'
 import { formatTime } from '@/utils'
@@ -38,6 +40,7 @@ const activityLoading = ref(false)
 const resetLoading = ref(false)
 const exitLoading = ref(false)
 const remaining = ref(auth.demoSessionExpiresIn || 300)
+const demoTour = ref<{ open: () => void } | null>(null)
 
 let countdownTimer: number | undefined
 let disposeDataChanged: (() => void) | undefined
@@ -140,6 +143,10 @@ function goActivity() {
   router.push('/demo/activity')
 }
 
+function openTour() {
+  demoTour.value?.open()
+}
+
 function openOverview() {
   window.open('/overview.html', '_blank', 'noopener,noreferrer')
 }
@@ -202,7 +209,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="demo-home">
-    <section class="session-bar" aria-label="演示环境状态">
+    <section class="session-bar" data-tour="demo-session" aria-label="演示环境状态">
       <div class="session-status">
         <el-tag type="success" effect="plain">独立演示租户</el-tag>
         <span class="status-item">
@@ -212,6 +219,7 @@ onBeforeUnmount(() => {
         <span class="status-item status-isolation"><i></i>数据隔离已启用</span>
       </div>
       <div class="session-actions">
+        <el-button text :icon="QuestionFilled" @click="openTour">快速导览</el-button>
         <el-button text :loading="resetLoading" @click="resetData">重置数据</el-button>
         <el-button text type="danger" :loading="exitLoading" @click="releaseAndExit">退出并重置</el-button>
       </div>
@@ -232,7 +240,7 @@ onBeforeUnmount(() => {
           <el-button size="large" :icon="ArrowRight" @click="goExperience">亲自体验</el-button>
         </div>
       </div>
-      <div class="flow-panel">
+      <div class="flow-panel" data-tour="complete-flow">
         <div class="flow-head">
           <b>完整业务闭环</b>
           <small>每一步都调用真实业务 Service</small>
@@ -288,7 +296,7 @@ onBeforeUnmount(() => {
       </div>
     </section>
 
-    <section class="home-section">
+    <section class="home-section" data-tour="demo-verification">
       <div class="section-heading">
         <div>
           <span class="section-kicker">工程验证</span>
@@ -324,7 +332,7 @@ onBeforeUnmount(() => {
       </div>
     </section>
 
-    <section class="home-section">
+    <section class="home-section" data-tour="demo-evidence">
       <div class="section-heading">
         <div>
           <span class="section-kicker">结果与证据</span>
@@ -361,7 +369,7 @@ onBeforeUnmount(() => {
       </div>
     </section>
 
-    <section class="home-section">
+    <section class="home-section" data-tour="demo-project">
       <div class="section-heading">
         <div>
           <span class="section-kicker">项目说明</span>
@@ -392,6 +400,8 @@ onBeforeUnmount(() => {
         </button>
       </div>
     </section>
+
+    <DemoTour ref="demoTour" @complete="openDemoConsole" />
   </div>
 </template>
 
