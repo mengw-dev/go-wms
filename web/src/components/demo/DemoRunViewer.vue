@@ -25,6 +25,35 @@ const activeIndex = computed(() => {
   if (failedIndex >= 0) return failedIndex
   return steps.value.length - 1
 })
+const technicalSteps = computed(() => steps.value.filter((step) => Boolean(step.technical)))
+const technicalSourceGroups = computed(() => {
+  const implementation = props.result.implementation
+  if (!implementation) return []
+
+  const businessFiles: string[] = []
+  const capabilityFiles: string[] = []
+  for (const file of implementation.business_files || []) {
+    if (isCapabilityFile(file)) {
+      capabilityFiles.push(file)
+    } else {
+      businessFiles.push(file)
+    }
+  }
+
+  return [
+    { label: 'Demo 编排', files: uniqueFiles([implementation.orchestration]) },
+    { label: '真实业务', files: uniqueFiles(businessFiles) },
+    { label: '库存 / 任务能力', files: uniqueFiles(capabilityFiles) },
+  ].filter((group) => group.files.length > 0)
+})
+
+function isCapabilityFile(file: string): boolean {
+  return file.includes('/inventory/service/') || file.includes('/task/service/')
+}
+
+function uniqueFiles(files: string[]): string[] {
+  return Array.from(new Set(files.filter(Boolean)))
+}
 
 function stepStatus(step: DemoScenarioStep): StepStatus {
   if (step.status === 'pending' || step.status === 'failed' || step.status === 'completed') {
@@ -64,7 +93,7 @@ function navigate(path: string) {
   >
     <header class="run-head">
       <div>
-        <span class="run-kicker">真实执行结果回放</span>
+        <span class="run-kicker">业务视角 · 真实执行结果回放</span>
         <h3>{{ result.summary }}</h3>
       </div>
       <el-tag :type="runStatus === 'failed' ? 'danger' : 'success'" effect="plain">
@@ -141,12 +170,6 @@ function navigate(path: string) {
             </div>
           </dl>
 
-          <el-collapse v-if="step.technical" class="step-technical">
-            <el-collapse-item title="查看技术实现" :name="`${index}`">
-              <code>{{ step.technical }}</code>
-            </el-collapse-item>
-          </el-collapse>
-
           <el-alert
             v-if="step.error"
             class="step-error"
@@ -176,27 +199,39 @@ function navigate(path: string) {
     </div>
 
     <el-collapse v-if="result.implementation" class="run-implementation">
-      <el-collapse-item title="查看实现" name="implementation">
-        <dl>
-          <div>
-            <dt>场景编排文件</dt>
-            <dd><code>{{ result.implementation.orchestration }}</code></dd>
+      <el-collapse-item title="技术视角 / 查看技术实现" name="implementation">
+        <p class="technical-intro">
+          以下入口对应本次真实调用。Demo 只负责编排，入库、出库、盘点和库存能力仍由现有业务 Service 完成。
+        </p>
+
+        <div v-if="result.implementation.call_chain?.length" class="technical-section">
+          <span class="technical-label">调用链</span>
+          <div class="call-chain">
+            <span v-for="stepName in result.implementation.call_chain" :key="stepName">
+              {{ stepName }}
+            </span>
           </div>
-          <div>
-            <dt>真实业务文件</dt>
-            <dd>
-              <code v-for="file in result.implementation.business_files" :key="file">{{ file }}</code>
-            </dd>
+        </div>
+
+        <div v-if="technicalSourceGroups.length" class="technical-section">
+          <span class="technical-label">关键源码入口</span>
+          <div class="source-groups">
+            <div v-for="group in technicalSourceGroups" :key="group.label" class="source-group">
+              <b>{{ group.label }}</b>
+              <code v-for="file in group.files" :key="file">{{ file }}</code>
+            </div>
           </div>
-          <div>
-            <dt>核心调用链</dt>
-            <dd class="call-chain">
-              <span v-for="stepName in result.implementation.call_chain" :key="stepName">
-                {{ stepName }}
-              </span>
-            </dd>
-          </div>
-        </dl>
+        </div>
+
+        <div v-if="technicalSteps.length" class="technical-section">
+          <span class="technical-label">步骤调用</span>
+          <ol class="technical-step-list">
+            <li v-for="(step, index) in technicalSteps" :key="`${index}-${step.technical}`">
+              <span class="technical-step-index">{{ index + 1 }}</span>
+              <code>{{ step.technical }}</code>
+            </li>
+          </ol>
+        </div>
       </el-collapse-item>
     </el-collapse>
   </section>
@@ -385,27 +420,6 @@ function navigate(path: string) {
   color: var(--el-text-color-regular);
 }
 
-.step-technical {
-  margin-top: 8px;
-  border-top: 1px solid var(--el-border-color-lighter);
-}
-
-.step-technical :deep(.el-collapse-item__header) {
-  height: 34px;
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-}
-
-.step-technical :deep(.el-collapse-item__wrap) {
-  border-bottom: 0;
-}
-
-.step-technical code {
-  color: var(--el-text-color-regular);
-  font-size: 12px;
-  overflow-wrap: anywhere;
-}
-
 .step-error {
   margin-top: 9px;
 }
@@ -491,48 +505,100 @@ function navigate(path: string) {
 }
 
 .run-implementation {
-  margin-top: 10px;
-  border-top: 1px solid var(--el-border-color-lighter);
+  margin-top: 12px;
+  padding: 0 12px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 10px;
+  background: var(--el-fill-color-extra-light);
 }
 
 .run-implementation :deep(.el-collapse-item__header) {
-  height: 36px;
+  height: 44px;
   color: var(--el-text-color-secondary);
   font-size: 12px;
+  font-weight: 600;
 }
 
 .run-implementation :deep(.el-collapse-item__wrap) {
   border-bottom: 0;
+  background: transparent;
 }
 
-.run-implementation dl {
-  display: grid;
-  gap: 11px;
-  margin: 0;
+.run-implementation :deep(.el-collapse-item__content) {
+  padding-bottom: 14px;
 }
 
-.run-implementation dl > div {
+.technical-intro {
+  margin: 0 0 14px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.technical-section + .technical-section {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--el-border-color-lighter);
+}
+
+.technical-label {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--el-text-color-placeholder);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+
+.source-groups {
   display: grid;
-  grid-template-columns: 84px minmax(0, 1fr);
+  gap: 9px;
+}
+
+.source-group {
+  display: grid;
+  grid-template-columns: 86px minmax(0, 1fr);
   gap: 8px;
 }
 
-.run-implementation dt {
-  color: var(--el-text-color-placeholder);
-  font-size: 12px;
+.source-group b {
+  padding-top: 2px;
+  color: var(--el-text-color-secondary);
+  font-size: 11px;
+  font-weight: 500;
 }
 
-.run-implementation dd {
-  min-width: 0;
-  margin: 0;
-}
-
-.run-implementation code {
+.source-group code,
+.technical-step-list code {
   display: block;
-  margin-bottom: 4px;
+  min-width: 0;
   overflow-wrap: anywhere;
   color: var(--el-text-color-regular);
+  font-family: var(--gowms-num-font);
   font-size: 11px;
+  line-height: 1.6;
+}
+
+.technical-step-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.technical-step-list li {
+  display: grid;
+  grid-template-columns: 86px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.technical-step-index {
+  padding-top: 2px;
+  color: var(--el-text-color-placeholder);
+  font-family: var(--gowms-num-font);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
 }
 
 .call-chain {

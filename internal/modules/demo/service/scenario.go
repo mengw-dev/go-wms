@@ -294,6 +294,7 @@ func mergeScenarioResults(results ...*ScenarioResult) *ScenarioResult {
 		Steps:   make([]ScenarioStep, 0),
 	}
 	evidenceSets := 0
+	implementationSets := 0
 	for _, result := range results {
 		if result == nil {
 			continue
@@ -307,8 +308,16 @@ func mergeScenarioResults(results ...*ScenarioResult) *ScenarioResult {
 				merged.EvidenceTitle = result.EvidenceTitle
 			}
 		}
-		if merged.Implementation == nil && result.Implementation != nil {
-			merged.Implementation = result.Implementation
+		if result.Implementation != nil {
+			implementationSets++
+			if merged.Implementation == nil {
+				merged.Implementation = result.Implementation
+			} else {
+				if implementationSets == 2 {
+					merged.Implementation = cloneScenarioImplementation(merged.Implementation)
+				}
+				mergeScenarioImplementation(merged.Implementation, result.Implementation)
+			}
 		}
 		if result.Status == ScenarioStatusFailed {
 			merged.Status = ScenarioStatusFailed
@@ -317,8 +326,53 @@ func mergeScenarioResults(results ...*ScenarioResult) *ScenarioResult {
 	if evidenceSets > 1 {
 		merged.EvidenceTitle = "本次完整业务闭环产生"
 	}
+	if implementationSets > 1 {
+		merged.Implementation.Orchestration = "internal/modules/demo/service/scenario.go"
+		merged.Implementation.CallChain = []string{
+			"Demo Orchestrator",
+			"Inbound / Outbound / Stocktake Service",
+			"Inventory / Task",
+			"Transaction / MySQL",
+		}
+	}
 	if merged.Status == ScenarioStatusFailed {
 		merged.Summary = "完整业务闭环未全部完成，已执行的步骤保留在下方"
 	}
 	return merged
+}
+
+func cloneScenarioImplementation(source *ScenarioImplementation) *ScenarioImplementation {
+	if source == nil {
+		return nil
+	}
+	return &ScenarioImplementation{
+		Orchestration: source.Orchestration,
+		BusinessFiles: append([]string(nil), source.BusinessFiles...),
+		CallChain:     append([]string(nil), source.CallChain...),
+	}
+}
+
+func mergeScenarioImplementation(target, source *ScenarioImplementation) {
+	if target == nil || source == nil {
+		return
+	}
+	target.BusinessFiles = appendUniqueStrings(target.BusinessFiles, source.BusinessFiles...)
+}
+
+func appendUniqueStrings(values []string, additions ...string) []string {
+	seen := make(map[string]struct{}, len(values)+len(additions))
+	for _, value := range values {
+		seen[value] = struct{}{}
+	}
+	for _, value := range additions {
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		values = append(values, value)
+		seen[value] = struct{}{}
+	}
+	return values
 }

@@ -243,6 +243,46 @@ func TestMergeScenarioResultsKeepsInboundEvidence(t *testing.T) {
 	}
 }
 
+func TestMergeScenarioResultsCombinesTechnicalImplementation(t *testing.T) {
+	inbound := &ScenarioImplementation{
+		Orchestration: "scenario_inbound.go",
+		BusinessFiles: []string{"receiving.go", "stock.go"},
+		CallChain:     []string{"Demo Orchestrator", "Inbound Service", "Inventory Service", "MySQL"},
+	}
+	outbound := &ScenarioImplementation{
+		Orchestration: "scenario_outbound.go",
+		BusinessFiles: []string{"pick.go", "stock.go"},
+		CallChain:     []string{"Demo Orchestrator", "Outbound Service", "Inventory / Task", "MySQL"},
+	}
+	stocktake := &ScenarioImplementation{
+		Orchestration: "scenario_stocktake.go",
+		BusinessFiles: []string{"approve.go"},
+		CallChain:     []string{"Demo Orchestrator", "Stocktake Service", "Inventory Service", "MySQL"},
+	}
+
+	merged := mergeScenarioResults(
+		&ScenarioResult{Name: ScenarioInbound, Implementation: inbound},
+		&ScenarioResult{Name: ScenarioOutbound, Implementation: outbound},
+		&ScenarioResult{Name: ScenarioStocktake, Implementation: stocktake},
+	)
+
+	if merged.Implementation == nil {
+		t.Fatal("merged implementation is nil")
+	}
+	if merged.Implementation.Orchestration != "internal/modules/demo/service/scenario.go" {
+		t.Fatalf("merged orchestration = %q", merged.Implementation.Orchestration)
+	}
+	if got, want := strings.Join(merged.Implementation.BusinessFiles, ","), "receiving.go,stock.go,pick.go,approve.go"; got != want {
+		t.Fatalf("merged business files = %q, want %q", got, want)
+	}
+	if got, want := strings.Join(merged.Implementation.CallChain, " > "), "Demo Orchestrator > Inbound / Outbound / Stocktake Service > Inventory / Task > Transaction / MySQL"; got != want {
+		t.Fatalf("merged call chain = %q, want %q", got, want)
+	}
+	if len(inbound.BusinessFiles) != 2 || len(outbound.BusinessFiles) != 2 || len(stocktake.BusinessFiles) != 1 {
+		t.Fatal("mergeScenarioResults mutated source implementation files")
+	}
+}
+
 func TestMergeScenarioResultsUsesGenericTitleForMultipleEvidenceSets(t *testing.T) {
 	merged := mergeScenarioResults(
 		&ScenarioResult{

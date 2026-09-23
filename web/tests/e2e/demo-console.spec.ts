@@ -75,6 +75,26 @@ test('demo quick controller runs the full flow, navigates from business pages an
   await expect(drawer.getByText('盘点差异', { exact: true }).first()).toBeVisible()
   await expect(drawer.getByText('-3', { exact: true }).first()).toBeVisible()
   await expect(drawer.getByText('ADJUST -3', { exact: true }).first()).toBeVisible()
+  await expect(drawer.getByText('业务视角 · 真实执行结果回放', { exact: true })).toBeVisible()
+
+  await drawer.getByRole('button', { name: '技术视角 / 查看技术实现', exact: true }).click()
+  await expect(drawer.getByText('调用链', { exact: true })).toBeVisible()
+  await expect(drawer.getByText('Demo Orchestrator', { exact: true })).toBeVisible()
+  await expect(drawer.getByText('Inbound / Outbound / Stocktake Service', { exact: true })).toBeVisible()
+  await expect(drawer.getByText('Inventory / Task', { exact: true })).toBeVisible()
+  await expect(drawer.getByText('Transaction / MySQL', { exact: true })).toBeVisible()
+  for (const label of ['Demo 编排', '真实业务', '库存 / 任务能力']) {
+    await expect(drawer.getByText(label, { exact: true })).toBeVisible()
+  }
+  for (const file of [
+    'internal/modules/demo/service/scenario.go',
+    'internal/modules/inbound/service/receiving.go',
+    'internal/modules/outbound/service/pick.go',
+    'internal/modules/stocktake/service/approve.go',
+    'internal/modules/inventory/service/stock.go',
+  ]) {
+    await expect(drawer.getByText(file, { exact: true })).toBeVisible()
+  }
 
   await drawer.getByRole('button', { name: '查看出库单', exact: true }).click()
   await expect(page).toHaveURL(/\/outbound\/orders\/\d+/)
