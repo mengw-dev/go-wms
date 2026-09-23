@@ -58,7 +58,7 @@ if ($WithRace) {
                 throw "$container is not running; start the Compose stack first."
             }
         }
-        $dsn = "root:$password@tcp(mysql:3306)/$database?charset=utf8mb4&parseTime=True&loc=Local"
+        $dsn = "root:$password@tcp(mysql:3306)/${database}?charset=utf8mb4&parseTime=True&loc=Local"
         docker run --rm --network deploy_default -v "$($root.Path):/src" -w /src `
             -e "WMS_TEST_DSN=$dsn" -e "WMS_MYSQL_DSN=$dsn" `
             -e WMS_TEST_REDIS_ADDR=redis:6379 -e WMS_TEST_REQUIRED=1 `
