@@ -71,8 +71,6 @@ func (s *Service) RunConcurrentAllocation(ctx context.Context, sessionID string,
 		qtyPerOrder = 10
 	}
 
-	s.runMu.Lock()
-	defer s.runMu.Unlock()
 	runCtx, finish, err := s.beginTenantRun(ctx, sessionID)
 	if err != nil {
 		return nil, err

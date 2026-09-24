@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -31,7 +30,6 @@ type Service struct {
 	inbound   *inboundservice.Service
 	outbound  *outboundservice.Service
 	stocktake *stocktakeservice.Service
-	runMu     sync.Mutex
 }
 
 func New(cfg *config.Config, db *gorm.DB, rdb *redis.Client,

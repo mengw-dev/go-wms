@@ -25,8 +25,6 @@ func (s *Service) RestockDemo(ctx context.Context, sessionID string, qty int) (*
 		qty = 2000
 	}
 
-	s.runMu.Lock()
-	defer s.runMu.Unlock()
 	runCtx, finish, err := s.beginTenantRun(ctx, sessionID)
 	if err != nil {
 		return nil, err

@@ -116,6 +116,10 @@ func TestExecutionLockPreventsSessionReplacementDuringLongRun(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal("long run did not acquire execution lock")
 	}
+	ttl, err := rdb.TTL(ctx, sessionKey).Result()
+	if err != nil || ttl < 9*time.Minute {
+		t.Fatalf("long run did not renew session lease: ttl=%v err=%v", ttl, err)
+	}
 	// 模拟会话租约先于长请求过期；执行锁仍必须阻止新访客领取同一租户。
 	if err := rdb.Del(ctx, sessionKey).Err(); err != nil {
 		t.Fatal(err)

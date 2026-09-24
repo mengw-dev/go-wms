@@ -76,8 +76,6 @@ func (s *Service) RunConcurrentShortageValidation(ctx context.Context, sessionID
 		qtyPerOrder = 10
 	}
 
-	s.runMu.Lock()
-	defer s.runMu.Unlock()
 	runCtx, finish, err := s.beginTenantRun(ctx, sessionID)
 	if err != nil {
 		return nil, err

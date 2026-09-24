@@ -167,7 +167,7 @@ type ScenarioOptions struct {
 }
 
 // RunScenario 先恢复默认演示数据，再执行指定场景。单实例内由演示会话锁保证只有
-// 一个体验者能触发；runMu 进一步避免同一进程内的场景请求交叉执行。
+// 一个体验者能触发；租户级 Redis 执行锁负责同租户串行，不同租户互不阻塞。
 func (s *Service) RunScenario(ctx context.Context, sessionID, scenario string, options ...ScenarioOptions) (*ScenarioResult, error) {
 	if err := s.ValidateSession(ctx, sessionID); err != nil {
 		return nil, err
@@ -180,8 +180,6 @@ func (s *Service) RunScenario(ctx context.Context, sessionID, scenario string, o
 		return nil, errcode.ParamError
 	}
 
-	s.runMu.Lock()
-	defer s.runMu.Unlock()
 	runCtx, finish, err := s.beginTenantRun(ctx, sessionID)
 	if err != nil {
 		return nil, err

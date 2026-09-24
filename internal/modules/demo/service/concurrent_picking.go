@@ -79,8 +79,6 @@ func (s *Service) RunConcurrentPicking(ctx context.Context, sessionID string, wo
 		contenders = 50
 	}
 
-	s.runMu.Lock()
-	defer s.runMu.Unlock()
 	runCtx, finish, err := s.beginTenantRun(ctx, sessionID)
 	if err != nil {
 		return nil, err
