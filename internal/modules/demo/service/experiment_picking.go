@@ -9,12 +9,17 @@ import (
 	"time"
 
 	invmodel "gowms/internal/modules/inventory/model"
+	outbounddto "gowms/internal/modules/outbound/dto"
 	outboundmodel "gowms/internal/modules/outbound/model"
 	taskmodel "gowms/internal/modules/task/model"
 	"gowms/internal/pkg/errcode"
 )
 
-const maxPickingDuplicateChecks = 5
+const (
+	maxPickingDuplicateChecks    = 5
+	pickingExperimentOrderCount  = 3
+	pickingExperimentQtyPerOrder = 2
+)
 
 type PickingInventoryEvidence struct {
 	TransType       invmodel.TransType `json:"trans_type"`
@@ -31,6 +36,9 @@ type PickingInventoryEvidence struct {
 type PickingResult struct {
 	Workers                        int                        `json:"workers"`
 	Contenders                     int                        `json:"contenders"`
+	ExperimentOrderCount           int                        `json:"experiment_order_count"`
+	ExperimentOrderNos             []string                   `json:"experiment_order_nos"`
+	PreparedStockQuantity          int                        `json:"prepared_stock_quantity"`
 	TaskCount                      int                        `json:"task_count"`
 	TotalTarget                    int                        `json:"total_target"`
 	ConcurrentScanAttempts         int                        `json:"concurrent_scan_attempts"`
@@ -62,6 +70,81 @@ type PickingResult struct {
 	Steps                          []ScenarioStep             `json:"steps"`
 }
 
+type pickingExperimentPreparation struct {
+	SKUID                 int64
+	OrderIDs              []int64
+	OrderNos              []string
+	Tasks                 []*taskmodel.Task
+	PreparationSteps      []ScenarioStep
+	PreparedStockQuantity int
+}
+
+func (s *Service) preparePickingExperiment(ctx context.Context) (*pickingExperimentPreparation, error) {
+	refs, err := s.loadDemoBaseRefs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	requiredStock := pickingExperimentOrderCount * pickingExperimentQtyPerOrder
+	stats, err := s.concurrentInventoryStats(ctx, refs.SKU.ID)
+	if err != nil {
+		return nil, err
+	}
+	preparation := &pickingExperimentPreparation{SKUID: refs.SKU.ID}
+	if stats.AvailableTotal < int64(requiredStock) {
+		restockQty := requiredStock - int(stats.AvailableTotal)
+		restock, err := s.restockWithinRun(ctx, restockQty)
+		if err != nil {
+			return nil, err
+		}
+		preparation.PreparedStockQuantity = restockQty
+		preparation.PreparationSteps = append(preparation.PreparationSteps, ScenarioStep{
+			Title:  "实验准备",
+			Detail: fmt.Sprintf("初始可用库存不足，已通过真实入库流程补充 %d 件库存：%s", restockQty, restock.Summary),
+			Status: ScenarioStepCompleted,
+		})
+	}
+	operator := s.Username(ctx)
+	runTag := concurrentRunTag()
+	for i := 0; i < pickingExperimentOrderCount; i++ {
+		order, err := s.outbound.Create(ctx, &outbounddto.CreateOrderReq{
+			WarehouseID: refs.Warehouse.ID,
+			BizOrderNo:  fmt.Sprintf("PDA-%s-%02d", runTag, i+1),
+			Remark:      "模拟 PDA 并发拣货实验",
+			Details: []outbounddto.OrderDetailItem{{
+				SKUID: refs.SKU.ID, ExpectedQty: pickingExperimentQtyPerOrder,
+			}},
+		}, operator)
+		if err != nil {
+			return nil, err
+		}
+		if err := s.outbound.Submit(ctx, order.ID); err != nil {
+			return nil, err
+		}
+		if err := s.outbound.Approve(ctx, order.ID, operator); err != nil {
+			return nil, err
+		}
+		preparation.OrderIDs = append(preparation.OrderIDs, order.ID)
+		preparation.OrderNos = append(preparation.OrderNos, order.OrderNo)
+	}
+	if err := s.db.WithContext(ctx).
+		Where("order_id IN ? AND task_type = ? AND status IN ?",
+			preparation.OrderIDs, taskmodel.TaskPick, []taskmodel.TaskStatus{taskmodel.TaskCreated, taskmodel.TaskInProgress}).
+		Order("id ASC").
+		Find(&preparation.Tasks).Error; err != nil {
+		return nil, err
+	}
+	if len(preparation.Tasks) == 0 {
+		return nil, errcode.DemoDataMissing
+	}
+	preparation.PreparationSteps = append(preparation.PreparationSteps, ScenarioStep{
+		Title: "实验对象准备",
+		Detail: fmt.Sprintf("通过真实出库 Service 创建并审核 %d 张实验订单，产生 %d 个本次专属 PICK Task。",
+			pickingExperimentOrderCount, len(preparation.Tasks)),
+		Status: ScenarioStepCompleted,
+	})
+	return preparation, nil
+}
+
 func (s *Service) RunConcurrentPicking(ctx context.Context, sessionID string, workers, contenders int) (*PickingResult, error) {
 	if err := s.ValidateSession(ctx, sessionID); err != nil {
 		return nil, err
@@ -86,27 +169,19 @@ func (s *Service) RunConcurrentPicking(ctx context.Context, sessionID string, wo
 	defer finish()
 	ctx = runCtx
 
-	var tasks []*taskmodel.Task
-	if err := s.db.WithContext(ctx).
-		Where("task_type = ? AND status IN ?", taskmodel.TaskPick, []taskmodel.TaskStatus{taskmodel.TaskCreated, taskmodel.TaskInProgress}).
-		Order("id ASC").
-		Limit(200).
-		Find(&tasks).Error; err != nil {
+	preparation, err := s.preparePickingExperiment(ctx)
+	if err != nil {
 		return nil, err
 	}
-	if len(tasks) == 0 {
-		return nil, errcode.DemoPickTaskMissing
-	}
-
+	tasks := preparation.Tasks
 	taskIDs := make([]int64, 0, len(tasks))
-	orderIDs := make([]int64, 0, len(tasks))
 	totalTarget := 0
 	for _, task := range tasks {
 		taskIDs = append(taskIDs, task.ID)
-		orderIDs = append(orderIDs, task.OrderID)
 		totalTarget += task.TargetQty
 	}
-	skuID := tasks[0].SKUID
+	orderIDs := preparation.OrderIDs
+	skuID := preparation.SKUID
 	operator := s.Username(ctx)
 	start := time.Now()
 
@@ -268,20 +343,24 @@ func (s *Service) RunConcurrentPicking(ctx context.Context, sessionID string, wo
 	concurrentSuccess := int(workerSuccess.Load() + contenderSuccess.Load())
 	competitionRejected := int(workerRejected.Load() + contenderRejected.Load())
 	summary := fmt.Sprintf(
-		"模拟 PDA 并发拣货：并发阶段成功扫码 %d 次、竞争拒绝 %d 次，结束后仍有 %d 个任务未完成；收尾阶段顺序补齐 %d 件，最终完成 %d/%d 个任务",
-		concurrentSuccess, competitionRejected, stillIncomplete, cleanupSuccess.Load(), completedTasks, len(finalTasks),
+		"模拟 PDA 并发拣货：本次创建 %d 张真实出库单；并发阶段成功扫码 %d 次、竞争拒绝 %d 次，结束后仍有 %d 个任务未完成；收尾阶段顺序补齐 %d 件，最终完成 %d/%d 个任务",
+		len(orderIDs), concurrentSuccess, competitionRejected, stillIncomplete, cleanupSuccess.Load(), completedTasks, len(finalTasks),
 	)
-	steps := []ScenarioStep{
-		{Title: "并发阶段", Detail: fmt.Sprintf("%d 个并发扫码请求，%d 个抢单请求；成功 %d，拒绝 %d", workers, contenders, concurrentSuccess, competitionRejected), Status: ScenarioStepCompleted},
-		{Title: "并发后剩余", Detail: fmt.Sprintf("仍有 %d 个任务未完成，总目标 %d 件", stillIncomplete, totalTarget), Status: ScenarioStepCompleted},
-		{Title: "收尾阶段", Detail: fmt.Sprintf("顺序处理剩余 %d 个任务，补齐 %d 件，收尾拒绝 %d 次", cleanupRemainingTasks, cleanupSuccess.Load(), cleanupRejected.Load()), Status: ScenarioStepCompleted},
-		{Title: "重复扫码验证", Detail: fmt.Sprintf("对已完成任务发起 %d 次重复扫码，真实拒绝 %d 次，异常成功 %d 次", duplicateAttempts, duplicateRejected, duplicateSuccess), Status: ScenarioStepCompleted},
-		{Title: "最终业务状态", Detail: fmt.Sprintf("PICK 完成 %d/%d，出库单已发货 %d 张，库存流水 %d 条", completedTasks, len(finalTasks), shippedOrders, len(inventoryTrans)), Status: ScenarioStepCompleted},
-		{Title: "库存不变量", Detail: invariantMessage, Status: ScenarioStepCompleted},
-		{Title: "实验边界", Detail: "页面展示的是模拟 PDA 扫码请求，不表示项目接入或实现了真实 PDA 硬件客户端。", Status: ScenarioStepCompleted},
-	}
+	steps := append(preparation.PreparationSteps,
+		ScenarioStep{Title: "并发阶段", Detail: fmt.Sprintf("%d 个并发扫码请求，%d 个抢单请求；成功 %d，拒绝 %d", workers, contenders, concurrentSuccess, competitionRejected), Status: ScenarioStepCompleted},
+		ScenarioStep{Title: "并发后剩余", Detail: fmt.Sprintf("仍有 %d 个任务未完成，总目标 %d 件", stillIncomplete, totalTarget), Status: ScenarioStepCompleted},
+		ScenarioStep{Title: "收尾阶段", Detail: fmt.Sprintf("顺序处理剩余 %d 个任务，补齐 %d 件，收尾拒绝 %d 次", cleanupRemainingTasks, cleanupSuccess.Load(), cleanupRejected.Load()), Status: ScenarioStepCompleted},
+		ScenarioStep{Title: "重复扫码验证", Detail: fmt.Sprintf("对已完成任务发起 %d 次重复扫码，真实拒绝 %d 次，异常成功 %d 次", duplicateAttempts, duplicateRejected, duplicateSuccess), Status: ScenarioStepCompleted},
+		ScenarioStep{Title: "最终业务状态", Detail: fmt.Sprintf("PICK 完成 %d/%d，出库单已发货 %d 张，库存流水 %d 条", completedTasks, len(finalTasks), shippedOrders, len(inventoryTrans)), Status: ScenarioStepCompleted},
+		ScenarioStep{Title: "库存不变量", Detail: invariantMessage, Status: ScenarioStepCompleted},
+		ScenarioStep{Title: "实验边界", Detail: "页面展示的是模拟 PDA 扫码请求，不表示项目接入或实现了真实 PDA 硬件客户端。", Status: ScenarioStepCompleted},
+	)
+
 	return &PickingResult{
 		Workers:                        workers,
+		ExperimentOrderCount:           len(orderIDs),
+		ExperimentOrderNos:             preparation.OrderNos,
+		PreparedStockQuantity:          preparation.PreparedStockQuantity,
 		Contenders:                     contenders,
 		TaskCount:                      len(tasks),
 		TotalTarget:                    totalTarget,

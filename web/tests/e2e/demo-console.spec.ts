@@ -35,6 +35,43 @@ async function startScenarioFromHome(
   await expect(drawer(page)).toBeVisible()
 }
 
+
+type ApiEnvelope<T> = { code: number; msg: string; data: T }
+type PageData<T> = { list: T[]; total: number }
+interface PickingExperimentResult {
+  experiment_order_count: number
+  experiment_order_nos: string[]
+  task_count: number
+  completed_tasks: number
+  shipped_orders: number
+}
+interface WarehouseRow { id: string; code: string }
+interface SkuRow { id: string; code: string }
+interface OutboundOrderRow { id: string; order_no: string }
+interface TaskRow { id: string; task_type: string; status: string; done_qty: number }
+
+async function demoHeaders(page: Page) {
+  const session = await page.evaluate(() => ({
+    token: sessionStorage.getItem('WMS_TOKEN'),
+    sessionId: sessionStorage.getItem('WMS_DEMO_SESSION'),
+  }))
+  return {
+    Authorization: `Bearer ${session.token}`,
+    'X-Demo-Session': session.sessionId || '',
+  }
+}
+
+async function requestDemoJson<T>(page: Page, method: 'get' | 'post', path: string, data?: unknown): Promise<T> {
+  const response = await page.request[method](`/api/v1${path}`, {
+    headers: await demoHeaders(page),
+    data,
+  })
+  expect(response.ok()).toBeTruthy()
+  const body = (await response.json()) as ApiEnvelope<T>
+  expect(body.code).toBe(0)
+  return body.data
+}
+
 test.afterEach(async ({ page }) => {
   try {
     const session = await page.evaluate(() => ({
@@ -222,4 +259,75 @@ test('demo session stays valid after refreshing the demo home', async ({ page })
   await expect(page.getByRole('heading', { name: /从真实业务流程理解这套 WMS/ })).toBeVisible()
   const sessionAfter = await page.evaluate(() => sessionStorage.getItem('WMS_DEMO_SESSION'))
   expect(sessionAfter).toBe(sessionBefore)
+})
+
+test('PDA experiment prepares its own tasks on a clean demo and isolates consecutive runs', async ({ page }) => {
+  await loginByUi(page, demoUsername, demoPassword, /从真实业务流程理解这套 WMS/)
+  await skipTour(page)
+  await page.goto('/demo/performance')
+
+  const runExperiment = async (): Promise<PickingExperimentResult> => {
+    const responsePromise = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST' &&
+        new URL(response.url()).pathname === '/api/v1/demo/run/picking',
+    )
+    await page.getByRole('button', { name: '运行模拟 PDA 实验' }).click()
+    const response = await responsePromise
+    expect(response.ok()).toBeTruthy()
+    const body = (await response.json()) as ApiEnvelope<PickingExperimentResult>
+    expect(body.code).toBe(0)
+    return body.data
+  }
+
+  const first = await runExperiment()
+  expect(first.experiment_order_count).toBe(3)
+  expect(first.task_count).toBeGreaterThan(0)
+  expect(first.completed_tasks).toBe(first.task_count)
+  expect(first.shipped_orders).toBe(3)
+
+  const second = await runExperiment()
+  expect(second.experiment_order_count).toBe(3)
+  expect(second.task_count).toBeGreaterThan(0)
+  expect(second.experiment_order_nos.some((orderNo) => first.experiment_order_nos.includes(orderNo))).toBe(false)
+})
+
+test('PDA experiment does not modify an unrelated pending pick task', async ({ page }) => {
+  await loginByUi(page, demoUsername, demoPassword, /从真实业务流程理解这套 WMS/)
+  await skipTour(page)
+
+  const warehouses = await requestDemoJson<PageData<WarehouseRow>>(page, 'get', '/basic/warehouses?page=1&page_size=100&keyword=WH01')
+  const skus = await requestDemoJson<PageData<SkuRow>>(page, 'get', '/basic/skus?page=1&page_size=100&keyword=SKU000001')
+  const warehouse = warehouses.list.find((item) => item.code === 'WH01')
+  const sku = skus.list.find((item) => item.code === 'SKU000001')
+  expect(warehouse).toBeTruthy()
+  expect(sku).toBeTruthy()
+
+  const order = await requestDemoJson<OutboundOrderRow>(page, 'post', '/outbound/orders', {
+    warehouse_id: warehouse!.id,
+    biz_order_no: `PDA-GUARD-${Date.now()}`,
+    remark: 'PDA unrelated pending task guard',
+    details: [{ sku_id: sku!.id, expected_qty: 1 }],
+  })
+  await requestDemoJson<void>(page, 'post', `/outbound/orders/${order.id}/submit`)
+  await requestDemoJson<void>(page, 'post', `/outbound/orders/${order.id}/approve`)
+
+  const beforePage = await requestDemoJson<PageData<TaskRow>>(page, 'get', `/tasks?page=1&page_size=20&order_id=${order.id}&task_type=PICK`)
+  const unrelated = beforePage.list.find((item) => item.task_type === 'PICK')
+  expect(unrelated).toBeTruthy()
+
+  await page.goto('/demo/performance')
+  const responsePromise = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      new URL(response.url()).pathname === '/api/v1/demo/run/picking',
+  )
+  await page.getByRole('button', { name: '运行模拟 PDA 实验' }).click()
+  await responsePromise
+
+  const afterPage = await requestDemoJson<PageData<TaskRow>>(page, 'get', `/tasks?page=1&page_size=20&order_id=${order.id}&task_type=PICK`)
+  const unchanged = afterPage.list.find((item) => item.id === unrelated!.id)
+  expect(unchanged).toBeTruthy()
+  expect(unchanged!.done_qty).toBe(unrelated!.done_qty)
+  expect(unchanged!.status).toBe(unrelated!.status)
 })

@@ -685,6 +685,9 @@ export interface DemoConcurrentShortageResult {
 export interface DemoPickingResult {
   workers: number
   contenders: number
+  experiment_order_count: number
+  experiment_order_nos: string[]
+  prepared_stock_quantity: number
   task_count: number
   total_target: number
   concurrent_scan_attempts: number

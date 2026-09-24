@@ -374,6 +374,14 @@ useAutoRefresh(() => load(true), 3000)
       />
 
       <template v-if="pickingResult">
+        <div class="prep-summary">
+          <b>实验准备</b>
+          <span>本次创建 {{ pickingResult.experiment_order_count }} 张真实出库单，产生 {{ pickingResult.task_count }} 个专属 PICK Task。</span>
+          <span v-if="pickingResult.prepared_stock_quantity > 0">
+            初始库存不足，已通过真实入库流程补充 {{ pickingResult.prepared_stock_quantity }} 件。
+          </span>
+        </div>
+
         <div class="phase-grid">
           <div>
             <b>并发阶段</b>
@@ -716,6 +724,25 @@ useAutoRefresh(() => load(true), 3000)
 
 .experiment-panel--picking {
   border-top: 3px solid var(--el-color-primary);
+}
+
+.prep-summary {
+  display: grid;
+  gap: 3px;
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-left: 3px solid var(--el-color-primary);
+  border-radius: 7px;
+  background: var(--el-fill-color-extra-light);
+}
+
+.prep-summary b {
+  color: var(--el-text-color-primary);
+}
+
+.prep-summary span {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
 }
 
 .phase-grid {

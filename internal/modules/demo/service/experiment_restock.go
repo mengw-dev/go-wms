@@ -32,6 +32,10 @@ func (s *Service) RestockDemo(ctx context.Context, sessionID string, qty int) (*
 	defer finish()
 	ctx = runCtx
 
+	return s.restockWithinRun(ctx, qty)
+}
+
+func (s *Service) restockWithinRun(ctx context.Context, qty int) (*ScenarioResult, error) {
 	refs, err := s.loadDemoBaseRefs(ctx)
 	if err != nil {
 		return nil, err
