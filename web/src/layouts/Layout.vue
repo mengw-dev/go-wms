@@ -2,7 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
-import { HomeFilled, TrendCharts } from '@element-plus/icons-vue'
+import { TrendCharts } from '@element-plus/icons-vue'
 import { changePassword, getProfile } from '@/api/auth'
 import { releaseDemoSession } from '@/api/demo'
 import DemoConsole from '@/components/DemoConsole.vue'
@@ -105,17 +105,14 @@ async function submitPassword() {
           <el-icon><Odometer /></el-icon>
           <span>仪表盘</span>
         </el-menu-item>
-        <el-menu-item v-if="auth.isDemo" index="/demo">
-          <el-icon><HomeFilled /></el-icon>
-          <span>体验中心</span>
-        </el-menu-item>
         <el-sub-menu v-if="auth.isDemo" index="demo-center">
           <template #title>
             <el-icon><TrendCharts /></el-icon>
             <span>演示中心</span>
           </template>
-          <el-menu-item index="/demo/performance">运行状态与指标快照</el-menu-item>
+          <el-menu-item index="/demo">演示首页</el-menu-item>
           <el-menu-item index="/demo/activity">业务证据</el-menu-item>
+          <el-menu-item index="/demo/performance">工程验证</el-menu-item>
         </el-sub-menu>
         <el-sub-menu v-if="auth.hasPerm('wms:inbound:view')" index="inbound">
           <template #title>

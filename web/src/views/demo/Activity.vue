@@ -49,6 +49,31 @@ const relatedNumbers = computed(() => {
   for (const ids of Object.values(focus.value.orderIds)) values.push(...ids)
   return Array.from(new Set(values.filter(Boolean)))
 })
+const evidenceOverview = computed(() => {
+  const current = evidence.value
+  if (!current) return []
+
+  const orders = [
+    ...current.inbound_orders,
+    ...current.outbound_orders,
+    ...current.stocktake_orders,
+  ]
+  const completedOrders = orders.filter((order) => order.status === 'COMPLETED').length
+  const quantityChange = current.inventory_trans.reduce(
+    (total, item) => total + item.quantity_change,
+    0,
+  )
+
+  return [
+    { label: '入库单', value: String(current.inbound_orders.length) },
+    { label: '出库单', value: String(current.outbound_orders.length) },
+    { label: '盘点单', value: String(current.stocktake_orders.length) },
+    { label: '作业任务', value: String(current.tasks.length) },
+    { label: '库存流水', value: String(current.inventory_trans.length) },
+    { label: '业务状态', value: `${completedOrders} / ${orders.length} 已完成` },
+    { label: '数量变化', value: `${quantityChange > 0 ? '+' : ''}${quantityChange} 件` },
+  ]
+})
 
 async function load(silent = false) {
   if (!silent) loading.value = true
@@ -110,6 +135,19 @@ useAutoRefresh(() => load(true), 5000)
     <template v-if="evidence">
       <el-tabs v-model="activeTab" class="activity-tabs">
         <el-tab-pane label="业务证据" name="evidence">
+          <section class="evidence-overview">
+            <div class="section-title">
+              <b>业务结果概览</b>
+              <span>优先展示与本次执行关联的业务对象</span>
+            </div>
+            <div class="overview-grid">
+              <div v-for="item in evidenceOverview" :key="item.label">
+                <span>{{ item.label }}</span>
+                <b>{{ item.value }}</b>
+              </div>
+            </div>
+          </section>
+
           <div v-if="focused" class="evidence-rule">
             <el-alert
               title="优先按本次业务编号关联；缺少直接编号的记录再使用执行时间窗辅助过滤。"
@@ -283,6 +321,41 @@ useAutoRefresh(() => load(true), 5000)
   box-shadow: var(--el-box-shadow-light);
 }
 
+.evidence-overview {
+  margin-bottom: 18px;
+}
+
+.overview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 8px;
+}
+
+.overview-grid div {
+  min-width: 0;
+  padding: 12px;
+  border-radius: 9px;
+  background: var(--el-fill-color-light);
+}
+
+.overview-grid span,
+.overview-grid b {
+  display: block;
+}
+
+.overview-grid span {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+
+.overview-grid b {
+  margin-top: 5px;
+  overflow-wrap: anywhere;
+  color: var(--el-text-color-primary);
+  font-family: var(--gowms-num-font);
+  font-size: 17px;
+}
+
 .evidence-section {
   margin-top: 18px;
 }
@@ -334,7 +407,8 @@ useAutoRefresh(() => load(true), 5000)
     margin-top: 12px;
   }
 
-  .focus-card {
+  .focus-card,
+  .overview-grid {
     grid-template-columns: 1fr;
   }
 }

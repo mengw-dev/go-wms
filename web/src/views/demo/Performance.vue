@@ -144,10 +144,10 @@ useAutoRefresh(() => load(true), 3000)
 
 <template>
   <div v-loading="loading" class="performance-page">
-    <div class="page-head" data-section="runtime">
+    <div class="page-head">
       <div>
-        <h2>运行状态与指标快照</h2>
-        <p>数据来自当前在线演示实例的真实状态查询；每 3 秒刷新一次。本页不是压力测试、吞吐量测试或容量结论。</p>
+        <h2>工程验证</h2>
+        <p>三个实验都调用真实业务接口，并按目的、输入、执行、结果和边界说明验证范围。</p>
       </div>
       <div class="head-actions">
         <el-button @click="router.push('/demo')">返回演示中心</el-button>
@@ -168,11 +168,34 @@ useAutoRefresh(() => load(true), 3000)
     <section class="experiment-panel" data-section="allocation">
       <div class="experiment-head">
         <div>
-          <span class="experiment-kicker">工程验证</span>
+          <span class="experiment-kicker">实验 01</span>
           <h3>并发库存分配一致性</h3>
-          <p>只验证库存充足时，多张出库单并发创建、提交、审核后的 FIFO 分配和库存三数量一致性。</p>
+          <p>观察库存充足时的 FIFO 分配与库存三数量一致性。</p>
         </div>
         <el-tag type="warning" effect="plain">不是供不应求证明</el-tag>
+      </div>
+
+      <div class="experiment-framework">
+        <div>
+          <span>实验目的</span>
+          <p>验证库存充足时，多张出库单并发创建、提交和审核后，FIFO 分配与库存三数量仍保持一致。</p>
+        </div>
+        <div>
+          <span>实验输入</span>
+          <p>{{ concurrentConcurrency }} 张并发订单，每单 {{ concurrentQty }} 件，总需求 {{ concurrentDemand }} 件。</p>
+        </div>
+        <div>
+          <span>真实执行</span>
+          <p>调用真实创建、提交、审核和 FIFO 分配链路，不由前端预生成成功结果。</p>
+        </div>
+        <div>
+          <span>最终结果</span>
+          <p>{{ concurrentResult?.summary || '尚未运行实验。' }}</p>
+        </div>
+        <div>
+          <span>实验边界</span>
+          <p>{{ concurrentResult?.not_validated || '仅覆盖库存充足场景，不替代供不应求验证。' }}</p>
+        </div>
       </div>
 
       <div class="experiment-controls">
@@ -266,11 +289,34 @@ useAutoRefresh(() => load(true), 3000)
     <section class="experiment-panel experiment-panel--shortage" data-section="shortage">
       <div class="experiment-head">
         <div>
-          <span class="experiment-kicker">工程验证</span>
+          <span class="experiment-kicker">实验 02</span>
           <h3>供给不足并发验证</h3>
-          <p>刻意令总需求大于初始可用库存，再并发执行真实出库创建、提交和审核，区分库存不足拒绝与其他失败。</p>
+          <p>让总需求超过初始可用库存，观察真实业务拒绝行为。</p>
         </div>
         <el-tag type="danger" effect="plain">需求 &gt; 可用库存</el-tag>
+      </div>
+
+      <div class="experiment-framework">
+        <div>
+          <span>实验目的</span>
+          <p>验证总需求大于可用库存时，成功分配量不会超过初始可用库存，并区分库存不足拒绝和其他失败。</p>
+        </div>
+        <div>
+          <span>实验输入</span>
+          <p>{{ shortageConcurrency }} 张并发订单，每单 {{ shortageQty }} 件，总需求 {{ shortageDemand }} 件。</p>
+        </div>
+        <div>
+          <span>真实执行</span>
+          <p>并发调用真实出库创建、提交和审核接口，直接记录每个请求的业务结果。</p>
+        </div>
+        <div>
+          <span>最终结果</span>
+          <p>{{ shortageResult?.summary || '尚未运行实验。' }}</p>
+        </div>
+        <div>
+          <span>实验边界</span>
+          <p>{{ shortageResult?.not_validated || '只验证受控并发供给不足，不替代容量和压力测试。' }}</p>
+        </div>
       </div>
 
       <div class="experiment-controls">
@@ -365,11 +411,34 @@ useAutoRefresh(() => load(true), 3000)
     <section class="experiment-panel experiment-panel--picking" data-section="picking">
       <div class="experiment-head">
         <div>
-          <span class="experiment-kicker">工程验证</span>
+          <span class="experiment-kicker">实验 03</span>
           <h3>模拟 PDA 并发拣货</h3>
-          <p>使用模拟扫码请求并发生成真实 PICK 调用；执行结果按并发阶段、收尾阶段和最终业务状态分段展示。</p>
+          <p>模拟并发扫码和重复抢单，观察真实 PICK 任务竞争与收尾。</p>
         </div>
         <el-tag type="primary" effect="plain">不是真实 PDA 硬件</el-tag>
+      </div>
+
+      <div class="experiment-framework">
+        <div>
+          <span>实验目的</span>
+          <p>验证多个模拟拣货请求并发竞争时，任务不会重复完成，并明确区分并发阶段和顺序收尾阶段。</p>
+        </div>
+        <div>
+          <span>实验输入</span>
+          <p>{{ pickingWorkers }} 个并发拣货员，{{ pickingContenders }} 个抢单或重复扫码请求。</p>
+        </div>
+        <div>
+          <span>真实执行</span>
+          <p>生成真实 PICK 调用和库存扣减，最终状态来自业务 Service，不由前端动画伪造。</p>
+        </div>
+        <div>
+          <span>最终结果</span>
+          <p>{{ pickingResult?.summary || '尚未运行实验。' }}</p>
+        </div>
+        <div>
+          <span>实验边界</span>
+          <p>使用模拟扫码请求，不是真实 PDA 硬件；最终任务完成包含并发后的顺序收尾阶段。</p>
+        </div>
       </div>
 
       <div class="experiment-controls">
@@ -458,7 +527,16 @@ useAutoRefresh(() => load(true), 3000)
       </template>
     </section>
 
-    <section v-if="data">
+    <section v-if="data" class="runtime-section" data-section="runtime">
+      <div class="runtime-head">
+        <div>
+          <span class="experiment-kicker">运行状态</span>
+          <h3>运行状态与指标快照</h3>
+          <p>展示查询时刻的数据库、Redis、连接池、Go 运行时和业务指标，不作为容量结论。</p>
+        </div>
+        <small>每 3 秒刷新一次</small>
+      </div>
+
       <div class="health-grid">
         <div class="health-card" :class="{ down: !dbHealthy }">
           <div class="health-icon">DB</div>
@@ -968,6 +1046,72 @@ useAutoRefresh(() => load(true), 3000)
   margin: 0;
   color: var(--el-text-color-secondary);
   line-height: 1.8;
+}
+
+.experiment-framework {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.experiment-framework > div {
+  min-width: 0;
+  padding: 13px 14px;
+  border-radius: 10px;
+  background: var(--el-fill-color-extra-light);
+}
+
+.experiment-framework span,
+.experiment-framework p {
+  display: block;
+}
+
+.experiment-framework span {
+  color: var(--el-color-primary);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.experiment-framework p {
+  margin: 6px 0 0;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.runtime-section {
+  margin-top: 24px;
+}
+
+.runtime-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.runtime-head h3 {
+  margin: 6px 0 6px;
+  color: var(--el-text-color-primary);
+  font-size: 20px;
+}
+
+.runtime-head p {
+  margin: 0;
+  color: var(--el-text-color-secondary);
+  line-height: 1.7;
+}
+
+.runtime-head small {
+  color: var(--el-text-color-secondary);
+}
+
+@media (max-width: 700px) {
+  .runtime-head {
+    flex-direction: column;
+  }
 }
 
 .last-updated {

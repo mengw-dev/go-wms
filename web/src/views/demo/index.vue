@@ -1,168 +1,107 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { reactive, ref, type Component } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   ArrowRight,
-  Box,
-  Connection,
   Document,
   Download,
+  Link,
   Monitor,
-  QuestionFilled,
-  Refresh,
   Tickets,
-  TrendCharts,
   Upload,
   VideoPlay,
 } from '@element-plus/icons-vue'
-import { getDemoActivity, releaseDemoSession, resetDemoData } from '@/api/demo'
-import type { DemoActivitySnapshot } from '@/api/types'
+import { releaseDemoSession, resetDemoData } from '@/api/demo'
 import DemoTour from '@/components/demo/DemoTour.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useGuideStore, type GuideScenario } from '@/stores/guide'
-import { statusText, taskTypeText } from '@/constants'
-import { formatTime } from '@/utils'
-import { onDataChanged, runDemoScenarioInConsole } from '@/utils/events'
+import { runDemoScenarioInConsole } from '@/utils/events'
 
-interface EvidenceItem {
-  kind: string
+interface ScenarioCard {
+  key: GuideScenario
   title: string
-  detail: string
-  createdAt: string
-  path: string
+  description: string
+  icon: Component
 }
 
 const router = useRouter()
 const auth = useAuthStore()
 const guide = useGuideStore()
 
-const activity = ref<DemoActivitySnapshot | null>(null)
-const activityLoading = ref(false)
 const resetLoading = ref(false)
 const exitLoading = ref(false)
-const remaining = ref(auth.demoSessionExpiresIn || 300)
-const demoTour = ref<{ open: () => void } | null>(null)
-
-let countdownTimer: number | undefined
-let disposeDataChanged: (() => void) | undefined
-
-const remainingText = computed(() => {
-  const seconds = Math.max(0, remaining.value)
-  const minutes = Math.floor(seconds / 60)
-  return `${String(minutes).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`
+const scenarioDialog = reactive<{
+  visible: boolean
+  scenario: GuideScenario | null
+  title: string
+}>({
+  visible: false,
+  scenario: null,
+  title: '',
 })
 
-const evidenceCounts = computed(() => [
-  { label: '入库单', value: activity.value?.inbound_orders.length ?? 0 },
-  { label: '出库单', value: activity.value?.outbound_orders.length ?? 0 },
-  { label: '盘点单', value: activity.value?.stocktake_orders.length ?? 0 },
-  { label: '任务', value: activity.value?.tasks.length ?? 0 },
-  { label: '库存流水', value: activity.value?.inventory_trans.length ?? 0 },
-])
-
-const latestEvidence = computed<EvidenceItem | null>(() => {
-  const current = activity.value
-  if (!current) return null
-
-  const items: EvidenceItem[] = [
-    ...current.inbound_orders.map((item) => ({
-      kind: '入库单',
-      title: item.order_no,
-      detail: statusText(item.status),
-      createdAt: item.created_at,
-      path: `/inbound/orders/${item.id}`,
-    })),
-    ...current.outbound_orders.map((item) => ({
-      kind: '出库单',
-      title: item.order_no,
-      detail: statusText(item.status),
-      createdAt: item.created_at,
-      path: `/outbound/orders/${item.id}`,
-    })),
-    ...current.stocktake_orders.map((item) => ({
-      kind: '盘点单',
-      title: item.order_no,
-      detail: statusText(item.status),
-      createdAt: item.created_at,
-      path: `/stocktake/orders/${item.id}`,
-    })),
-    ...current.tasks.map((item) => ({
-      kind: '作业任务',
-      title: item.task_no,
-      detail: `${taskTypeText(item.task_type)} · ${statusText(item.status)}`,
-      createdAt: item.created_at,
-      path: '/tasks',
-    })),
-    ...current.inventory_trans.map((item) => ({
-      kind: '库存流水',
-      title: item.order_no || item.task_no || '库存变更',
-      detail: `${item.trans_type} · ${item.quantity_change > 0 ? '+' : ''}${item.quantity_change}`,
-      createdAt: item.created_at,
-      path: '/inventory',
-    })),
-  ]
-
-  return (
-    items
-      .filter((item) => item.createdAt)
-      .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())[0] ??
-    null
-  )
-})
-
-watch(
-  () => auth.demoSessionExpiresIn,
-  (value) => {
-    if (value > 0) remaining.value = value
+const scenarios: ScenarioCard[] = [
+  {
+    key: 'inbound',
+    title: '入库流程',
+    description: '从创建入库单、收货到上架，完成一批货进入库存的真实闭环。',
+    icon: Download,
   },
-)
+  {
+    key: 'outbound',
+    title: '出库流程',
+    description: '从出库审核、FIFO 分配到拣货发货，观察库存如何被真实扣减。',
+    icon: Upload,
+  },
+  {
+    key: 'stocktake',
+    title: '库存盘点',
+    description: '生成账面快照、录入实盘差异并审核调整，核对最终库存状态。',
+    icon: Tickets,
+  },
+]
 
-async function loadActivity() {
-  activityLoading.value = true
-  try {
-    activity.value = await getDemoActivity(8)
-  } finally {
-    activityLoading.value = false
-  }
+function openScenarioDialog(scenario: ScenarioCard): void {
+  scenarioDialog.scenario = scenario.key
+  scenarioDialog.title = scenario.title
+  scenarioDialog.visible = true
 }
 
-function startCountdown() {
-  countdownTimer = window.setInterval(() => {
-    if (remaining.value > 0) remaining.value -= 1
-  }, 1000)
+function startFullDemo(): void {
+  runDemoScenarioInConsole('full')
 }
 
-function startManualGuide(scenario: GuideScenario) {
-  const firstStep = guide.start(scenario)
+function startAutomaticScenario(): void {
+  if (!scenarioDialog.scenario) return
+  runDemoScenarioInConsole(scenarioDialog.scenario)
+  scenarioDialog.visible = false
+}
+
+function startManualGuide(): void {
+  if (!scenarioDialog.scenario) return
+  const firstStep = guide.start(scenarioDialog.scenario)
+  scenarioDialog.visible = false
   void router.push(firstStep.route)
 }
 
-function runScenario(scenario: 'inbound' | 'outbound' | 'stocktake' | 'full') {
-  runDemoScenarioInConsole(scenario)
+function goActivity(): void {
+  void router.push('/demo/activity')
 }
 
-function goPerformance(section: 'allocation' | 'shortage' | 'picking' | 'runtime' = 'runtime') {
-  router.push({ path: '/demo/performance', query: { section } })
+function goPerformance(): void {
+  void router.push('/demo/performance')
 }
 
-function goActivity() {
-  router.push('/demo/activity')
-}
-
-function openTour() {
-  demoTour.value?.open()
-}
-
-function openOverview() {
+function openOverview(): void {
   window.open('/overview.html', '_blank', 'noopener,noreferrer')
 }
 
-function openSource() {
+function openSource(): void {
   window.open('https://github.com/mengw-dev/go-wms', '_blank', 'noopener,noreferrer')
 }
 
-async function resetData() {
+async function resetData(): Promise<void> {
   try {
     await ElMessageBox.confirm(
       '将恢复仓库、货品、库存和单据到初始演示数据，确定继续吗？',
@@ -175,14 +114,13 @@ async function resetData() {
   resetLoading.value = true
   try {
     await resetDemoData()
-    await loadActivity()
     ElMessage.success('演示数据已恢复为初始状态')
   } finally {
     resetLoading.value = false
   }
 }
 
-async function releaseAndExit() {
+async function releaseAndExit(): Promise<void> {
   try {
     await ElMessageBox.confirm(
       '退出后当前演示数据会立即恢复初始状态，确定退出吗？',
@@ -202,449 +140,327 @@ async function releaseAndExit() {
   }
 }
 
-onMounted(() => {
-  startCountdown()
-  void loadActivity()
-  disposeDataChanged = onDataChanged(() => void loadActivity())
-})
-
-onBeforeUnmount(() => {
-  if (countdownTimer !== undefined) window.clearInterval(countdownTimer)
-  disposeDataChanged?.()
-})
+async function onSessionCommand(command: string): Promise<void> {
+  if (resetLoading.value || exitLoading.value) return
+  if (command === 'reset') await resetData()
+  if (command === 'exit') await releaseAndExit()
+}
 </script>
 
 <template>
   <div class="demo-home">
-    <section class="session-bar" data-tour="demo-session" aria-label="演示环境状态">
-      <div class="session-status">
-        <el-tag type="success" effect="plain">独立演示租户</el-tag>
-        <span class="status-item">
-          会话剩余 <b>{{ remainingText }}</b>
-        </span>
-        <span class="status-divider" aria-hidden="true"></span>
-        <span class="status-item status-isolation"><i></i>数据隔离已启用</span>
+    <section class="demo-hero" data-tour="demo-session">
+      <div class="hero-topline">
+        <span class="hero-kicker">WMS 演示中心</span>
+        <div class="session-tools">
+          <span class="session-ready"><i></i>演示环境已就绪</span>
+          <el-dropdown trigger="click" @command="onSessionCommand">
+            <el-button text :disabled="resetLoading || exitLoading">会话操作</el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="reset" :disabled="resetLoading || exitLoading">
+                  重置演示数据
+                </el-dropdown-item>
+                <el-dropdown-item command="exit" divided :disabled="resetLoading || exitLoading">
+                  退出演示
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+        </div>
       </div>
-      <div class="session-actions">
-        <el-button text :icon="QuestionFilled" @click="openTour">快速导览</el-button>
-        <el-button text :loading="resetLoading" @click="resetData">重置数据</el-button>
-        <el-button text type="danger" :loading="exitLoading" @click="releaseAndExit">退出并重置</el-button>
-      </div>
-    </section>
 
-    <section class="hero-panel">
-      <div class="hero-copy">
-        <span class="eyebrow">WMS 项目体验中心</span>
-        <h1>从真实业务流程理解这套 WMS</h1>
+      <div class="hero-copy" data-tour="complete-flow">
+        <h1>用一个真实业务闭环，看懂这套 WMS</h1>
         <p>
-          面向中小型仓储场景的模块化单体 WMS，覆盖入库、出库、库存与盘点闭环，重点展示库存一致性、
-          事务边界和多租户隔离。
+          从入库、库存到出库和盘点，所有步骤都调用真实业务 Service。完成后可以继续查看单据、任务、
+          库存变化和技术实现。
         </p>
-        <div class="hero-actions">
-          <el-button type="primary" size="large" :icon="VideoPlay" @click="runScenario('full')">
-            自动演示完整业务闭环
-          </el-button>
-          <el-button size="large" :icon="ArrowRight" @click="startManualGuide('inbound')">
-            亲自体验入库
-          </el-button>
+        <div class="hero-flow" aria-label="完整业务闭环">
+          <span>入库</span>
+          <ArrowRight />
+          <span>库存</span>
+          <ArrowRight />
+          <span>出库</span>
+          <ArrowRight />
+          <span>盘点</span>
         </div>
-      </div>
-      <div class="flow-panel" data-tour="complete-flow">
-        <div class="flow-head">
-          <b>完整业务闭环</b>
-          <small>每一步都调用真实业务 Service</small>
-        </div>
-        <ol class="flow-list">
-          <li><span>01</span><b>入库</b><small>创建入库单</small></li>
-          <li><span>02</span><b>收货</b><small>登记批次与数量</small></li>
-          <li><span>03</span><b>上架</b><small>生成库存</small></li>
-          <li><span>04</span><b>出库审核</b><small>FIFO 锁库</small></li>
-          <li><span>05</span><b>拣货</b><small>扣减库存</small></li>
-          <li><span>06</span><b>盘点</b><small>核对差异</small></li>
-        </ol>
-        <div class="flow-note">
-          <Connection />
-          <span>入库单、库存流水、任务状态和出库单可在业务页面继续核对。</span>
-        </div>
+        <el-button
+          class="primary-cta"
+          type="primary"
+          size="large"
+          :icon="VideoPlay"
+          @click="startFullDemo"
+        >
+          开始 3 分钟演示
+        </el-button>
+        <small>一键执行完整闭环，过程与结果均来自真实后端。</small>
       </div>
     </section>
 
-    <section class="home-section">
+    <section class="home-section business-section">
       <div class="section-heading">
         <div>
-          <span class="section-kicker">业务场景</span>
+          <span>核心业务</span>
           <h2>选择一项业务开始体验</h2>
         </div>
-        <p>场景入口保留参数控制和后续操作，不在 Demo 中复制业务逻辑。</p>
+        <p>每项业务只保留一个入口，再选择自动演示或亲自操作。</p>
       </div>
+
       <div class="scenario-grid">
-        <article class="scenario-card scenario-card--primary">
-          <div class="card-icon"><Download /></div>
-          <h3>完整入库流程</h3>
-          <p>从创建入库单开始，体验提交、审核、收货、上架以及最终库存变化。</p>
-          <div class="scenario-actions">
-            <el-button text type="primary" @click="runScenario('inbound')">自动演示</el-button>
-            <el-button text @click="startManualGuide('inbound')">亲自体验入库</el-button>
+        <article v-for="scenario in scenarios" :key="scenario.key" class="scenario-card">
+          <div class="scenario-icon">
+            <component :is="scenario.icon" />
           </div>
-        </article>
-        <article class="scenario-card">
-          <div class="card-icon"><Upload /></div>
-          <h3>完整出库流程</h3>
-          <p>从创建出库单开始，体验提交、审核、FIFO 库存分配、PICK 任务和拣货发货。</p>
-          <div class="scenario-actions">
-            <el-button text type="primary" @click="runScenario('outbound')">自动演示</el-button>
-            <el-button text @click="startManualGuide('outbound')">亲自体验出库</el-button>
-          </div>
-        </article>
-        <article class="scenario-card">
-          <div class="card-icon"><Tickets /></div>
-          <h3>库存盘点流程</h3>
-          <p>体验库存快照、实盘录入、差异确认、审核调整以及 ADJUST 库存流水。</p>
-          <div class="scenario-actions">
-            <el-button text type="primary" @click="runScenario('stocktake')">自动演示</el-button>
-            <el-button text @click="startManualGuide('stocktake')">亲自体验盘点</el-button>
-          </div>
+          <h3>{{ scenario.title }}</h3>
+          <p>{{ scenario.description }}</p>
+          <el-button type="primary" plain @click="openScenarioDialog(scenario)">
+            开始体验
+            <ArrowRight />
+          </el-button>
         </article>
       </div>
     </section>
 
-    <section class="home-section" data-tour="demo-verification">
+    <section class="home-section capability-section">
       <div class="section-heading">
         <div>
-          <span class="section-kicker">工程验证</span>
-          <h2>观察并发与运行状态</h2>
+          <span>项目能力</span>
+          <h2>不只是页面演示</h2>
         </div>
-        <p>实验会调用真实业务接口并保留失败结果，不使用本地定时器伪造执行过程。</p>
       </div>
-      <div class="verify-grid">
-        <article class="verify-card">
-          <div class="card-icon"><Box /></div>
-          <div>
-            <h3>并发库存分配一致性</h3>
-            <p>库存充足时并发审核出库单，核对本次订单的 FIFO 分配、PICK 任务和库存不变量。</p>
-          </div>
-          <el-button @click="goPerformance('allocation')">打开实验</el-button>
-        </article>
-        <article class="verify-card">
-          <div class="card-icon"><Connection /></div>
-          <div>
-            <h3>供给不足并发验证</h3>
-            <p>总需求大于可用库存时并发执行真实出库审核，区分库存不足拒绝和其他失败。</p>
-          </div>
-          <el-button @click="goPerformance('shortage')">打开实验</el-button>
-        </article>
-        <article class="verify-card">
-          <div class="card-icon"><Document /></div>
-          <div>
-            <h3>模拟 PDA 并发拣货</h3>
-            <p>并发扫码后明确展示仍未完成任务，再分开展示顺序收尾和最终业务状态。</p>
-          </div>
-          <el-button @click="goPerformance('picking')">打开实验</el-button>
-        </article>
-        <article class="verify-card">
-          <div class="card-icon"><Monitor /></div>
-          <div>
-            <h3>运行状态</h3>
-            <p>查看数据库、Redis、连接池、Go 运行时和当前业务指标快照。</p>
-          </div>
-          <el-button @click="goPerformance('runtime')">查看状态</el-button>
-        </article>
-      </div>
+
+      <ul class="capability-grid">
+        <li>
+          <span>01</span>
+          <b>真实业务 Service</b>
+          <p>自动流程复用现有入库、出库、库存和盘点业务能力。</p>
+        </li>
+        <li>
+          <span>02</span>
+          <b>独立演示租户</b>
+          <p>访客使用独立演示账号，不会接触普通业务数据。</p>
+        </li>
+        <li>
+          <span>03</span>
+          <b>结果可追溯</b>
+          <p>执行后可核对单据、任务状态、库存流水和接口记录。</p>
+        </li>
+        <li>
+          <span>04</span>
+          <b>库存状态可核对</b>
+          <p>现存量、可用量和分配量均可在业务页面继续验证。</p>
+        </li>
+      </ul>
     </section>
 
-    <section class="home-section" data-tour="demo-evidence">
+    <section class="home-section deep-section" data-tour="demo-project">
       <div class="section-heading">
         <div>
-          <span class="section-kicker">结果与证据</span>
-          <h2>最近一次业务执行结果</h2>
+          <span>深入查看</span>
+          <h2>需要继续了解时</h2>
         </div>
-        <div class="section-actions">
-          <el-button :icon="Refresh" :loading="activityLoading" @click="loadActivity">刷新记录</el-button>
-          <el-button :icon="TrendCharts" @click="goActivity">查看完整证据</el-button>
-        </div>
+        <p>业务结果给第一次访问的人看，技术和源码细节留在这里继续展开。</p>
       </div>
-      <div class="evidence-panel">
-        <template v-if="latestEvidence">
-          <div class="latest-evidence">
-            <el-tag effect="plain">{{ latestEvidence.kind }}</el-tag>
-            <div>
-              <b>{{ latestEvidence.title }}</b>
-              <small>{{ formatTime(latestEvidence.createdAt) }}</small>
-            </div>
-            <strong>{{ latestEvidence.detail }}</strong>
-            <el-button text type="primary" @click="router.push(latestEvidence.path)">查看记录</el-button>
-          </div>
-          <div class="evidence-counts">
-            <div v-for="item in evidenceCounts" :key="item.label">
-              <span>{{ item.label }}</span>
-              <b>{{ item.value }}</b>
-              <small>最近记录</small>
-            </div>
-          </div>
-        </template>
-        <div v-else class="empty-evidence">
-          <b>还没有业务执行记录</b>
-          <span>从“开始完整演示”进入，完成后的单据、任务和库存流水会显示在这里。</span>
-        </div>
-      </div>
-    </section>
 
-    <section class="home-section" data-tour="demo-project">
-      <div class="section-heading">
-        <div>
-          <span class="section-kicker">项目说明</span>
-          <h2>需要继续深入了解时</h2>
-        </div>
-        <p>业务视角保持简洁，技术细节通过独立入口展开，不拆成两套系统。</p>
-      </div>
-      <div class="project-grid">
-        <button type="button" @click="openOverview">
-          <b>项目概览</b>
-          <span>业务流程、数据模型与工程能力总览</span>
+      <div class="deep-grid">
+        <button type="button" data-tour="demo-evidence" @click="goActivity">
+          <Document />
+          <span>
+            <b>业务证据</b>
+            <small>查看单据、任务和库存变化</small>
+          </span>
+          <ArrowRight />
+        </button>
+        <button type="button" data-tour="demo-verification" @click="goPerformance">
+          <Monitor />
+          <span>
+            <b>工程验证</b>
+            <small>查看并发实验和运行状态</small>
+          </span>
           <ArrowRight />
         </button>
         <button type="button" @click="openOverview">
-          <b>架构与核心设计</b>
-          <span>分层结构、事务边界与库存一致性说明</span>
-          <ArrowRight />
-        </button>
-        <button type="button" @click="openOverview">
-          <b>技术实现</b>
-          <span>多租户、异步任务、可观测性与可靠性设计</span>
+          <Tickets />
+          <span>
+            <b>项目概览</b>
+            <small>业务流程、架构和可靠性设计</small>
+          </span>
           <ArrowRight />
         </button>
         <button type="button" @click="openSource">
-          <b>源码入口</b>
-          <span>前往 GitHub 查看完整实现与测试</span>
+          <Link />
+          <span>
+            <b>源码仓库</b>
+            <small>查看完整实现、测试和提交记录</small>
+          </span>
           <ArrowRight />
         </button>
       </div>
     </section>
 
-    <DemoTour ref="demoTour" @complete="runScenario('full')" />
+    <DemoTour @complete="startFullDemo" />
+
+    <el-dialog
+      v-model="scenarioDialog.visible"
+      :title="`选择体验方式：${scenarioDialog.title}`"
+      width="min(540px, 92vw)"
+      append-to-body
+      :close-on-click-modal="false"
+    >
+      <p class="dialog-description">
+        自动演示会直接调用真实业务接口完成闭环；亲自操作会进入业务页面，由引导协助逐步完成。
+      </p>
+      <div class="mode-grid">
+        <button type="button" class="mode-card" @click="startAutomaticScenario">
+          <VideoPlay />
+          <b>自动演示</b>
+          <span>快速看完整结果，适合首次了解。</span>
+        </button>
+        <button type="button" class="mode-card" @click="startManualGuide">
+          <ArrowRight />
+          <b>亲自操作</b>
+          <span>进入真实业务页面，按步骤完成。</span>
+        </button>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
 <style scoped>
 .demo-home {
-  width: min(1180px, 100%);
+  width: min(1120px, 100%);
   margin: 0 auto;
-  padding-bottom: 24px;
+  padding-bottom: 32px;
+  display: grid;
+  gap: 24px;
 }
 
-.session-bar,
-.hero-panel,
-.scenario-card,
-.verify-card,
-.evidence-panel,
-.project-grid button {
+.demo-hero {
+  position: relative;
+  overflow: hidden;
+  padding: 28px;
   border: 1px solid var(--el-border-color-light);
-  background: var(--el-bg-color);
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at 88% 18%, color-mix(in srgb, var(--el-color-primary) 18%, transparent), transparent 34%),
+    linear-gradient(135deg, var(--el-color-primary-light-9), var(--el-bg-color));
   box-shadow: var(--el-box-shadow-light);
 }
 
-.session-bar {
-  min-height: 52px;
-  padding: 9px 14px;
-  border-radius: var(--gowms-radius-card);
+.hero-topline,
+.section-heading {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 16px;
+  gap: 20px;
 }
 
-.session-status,
-.session-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.status-item {
-  color: var(--el-text-color-secondary);
-  font-size: 13px;
-}
-
-.status-item b {
-  color: var(--el-text-color-primary);
-  font-family: var(--gowms-num-font);
-  font-variant-numeric: tabular-nums;
-}
-
-.status-divider {
-  width: 1px;
-  height: 18px;
-  background: var(--el-border-color);
-}
-
-.status-isolation i {
-  display: inline-block;
-  width: 7px;
-  height: 7px;
-  margin-right: 6px;
-  border-radius: 50%;
-  background: var(--el-color-success);
-}
-
-.hero-panel {
-  margin-top: 14px;
-  padding: 30px;
-  border-radius: var(--gowms-radius-card);
-  display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(360px, 0.95fr);
-  gap: 34px;
-  overflow: hidden;
-  position: relative;
-}
-
-.hero-panel::after {
-  content: '';
-  position: absolute;
-  width: 220px;
-  height: 220px;
-  right: -120px;
-  top: -120px;
-  border-radius: 50%;
-  background: var(--el-color-primary-light-9);
-  pointer-events: none;
-}
-
-.hero-copy,
-.flow-panel {
-  position: relative;
-  z-index: 1;
-}
-
-.eyebrow,
-.section-kicker {
+.hero-kicker,
+.section-heading > div > span {
   color: var(--el-color-primary);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
+.session-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.session-ready {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+
+.session-ready i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--el-color-success);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--el-color-success) 14%, transparent);
+}
+
+.hero-copy {
+  max-width: 800px;
+  padding: 58px 0 42px;
+}
+
 .hero-copy h1 {
-  max-width: 680px;
-  margin: 10px 0 14px;
+  margin: 0;
   color: var(--el-text-color-primary);
-  font-size: clamp(28px, 3.4vw, 42px);
-  line-height: 1.25;
-  letter-spacing: -0.02em;
+  font-size: clamp(32px, 5vw, 52px);
+  line-height: 1.12;
+  letter-spacing: -0.03em;
 }
 
 .hero-copy > p {
   max-width: 720px;
-  margin: 0;
-  color: var(--el-text-color-secondary);
-  font-size: 15px;
-  line-height: 1.9;
+  margin: 18px 0 0;
+  color: var(--el-text-color-regular);
+  font-size: 16px;
+  line-height: 1.8;
 }
 
-.hero-actions {
+.hero-flow {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 10px;
-  margin-top: 24px;
-}
-
-.flow-panel {
-  padding: 18px;
-  border: 1px solid var(--el-border-color);
-  border-radius: 10px;
-  background: var(--el-fill-color-extra-light);
-}
-
-.flow-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--el-border-color-lighter);
-}
-
-.flow-head b {
-  font-size: 15px;
-}
-
-.flow-head small,
-.flow-note {
+  margin: 26px 0;
   color: var(--el-text-color-secondary);
-  font-size: 12px;
 }
 
-.flow-list {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  margin: 14px 0;
-  padding: 0;
-  list-style: none;
-}
-
-.flow-list li {
-  display: grid;
-  grid-template-columns: 28px 1fr;
-  grid-template-rows: auto auto;
-  column-gap: 8px;
-  padding: 8px;
-  border-radius: 8px;
+.hero-flow span {
+  padding: 7px 12px;
+  border: 1px solid var(--el-border-color-light);
+  border-radius: 999px;
+  color: var(--el-text-color-primary);
   background: var(--el-bg-color);
-}
-
-.flow-list span {
-  grid-row: 1 / 3;
-  align-self: center;
-  color: var(--el-color-primary);
-  font-family: var(--gowms-num-font);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
 }
 
-.flow-list b {
-  font-size: 13px;
-}
-
-.flow-list small {
-  color: var(--el-text-color-secondary);
-  font-size: 11px;
-}
-
-.flow-note {
-  display: flex;
-  align-items: flex-start;
-  gap: 7px;
-  line-height: 1.6;
-}
-
-.flow-note svg {
+.hero-flow svg {
   width: 15px;
-  flex: 0 0 auto;
-  margin-top: 2px;
-  color: var(--el-color-primary);
+}
+
+.primary-cta {
+  min-width: 190px;
+}
+
+.hero-copy > small {
+  display: block;
+  margin-top: 12px;
+  color: var(--el-text-color-secondary);
 }
 
 .home-section {
-  margin-top: 28px;
+  padding: 26px;
+  border: 1px solid var(--el-border-color-light);
+  border-radius: 20px;
+  background: var(--el-bg-color);
+  box-shadow: var(--el-box-shadow-light);
 }
 
 .section-heading {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 20px;
-  margin-bottom: 13px;
+  margin-bottom: 20px;
 }
 
 .section-heading h2 {
-  margin: 4px 0 0;
+  margin: 6px 0 0;
   color: var(--el-text-color-primary);
-  font-size: 20px;
+  font-size: 24px;
 }
 
 .section-heading > p {
-  max-width: 560px;
+  max-width: 480px;
   margin: 0;
   color: var(--el-text-color-secondary);
   font-size: 13px;
@@ -652,274 +468,273 @@ onBeforeUnmount(() => {
   text-align: right;
 }
 
-.section-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
 .scenario-grid,
-.verify-grid,
-.project-grid {
+.deep-grid {
   display: grid;
-  gap: 12px;
-}
-
-.scenario-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-.scenario-card,
-.verify-card {
-  border-radius: var(--gowms-radius-card);
-  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+  gap: 14px;
 }
 
 .scenario-card {
+  min-height: 230px;
   padding: 20px;
-  border-top: 3px solid var(--el-border-color);
-}
-
-.scenario-card:hover,
-.verify-card:hover {
-  border-color: var(--el-color-primary-light-5);
-  box-shadow: var(--el-box-shadow);
-  transform: translateY(-2px);
-}
-
-.scenario-card--primary {
-  border-top-color: var(--el-color-primary);
-}
-
-.card-icon {
-  width: 36px;
-  height: 36px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 16px;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 9px;
+  flex-direction: column;
+  background: var(--el-fill-color-extra-light);
+  transition:
+    transform 0.18s ease,
+    border-color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.scenario-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--el-color-primary-light-5);
+  box-shadow: var(--el-box-shadow-light);
+}
+
+.scenario-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
   color: var(--el-color-primary);
   background: var(--el-color-primary-light-9);
 }
 
-.card-icon svg {
-  width: 19px;
+.scenario-icon svg {
+  width: 22px;
 }
 
-.scenario-card h3,
-.verify-card h3 {
-  margin: 14px 0 7px;
+.scenario-card h3 {
+  margin: 18px 0 8px;
   color: var(--el-text-color-primary);
-  font-size: 16px;
+  font-size: 19px;
 }
 
-.scenario-card p,
-.verify-card p {
-  min-height: 42px;
-  margin: 0 0 12px;
+.scenario-card p {
+  margin: 0 0 20px;
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
+  line-height: 1.75;
+}
+
+.scenario-card .el-button {
+  width: fit-content;
+  margin-top: auto;
+}
+
+.scenario-card .el-button svg {
+  margin-left: 4px;
+}
+
+.capability-grid {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.capability-grid li {
+  padding: 18px;
+  border-radius: 14px;
+  background: var(--el-fill-color-extra-light);
+}
+
+.capability-grid li > span {
+  display: block;
+  margin-bottom: 12px;
+  color: var(--el-color-primary);
+  font-family: var(--gowms-num-font);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.capability-grid b {
+  color: var(--el-text-color-primary);
+  font-size: 15px;
+}
+
+.capability-grid p {
+  margin: 8px 0 0;
   color: var(--el-text-color-secondary);
   font-size: 13px;
   line-height: 1.7;
 }
 
-.scenario-card .el-button {
-  padding-left: 0;
-}
-
-.scenario-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 14px;
-}
-
-.verify-grid {
+.deep-grid {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
-.verify-card {
-  padding: 18px;
-  display: grid;
-  grid-template-columns: 36px 1fr;
-  gap: 12px;
-}
-
-.verify-card h3 {
-  margin-top: 0;
-}
-
-.verify-card .el-button {
-  grid-column: 2;
-  justify-self: start;
-}
-
-.evidence-panel {
-  padding: 18px;
-  border-radius: var(--gowms-radius-card);
-}
-
-.latest-evidence {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
-  align-items: center;
-  gap: 12px;
-  padding: 14px;
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 9px;
-  background: var(--el-fill-color-extra-light);
-}
-
-.latest-evidence div {
+.deep-grid button {
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.latest-evidence b,
-.latest-evidence strong {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.latest-evidence small {
-  color: var(--el-text-color-secondary);
-}
-
-.latest-evidence strong {
-  color: var(--el-text-color-regular);
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.evidence-counts {
+  min-height: 128px;
+  padding: 18px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 14px;
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 8px;
-  margin-top: 12px;
-}
-
-.evidence-counts div {
-  padding: 12px;
-  border-radius: 8px;
-  background: var(--el-fill-color-light);
-  text-align: center;
-}
-
-.evidence-counts span,
-.evidence-counts small {
-  display: block;
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-}
-
-.evidence-counts b {
-  display: block;
-  margin: 4px 0 2px;
-  color: var(--el-text-color-primary);
-  font-family: var(--gowms-num-font);
-  font-size: 22px;
-}
-
-.empty-evidence {
-  min-height: 124px;
-  display: flex;
-  flex-direction: column;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: center;
-  gap: 7px;
-  border: 1px dashed var(--el-border-color);
-  border-radius: 9px;
-  color: var(--el-text-color-secondary);
-}
-
-.empty-evidence b {
-  color: var(--el-text-color-primary);
-}
-
-.empty-evidence span {
-  font-size: 13px;
-}
-
-.project-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
-.project-grid button {
-  min-height: 116px;
-  padding: 16px;
-  border-radius: var(--gowms-radius-card);
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 8px 10px;
+  gap: 12px;
   text-align: left;
-  cursor: pointer;
   color: var(--el-text-color-primary);
+  background: var(--el-fill-color-extra-light);
+  cursor: pointer;
+  transition:
+    border-color 0.18s ease,
+    background-color 0.18s ease;
 }
 
-.project-grid button:hover {
+.deep-grid button:hover {
   border-color: var(--el-color-primary-light-5);
+  background: var(--el-color-primary-light-9);
 }
 
-.project-grid button b {
-  font-size: 15px;
-}
-
-.project-grid button span {
-  grid-column: 1 / 3;
-  color: var(--el-text-color-secondary);
-  font-size: 13px;
-  line-height: 1.65;
-}
-
-.project-grid button svg {
-  width: 16px;
+.deep-grid button > svg:first-child {
+  width: 22px;
   color: var(--el-color-primary);
 }
 
-@media (max-width: 980px) {
-  .hero-panel {
-    grid-template-columns: 1fr;
-  }
+.deep-grid button > svg:last-child {
+  width: 16px;
+  color: var(--el-text-color-placeholder);
+}
 
+.deep-grid button span,
+.deep-grid button b,
+.deep-grid button small {
+  display: block;
+  min-width: 0;
+}
+
+.deep-grid button b {
+  font-size: 15px;
+}
+
+.deep-grid button small {
+  margin-top: 6px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.dialog-description {
+  margin: 0 0 18px;
+  color: var(--el-text-color-secondary);
+  font-size: 14px;
+  line-height: 1.75;
+}
+
+.mode-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.mode-card {
+  min-height: 150px;
+  padding: 20px;
+  border: 1px solid var(--el-border-color);
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  text-align: left;
+  color: var(--el-text-color-primary);
+  background: var(--el-bg-color);
+  cursor: pointer;
+  transition:
+    border-color 0.18s ease,
+    background-color 0.18s ease,
+    transform 0.18s ease;
+}
+
+.mode-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
+}
+
+.mode-card svg {
+  width: 24px;
+  color: var(--el-color-primary);
+}
+
+.mode-card b {
+  margin-top: 6px;
+  font-size: 16px;
+}
+
+.mode-card span {
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+@media (max-width: 920px) {
   .scenario-grid,
-  .verify-grid {
+  .capability-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .project-grid {
+  .deep-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
-@media (max-width: 700px) {
-  .session-bar,
+@media (max-width: 640px) {
+  .demo-home {
+    gap: 16px;
+  }
+
+  .demo-hero,
+  .home-section {
+    padding: 20px;
+    border-radius: 16px;
+  }
+
+  .hero-topline,
   .section-heading {
-    align-items: flex-start;
     flex-direction: column;
+    gap: 10px;
+  }
+
+  .session-tools {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .hero-copy {
+    padding: 38px 0 22px;
+  }
+
+  .hero-copy h1 {
+    font-size: 34px;
   }
 
   .section-heading > p {
     text-align: left;
   }
 
-  .hero-panel {
-    padding: 22px;
-  }
-
   .scenario-grid,
-  .verify-grid,
-  .project-grid,
-  .evidence-counts {
+  .capability-grid,
+  .deep-grid,
+  .mode-grid {
     grid-template-columns: 1fr;
   }
 
-  .latest-evidence {
-    grid-template-columns: 1fr;
+  .scenario-card {
+    min-height: 0;
   }
 
-  .latest-evidence strong {
-    white-space: normal;
+  .deep-grid button {
+    min-height: 104px;
   }
 }
 </style>

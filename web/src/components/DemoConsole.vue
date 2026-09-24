@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Document, HomeFilled, Monitor, Refresh, VideoPlay } from '@element-plus/icons-vue'
+import { Document, HomeFilled, Refresh, VideoPlay } from '@element-plus/icons-vue'
 import {
   acquireDemoSession,
   heartbeatDemoSession,
@@ -31,6 +31,7 @@ const resetting = ref(false)
 const exiting = ref(false)
 const remaining = ref(0)
 const result = ref<DemoScenarioResult | null>(null)
+const resultDialogVisible = ref(false)
 const runningScenario = ref<DemoConsoleScenario | null>(null)
 let countdownTimer: number | undefined
 let renewTimer: number | undefined
@@ -66,20 +67,29 @@ const sessionState = computed(() => {
   if (acquiring.value) return '接入中'
   return '未建立'
 })
-const currentActivity = computed(() => {
-  if (scenarioRunning.value) {
-    const labels: Record<DemoConsoleScenario, string> = {
-      inbound: '入库自动演示',
-      outbound: '出库自动演示',
-      stocktake: '盘点自动演示',
-      full: '完整业务闭环',
-    }
-    return runningScenario.value ? labels[runningScenario.value] : '业务演示'
+const scenarioLabels: Record<DemoConsoleScenario, string> = {
+  inbound: '入库自动演示',
+  outbound: '出库自动演示',
+  stocktake: '盘点自动演示',
+  full: '完整业务闭环',
+}
+
+const currentScenarioLabel = computed(() => {
+  if (runningScenario.value) return scenarioLabels[runningScenario.value]
+  const name = result.value?.name
+  if (name && Object.prototype.hasOwnProperty.call(scenarioLabels, name)) {
+    return scenarioLabels[name as DemoConsoleScenario]
   }
-  if (resetting.value) return '正在重置数据'
+  return '等待开始'
+})
+
+const currentStepText = computed(() => {
+  if (resetting.value) return '正在重置演示数据'
   if (exiting.value) return '正在退出演示'
   if (acquiring.value) return '正在接入演示会话'
-  return '空闲'
+  if (scenarioRunning.value) return '正在执行真实业务'
+  if (result.value?.steps.length) return `已完成 ${result.value.steps.length} / ${result.value.steps.length} 步`
+  return '尚未开始'
 })
 
 /** 会话空闲时长（秒），来源于后端下发的 TTL。 */
@@ -220,10 +230,12 @@ async function runScenario(scenario: DemoConsoleScenario) {
   scenarioRunning.value = true
   runningScenario.value = scenario
   result.value = null
+  resultDialogVisible.value = false
   const startedAt = new Date().toISOString()
   try {
     const demoResult = await requestDemoScenario(scenario)
     result.value = demoResult
+    resultDialogVisible.value = true
     rememberDemoEvidence(demoResult, startedAt)
     emitDataChanged()
     if (demoResult.status !== 'failed') {
@@ -232,6 +244,7 @@ async function runScenario(scenario: DemoConsoleScenario) {
   } catch (error) {
     if (error instanceof ApiError && isDemoScenarioResult(error.data)) {
       result.value = error.data
+      resultDialogVisible.value = true
       rememberDemoEvidence(error.data, startedAt)
       emitDataChanged()
     }
@@ -254,6 +267,7 @@ function isDemoScenarioResult(value: unknown): value is DemoScenarioResult {
 }
 
 async function navigateTo(path: string) {
+  resultDialogVisible.value = false
   visible.value = false
   await router.push(path)
 }
@@ -272,6 +286,7 @@ async function resetData() {
   try {
     await resetDemoData()
     result.value = null
+    resultDialogVisible.value = false
     emitDataChanged()
     ElMessage.success('演示数据已恢复为初始状态')
   } finally {
@@ -296,6 +311,7 @@ async function releaseAndExit() {
     // 会话可能已过期，仍需清理本地登录态并返回登录页。
   } finally {
     auth.clear()
+    resultDialogVisible.value = false
     visible.value = false
     exiting.value = false
     await router.push('/login')
@@ -333,18 +349,18 @@ onBeforeUnmount(() => {
     v-if="auth.isDemo"
     class="demo-fab"
     type="button"
-    aria-label="打开演示快捷入口"
+    aria-label="打开演示控制"
     @click="visible = true"
   >
     <el-icon><VideoPlay /></el-icon>
-    <span>演示快捷入口</span>
+    <span>演示控制</span>
     <small v-if="showCountdown" class="fab-countdown">{{ remainingText }}</small>
   </button>
 
   <el-drawer
     v-model="visible"
     class="demo-console-drawer"
-    title="演示快捷入口"
+    :title="auth.demoSessionId ? '演示进行中' : '演示控制'"
     size="min(420px, 92vw)"
     direction="rtl"
     append-to-body
@@ -364,12 +380,16 @@ onBeforeUnmount(() => {
         </div>
         <dl class="status-list">
           <div>
-            <dt>Demo 会话</dt>
-            <dd>{{ sessionState }}</dd>
+            <dt>演示场景</dt>
+            <dd>{{ currentScenarioLabel }}</dd>
           </div>
           <div>
-            <dt>当前运行</dt>
-            <dd>{{ currentActivity }}</dd>
+            <dt>当前步骤</dt>
+            <dd>{{ currentStepText }}</dd>
+          </div>
+          <div>
+            <dt>会话状态</dt>
+            <dd>{{ sessionState }}</dd>
           </div>
         </dl>
         <p class="idle-hint">
@@ -377,34 +397,26 @@ onBeforeUnmount(() => {
         </p>
       </section>
 
-      <section class="result-card">
-        <div class="section-title"><b>最近一次执行结果</b></div>
-        <DemoRunViewer v-if="result" :result="result" @navigate="navigateTo" />
-        <div v-else-if="scenarioRunning" class="empty-result">
-          正在调用真实业务 Service 执行；完成后将按后端返回结果回放步骤。
-        </div>
-        <div v-else class="empty-result">暂无执行结果，可从下方开始完整业务闭环。</div>
-      </section>
-
-      <section class="quick-section">
+      <section class="run-summary">
         <div class="section-title">
-          <b>快捷入口</b>
-          <span>业务参数与完整结果在演示中心查看</span>
+          <b>最近一次执行</b>
+          <span>{{ currentScenarioLabel }}</span>
         </div>
-        <div class="quick-grid">
-          <el-button :icon="HomeFilled" @click="navigateTo('/demo')">返回演示中心</el-button>
-          <el-button :icon="Document" @click="navigateTo('/demo/activity')">查看业务证据</el-button>
+        <p v-if="result" class="run-summary-copy">{{ result.summary }}</p>
+        <p v-else-if="scenarioRunning" class="run-summary-copy">
+          正在调用真实业务 Service 执行，完成后可查看完整业务结果。
+        </p>
+        <p v-else class="run-summary-copy">当前还没有执行结果，可从演示中心开始体验。</p>
+        <div class="controller-actions">
           <el-button
-            class="quick-primary"
             type="primary"
-            :icon="VideoPlay"
-            :loading="scenarioRunning"
-            :disabled="busy && !scenarioRunning"
-            @click="runScenario('full')"
+            :icon="Document"
+            :disabled="!result"
+            @click="resultDialogVisible = true"
           >
-            完整业务闭环
+            查看结果
           </el-button>
-          <el-button :icon="Monitor" @click="navigateTo('/demo/performance')">工程验证</el-button>
+          <el-button :icon="HomeFilled" @click="navigateTo('/demo')">返回演示中心</el-button>
         </div>
       </section>
 
@@ -424,11 +436,24 @@ onBeforeUnmount(() => {
           :disabled="busy && !exiting"
           @click="releaseAndExit"
         >
-          退出 Demo
+          退出演示
         </el-button>
       </section>
     </div>
   </el-drawer>
+
+  <el-dialog
+    v-model="resultDialogVisible"
+    class="demo-result-dialog"
+    width="min(960px, 96vw)"
+    top="3vh"
+    append-to-body
+    destroy-on-close
+    :close-on-click-modal="false"
+    aria-label="自动演示结果"
+  >
+    <DemoRunViewer v-if="result" :result="result" @navigate="navigateTo" />
+  </el-dialog>
 </template>
 
 <style scoped>
@@ -471,8 +496,7 @@ onBeforeUnmount(() => {
 }
 
 .controller-state,
-.result-card,
-.quick-section {
+.run-summary {
   padding: 16px;
   border: 1px solid var(--el-border-color-light);
   border-radius: 12px;
@@ -518,7 +542,7 @@ onBeforeUnmount(() => {
 
 .status-list {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
   margin: 16px 0 0;
 }
@@ -565,33 +589,32 @@ onBeforeUnmount(() => {
   text-align: right;
 }
 
-.empty-result {
+.run-summary-copy {
+  margin: 0;
   padding: 14px;
   border-radius: 9px;
   color: var(--el-text-color-secondary);
   background: var(--el-fill-color-lighter);
   font-size: 13px;
+  line-height: 1.7;
 }
 
-.result-card :deep(.run-viewer) {
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-}
-
-.quick-grid {
+.controller-actions {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
+  margin-top: 12px;
 }
 
-.quick-grid .el-button {
+.controller-actions .el-button {
   width: 100%;
   margin-left: 0;
 }
 
-.quick-primary {
-  grid-column: 1 / -1;
+.demo-result-dialog :deep(.el-dialog__body) {
+  max-height: 90vh;
+  padding-top: 8px;
+  overflow-y: auto;
 }
 
 .danger-section {
@@ -624,12 +647,8 @@ onBeforeUnmount(() => {
   }
 
   .status-list,
-  .quick-grid {
+  .controller-actions {
     grid-template-columns: 1fr;
-  }
-
-  .quick-primary {
-    grid-column: auto;
   }
 
   .danger-section {

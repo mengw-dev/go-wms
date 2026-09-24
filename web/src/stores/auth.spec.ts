@@ -20,22 +20,29 @@ describe('auth store permissions', () => {
     setActivePinia(createPinia())
   })
 
-  it('supports explicit and wildcard permissions', () => {
+  it('grants only explicitly listed permissions without a wildcard', () => {
     const auth = useAuthStore()
     auth.user = {
       user_id: '2',
       username: 'operator',
       nickname: 'Operator',
       roles: ['operator'],
-      perms: ['wms:inbound:view', '*'],
+      perms: ['wms:inbound:view'],
     }
     expect(auth.hasPerm('wms:inbound:view')).toBe(true)
-    expect(auth.hasPerm('wms:system:user')).toBe(true)
+    expect(auth.hasPerm('wms:system:user')).toBe(false)
   })
 
-  it('always grants the built-in administrator', () => {
+  it('does not grant permissions based on user ID 1', () => {
     const auth = useAuthStore()
     auth.user = { user_id: '1', username: 'admin', nickname: 'Admin', roles: [], perms: [] }
+    expect(auth.hasPerm('wms:any:permission')).toBe(false)
+  })
+
+  it('grants arbitrary permissions with a wildcard regardless of user ID', () => {
+    const auth = useAuthStore()
+    auth.user = { user_id: '2', username: 'admin', nickname: 'Admin', roles: [], perms: ['*'] }
+    expect(auth.hasPerm('wms:inbound:view')).toBe(true)
     expect(auth.hasPerm('wms:any:permission')).toBe(true)
   })
 })

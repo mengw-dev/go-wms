@@ -12,6 +12,8 @@ interface TargetRect {
   height: number
 }
 
+type ActionState = 'idle' | 'pending' | 'failed'
+
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
@@ -19,6 +21,8 @@ const guide = useGuideStore()
 
 const targetRect = ref<TargetRect | null>(null)
 const viewport = ref({ width: window.innerWidth, height: window.innerHeight })
+const businessLayerOpen = ref(false)
+const actionState = ref<ActionState>('idle')
 
 let targetObserver: InstanceType<typeof window.ResizeObserver> | undefined
 let bodyObserver: InstanceType<typeof window.MutationObserver> | undefined
@@ -26,8 +30,13 @@ let locateFrame: number | undefined
 let locateAttempts = 0
 let lastLocatedStepId = ''
 let observedTarget: HTMLElement | null = null
+let actionRevision = ''
+let cancellationClicked = false
 
 const visible = computed(() => auth.isDemo && (guide.active || guide.completed))
+const contentVisible = computed(
+  () => visible.value && !guide.completed && actionState.value === 'idle' && !businessLayerOpen.value,
+)
 const step = computed(() => guide.currentStepDefinition)
 const scenarioLabel = computed(() =>
   guide.scenario ? GUIDE_SCENARIO_LABELS[guide.scenario] : '业务',
@@ -118,7 +127,7 @@ function clearTarget(): void {
 }
 
 function refreshTarget(): void {
-  if (!visible.value || !step.value) {
+  if (!contentVisible.value || !step.value) {
     clearTarget()
     return
   }
@@ -163,12 +172,12 @@ function scheduleTargetLocate(reset = false): void {
   const locate = () => {
     locateFrame = undefined
     refreshTarget()
-    if (!targetRect.value && visible.value && locateAttempts < 30) {
+    if (!targetRect.value && contentVisible.value && locateAttempts < 30) {
       locateAttempts += 1
       locateFrame = window.requestAnimationFrame(locate)
       return
     }
-    if (!targetRect.value && visible.value) {
+    if (!targetRect.value && contentVisible.value) {
       guide.setMismatch('未找到当前步骤对应的业务按钮。请重新定位当前步骤，或重新开始/退出引导。')
     }
   }
@@ -178,6 +187,94 @@ function scheduleTargetLocate(reset = false): void {
 function updateViewport(): void {
   viewport.value = { width: window.innerWidth, height: window.innerHeight }
   refreshTarget()
+}
+
+function guideRevision(): string {
+  return [guide.currentStep, guide.lastOutcome, guide.mismatch, ...guide.verifiedStepIds].join('|')
+}
+
+function isElementVisible(element: HTMLElement): boolean {
+  if (element.hidden) return false
+  if (element.getAttribute('aria-hidden') === 'true') return false
+  const style = window.getComputedStyle(element)
+  if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) {
+    return false
+  }
+  const rect = element.getBoundingClientRect()
+  return rect.width > 0 && rect.height > 0
+}
+
+function hasBusinessLayer(): boolean {
+  return Array.from(document.querySelectorAll<HTMLElement>('.el-overlay')).some(isElementVisible)
+}
+
+function hasBusinessError(): boolean {
+  return Array.from(
+    document.querySelectorAll<HTMLElement>('.el-message--error, .el-notification--error'),
+  ).some(isElementVisible)
+}
+
+function updateBusinessLayerState(): void {
+  const layerOpen = hasBusinessLayer()
+  const errorOpen = hasBusinessError()
+  businessLayerOpen.value = layerOpen
+
+  if (actionState.value === 'pending' && errorOpen) {
+    actionState.value = 'failed'
+    cancellationClicked = false
+    return
+  }
+
+  if (actionState.value === 'failed' && !errorOpen && !layerOpen) {
+    actionState.value = 'idle'
+    cancellationClicked = false
+    if (guide.active && !guide.completed) {
+      guide.setMismatch('当前操作未成功，请重新定位当前步骤或重新开始引导。')
+    }
+    return
+  }
+
+  if (actionState.value === 'pending' && cancellationClicked && !layerOpen && !errorOpen) {
+    actionState.value = 'idle'
+    cancellationClicked = false
+  }
+}
+
+function beginTargetAction(): void {
+  actionRevision = guideRevision()
+  cancellationClicked = false
+  actionState.value = 'pending'
+  clearTarget()
+}
+
+function syncActionFromGuide(): void {
+  if (actionState.value === 'pending' && guideRevision() !== actionRevision) {
+    actionState.value = 'idle'
+    cancellationClicked = false
+  }
+}
+
+function onDocumentClickCapture(event: globalThis.Event): void {
+  const target = event.target as HTMLElement | null
+  if (!target?.closest) return
+
+  const clickedButton = target.closest('button')
+  const clickedBusinessContainer = clickedButton?.closest('.el-dialog, .el-message-box')
+  if (clickedButton && clickedBusinessContainer) {
+    const buttonText = clickedButton.textContent?.replace(/\s+/g, '') || ''
+    if (['取消', '返回', '关闭', '继续演示'].some((label) => buttonText.includes(label))) {
+      cancellationClicked = true
+    }
+  }
+
+  if (!contentVisible.value || !step.value) return
+  const actionable = target.closest('button, a, [role="button"], .el-button')
+  if (!actionable || !actionable.closest(step.value.target)) return
+  beginTargetAction()
+}
+
+function onKeydownCapture(event: KeyboardEvent): void {
+  if (event.key === 'Escape' && hasBusinessLayer()) cancellationClicked = true
 }
 
 async function nextStep(): Promise<void> {
@@ -193,6 +290,8 @@ async function previousStep(): Promise<void> {
 }
 
 async function restartGuide(): Promise<void> {
+  actionState.value = 'idle'
+  cancellationClicked = false
   const firstStep = guide.restart()
   if (!firstStep) return
   await router.push(firstStep.route)
@@ -205,6 +304,8 @@ function completedOrderPath(): string {
 }
 
 async function completeNavigate(path: string): Promise<void> {
+  actionState.value = 'idle'
+  cancellationClicked = false
   guide.cancel()
   await router.push(path)
 }
@@ -222,27 +323,28 @@ function manualEvidencePath(): string {
   return `/demo/activity?${params.toString()}`
 }
 
-function openTechnicalImplementation(): void {
-  window.open('/overview.html#design', '_blank', 'noopener,noreferrer')
-}
-
 function repositionGuide(): void {
+  actionState.value = 'idle'
+  cancellationClicked = false
   if (guide.reposition(route.path)) scheduleTargetLocate(true)
 }
 
 function skipGuide(): void {
+  actionState.value = 'idle'
+  cancellationClicked = false
   guide.cancel()
   ElMessage.info('已跳过本次手动引导')
 }
 
 function exitGuide(): void {
+  actionState.value = 'idle'
+  cancellationClicked = false
   guide.cancel()
 }
 
 watch(
-  () => [visible.value, guide.currentStep, route.fullPath] as const,
-  async ([isVisible]) => {
-    await nextTick()
+  () => [visible.value, contentVisible.value, guide.currentStep, route.fullPath] as const,
+  async ([isVisible, isContentVisible]) => {
     if (!isVisible) {
       clearTarget()
       stopBodyObserver()
@@ -250,21 +352,45 @@ watch(
       return
     }
     startBodyObserver()
+    updateBusinessLayerState()
+    if (!isContentVisible) {
+      clearTarget()
+      return
+    }
+    await nextTick()
     scheduleTargetLocate(true)
   },
   { immediate: true },
 )
 
+watch(guideRevision, syncActionFromGuide)
+watch(
+  () => guide.completed,
+  (completed) => {
+    if (completed) {
+      actionState.value = 'idle'
+      businessLayerOpen.value = false
+      clearTarget()
+    }
+  },
+)
+
 watch(
   () => auth.isDemo,
   (isDemo) => {
-    if (!isDemo) guide.cancel()
+    if (!isDemo) {
+      actionState.value = 'idle'
+      guide.cancel()
+    }
   },
 )
 
 function startBodyObserver(): void {
   if (bodyObserver) return
-  bodyObserver = new window.MutationObserver(() => refreshTarget())
+  bodyObserver = new window.MutationObserver(() => {
+    updateBusinessLayerState()
+    refreshTarget()
+  })
   bodyObserver.observe(document.body, {
     childList: true,
     subtree: true,
@@ -281,11 +407,15 @@ function stopBodyObserver(): void {
 onMounted(() => {
   window.addEventListener('resize', updateViewport, { passive: true })
   window.addEventListener('scroll', refreshTarget, { passive: true })
+  document.addEventListener('click', onDocumentClickCapture, true)
+  document.addEventListener('keydown', onKeydownCapture, true)
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', updateViewport)
   window.removeEventListener('scroll', refreshTarget)
+  document.removeEventListener('click', onDocumentClickCapture, true)
+  document.removeEventListener('keydown', onKeydownCapture, true)
   if (locateFrame !== undefined) window.cancelAnimationFrame(locateFrame)
   targetObserver?.disconnect()
   stopBodyObserver()
@@ -296,7 +426,6 @@ onBeforeUnmount(() => {
   <Teleport to="body">
     <div v-if="visible" class="manual-guide" aria-live="polite">
       <template v-if="guide.completed">
-        <div class="guide-shade"></div>
         <section
           class="guide-panel guide-panel--complete"
           style="position: fixed"
@@ -304,7 +433,7 @@ onBeforeUnmount(() => {
           aria-label="手动业务引导完成"
         >
           <span class="guide-kicker">{{ scenarioLabel }}手动引导</span>
-          <h2>你刚刚亲自完成</h2>
+          <h2>手动流程已完成</h2>
           <div class="guide-complete-flow">
             <template v-for="(item, index) in completionSteps" :key="item">
               <span>{{ item }}</span>
@@ -319,14 +448,10 @@ onBeforeUnmount(() => {
           </div>
           <div class="guide-complete-actions">
             <el-button size="small" @click="completeNavigate(manualEvidencePath())">查看业务证据</el-button>
-            <el-button v-if="guide.orderId" size="small" @click="completeNavigate(completedOrderPath())">
-              查看{{ orderFactLabel }}
+            <el-button size="small" :disabled="!guide.orderId" @click="completeNavigate(completedOrderPath())">
+              查看业务对象
             </el-button>
-            <el-button v-if="guide.orderNo" size="small" @click="completeNavigate(`/inventory?order_no=${encodeURIComponent(guide.orderNo)}`)">
-              查看库存流水
-            </el-button>
-            <el-button size="small" @click="openTechnicalImplementation">查看技术实现</el-button>
-            <el-button size="small" type="primary" @click="completeNavigate('/demo')">返回 Demo</el-button>
+            <el-button size="small" type="primary" @click="completeNavigate('/demo')">返回演示中心</el-button>
           </div>
           <div class="guide-actions">
             <el-button @click="restartGuide">重新开始</el-button>
@@ -335,7 +460,7 @@ onBeforeUnmount(() => {
         </section>
       </template>
 
-      <template v-else>
+      <template v-else-if="contentVisible">
         <div v-if="!targetRect" class="guide-shade"></div>
         <div v-else class="guide-highlight" :style="highlightStyle"></div>
 
@@ -427,6 +552,11 @@ onBeforeUnmount(() => {
   color: var(--el-text-color-primary);
   background: var(--el-bg-color-overlay);
   box-shadow: 0 18px 48px rgba(8, 15, 28, 0.28);
+}
+
+.guide-panel--complete {
+  border-color: var(--el-color-success-light-5);
+  background: var(--el-bg-color-overlay);
 }
 
 .guide-head {
@@ -534,8 +664,10 @@ onBeforeUnmount(() => {
   pointer-events: auto;
 }
 
-.guide-actions .el-button + .el-button {
-  margin-left: 8px;
+.guide-actions .el-button,
+.guide-complete-actions .el-button,
+.guide-mismatch-actions .el-button {
+  margin-left: 0;
 }
 
 .guide-complete-flow {
@@ -585,6 +717,7 @@ onBeforeUnmount(() => {
 
   .guide-actions > div {
     display: flex;
+    flex-wrap: wrap;
     justify-content: flex-end;
   }
 }
