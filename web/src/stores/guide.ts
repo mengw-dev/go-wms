@@ -229,22 +229,71 @@ function resolveGuideRoute(route: string, orderId: string, orderNo: string): str
     .replace(':orderNo', encodeURIComponent(orderNo))
 }
 
+const GUIDE_STORAGE_KEY = 'wms-manual-guide-v1'
+
+interface PersistedGuideState {
+  active: boolean
+  scenario: GuideScenario | null
+  currentStep: number
+  orderId: string
+  orderNo: string
+  taskId: string
+  taskNo: string
+  startedAt: number
+  completed: boolean
+  verifiedStepIds: string[]
+  facts: GuideFact[]
+  lastOutcome: string
+  mismatch: string
+}
+
+function loadPersistedGuide(): PersistedGuideState | null {
+  if (typeof window === 'undefined') return null
+  const raw = window.sessionStorage.getItem(GUIDE_STORAGE_KEY)
+  if (!raw) return null
+  try {
+    const value = JSON.parse(raw) as Partial<PersistedGuideState>
+    if (value.scenario !== 'inbound' && value.scenario !== 'outbound' && value.scenario !== 'stocktake') return null
+    if (typeof value.active !== 'boolean' || typeof value.currentStep !== 'number') return null
+    return {
+      active: value.active,
+      scenario: value.scenario,
+      currentStep: Math.max(0, value.currentStep),
+      orderId: value.orderId || '',
+      orderNo: value.orderNo || '',
+      taskId: value.taskId || '',
+      taskNo: value.taskNo || '',
+      startedAt: typeof value.startedAt === 'number' ? value.startedAt : Date.now(),
+      completed: Boolean(value.completed),
+      verifiedStepIds: Array.isArray(value.verifiedStepIds) ? value.verifiedStepIds.filter((item): item is string => typeof item === 'string') : [],
+      facts: Array.isArray(value.facts) ? value.facts.filter((item): item is GuideFact => Boolean(item && typeof item.label === 'string' && typeof item.value === 'string')) : [],
+      lastOutcome: value.lastOutcome || '',
+      mismatch: value.mismatch || '',
+    }
+  } catch {
+    return null
+  }
+}
+
 export const useGuideStore = defineStore('guide', {
-  state: () => ({
-    active: false,
-    scenario: null as GuideScenario | null,
-    currentStep: 0,
-    orderId: '',
-    orderNo: '',
-    taskId: '',
-    taskNo: '',
-    startedAt: 0,
-    completed: false,
-    verifiedStepIds: [] as string[],
-    facts: [] as GuideFact[],
-    lastOutcome: '',
-    mismatch: '',
-  }),
+  state: () => {
+    const persisted = loadPersistedGuide()
+    return {
+      active: persisted?.active ?? false,
+      scenario: persisted?.scenario ?? null,
+      currentStep: persisted?.currentStep ?? 0,
+      orderId: persisted?.orderId ?? '',
+      orderNo: persisted?.orderNo ?? '',
+      taskId: persisted?.taskId ?? '',
+      taskNo: persisted?.taskNo ?? '',
+      startedAt: persisted?.startedAt ?? 0,
+      completed: persisted?.completed ?? false,
+      verifiedStepIds: persisted?.verifiedStepIds ?? [],
+      facts: persisted?.facts ?? [],
+      lastOutcome: persisted?.lastOutcome ?? '',
+      mismatch: persisted?.mismatch ?? '',
+    }
+  },
   getters: {
     steps(state): readonly GuideStep[] {
       return state.scenario ? GUIDE_STEPS[state.scenario] : []
@@ -272,6 +321,25 @@ export const useGuideStore = defineStore('guide', {
     },
   },
   actions: {
+    persist(): void {
+      if (typeof window === 'undefined') return
+      const snapshot: PersistedGuideState = {
+        active: this.active,
+        scenario: this.scenario,
+        currentStep: this.currentStep,
+        orderId: this.orderId,
+        orderNo: this.orderNo,
+        taskId: this.taskId,
+        taskNo: this.taskNo,
+        startedAt: this.startedAt,
+        completed: this.completed,
+        verifiedStepIds: [...this.verifiedStepIds],
+        facts: this.facts.map((fact) => ({ ...fact })),
+        lastOutcome: this.lastOutcome,
+        mismatch: this.mismatch,
+      }
+      window.sessionStorage.setItem(GUIDE_STORAGE_KEY, JSON.stringify(snapshot))
+    },
     start(scenario: GuideScenario): GuideStep {
       this.active = true
       this.scenario = scenario
@@ -286,16 +354,27 @@ export const useGuideStore = defineStore('guide', {
       this.facts = []
       this.lastOutcome = ''
       this.mismatch = ''
+      this.persist()
       return GUIDE_STEPS[scenario][0]
     },
     recordBusinessResult(event: string, result: GuideBusinessResult = {}): boolean {
-      const step = this.currentStepDefinition
-      if (!this.active || this.completed || !step) return false
-      if (event !== step.event) {
-        this.mismatch = `当前业务状态与引导不一致：当前步骤需要完成“${step.title}”。`
+      const currentStep = this.currentStepDefinition
+      if (!this.active || this.completed || !currentStep || !this.scenario) return false
+      const targetIndex = GUIDE_STEPS[this.scenario].findIndex((item) => item.event === event)
+      if (targetIndex < 0 || targetIndex < this.currentStep) {
+        this.mismatch = `当前业务状态与引导不一致：当前步骤需要完成“${currentStep.title}”。`
+        this.persist()
         return false
       }
-
+      const relocated = targetIndex > this.currentStep
+      if (relocated) {
+        for (let index = 0; index < targetIndex; index += 1) {
+          const previousId = GUIDE_STEPS[this.scenario][index].id
+          if (!this.verifiedStepIds.includes(previousId)) this.verifiedStepIds.push(previousId)
+        }
+        this.currentStep = targetIndex
+      }
+      const step = GUIDE_STEPS[this.scenario][targetIndex]
       if (!this.verifiedStepIds.includes(step.id)) this.verifiedStepIds.push(step.id)
       if (result.orderId) this.orderId = result.orderId
       if (result.orderNo) this.orderNo = result.orderNo
@@ -308,8 +387,12 @@ export const useGuideStore = defineStore('guide', {
         }
         this.facts = Array.from(merged.values())
       }
-      this.lastOutcome = result.message || '当前步骤已在真实业务中完成。'
+      const message = result.message || '当前步骤已在真实业务中完成。'
+      this.lastOutcome = relocated
+        ? `检测到当前业务已经进入下一阶段，已为你定位到对应步骤。${message}`
+        : message
       this.mismatch = ''
+      this.persist()
       return true
     },
     next(): boolean {
@@ -317,11 +400,13 @@ export const useGuideStore = defineStore('guide', {
       if (this.currentStep >= this.totalSteps - 1) {
         this.completed = true
         this.active = false
+        this.persist()
         return true
       }
       this.currentStep += 1
       this.mismatch = ''
       this.lastOutcome = ''
+      this.persist()
       return true
     },
     previous(): boolean {
@@ -329,6 +414,7 @@ export const useGuideStore = defineStore('guide', {
       this.currentStep -= 1
       this.mismatch = ''
       this.lastOutcome = ''
+      this.persist()
       return true
     },
     reposition(routePath: string): boolean {
@@ -344,11 +430,13 @@ export const useGuideStore = defineStore('guide', {
       this.currentStep = target.index
       this.mismatch = ''
       this.lastOutcome = ''
+      this.persist()
       return true
     },
     setMismatch(message: string): void {
       if (!this.active || this.completed) return
       this.mismatch = message
+      this.persist()
     },
     restart(): GuideStep | null {
       if (!this.scenario) return null
@@ -368,6 +456,7 @@ export const useGuideStore = defineStore('guide', {
       this.facts = []
       this.lastOutcome = ''
       this.mismatch = ''
+      if (typeof window !== 'undefined') window.sessionStorage.removeItem(GUIDE_STORAGE_KEY)
     },
   },
 })

@@ -49,7 +49,11 @@ const orderFactLabel = computed(() => {
   if (guide.scenario === 'stocktake') return '盘点单'
   return '入库单'
 })
-const taskFactLabel = computed(() => (guide.scenario === 'outbound' ? '拣货任务' : '上架任务'))
+const taskFactLabel = computed(() => {
+  if (guide.scenario === 'outbound') return '拣货任务'
+  if (guide.scenario === 'stocktake') return '盘点任务'
+  return '上架任务'
+})
 
 const highlightStyle = computed<CSSProperties>(() => {
   const rect = targetRect.value
@@ -162,6 +166,10 @@ function scheduleTargetLocate(reset = false): void {
     if (!targetRect.value && visible.value && locateAttempts < 30) {
       locateAttempts += 1
       locateFrame = window.requestAnimationFrame(locate)
+      return
+    }
+    if (!targetRect.value && visible.value) {
+      guide.setMismatch('未找到当前步骤对应的业务按钮。请重新定位当前步骤，或重新开始/退出引导。')
     }
   }
   locateFrame = window.requestAnimationFrame(locate)
@@ -190,9 +198,19 @@ async function restartGuide(): Promise<void> {
   await router.push(firstStep.route)
 }
 
+function completedOrderPath(): string {
+  if (guide.scenario === 'outbound') return `/outbound/orders/${guide.orderId}`
+  if (guide.scenario === 'stocktake') return `/stocktake/orders/${guide.orderId}`
+  return `/inbound/orders/${guide.orderId}`
+}
+
 async function completeNavigate(path: string): Promise<void> {
   guide.cancel()
   await router.push(path)
+}
+
+function openTechnicalImplementation(): void {
+  window.open('/overview.html#design', '_blank', 'noopener,noreferrer')
 }
 
 function repositionGuide(): void {
@@ -286,12 +304,15 @@ onBeforeUnmount(() => {
             <span v-if="guide.taskNo || guide.taskId">{{ taskFactLabel }}：{{ guide.taskNo || guide.taskId }}</span>
             <span v-for="fact in guide.facts" :key="fact.label">{{ fact.label }}：{{ fact.value }}</span>
           </div>
-          <div v-if="guide.scenario === 'stocktake'" class="guide-complete-actions">
-            <el-button size="small" @click="completeNavigate(`/stocktake/orders/${guide.orderId}`)">查看盘点单</el-button>
-            <el-button size="small" @click="completeNavigate('/inventory')">查看库存</el-button>
-            <el-button size="small" @click="completeNavigate(`/inventory?order_no=${encodeURIComponent(guide.orderNo)}`)">
+          <div class="guide-complete-actions">
+            <el-button size="small" @click="completeNavigate('/demo/activity')">查看业务证据</el-button>
+            <el-button v-if="guide.orderId" size="small" @click="completeNavigate(completedOrderPath())">
+              查看{{ orderFactLabel }}
+            </el-button>
+            <el-button v-if="guide.orderNo" size="small" @click="completeNavigate(`/inventory?order_no=${encodeURIComponent(guide.orderNo)}`)">
               查看库存流水
             </el-button>
+            <el-button size="small" @click="openTechnicalImplementation">查看技术实现</el-button>
             <el-button size="small" type="primary" @click="completeNavigate('/demo')">返回 Demo</el-button>
           </div>
           <div class="guide-actions">

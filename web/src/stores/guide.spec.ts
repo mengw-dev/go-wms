@@ -1,5 +1,5 @@
 import { createPinia, setActivePinia } from 'pinia'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { GUIDE_EVENTS, useGuideStore } from './guide'
 
 describe('manual guide store', () => {
@@ -176,6 +176,58 @@ describe('manual guide store', () => {
     expect(guide.completed).toBe(true)
     expect(guide.active).toBe(false)
     expect(guide.facts).toContainEqual({ label: '差异', value: '-3' })
+  })
+
+  it('relocates instead of stalling when the real business state is ahead', () => {
+    const guide = useGuideStore()
+    guide.start('inbound')
+    guide.recordBusinessResult(GUIDE_EVENTS.inboundOrderCreated, {
+      orderId: '101',
+      orderNo: 'IN-101',
+    })
+
+    expect(guide.next()).toBe(true)
+    expect(guide.currentStepDefinition?.id).toBe('inbound-submit')
+    expect(
+      guide.recordBusinessResult(GUIDE_EVENTS.inboundOrderApproved, {
+        message: '审核完成：IN-101 已进入已审核状态。',
+      }),
+    ).toBe(true)
+    expect(guide.currentStepDefinition?.id).toBe('inbound-approve')
+    expect(guide.canAdvance).toBe(true)
+    expect(guide.verifiedStepIds).toContain('inbound-submit')
+    expect(guide.lastOutcome).toContain('检测到当前业务已经进入下一阶段')
+  })
+
+  it('restores the active guide from session storage after a refresh', () => {
+    const values = new Map<string, string>()
+    vi.stubGlobal('window', {
+      sessionStorage: {
+        getItem: (key: string) => values.get(key) ?? null,
+        setItem: (key: string, value: string) => values.set(key, value),
+        removeItem: (key: string) => values.delete(key),
+      },
+    })
+    try {
+      const guide = useGuideStore()
+      guide.start('outbound')
+      guide.recordBusinessResult(GUIDE_EVENTS.outboundOrderCreated, {
+        orderId: '55',
+        orderNo: 'OUT-55',
+        message: '出库单已创建。',
+      })
+
+      setActivePinia(createPinia())
+      const restored = useGuideStore()
+      expect(restored.active).toBe(true)
+      expect(restored.scenario).toBe('outbound')
+      expect(restored.orderId).toBe('55')
+      expect(restored.orderNo).toBe('OUT-55')
+      expect(restored.verifiedStepIds).toContain('outbound-create')
+      restored.cancel()
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 
   it('can cancel a guide without leaving stale business identifiers', () => {
