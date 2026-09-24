@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vue-tsc -b && vite build",
+    "build": "node scripts/sync-overview.mjs --check && vue-tsc -b && vite build",
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -13,7 +13,9 @@
     "test:e2e:headed": "playwright test --headed",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:report": "playwright show-report",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "sync:overview": "node scripts/sync-overview.mjs",
+    "check:overview": "node scripts/sync-overview.mjs --check"
   },
   "engines": {
     "node": "^20.19.0 || >=22.12.0"

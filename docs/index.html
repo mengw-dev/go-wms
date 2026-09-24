@@ -3,519 +3,270 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>WMS 项目概览 · 业务流程与技术架构</title>
+<title>WMS 项目概览 · 业务闭环与工程设计</title>
 <style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root {
+    --ink: #172033;
+    --muted: #5f6b7a;
+    --line: #dfe5ec;
+    --soft: #f5f7fa;
+    --blue: #2457c5;
+    --blue-soft: #eef3ff;
+    --green: #247a52;
+    --green-soft: #edf8f2;
+    --orange: #a85a16;
+    --orange-soft: #fff5e8;
+    --red: #b33b3b;
+    --red-soft: #fff1f1;
+    --shadow: 0 10px 30px rgba(23, 32, 51, .06);
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
   body {
-    font-family: "Microsoft YaHei", "PingFang SC", -apple-system, sans-serif;
-    background: #f0f2f5; color: #1f2937; line-height: 1.6; padding: 32px 20px;
+    margin: 0;
+    color: var(--ink);
+    background: #eef1f5;
+    font-family: "Microsoft YaHei", "PingFang SC", -apple-system, BlinkMacSystemFont, sans-serif;
+    line-height: 1.7;
   }
-  .page { max-width: 1200px; margin: 0 auto; }
-
-  /* ===== 标题 ===== */
-  header {
-    background: linear-gradient(135deg, #1e3a8a 0%, #3b5bdb 60%, #4c6ef5 100%);
-    color: #fff; border-radius: 14px; padding: 34px 40px; margin-bottom: 24px;
-    box-shadow: 0 6px 20px rgba(30,58,138,.25);
+  a { color: inherit; }
+  .page { width: min(1180px, calc(100% - 40px)); margin: 0 auto; padding: 28px 0 48px; }
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between; gap: 20px;
+    padding: 12px 18px; border: 1px solid var(--line); border-radius: 12px;
+    background: rgba(255,255,255,.94); box-shadow: var(--shadow); position: sticky; top: 12px; z-index: 10;
   }
-  header h1 { font-size: 30px; letter-spacing: 1px; margin-bottom: 8px; }
-  header p { font-size: 15px; opacity: .9; }
-  header .tags { margin-top: 14px; display: flex; gap: 10px; flex-wrap: wrap; }
-  header .tags span {
-    background: rgba(255,255,255,.18); border: 1px solid rgba(255,255,255,.35);
-    padding: 3px 14px; border-radius: 20px; font-size: 13px;
+  .brand { font-weight: 800; letter-spacing: .04em; color: var(--blue); }
+  .nav { display: flex; flex-wrap: wrap; gap: 14px; color: var(--muted); font-size: 13px; }
+  .nav a { text-decoration: none; }
+  .nav a:hover { color: var(--blue); }
+  .hero {
+    margin-top: 18px; padding: 42px; border: 1px solid var(--line); border-radius: 16px;
+    background: #fff; box-shadow: var(--shadow);
   }
-
+  .eyebrow { color: var(--blue); font-size: 12px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+  h1 { max-width: 850px; margin: 10px 0 14px; font-size: clamp(30px, 4vw, 46px); line-height: 1.25; letter-spacing: -.025em; }
+  .hero > p { max-width: 900px; margin: 0; color: var(--muted); font-size: 16px; }
+  .hero-points { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 28px; }
+  .hero-points div { padding: 16px; border-radius: 10px; background: var(--soft); }
+  .hero-points b { display: block; margin-bottom: 4px; }
+  .hero-points span { color: var(--muted); font-size: 13px; }
   section {
-    background: #fff; border-radius: 14px; padding: 26px 32px; margin-bottom: 24px;
-    box-shadow: 0 2px 10px rgba(0,0,0,.05);
+    margin-top: 18px; padding: 28px 30px; border: 1px solid var(--line); border-radius: 14px;
+    background: #fff; box-shadow: var(--shadow); scroll-margin-top: 90px;
   }
-  h2 {
-    font-size: 20px; color: #1e3a8a; margin-bottom: 20px;
-    padding-left: 12px; border-left: 5px solid #3b5bdb;
-  }
-  h3 { font-size: 15px; color: #495057; margin: 18px 0 10px; }
-
-  /* ===== 架构分层图 ===== */
-  .layer {
-    border: 2px solid #d0ebff; border-radius: 10px; padding: 14px 18px; margin-bottom: 0;
-    position: relative; background: #f8fbff;
-  }
-  .layer + .arrow-down { margin: 6px 0; }
-  .layer-title { font-weight: 700; font-size: 14px; color: #1864ab; margin-bottom: 10px; }
-  .boxes { display: flex; gap: 10px; flex-wrap: wrap; }
-  .box {
-    border-radius: 8px; padding: 10px 14px; font-size: 13px; text-align: center;
-    flex: 1; min-width: 110px;
-  }
-  .box b { display: block; font-size: 14px; margin-bottom: 2px; }
-  .box small { opacity: .75; font-size: 11.5px; }
-  .b-fe  { background: #fff0f6; border: 1.5px solid #f06595; }
-  .b-mw  { background: #fff9db; border: 1.5px solid #f59f00; }
-  .b-mod { background: #ebfbee; border: 1.5px solid #37b24d; min-width: 130px; }
-  .b-pkg { background: #f3f0ff; border: 1.5px solid #7950f2; }
-  .b-db  { background: #e7f5ff; border: 1.5px solid #1c7ed6; }
-  .arrow-down { text-align: center; color: #868e96; font-size: 20px; line-height: 1; }
-  .arch-hint { font-size: 12.5px; color: #868e96; margin-top: 10px; text-align: center; }
-
-  /* ===== 业务流程 ===== */
-  .flow { display: flex; align-items: stretch; gap: 0; flex-wrap: wrap; margin-bottom: 8px; }
-  .stage {
-    flex: 1; min-width: 150px; border-radius: 10px; padding: 12px 10px;
-    text-align: center; font-size: 13px; position: relative;
-  }
-  .stage b { display: block; font-size: 14.5px; margin-bottom: 4px; }
-  .stage small { display: block; font-size: 11.5px; opacity: .8; line-height: 1.45; }
-  .stage .num {
-    display: inline-block; width: 20px; height: 20px; line-height: 20px; border-radius: 50%;
-    background: rgba(255,255,255,.7); font-size: 11px; font-weight: 700; margin-bottom: 4px;
-  }
-  .s-blue  { background: #dbe4ff; border: 1.5px solid #4c6ef5; }
-  .s-green { background: #d3f9d8; border: 1.5px solid #2f9e44; }
-  .s-orange{ background: #ffe8cc; border: 1.5px solid #e8590c; }
-  .s-red   { background: #ffe3e3; border: 1.5px solid #e03131; }
-  .s-gray  { background: #f1f3f5; border: 1.5px dashed #adb5bd; }
-  .flow-arrow {
-    display: flex; align-items: center; padding: 0 4px; color: #868e96; font-size: 22px; font-weight: 700;
-  }
-  .flow-note {
-    font-size: 12.5px; color: #5c6773; background: #f8f9fa; border-radius: 8px;
-    padding: 10px 16px; margin-top: 12px;
-  }
-  .flow-note code, code {
-    background: #edf2ff; color: #3b5bdb; padding: 1px 7px; border-radius: 4px;
-    font-size: 12.5px; font-family: Consolas, monospace;
-  }
-
-  /* ===== 库存三数量 ===== */
-  .inv-model {
-    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin: 12px 0;
-  }
-  .inv-cell { border-radius: 10px; padding: 14px; text-align: center; font-size: 13px; }
-  .inv-cell b { font-size: 17px; display: block; }
-  .ic-stock { background: #e7f5ff; border: 1.5px solid #1c7ed6; }
-  .ic-avail { background: #ebfbee; border: 1.5px solid #2f9e44; }
-  .ic-alloc { background: #fff4e6; border: 1.5px solid #e8590c; }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
-  th, td { border: 1px solid #e9ecef; padding: 7px 10px; text-align: center; }
-  th { background: #f1f3f5; font-weight: 600; }
-  td.up { color: #2f9e44; font-weight: 700; }
-  td.down { color: #e03131; font-weight: 700; }
-  td.flat { color: #868e96; }
-
-  /* ===== 技术栈 & 亮点 ===== */
-  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-  .stack-group { border: 1px solid #e9ecef; border-radius: 10px; padding: 14px 16px; }
-  .stack-group h4 { font-size: 14px; color: #1e3a8a; margin-bottom: 8px; }
-  .stack-group ul { list-style: none; font-size: 13px; }
-  .stack-group li { padding: 3px 0; color: #495057; }
-  .stack-group li::before { content: "▸ "; color: #4c6ef5; }
-  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
-  .card {
-    border: 1px solid #e9ecef; border-radius: 10px; padding: 16px; background: #fcfcfd;
-    border-top: 4px solid #4c6ef5;
-  }
-  .card h4 { font-size: 14.5px; margin-bottom: 6px; color: #1e3a8a; }
-  .card p { font-size: 12.5px; color: #5c6773; }
-  .card:nth-child(2) { border-top-color: #e8590c; }
-  .card:nth-child(3) { border-top-color: #2f9e44; }
-  .card:nth-child(4) { border-top-color: #7048e8; }
-  .card:nth-child(5) { border-top-color: #e03131; }
-  .card:nth-child(6) { border-top-color: #0c8599; }
-
-  footer { text-align: center; color: #adb5bd; font-size: 12px; padding: 8px 0 20px; }
-
-  /* ===== 导入时序步骤 ===== */
-  .steps { display: flex; flex-wrap: wrap; }
-  .step {
-    flex: 1; min-width: 165px; background: #f8fbff; border: 1.5px solid #4c6ef5;
-    border-radius: 10px; padding: 12px 14px;
-  }
-  .step .k {
-    display: inline-block; background: #4c6ef5; color: #fff; font-size: 11px; font-weight: 700;
-    border-radius: 50%; width: 20px; height: 20px; line-height: 20px; text-align: center; margin-bottom: 6px;
-  }
-  .step b { font-size: 13.5px; color: #1864ab; display: block; margin-bottom: 4px; }
-  .step p { font-size: 12px; color: #5c6773; }
-  .step.recover { border-color: #e8590c; background: #fff8f0; }
-  .step.recover .k { background: #e8590c; }
-  .step.recover b { color: #d9480f; }
-  .step-arrow { display: flex; align-items: center; color: #868e96; font-size: 18px; padding: 0 4px; }
-
-  /* ===== 数据表 ===== */
-  .tables-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-  .tbl-group { border: 1px solid #e9ecef; border-radius: 10px; padding: 12px 14px; background: #fcfcfd; }
-  .tbl-group h4 { font-size: 13px; color: #1e3a8a; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 2px solid #edf2ff; }
-  .tbl-group .t {
-    font-family: Consolas, monospace; font-size: 11.5px; color: #343a40;
-    background: #f1f3f5; border-radius: 5px; padding: 4px 8px; margin-bottom: 5px; display: block;
-  }
-  .tbl-group .t span { color: #868e96; font-family: "Microsoft YaHei", sans-serif; }
-
-  /* ===== 安全/可观测 ===== */
-  .safe-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
-  .safe-card { border: 1px solid #e9ecef; border-radius: 10px; padding: 14px 16px; background: #fcfcfd; }
-  .safe-card h4 { font-size: 14px; color: #1e3a8a; margin-bottom: 6px; }
-  .safe-card p { font-size: 12.5px; color: #5c6773; }
-
+  .section-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 22px; margin-bottom: 20px; }
+  .section-head h2 { margin: 0 0 5px; font-size: 23px; }
+  .section-head p { max-width: 760px; margin: 0; color: var(--muted); font-size: 14px; }
+  .index { flex: 0 0 auto; color: #a2aab7; font-family: Consolas, monospace; font-size: 13px; }
+  .flow-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+  .flow-card { padding: 18px; border: 1px solid var(--line); border-radius: 11px; }
+  .flow-card h3 { margin: 0 0 5px; font-size: 17px; }
+  .flow-card > p { margin: 0 0 14px; color: var(--muted); font-size: 13px; }
+  .steps { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
+  .steps span { padding: 5px 9px; border-radius: 7px; font-size: 12px; font-weight: 700; }
+  .steps i { color: #a2aab7; font-style: normal; }
+  .blue { background: var(--blue-soft); color: var(--blue); }
+  .green { background: var(--green-soft); color: var(--green); }
+  .orange { background: var(--orange-soft); color: var(--orange); }
+  .step-note { margin-top: 14px; padding: 10px 12px; border-radius: 8px; color: var(--muted); background: var(--soft); font-size: 12.5px; }
+  .four-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+  .mini-card { padding: 16px; border: 1px solid var(--line); border-radius: 10px; background: #fcfdff; }
+  .mini-card b { display: block; margin-bottom: 5px; }
+  .mini-card p { margin: 0; color: var(--muted); font-size: 13px; }
+  .truth-grid { display: grid; grid-template-columns: .85fr 1.15fr; gap: 22px; align-items: start; }
+  .chain { display: grid; gap: 7px; }
+  .chain-node { padding: 11px 14px; border: 1px solid #cfd9ea; border-radius: 8px; background: var(--blue-soft); text-align: center; font-size: 13px; font-weight: 700; }
+  .chain-arrow { text-align: center; color: #a2aab7; line-height: 1; }
+  .truth-copy { margin: 0; padding-left: 20px; border-left: 3px solid var(--green); }
+  .truth-copy li { margin-bottom: 10px; color: var(--muted); }
+  .truth-copy b { color: var(--ink); }
+  .design-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .design-card { padding: 18px; border: 1px solid var(--line); border-radius: 10px; }
+  .design-card h3 { margin: 0 0 8px; font-size: 16px; }
+  .design-card p { margin: 0; color: var(--muted); font-size: 13px; }
+  .formula { display: inline-block; margin-top: 10px; padding: 5px 9px; border-radius: 6px; color: var(--blue); background: var(--blue-soft); font-family: Consolas, monospace; font-size: 12px; }
+  .engineering-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+  .engineering-grid div { padding: 15px; border-radius: 10px; background: var(--soft); }
+  .engineering-grid b { display: block; margin-bottom: 4px; }
+  .engineering-grid span { color: var(--muted); font-size: 12.5px; }
+  .source-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .source-table th, .source-table td { padding: 11px 12px; border-bottom: 1px solid var(--line); text-align: left; }
+  .source-table th { color: var(--muted); font-weight: 600; background: var(--soft); }
+  .source-table code, code { padding: 2px 6px; border-radius: 5px; color: var(--blue); background: var(--blue-soft); font-family: Consolas, monospace; font-size: 12px; }
+  footer { padding: 24px 4px 0; color: var(--muted); text-align: center; font-size: 12.5px; }
   @media (max-width: 900px) {
-    .grid2, .cards, .tables-grid, .safe-grid { grid-template-columns: 1fr; }
-    .inv-model { grid-template-columns: 1fr; }
-    .flow-arrow, .step-arrow { transform: rotate(90deg); padding: 4px 0; width: 100%; justify-content: center; }
+    .nav { display: none; }
+    .hero { padding: 30px; }
+    .hero-points, .flow-grid, .four-grid, .design-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .truth-grid { grid-template-columns: 1fr; }
+    .engineering-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   }
-  @media print {
-    body { background: #fff; padding: 0; }
-    section, header { box-shadow: none; break-inside: avoid; }
+  @media (max-width: 620px) {
+    .page { width: min(100% - 24px, 1180px); padding-top: 12px; }
+    .topbar { position: static; }
+    .hero-points, .flow-grid, .four-grid, .design-grid, .engineering-grid { grid-template-columns: 1fr; }
+    section, .hero { padding: 22px 20px; }
+    .section-head { display: block; }
+    .index { display: block; margin-top: 8px; }
+    .source-table { display: block; overflow-x: auto; white-space: nowrap; }
   }
 </style>
 </head>
 <body>
 <div class="page">
-
-<header>
-  <h1>WMS 仓储管理系统 · 项目概览</h1>
-  <p>模块化单体架构 ｜ 入库 · 出库 · 库存 · 盘点 全链路 ｜ 前后端分离 + 容器化部署</p>
-  <div class="tags">
-    <span>Go 1.26 / Gin</span><span>GORM / MySQL 8</span><span>Redis</span>
-    <span>Vue3 + TS</span><span>Docker Compose</span><span>k6 / Playwright</span>
-  </div>
-</header>
-
-<!-- ============ 1. 技术架构 ============ -->
-<section>
-  <h2>一、技术架构分层图</h2>
-
-  <div class="layer">
-    <div class="layer-title">① 客户端层（web/）</div>
-    <div class="boxes">
-      <div class="box b-fe"><b>Vue 3 + TypeScript</b><small>组合式 API</small></div>
-      <div class="box b-fe"><b>Vite + Pinia</b><small>构建 / 状态管理</small></div>
-      <div class="box b-fe"><b>Element Plus</b><small>16 个业务页面</small></div>
-      <div class="box b-fe"><b>Axios</b><small>类型完备 API 层</small></div>
+  <nav class="topbar" aria-label="项目概览导航">
+    <div class="brand">WMS / PROJECT OVERVIEW</div>
+    <div class="nav">
+      <a href="#position">项目定位</a>
+      <a href="#flows">业务闭环</a>
+      <a href="#demo">在线 Demo</a>
+      <a href="#truth">真实性</a>
+      <a href="#design">工程设计</a>
+      <a href="#engineering">测试</a>
+      <a href="#source">源码入口</a>
     </div>
-  </div>
-  <div class="arrow-down">▼ &nbsp; HTTP / JSON + JWT</div>
+  </nav>
 
-  <div class="layer">
-    <div class="layer-title">② 接入层：Gin 中间件链</div>
-    <div class="boxes">
-      <div class="box b-mw"><b>RequestID</b><small>链路追踪</small></div>
-      <div class="box b-mw"><b>Recovery / CORS</b><small>兜底 / 跨域</small></div>
-      <div class="box b-mw"><b>Auth (JWT)</b><small>登录认证</small></div>
-      <div class="box b-mw"><b>OperLog</b><small>异步审计日志</small></div>
-      <div class="box b-mw"><b>Permission</b><small>RBAC 权限点</small></div>
+  <header class="hero" id="position">
+    <span class="eyebrow">项目定位</span>
+    <h1>基于 Go + Vue 的模块化单体 WMS</h1>
+    <p>
+      项目覆盖入库、出库、库存和盘点闭环，重点展示库存一致性、事务边界、多租户隔离，
+      以及一条可以由访客亲自操作和核验的真实业务流程。
+    </p>
+    <div class="hero-points">
+      <div><b>业务范围明确</b><span>从单据状态推进到库存变化，不把 Demo 做成孤立的页面展示。</span></div>
+      <div><b>结果可以核验</b><span>自动演示结束后，可查看真实单据、任务、库存流水和操作记录。</span></div>
+      <div><b>技术深度可继续展开</b><span>围绕库存模型、事务、并发、多租户和测试体系继续阅读源码。</span></div>
     </div>
-  </div>
-  <div class="arrow-down">▼</div>
+  </header>
 
-  <div class="layer">
-    <div class="layer-title">③ 业务模块层（internal/modules，7 大域 · 核心跨模块能力提供进程内 api 接口，场景编排也可直接调用具体 Service）</div>
-    <div class="boxes">
-      <div class="box b-mod"><b>system</b><small>用户/角色/权限/审计</small></div>
-      <div class="box b-mod"><b>basic</b><small>仓库/库位/货品</small></div>
-      <div class="box b-mod"><b>inventory</b><small>三数量库存 + 流水</small></div>
-      <div class="box b-mod"><b>task</b><small>统一作业任务中心</small></div>
-      <div class="box b-mod"><b>inbound</b><small>入库 + Excel 导入</small></div>
-      <div class="box b-mod"><b>outbound</b><small>出库 + FIFO 分配</small></div>
-      <div class="box b-mod"><b>stocktake</b><small>盘点 + 差异调整</small></div>
+  <section id="flows">
+    <div class="section-head">
+      <div><h2>核心业务闭环</h2><p>状态和按钮名称以当前真实业务页面与 Service 为准。</p></div>
+      <span class="index">02 / BUSINESS FLOW</span>
     </div>
-    <h3>每层职责：handler（参数/响应）→ service（业务规则 + 事务边界）→ repository（只操作本模块表）</h3>
-  </div>
-  <div class="arrow-down">▼</div>
-
-  <div class="layer">
-    <div class="layer-title">④ 公共组件 internal/pkg</div>
-    <div class="boxes">
-      <div class="box b-pkg"><b>orderno</b><small>单号生成器</small></div>
-      <div class="box b-pkg"><b>snowflake</b><small>雪花 ID</small></div>
-      <div class="box b-pkg"><b>tx / lock</b><small>事务重试/分布式锁</small></div>
-      <div class="box b-pkg"><b>jwt / errcode</b><small>认证/错误码</small></div>
-      <div class="box b-pkg"><b>response/httpx</b><small>统一响应</small></div>
+    <div class="flow-grid">
+      <article class="flow-card">
+        <h3>入库</h3>
+        <p>从采购来货到形成可用库存。</p>
+        <div class="steps">
+          <span class="blue">创建</span><i>→</i><span class="blue">提交</span><i>→</i><span class="blue">审核</span><i>→</i><span class="green">收货</span><i>→</i><span class="green">上架</span>
+        </div>
+        <div class="step-note">收货生成上架任务；上架完成后在真实事务中增加库存并写流水。</div>
+      </article>
+      <article class="flow-card">
+        <h3>出库</h3>
+        <p>从客户订单到库存分配与发货。</p>
+        <div class="steps">
+          <span class="blue">创建</span><i>→</i><span class="blue">提交</span><i>→</i><span class="orange">审核 / FIFO 分配</span><i>→</i><span class="green">拣货</span><i>→</i><span class="green">完成</span>
+        </div>
+        <div class="step-note">分配按真实库存执行，生成 PICK 任务；完成拣货后推进发货与库存扣减。</div>
+      </article>
+      <article class="flow-card">
+        <h3>盘点</h3>
+        <p>用账面快照与实盘结果发现差异。</p>
+        <div class="steps">
+          <span class="blue">库存快照</span><i>→</i><span class="orange">实盘录入</span><i>→</i><span class="orange">差异确认</span><i>→</i><span class="green">审核调整</span>
+        </div>
+        <div class="step-note">审核后在库存事务中应用差异，并通过 ADJUST 流水保留调整证据。</div>
+      </article>
     </div>
-  </div>
-  <div class="arrow-down">▼</div>
+  </section>
 
-  <div class="layer">
-    <div class="layer-title">⑤ 数据与基础设施</div>
-    <div class="boxes">
-      <div class="box b-db"><b>MySQL 8</b><small>单库事务 · CHECK 防负库存</small></div>
-      <div class="box b-db"><b>Redis</b><small>单号自增 · 锁 · 可降级</small></div>
-      <div class="box b-db"><b>Docker Compose</b><small>app+mysql+redis</small></div>
-      <div class="box b-db"><b>Prometheus</b><small>指标监控</small></div>
+  <section id="demo">
+    <div class="section-head">
+      <div><h2>在线 Demo 如何工作</h2><p>让多个访客在同一套服务上体验，但不会互相看到或修改对方的数据。</p></div>
+      <span class="index">03 / DEMO SESSION</span>
     </div>
-  </div>
-  <p class="arch-hint">设计取向：模块化单体（一个进程一个库），依赖方向单向、api 包依赖倒置 —— 未来按模块拆微服务时把 api 换成 RPC 客户端即可，业务代码零改动</p>
-</section>
+    <div class="four-grid">
+      <div class="mini-card"><b>1. 分配演示账号</b><p>访客进入在线体验时，从空闲演示账号中领取一个独立租户。</p></div>
+      <div class="mini-card"><b>2. 获取 Session 租约</b><p>登录后通过 Redis 租约锁定当前演示租户，同一账号同时只服务一个访客。</p></div>
+      <div class="mini-card"><b>3. 操作期间续期</b><p>真实交互触发心跳续期；长时间无操作后，租约会到期并释放。</p></div>
+      <div class="mini-card"><b>4. 退出后恢复数据</b><p>退出或重置会通过专用 bootstrap 路径恢复该租户的演示数据，不混入下一手访客。</p></div>
+    </div>
+  </section>
 
-<!-- ============ 2. 入库流程 ============ -->
-<section>
-  <h2>二、入库业务流程（单号前缀 RK）</h2>
-  <div class="flow">
-    <div class="stage s-blue"><span class="num">1</span><b>建单 DRAFT</b><small>手工录入 或 Excel 异步导入<br>（导入任务 + 行号幂等）</small></div>
-    <div class="flow-arrow">→</div>
-    <div class="stage s-blue"><span class="num">2</span><b>提交 SUBMITTED</b><small>可批量提交<br>草稿仍可编辑/删除</small></div>
-    <div class="flow-arrow">→</div>
-    <div class="stage s-blue"><span class="num">3</span><b>审核 APPROVED</b><small>按明细生成<br>【收货任务】</small></div>
-    <div class="flow-arrow">→</div>
-    <div class="stage s-orange"><span class="num">4</span><b>收货 RECEIVING</b><small>首次收货必填批次号<br>支持残品 / 分次收货</small></div>
-    <div class="flow-arrow">→</div>
-    <div class="stage s-orange"><span class="num">5</span><b>收齐 → PUTAWAY</b><small>良品生成【上架任务】<br>全残品直达完成</small></div>
-    <div class="flow-arrow">→</div>
-    <div class="stage s-green"><span class="num">6</span><b>上架 → COMPLETED</b><small>库存增加（RECEIVE 流水）<br>记 stock_in_time 供 FIFO</small></div>
-  </div>
-  <div class="flow-note">
-    <b>作废规则：</b>DRAFT / SUBMITTED / APPROVED 可随时 → CANCELLED（连带取消任务）；一旦进入 RECEIVING，库存可能已入账，<b>不允许作废</b>（企业里走退货/红冲）。
-  </div>
-</section>
-
-<!-- ============ 3. 出库流程 ============ -->
-<section>
-  <h2>三、出库业务流程（单号前缀 CK）— 审核即分配，拣货才实扣</h2>
-  <div class="flow">
-    <div class="stage s-blue"><span class="num">1</span><b>建单 DRAFT</b><small>biz_order_no<br>业务单号幂等</small></div>
-    <div class="flow-arrow">→</div>
-    <div class="stage s-blue"><span class="num">2</span><b>提交 SUBMITTED</b><small>支持批量<br>提交/审核/作废</small></div>
-    <div class="flow-arrow">→</div>
-    <div class="stage s-orange"><span class="num">3</span><b>审核 → PICKING</b><small>FIFO 锁库存（预占不扣）<br>按分配行生成【拣货任务】</small></div>
-    <div class="flow-arrow">→</div>
-    <div class="stage s-green"><span class="num">4</span><b>拣货</b><small>分配行拣满 → 实扣库存<br>（SHIP 流水）</small></div>
-    <div class="flow-arrow">→</div>
-    <div class="stage s-green"><span class="num">5</span><b>全拣完 → SHIPPED</b><small>单据终态</small></div>
-    <div class="flow-arrow">→</div>
-    <div class="stage s-red"><span class="num">×</span><b>作废 CANCELLED</b><small>拣货前作废<br>释放预占（RELEASE）</small></div>
-  </div>
-  <div class="flow-note">
-    <b>关键设计：</b>一张出库明细经 FIFO 可能拆成 N 条 <code>wms_allocation</code> 分配行（跨批次/跨库位）；审核前按 SKU ID 排序统一锁顺序<b>防死锁</b>，分配行按库位编码排序<b>优化拣货路径</b>；任一步失败整个事务回滚，不会"锁一半库存"。
-  </div>
-
-  <h3 style="margin-top:22px">库存三数量模型：stock = available + allocated（仓库 + 库位 + SKU + 批次 四元组唯一）</h3>
-  <div class="inv-model">
-    <div class="inv-cell ic-stock"><b>stock 存量</b>实际在货架上的货</div>
-    <div class="inv-cell ic-avail"><b>available 可用</b>还能分给新订单</div>
-    <div class="inv-cell ic-alloc"><b>allocated 已分配</b>被出库单锁定、待拣货</div>
-  </div>
-  <table>
-    <tr><th>业务动作</th><th>available</th><th>allocated</th><th>stock</th><th>流水类型</th></tr>
-    <tr><td>上架入库</td><td class="up">+n</td><td class="flat">—</td><td class="up">+n</td><td><code>RECEIVE</code></td></tr>
-    <tr><td>出库审核（锁库）</td><td class="down">−n</td><td class="up">+n</td><td class="flat">—</td><td><code>ALLOCATE</code></td></tr>
-    <tr><td>拣货发货（实扣）</td><td class="flat">—</td><td class="down">−n</td><td class="down">−n</td><td><code>SHIP</code></td></tr>
-    <tr><td>取消出库（释放）</td><td class="up">+n</td><td class="down">−n</td><td class="flat">—</td><td><code>RELEASE</code></td></tr>
-    <tr><td>盘点审核调整</td><td class="up">±n</td><td class="flat">—</td><td class="up">±n</td><td><code>ADJUST</code></td></tr>
-  </table>
-</section>
-
-<!-- ============ 4. 盘点 + 任务中心 ============ -->
-<section>
-  <h2>四、盘点流程与统一任务中心</h2>
-  <div class="grid2">
-    <div class="stack-group">
-      <h4>盘点单（PD）：DRAFT → COMPLETED</h4>
-      <ul>
-        <li>建单时对库存拍<b>账面快照</b>（book_qty），支持按库位或整仓</li>
-        <li>录入实盘数 actual_qty（nil = 未盘）</li>
-        <li>审核时重算差异 diff，同事务调整库存 + 写 ADJUST 流水</li>
+  <section id="truth">
+    <div class="section-head">
+      <div><h2>为什么 Demo 不是假数据</h2><p>场景只负责编排，业务状态、事务和库存规则仍由真实 Service 执行。</p></div>
+      <span class="index">04 / REAL EXECUTION</span>
+    </div>
+    <div class="truth-grid">
+      <div class="chain" aria-label="真实调用链">
+        <div class="chain-node">Demo Orchestrator</div><div class="chain-arrow">↓</div>
+        <div class="chain-node">Inbound / Outbound / Stocktake Service</div><div class="chain-arrow">↓</div>
+        <div class="chain-node">Inventory / Task</div><div class="chain-arrow">↓</div>
+        <div class="chain-node">MySQL / Redis</div>
+      </div>
+      <ul class="truth-copy">
+        <li><b>真实业务链路：</b>自动演示复用正式业务 Service，不复制第二套库存或单据逻辑。</li>
+        <li><b>可以核对结果：</b>业务证据页面读取真实单据、任务、库存流水和操作记录。</li>
+        <li><b>专用重置路径：</b>演示环境的数据 Reset 使用独立 bootstrap 路径，恢复范围受租户约束。</li>
+        <li><b>结果回放不是实时伪造：</b>后端真实执行完成后，前端只回放已经返回的步骤与结果。</li>
       </ul>
     </div>
-    <div class="stack-group">
-      <h4>任务中心 wms_task：作业驱动</h4>
-      <ul>
-        <li>三类任务：RECEIVE 收货 / PUTAWAY 上架 / PICK 拣货</li>
-        <li>状态机 CREATED → IN_PROGRESS → COMPLETED，可 CANCELLED</li>
-        <li>进度原子累加，单据作废时级联取消未开始任务</li>
-      </ul>
-    </div>
-  </div>
-</section>
+  </section>
 
-<!-- ============ 5. Excel 异步导入 ============ -->
-<section>
-  <h2>五、Excel 异步导入与故障自愈</h2>
-  <div class="steps">
-    <div class="step">
-      <span class="k">1</span><b>上传建任务</b>
-      <p>POST /import：Excel 落盘，写 <code>wms_import_task</code>（PENDING），立即返回 task_id，接口不阻塞</p>
+  <section id="design">
+    <div class="section-head">
+      <div><h2>关键工程设计</h2><p>不展开全部技术栈，只保留最能解释系统正确性的四项设计。</p></div>
+      <span class="index">05 / ENGINEERING DESIGN</span>
     </div>
-    <div class="step-arrow">→</div>
-    <div class="step">
-      <span class="k">2</span><b>CAS 抢占执行</b>
-      <p>goroutine 将 PENDING→PROCESSING，多协程/多实例只有抢占成功者执行，天然防重复</p>
+    <div class="design-grid">
+      <article class="design-card">
+        <h3>库存三数量模型</h3>
+        <p>现存量、可用量和分配量保持同一套约束，避免库存分配与释放产生负数或账实断裂。</p>
+        <span class="formula">stock = available + allocated</span>
+      </article>
+      <article class="design-card">
+        <h3>事务与并发库存分配</h3>
+        <p>状态推进与库存变更放在事务边界内，通过行锁、条件更新和版本字段处理并发竞争。</p>
+      </article>
+      <article class="design-card">
+        <h3>多租户隔离</h3>
+        <p>业务查询和写入按租户作用域约束，展示账号拥有独立的数据空间与权限边界。</p>
+      </article>
+      <article class="design-card">
+        <h3>Demo Session 数据隔离</h3>
+        <p>演示账号、租户、Redis 会话租约和重置流程共同保证访客互不干扰。</p>
+      </article>
     </div>
-    <div class="step-arrow">→</div>
-    <div class="step">
-      <span class="k">3</span><b>心跳保活</b>
-      <p>处理中每 30s 刷新 updated_at，长任务不会被补偿扫描误判为悬挂</p>
-    </div>
-    <div class="step-arrow">→</div>
-    <div class="step">
-      <span class="k">4</span><b>逐行幂等建单</b>
-      <p>import_task_id + Excel 行号唯一键去重，重跑自动跳过已建行；统计成功/失败行数与逐行错误</p>
-    </div>
-    <div class="step-arrow">→</div>
-    <div class="step">
-      <span class="k">5</span><b>结果回写</b>
-      <p>COMPLETED（全部成功）/ FAILED（0 成功），错误信息落库（上限 1000 字截断），前端每 2s 轮询进度</p>
-    </div>
-  </div>
-  <div class="steps" style="margin-top:14px">
-    <div class="step recover">
-      <span class="k">6</span><b>悬挂补偿（自愈）</b>
-      <p>每 2 分钟扫描超时任务：PENDING 超时未抢占、PROCESSING 心跳超时；Redis 分布式锁保证多实例只补偿一次，PROCESSING 先 CAS 复位 PENDING 再重跑——服务宕机重启后任务不丢、不重</p>
-    </div>
-  </div>
-</section>
+  </section>
 
-<!-- ============ 6. 核心数据表 ============ -->
-<section>
-  <h2>六、核心数据表（18 张，按业务域划分）</h2>
-  <div class="tables-grid">
-    <div class="tbl-group">
-      <h4>基础数据 basic</h4>
-      <span class="t">wms_warehouse <span>仓库</span></span>
-      <span class="t">wms_location <span>库位</span></span>
-      <span class="t">wms_sku <span>货品 SKU</span></span>
+  <section id="engineering">
+    <div class="section-head">
+      <div><h2>测试与工程化</h2><p>只列出仓库中实际存在并可继续检查的工程能力。</p></div>
+      <span class="index">06 / TEST &amp; DELIVERY</span>
     </div>
-    <div class="tbl-group">
-      <h4>入库 inbound</h4>
-      <span class="t">wms_receipt_order <span>入库主单</span></span>
-      <span class="t">wms_receipt_order_detail <span>入库明细（批次号）</span></span>
-      <span class="t">wms_import_task <span>Excel 导入任务</span></span>
+    <div class="engineering-grid">
+      <div><b>Go test</b><span>业务 Service、事务、并发库存和状态机测试。</span></div>
+      <div><b>Vitest</b><span>前端 store、工具函数和关键交互单测。</span></div>
+      <div><b>Playwright</b><span>真实后端环境下验证登录、权限和库存生命周期。</span></div>
+      <div><b>Docker</b><span>多阶段构建与 compose 本地编排。</span></div>
+      <div><b>GitHub Actions</b><span>持续执行 lint、测试和构建检查。</span></div>
     </div>
-    <div class="tbl-group">
-      <h4>出库 outbound</h4>
-      <span class="t">wms_shipment_order <span>出库主单</span></span>
-      <span class="t">wms_shipment_order_detail <span>出库明细</span></span>
-      <span class="t">wms_allocation <span>FIFO 分配行（跨批次/库位）</span></span>
-    </div>
-    <div class="tbl-group">
-      <h4>库存 inventory</h4>
-      <span class="t">wms_inventory <span>库存（仓+位+SKU+批次唯一）</span></span>
-      <span class="t">wms_inventory_trans <span>库存流水（只增不改）</span></span>
-    </div>
-    <div class="tbl-group">
-      <h4>任务 / 盘点</h4>
-      <span class="t">wms_task <span>统一作业任务（收/上架/拣）</span></span>
-      <span class="t">wms_stocktake_order <span>盘点主单</span></span>
-      <span class="t">wms_stocktake_detail <span>盘点明细（账面快照/实盘）</span></span>
-    </div>
-    <div class="tbl-group">
-      <h4>系统 system</h4>
-      <span class="t">sys_user <span>用户</span></span>
-      <span class="t">sys_role <span>角色</span></span>
-      <span class="t">sys_user_role <span>用户-角色关联</span></span>
-      <span class="t">sys_oper_log <span>操作审计日志</span></span>
-    </div>
-  </div>
-  <div class="flow-note" style="margin-top:14px">
-    <b>通用字段约定：</b>主键统一雪花 ID（趋势递增、不暴露业务量级）；<code>created_at / updated_at / deleted_at</code> 三件套（GORM 软删除，查询自动过滤）；单据、库存行、任务、分配行均带 <code>version</code> 乐观锁字段；表结构由 golang-migrate 版本化脚本管理（up/down 可回滚）。
-  </div>
-</section>
+  </section>
 
-<!-- ============ 7. 安全与可观测性 ============ -->
-<section>
-  <h2>七、安全认证与可观测性</h2>
-  <div class="safe-grid">
-    <div class="safe-card">
-      <h4>JWT 认证</h4>
-      <p>登录签发 HS256 Token（可配置过期时间），Auth 中间件统一解析并向上下文注入 user_id / username。</p>
+  <section id="source">
+    <div class="section-head">
+      <div><h2>源码入口</h2><p>从五个关键位置开始，比浏览完整目录树更快理解真实实现。</p></div>
+      <span class="index">07 / SOURCE MAP</span>
     </div>
-    <div class="safe-card">
-      <h4>RBAC 权限模型</h4>
-      <p>用户 → 角色 → 权限点（如 wms:inbound:approve），路由级 Permission 中间件校验，内置 admin 拥有通配权限。</p>
-    </div>
-    <div class="safe-card">
-      <h4>异步审计日志</h4>
-      <p>所有写操作（非 GET）异步落 sys_oper_log：请求参数、IP、耗时、成功/失败，不阻塞主请求。</p>
-    </div>
-    <div class="safe-card">
-      <h4>登录防护 / 开放接口</h4>
-      <p>登录失败计数与临时锁定防暴力破解；外部系统集成接口支持 API Key 鉴权（出库推送）。</p>
-    </div>
-    <div class="safe-card">
-      <h4>全链路可观测</h4>
-      <p>RequestID 贯穿一次请求的所有日志；结构化日志（slog）；Prometheus 暴露业务与运行时指标。</p>
-    </div>
-    <div class="safe-card">
-      <h4>统一接口规范</h4>
-      <p>响应体统一 {code, msg, data}，业务错误码集中管理；分页结构统一；参数校验失败标准化返回。</p>
-    </div>
-  </div>
-</section>
+    <table class="source-table">
+      <thead><tr><th>主题</th><th>入口</th><th>先看什么</th></tr></thead>
+      <tbody>
+        <tr><td>Demo 场景编排</td><td><code>internal/modules/demo/service/</code></td><td>自动场景如何调用真实业务 Service，以及如何组织返回证据。</td></tr>
+        <tr><td>入库</td><td><code>internal/modules/inbound/service/</code></td><td>入库单状态、收货和上架如何推进。</td></tr>
+        <tr><td>出库</td><td><code>internal/modules/outbound/service/</code></td><td>审核、FIFO 分配、拣货和发货如何衔接。</td></tr>
+        <tr><td>库存</td><td><code>internal/modules/inventory/service/</code></td><td>三数量模型、事务内变更和库存流水。</td></tr>
+        <tr><td>Session</td><td><code>internal/modules/demo/service/session.go</code></td><td>演示租户租约、续期、释放和数据重置边界。</td></tr>
+      </tbody>
+    </table>
+  </section>
 
-<!-- ============ 8. 技术栈清单 ============ -->
-<section>
-  <h2>八、技术栈清单</h2>
-  <div class="grid2">
-    <div class="stack-group">
-      <h4>后端</h4>
-      <ul>
-        <li>Go 1.26 · Gin（路由 / 中间件）</li>
-        <li>GORM + MySQL 8（乐观锁 / 行锁 / 条件更新 / CHECK）</li>
-        <li>Redis：Lua 原子脚本、分布式锁（故障降级）</li>
-        <li>JWT (golang-jwt) · Viper 配置 · excelize 导入</li>
-        <li>golang-migrate 版本化迁移 · Prometheus 指标</li>
-      </ul>
-    </div>
-    <div class="stack-group">
-      <h4>前端</h4>
-      <ul>
-        <li>Vue 3 + TypeScript + Vite</li>
-        <li>Pinia（auth / 双主题持久化）· Vue Router 守卫</li>
-        <li>Element Plus · CSS 变量双主题换肤</li>
-      </ul>
-    </div>
-    <div class="stack-group">
-      <h4>测试体系</h4>
-      <ul>
-        <li>Go test：并发库存分配回归、库存恒等式、状态机单测</li>
-        <li>k6：出库 E2E + 拣货/出库压力测试脚本</li>
-        <li>Vitest 前端单测 · Playwright E2E（权限/库存生命周期）</li>
-      </ul>
-    </div>
-    <div class="stack-group">
-      <h4>部署与工程化</h4>
-      <ul>
-        <li>Dockerfile 多阶段构建 + docker-compose 编排</li>
-        <li>Nginx 托管前端静态资源并反代 API</li>
-        <li>GitHub Actions CI（lint + test）</li>
-        <li>统一响应 {code,msg,data} · 集中错误码 · 雪花 ID · 软删除</li>
-      </ul>
-    </div>
-  </div>
-</section>
-
-<!-- ============ 9. 核心技术设计 ============ -->
-<section>
-  <h2>九、核心技术设计与可靠性保障</h2>
-  <div class="cards">
-    <div class="card">
-      <h4>① 并发分配库存保护</h4>
-      <p>事务内按 FIFO SELECT…FOR UPDATE 锁读，再以 available_quantity &gt;= n 条件更新数量，MySQL CHECK 约束为非负数量提供最后兜底。MySQL 集成回归测试以 100 可用库存承载 200 个并发分配请求，结果成功 100、库存不足失败 100，并校验最终三数量与恒等式。</p>
-    </div>
-    <div class="card">
-      <h4>② 单号生成器三级防线</h4>
-      <p>Redis Lua（INCR+TTL 原子）→ Redis 故障降级本地 atomic 计数 → DB 唯一索引冲突重试，任何级别故障都不产生重复单号。</p>
-    </div>
-    <div class="card">
-      <h4>③ Excel 异步导入可靠性</h4>
-      <p>任务表状态机 + CAS 抢占防重复执行 + 心跳 + 悬挂任务定时补偿重跑；import_task_id+行号唯一键保证重跑幂等，服务重启自愈。</p>
-    </div>
-    <div class="card">
-      <h4>④ 单据状态机 + CAS</h4>
-      <p>合法后继状态转换表统一校验；状态更新带 WHERE status=前态 AND version=n，并发双击只成功一次，非法跳转（如已收货作废）一律拒绝。</p>
-    </div>
-    <div class="card">
-      <h4>⑤ 锁顺序防死锁</h4>
-      <p>出库审核前按 SKU ID 排序使全局加锁顺序一致；拣货/取消统一"主单→任务→分配行"锁顺序，杜绝交叉等待死锁。</p>
-    </div>
-    <div class="card">
-      <h4>⑥ 库存流水与对账</h4>
-      <p>每次库存变动同事务只增写流水（变更前后存量/可用双组值），stock=available+allocated 恒等式有集成测试守护，任意时刻可追溯对账。</p>
-    </div>
-  </div>
-</section>
-
-<footer>WMS 项目概览图 · 依据仓库实际代码生成 · 可直接浏览器打印为 PDF</footer>
-
+  <footer>WMS 项目概览 · 内容依据当前仓库实现整理 · 建议配合同步更新的 Demo 体验中心阅读</footer>
 </div>
 </body>
 </html>
