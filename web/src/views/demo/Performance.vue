@@ -18,13 +18,6 @@ const poolUsage = computed(() => {
   if (!pool || pool.max_open_connections <= 0) return 0
   return Math.min(100, Math.round((pool.open_connections / pool.max_open_connections) * 100))
 })
-// 容器未设置内存上限，占用比例以 512 MB 为基准折算，仅用于观察趋势。
-const MEMORY_BASELINE_MB = 512
-const memoryUsage = computed(() => {
-  if (!data.value) return 0
-  return Math.min(100, Math.round((data.value.runtime.memory_sys_mb / MEMORY_BASELINE_MB) * 100))
-})
-
 async function load(silent = false) {
   if (!silent) loading.value = true
   try {
@@ -51,10 +44,10 @@ useAutoRefresh(() => load(true), 3000)
     <div class="page-head">
       <div>
         <h2>运行状态与指标快照</h2>
-        <p>这不是压力测试、吞吐量测试或容量证明；页面每 3 秒刷新一次演示环境的运行状态与业务指标。</p>
+        <p>数据来自当前在线演示实例的真实状态查询；每 3 秒刷新一次。本页不是压力测试、吞吐量测试或容量结论。</p>
       </div>
       <div class="head-actions">
-        <el-button :icon="Tickets" @click="router.push('/demo/activity')">操作记录</el-button>
+        <el-button :icon="Tickets" @click="router.push('/demo/activity')">业务证据</el-button>
         <el-button :icon="Refresh" type="primary" @click="load()">立即刷新</el-button>
       </div>
     </div>
@@ -75,7 +68,7 @@ useAutoRefresh(() => load(true), 3000)
           <div>
             <span>MySQL 状态</span>
             <strong>{{ dbHealthy ? '正常' : '异常' }}</strong>
-            <small>{{ data.database.latency_ms }} ms</small>
+            <small>当前探测延迟 {{ data.database.latency_ms }} ms</small>
           </div>
         </div>
         <div class="health-card" :class="{ down: !redisHealthy }">
@@ -83,7 +76,7 @@ useAutoRefresh(() => load(true), 3000)
           <div>
             <span>Redis 状态</span>
             <strong>{{ redisHealthy ? '正常' : '异常' }}</strong>
-            <small>{{ data.redis.latency_ms }} ms</small>
+            <small>当前探测延迟 {{ data.redis.latency_ms }} ms</small>
           </div>
         </div>
         <div class="health-card">
@@ -108,13 +101,9 @@ useAutoRefresh(() => load(true), 3000)
         <section class="metric-panel">
           <div class="panel-title">
             <el-icon><TrendCharts /></el-icon>
-            <b>数据库连接池</b>
+            <b>数据库连接池快照</b>
           </div>
-          <div class="progress-row">
-            <span>连接使用率</span>
-            <strong>{{ poolUsage }}%</strong>
-          </div>
-          <el-progress :percentage="poolUsage" :stroke-width="12" />
+          <p class="panel-note">当前连接数占最大连接数的 {{ poolUsage }}%，仅反映查询时刻的瞬时状态。</p>
           <div class="metric-list">
             <span>最大连接 <b>{{ data.pool.max_open_connections }}</b></span>
             <span>已打开 <b>{{ data.pool.open_connections }}</b></span>
@@ -129,7 +118,7 @@ useAutoRefresh(() => load(true), 3000)
         <section class="metric-panel">
           <div class="panel-title">
             <el-icon><Tickets /></el-icon>
-            <b>今日业务与任务</b>
+            <b>当前业务统计</b>
           </div>
           <div class="number-grid">
             <div><span>今日入库</span><strong>{{ data.business.inbound_today }}</strong></div>
@@ -155,13 +144,9 @@ useAutoRefresh(() => load(true), 3000)
 
         <section class="metric-panel">
           <div class="panel-title">
-            <b>进程内存</b>
+            <b>进程内存快照</b>
           </div>
-          <div class="progress-row">
-            <span>进程内存占用（基准 512 MB）</span>
-            <strong>{{ memoryUsage }}%</strong>
-          </div>
-          <el-progress :percentage="memoryUsage" :stroke-width="12" color="#10b981" />
+          <p class="panel-note">只展示 Go 运行时当前值。实例未配置容器内存上限，因此不计算占用百分比。</p>
           <div class="metric-list">
             <span>Alloc <b>{{ data.runtime.memory_alloc_mb.toFixed(1) }} MB</b></span>
             <span>Sys <b>{{ data.runtime.memory_sys_mb.toFixed(1) }} MB</b></span>
@@ -295,6 +280,13 @@ useAutoRefresh(() => load(true), 3000)
   margin-bottom: 8px;
   color: var(--el-text-color-secondary);
   font-size: 13px;
+}
+
+.panel-note {
+  margin: -4px 0 14px;
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
+  line-height: 1.7;
 }
 
 .metric-list {
