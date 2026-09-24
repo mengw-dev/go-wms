@@ -346,7 +346,8 @@ func (s *Service) RunConcurrentPicking(ctx context.Context, sessionID string, wo
 		"模拟 PDA 并发拣货：本次创建 %d 张真实出库单；并发阶段成功扫码 %d 次、竞争拒绝 %d 次，结束后仍有 %d 个任务未完成；收尾阶段顺序补齐 %d 件，最终完成 %d/%d 个任务",
 		len(orderIDs), concurrentSuccess, competitionRejected, stillIncomplete, cleanupSuccess.Load(), completedTasks, len(finalTasks),
 	)
-	steps := append(preparation.PreparationSteps,
+	steps := append([]ScenarioStep{}, preparation.PreparationSteps...)
+	steps = append(steps,
 		ScenarioStep{Title: "并发阶段", Detail: fmt.Sprintf("%d 个并发扫码请求，%d 个抢单请求；成功 %d，拒绝 %d", workers, contenders, concurrentSuccess, competitionRejected), Status: ScenarioStepCompleted},
 		ScenarioStep{Title: "并发后剩余", Detail: fmt.Sprintf("仍有 %d 个任务未完成，总目标 %d 件", stillIncomplete, totalTarget), Status: ScenarioStepCompleted},
 		ScenarioStep{Title: "收尾阶段", Detail: fmt.Sprintf("顺序处理剩余 %d 个任务，补齐 %d 件，收尾拒绝 %d 次", cleanupRemainingTasks, cleanupSuccess.Load(), cleanupRejected.Load()), Status: ScenarioStepCompleted},
