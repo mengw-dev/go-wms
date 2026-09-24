@@ -11,12 +11,18 @@ export interface GuideStep {
   event: string
 }
 
+export interface GuideFact {
+  label: string
+  value: string
+}
+
 export interface GuideBusinessResult {
   orderId?: string
   orderNo?: string
   taskId?: string
   taskNo?: string
   message?: string
+  facts?: GuideFact[]
 }
 
 export const GUIDE_EVENTS = {
@@ -35,6 +41,11 @@ export const GUIDE_EVENTS = {
   outboundShipped: 'outbound.shipped',
   outboundInventoryReviewed: 'outbound.inventory.reviewed',
   stocktakeOrderCreated: 'stocktake.order.created',
+  stocktakeSnapshotReady: 'stocktake.snapshot.ready',
+  stocktakeActualCompleted: 'stocktake.actual.completed',
+  stocktakeDifferenceReviewed: 'stocktake.difference.reviewed',
+  stocktakeApproved: 'stocktake.approved',
+  stocktakeInventoryReviewed: 'stocktake.inventory.reviewed',
 } as const
 
 const GUIDE_STEPS: Record<GuideScenario, readonly GuideStep[]> = {
@@ -160,8 +171,48 @@ const GUIDE_STEPS: Record<GuideScenario, readonly GuideStep[]> = {
       route: '/stocktake/orders',
       target: '[data-tour="stocktake-create"]',
       title: '创建盘点单',
-      description: '点击“新建盘点单”，选择仓库和盘点范围。创建成功后，系统会生成账面快照。',
+      description: '点击“新建盘点单”，选择仓库和盘点范围。创建成功后，系统会生成真实账面快照。',
       event: GUIDE_EVENTS.stocktakeOrderCreated,
+    },
+    {
+      id: 'stocktake-snapshot',
+      route: '/stocktake/orders/:orderId',
+      target: '[data-tour="stocktake-snapshot"]',
+      title: '核对账面快照',
+      description: '查看系统按盘点范围生成的账面库存。快照数据来自创建盘点单时的真实库存。',
+      event: GUIDE_EVENTS.stocktakeSnapshotReady,
+    },
+    {
+      id: 'stocktake-actual',
+      route: '/stocktake/orders/:orderId',
+      target: '[data-tour="stocktake-actual"]',
+      title: '录入实盘数量',
+      description: '逐行填写实盘数量并点击“保存”。全部明细保存后，才会进入差异确认步骤。',
+      event: GUIDE_EVENTS.stocktakeActualCompleted,
+    },
+    {
+      id: 'stocktake-difference',
+      route: '/stocktake/orders/:orderId',
+      target: '[data-tour="stocktake-difference"]',
+      title: '查看账实差异',
+      description: '核对账面、实盘和差异。这里展示的是当前真实盘点明细计算出的汇总。',
+      event: GUIDE_EVENTS.stocktakeDifferenceReviewed,
+    },
+    {
+      id: 'stocktake-approve',
+      route: '/stocktake/orders/:orderId',
+      target: '[data-tour="stocktake-approve"]',
+      title: '审核并调整库存',
+      description: '点击“审核”。系统会在真实业务事务中锁定库存、写入盘点调整流水并完成盘点单。',
+      event: GUIDE_EVENTS.stocktakeApproved,
+    },
+    {
+      id: 'stocktake-inventory',
+      route: '/inventory?order_no=:orderNo',
+      target: '[data-tour="inventory-evidence"]',
+      title: '查看库存调整流水',
+      description: '按本次盘点单筛选库存流水，确认 ADJUST 调整记录和实际数量变化。',
+      event: GUIDE_EVENTS.stocktakeInventoryReviewed,
     },
   ],
 }
@@ -190,6 +241,7 @@ export const useGuideStore = defineStore('guide', {
     startedAt: 0,
     completed: false,
     verifiedStepIds: [] as string[],
+    facts: [] as GuideFact[],
     lastOutcome: '',
     mismatch: '',
   }),
@@ -231,6 +283,7 @@ export const useGuideStore = defineStore('guide', {
       this.startedAt = Date.now()
       this.completed = false
       this.verifiedStepIds = []
+      this.facts = []
       this.lastOutcome = ''
       this.mismatch = ''
       return GUIDE_STEPS[scenario][0]
@@ -248,6 +301,13 @@ export const useGuideStore = defineStore('guide', {
       if (result.orderNo) this.orderNo = result.orderNo
       if (result.taskId) this.taskId = result.taskId
       if (result.taskNo) this.taskNo = result.taskNo
+      if (result.facts?.length) {
+        const merged = new Map(this.facts.map((fact) => [fact.label, fact]))
+        for (const fact of result.facts) {
+          if (fact.label) merged.set(fact.label, fact)
+        }
+        this.facts = Array.from(merged.values())
+      }
       this.lastOutcome = result.message || '当前步骤已在真实业务中完成。'
       this.mismatch = ''
       return true
@@ -305,6 +365,7 @@ export const useGuideStore = defineStore('guide', {
       this.taskNo = ''
       this.startedAt = 0
       this.verifiedStepIds = []
+      this.facts = []
       this.lastOutcome = ''
       this.mismatch = ''
     },

@@ -125,6 +125,59 @@ describe('manual guide store', () => {
     expect(guide.orderId).toBe('')
   })
 
+  it('walks through the real stocktake milestones and keeps authoritative facts', () => {
+    const guide = useGuideStore()
+    guide.start('stocktake')
+
+    expect(
+      guide.recordBusinessResult(GUIDE_EVENTS.stocktakeOrderCreated, {
+        orderId: '88',
+        orderNo: 'PD-88',
+        message: '已创建盘点单。',
+      }),
+    ).toBe(true)
+    expect(guide.next()).toBe(true)
+    expect(guide.currentStepRoute).toBe('/stocktake/orders/88')
+
+    guide.recordBusinessResult(GUIDE_EVENTS.stocktakeSnapshotReady, {
+      facts: [
+        { label: '账面库存', value: '100' },
+        { label: '实盘库存', value: '100' },
+      ],
+    })
+    guide.next()
+    guide.recordBusinessResult(GUIDE_EVENTS.stocktakeActualCompleted, {
+      facts: [
+        { label: '实盘库存', value: '97' },
+        { label: '差异', value: '-3' },
+      ],
+    })
+    expect(guide.facts).toEqual([
+      { label: '账面库存', value: '100' },
+      { label: '实盘库存', value: '97' },
+      { label: '差异', value: '-3' },
+    ])
+    guide.next()
+
+    guide.recordBusinessResult(GUIDE_EVENTS.stocktakeDifferenceReviewed)
+    guide.next()
+    guide.recordBusinessResult(GUIDE_EVENTS.stocktakeApproved, {
+      facts: [
+        { label: '调整数量', value: '-3' },
+        { label: '盘点明细', value: '1 行' },
+      ],
+      message: '审核完成，库存已调整。',
+    })
+    guide.next()
+
+    expect(guide.currentStepRoute).toBe('/inventory?order_no=PD-88')
+    expect(guide.recordBusinessResult(GUIDE_EVENTS.stocktakeInventoryReviewed)).toBe(true)
+    expect(guide.next()).toBe(true)
+    expect(guide.completed).toBe(true)
+    expect(guide.active).toBe(false)
+    expect(guide.facts).toContainEqual({ label: '差异', value: '-3' })
+  })
+
   it('can cancel a guide without leaving stale business identifiers', () => {
     const guide = useGuideStore()
     guide.start('inbound')

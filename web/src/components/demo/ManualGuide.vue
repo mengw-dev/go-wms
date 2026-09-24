@@ -39,9 +39,16 @@ const completionSteps = computed(() => {
   if (guide.scenario === 'outbound') {
     return ['创建', '提交', '审核分配', '查看任务', '拣货发货', '库存流水']
   }
+  if (guide.scenario === 'stocktake') {
+    return ['创建', '账面快照', '录入实盘', '查看差异', '审核调整', '库存流水']
+  }
   return guide.scenario ? [GUIDE_SCENARIO_LABELS[guide.scenario] + '单', '业务已完成'] : []
 })
-const orderFactLabel = computed(() => (guide.scenario === 'outbound' ? '出库单' : '入库单'))
+const orderFactLabel = computed(() => {
+  if (guide.scenario === 'outbound') return '出库单'
+  if (guide.scenario === 'stocktake') return '盘点单'
+  return '入库单'
+})
 const taskFactLabel = computed(() => (guide.scenario === 'outbound' ? '拣货任务' : '上架任务'))
 
 const highlightStyle = computed<CSSProperties>(() => {
@@ -183,6 +190,11 @@ async function restartGuide(): Promise<void> {
   await router.push(firstStep.route)
 }
 
+async function completeNavigate(path: string): Promise<void> {
+  guide.cancel()
+  await router.push(path)
+}
+
 function repositionGuide(): void {
   if (guide.reposition(route.path)) scheduleTargetLocate(true)
 }
@@ -272,6 +284,15 @@ onBeforeUnmount(() => {
           <div class="guide-complete-facts">
             <span v-if="guide.orderNo || guide.orderId">{{ orderFactLabel }}：{{ guide.orderNo || guide.orderId }}</span>
             <span v-if="guide.taskNo || guide.taskId">{{ taskFactLabel }}：{{ guide.taskNo || guide.taskId }}</span>
+            <span v-for="fact in guide.facts" :key="fact.label">{{ fact.label }}：{{ fact.value }}</span>
+          </div>
+          <div v-if="guide.scenario === 'stocktake'" class="guide-complete-actions">
+            <el-button size="small" @click="completeNavigate(`/stocktake/orders/${guide.orderId}`)">查看盘点单</el-button>
+            <el-button size="small" @click="completeNavigate('/inventory')">查看库存</el-button>
+            <el-button size="small" @click="completeNavigate(`/inventory?order_no=${encodeURIComponent(guide.orderNo)}`)">
+              查看库存流水
+            </el-button>
+            <el-button size="small" type="primary" @click="completeNavigate('/demo')">返回 Demo</el-button>
           </div>
           <div class="guide-actions">
             <el-button @click="restartGuide">重新开始</el-button>
@@ -506,6 +527,15 @@ onBeforeUnmount(() => {
   margin-top: 12px;
   color: var(--el-text-color-regular);
   font-size: 12px;
+}
+
+.guide-complete-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 13px;
+  border-top: 1px solid var(--el-border-color-lighter);
 }
 
 @media (max-width: 640px) {
