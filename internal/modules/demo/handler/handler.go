@@ -88,6 +88,7 @@ func (h *Handler) RegisterRoutes(auth *gin.RouterGroup, checker middleware.Perms
 	g.POST("/run/outbound_drafts", perm, h.runOutboundDrafts)
 	g.POST("/run/stocktake_drafts", perm, h.runStocktakeDrafts)
 	g.POST("/run/concurrent", perm, h.runConcurrent)
+	g.POST("/run/concurrent_shortage", perm, h.runConcurrentShortage)
 	g.POST("/run/picking", perm, h.runConcurrentPicking)
 	g.POST("/run/restock", perm, h.runRestock)
 	g.GET("/performance", perm, h.performance)
@@ -154,6 +155,23 @@ func (h *Handler) runConcurrent(c *gin.Context) {
 		return
 	}
 	result, err := h.svc.RunConcurrentAllocation(c.Request.Context(), demoSessionID(c), req.Concurrency, req.QtyPerOrder)
+	if err != nil {
+		response.Fail(c, err)
+		return
+	}
+	response.OK(c, result)
+}
+
+func (h *Handler) runConcurrentShortage(c *gin.Context) {
+	var req struct {
+		Concurrency int `json:"concurrency" binding:"omitempty,min=2,max=100"`
+		QtyPerOrder int `json:"qty_per_order" binding:"omitempty,min=1,max=10"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil && c.Request.ContentLength > 0 {
+		response.Fail(c, errcode.ParamError)
+		return
+	}
+	result, err := h.svc.RunConcurrentShortageValidation(c.Request.Context(), demoSessionID(c), req.Concurrency, req.QtyPerOrder)
 	if err != nil {
 		response.Fail(c, err)
 		return

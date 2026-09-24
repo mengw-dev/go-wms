@@ -322,6 +322,14 @@ onBeforeUnmount(() => {
           <el-button @click="goPerformance">打开实验</el-button>
         </article>
         <article class="verify-card">
+          <div class="card-icon"><Connection /></div>
+          <div>
+            <h3>供给不足并发验证</h3>
+            <p>总需求大于可用库存时并发执行真实出库审核，区分库存不足拒绝和其他失败。</p>
+          </div>
+          <el-button @click="goPerformance">打开实验</el-button>
+        </article>
+        <article class="verify-card">
           <div class="card-icon"><Document /></div>
           <div>
             <h3>并发拣货</h3>

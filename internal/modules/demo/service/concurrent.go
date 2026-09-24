@@ -50,6 +50,7 @@ type concurrentAttempt struct {
 	Submitted    bool
 	Approved     bool
 	FailedPhase  string
+	FailureCode  int
 	FailureCause string
 }
 
@@ -103,7 +104,7 @@ func (s *Service) RunConcurrentAllocation(ctx context.Context, sessionID string,
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			attempts <- s.prepareConcurrentOutbound(ctx, refs, index, qtyPerOrder)
+			attempts <- s.prepareConcurrentOutbound(ctx, refs, index, qtyPerOrder, "并发库存分配一致性实验", concurrentRunTag())
 		}()
 	}
 	wg.Wait()
@@ -189,17 +190,18 @@ func (s *Service) RunConcurrentAllocation(ctx context.Context, sessionID string,
 	}, nil
 }
 
-func (s *Service) prepareConcurrentOutbound(ctx context.Context, refs *demoRefs, index, qtyPerOrder int) concurrentAttempt {
+func (s *Service) prepareConcurrentOutbound(ctx context.Context, refs *demoRefs, index, qtyPerOrder int, remark, runTag string) concurrentAttempt {
 	operator := s.Username(ctx)
 	var attempt concurrentAttempt
 	order, err := s.outbound.Create(ctx, &outbounddto.CreateOrderReq{
 		WarehouseID: refs.Warehouse.ID,
-		BizOrderNo:  demoBizOrderNo(index + 1),
-		Remark:      "并发库存分配一致性实验",
+		BizOrderNo:  concurrentDemoBizOrderNo(runTag, index+1),
+		Remark:      remark,
 		Details:     []outbounddto.OrderDetailItem{{SKUID: refs.SKU.ID, ExpectedQty: qtyPerOrder}},
 	}, operator)
 	if err != nil {
 		attempt.FailedPhase = "create"
+		attempt.FailureCode = errcode.From(err).Code
 		attempt.FailureCause = err.Error()
 		return attempt
 	}
@@ -208,6 +210,7 @@ func (s *Service) prepareConcurrentOutbound(ctx context.Context, refs *demoRefs,
 
 	if err := s.outbound.Submit(ctx, order.ID); err != nil {
 		attempt.FailedPhase = "submit"
+		attempt.FailureCode = errcode.From(err).Code
 		attempt.FailureCause = err.Error()
 		return attempt
 	}
@@ -215,6 +218,7 @@ func (s *Service) prepareConcurrentOutbound(ctx context.Context, refs *demoRefs,
 
 	if err := s.outbound.Approve(ctx, order.ID, operator); err != nil {
 		attempt.FailedPhase = "approve"
+		attempt.FailureCode = errcode.From(err).Code
 		attempt.FailureCause = err.Error()
 		return attempt
 	}
@@ -309,4 +313,13 @@ func (s *Service) concurrentInventoryStats(ctx context.Context, skuID int64) (*c
 		return nil, err
 	}
 	return &stats, nil
+}
+
+func concurrentRunTag() string {
+	now := time.Now()
+	return fmt.Sprintf("%s%06d", now.Format("20060102150405"), now.Nanosecond()/1000)
+}
+
+func concurrentDemoBizOrderNo(runTag string, sequence int) string {
+	return fmt.Sprintf("CUST%s-%02d", runTag, sequence)
 }

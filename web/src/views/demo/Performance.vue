@@ -2,8 +2,8 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { Refresh, Tickets, TrendCharts } from '@element-plus/icons-vue'
-import { getDemoPerformance, restockDemo, runConcurrentDemo } from '@/api/demo'
-import type { DemoConcurrentResult, DemoPerformanceSnapshot } from '@/api/types'
+import { getDemoPerformance, restockDemo, runConcurrentDemo, runConcurrentShortageDemo } from '@/api/demo'
+import type { DemoConcurrentResult, DemoConcurrentShortageResult, DemoPerformanceSnapshot } from '@/api/types'
 import { useAutoRefresh } from '@/composables/autoRefresh'
 
 const router = useRouter()
@@ -16,8 +16,14 @@ const concurrentRunning = ref(false)
 const restockRunning = ref(false)
 const concurrentResult = ref<DemoConcurrentResult | null>(null)
 const concurrentError = ref('')
+const shortageConcurrency = ref(20)
+const shortageQty = ref(10)
+const shortageRunning = ref(false)
+const shortageResult = ref<DemoConcurrentShortageResult | null>(null)
+const shortageError = ref('')
 
 const concurrentDemand = computed(() => concurrentConcurrency.value * concurrentQty.value)
+const shortageDemand = computed(() => shortageConcurrency.value * shortageQty.value)
 
 const dbHealthy = computed(() => data.value?.database.status === 'ok')
 const redisHealthy = computed(() => data.value?.redis.status === 'ok')
@@ -38,6 +44,21 @@ async function runAllocationExperiment() {
     concurrentError.value = error instanceof Error ? error.message : '并发实验未完成'
   } finally {
     concurrentRunning.value = false
+  }
+}
+
+async function runShortageExperiment() {
+  if (shortageRunning.value) return
+  shortageRunning.value = true
+  shortageResult.value = null
+  shortageError.value = ''
+  try {
+    shortageResult.value = await runConcurrentShortageDemo(shortageConcurrency.value, shortageQty.value)
+    await load(true)
+  } catch (error) {
+    shortageError.value = error instanceof Error ? error.message : '供给不足并发验证未完成'
+  } finally {
+    shortageRunning.value = false
   }
 }
 
@@ -189,6 +210,105 @@ useAutoRefresh(() => load(true), 3000)
 
         <div class="experiment-summary" :class="{ failed: !concurrentResult.invariant_ok }">
           {{ concurrentResult.summary }}
+        </div>
+      </template>
+    </section>
+
+    <section class="experiment-panel experiment-panel--shortage">
+      <div class="experiment-head">
+        <div>
+          <span class="experiment-kicker">工程验证</span>
+          <h3>供给不足并发验证</h3>
+          <p>刻意令总需求大于初始可用库存，再并发执行真实出库创建、提交和审核，区分库存不足拒绝与其他失败。</p>
+        </div>
+        <el-tag type="danger" effect="plain">需求 &gt; 可用库存</el-tag>
+      </div>
+
+      <div class="experiment-controls">
+        <label>
+          <span>并发订单数</span>
+          <el-input-number v-model="shortageConcurrency" :min="2" :max="100" />
+        </label>
+        <label>
+          <span>每单需求</span>
+          <el-input-number v-model="shortageQty" :min="1" :max="10" />
+        </label>
+        <div class="demand-preview">
+          <span>并发总需求</span>
+          <b>{{ shortageDemand }} 件</b>
+        </div>
+        <div class="demand-preview">
+          <span>当前可用库存快照</span>
+          <b>{{ data?.business.available_total ?? '刷新中' }} 件</b>
+        </div>
+        <el-button type="danger" plain :loading="shortageRunning" @click="runShortageExperiment">
+          运行供给不足验证
+        </el-button>
+      </div>
+
+      <el-alert
+        title="安全边界：最多 100 张订单、每单最多 10 件；后端会拒绝总需求不高于当前可用库存的输入。"
+        type="warning"
+        :closable="false"
+        show-icon
+      />
+
+      <el-alert
+        v-if="shortageError"
+        :title="shortageError"
+        type="warning"
+        :closable="false"
+        show-icon
+        class="shortage-error"
+      />
+
+      <template v-if="shortageResult">
+        <div class="scope-grid">
+          <div>
+            <span>验证范围</span>
+            <p>{{ shortageResult.validation_scope }}</p>
+          </div>
+          <div>
+            <span>不验证什么</span>
+            <p>{{ shortageResult.not_validated }}</p>
+          </div>
+          <div>
+            <span>关键约束</span>
+            <p>成功分配总量不超过初始可用库存，并检查三数量公式与负库存行。</p>
+          </div>
+        </div>
+
+        <div class="experiment-grid">
+          <div class="snapshot-box">
+            <b>执行前</b>
+            <span>初始库存 <strong>{{ shortageResult.available_before }}</strong></span>
+            <span>并发订单 <strong>{{ shortageResult.concurrency }}</strong></span>
+            <span>单笔需求 <strong>{{ shortageResult.qty_per_order }}</strong></span>
+            <span>总需求 <strong>{{ shortageResult.total_demand }}</strong></span>
+          </div>
+          <div class="snapshot-box">
+            <b>真实业务结果</b>
+            <span>成功 <strong>{{ shortageResult.success }}</strong></span>
+            <span>库存不足拒绝 <strong>{{ shortageResult.insufficient_rejected }}</strong></span>
+            <span>其他失败 <strong>{{ shortageResult.other_failed }}</strong></span>
+            <span>成功分配总量 <strong>{{ shortageResult.allocated_quantity }}</strong></span>
+          </div>
+          <div class="snapshot-box">
+            <b>执行后</b>
+            <span>剩余 available <strong>{{ shortageResult.remaining_available }}</strong></span>
+            <span>最终 allocated <strong>{{ shortageResult.allocated_total }}</strong></span>
+            <span>最终 stock <strong>{{ shortageResult.stock_total }}</strong></span>
+            <span>负数库存行 <strong>{{ shortageResult.negative_rows }}</strong></span>
+          </div>
+          <div class="snapshot-box" :class="{ failed: !shortageResult.invariant_ok }">
+            <b>限制与不变量检查</b>
+            <span>成功分配 ≤ 初始可用 <strong>{{ shortageResult.limit_respected ? '成立' : '异常' }}</strong></span>
+            <span>stock = available + allocated <strong>{{ shortageResult.invariant_ok ? '成立' : '异常' }}</strong></span>
+          </div>
+        </div>
+
+        <div class="experiment-summary" :class="{ failed: !shortageResult.invariant_ok }">
+          {{ shortageResult.summary }}
         </div>
       </template>
     </section>
@@ -476,6 +596,14 @@ useAutoRefresh(() => load(true), 3000)
 .experiment-summary.failed {
   color: var(--el-color-danger);
   background: var(--el-color-danger-light-9);
+}
+
+.experiment-panel--shortage {
+  border-top: 3px solid var(--el-color-danger);
+}
+
+.shortage-error {
+  margin-top: 10px;
 }
 
 .health-grid,

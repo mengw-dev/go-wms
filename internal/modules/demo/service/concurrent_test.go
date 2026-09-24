@@ -36,3 +36,17 @@ func TestConcurrentInventoryInvariant(t *testing.T) {
 		t.Fatal("negative rows should fail")
 	}
 }
+
+func TestSummarizeShortageAttemptsClassifiesRealFailureReasons(t *testing.T) {
+	attempts := []concurrentAttempt{
+		{Approved: true},
+		{FailedPhase: "approve", FailureCode: 30201, FailureCause: "available not enough"},
+		{FailedPhase: "approve", FailureCode: 50003, FailureCause: "version conflict"},
+		{FailedPhase: "submit", FailureCode: 50002, FailureCause: "status wrong"},
+	}
+
+	got := summarizeShortageAttempts(attempts)
+	if got.Success != 1 || got.InsufficientRejected != 1 || got.OtherFailed != 2 {
+		t.Fatalf("shortage summary = %+v", got)
+	}
+}

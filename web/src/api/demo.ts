@@ -1,6 +1,7 @@
 import type {
   DemoActivitySnapshot,
   DemoConcurrentResult,
+  DemoConcurrentShortageResult,
   DemoPerformanceSnapshot,
   DemoPickingResult,
   DemoScenarioResult,
@@ -53,6 +54,10 @@ export function runDemoScenario(
 
 export function runConcurrentDemo(concurrency = 20, qtyPerOrder = 1) {
   return post<DemoConcurrentResult>('/demo/run/concurrent', { concurrency, qty_per_order: qtyPerOrder })
+}
+
+export function runConcurrentShortageDemo(concurrency = 20, qtyPerOrder = 10) {
+  return post<DemoConcurrentShortageResult>('/demo/run/concurrent_shortage', { concurrency, qty_per_order: qtyPerOrder })
 }
 
 export function runConcurrentPicking(workers = 10, contenders = 5) {

@@ -657,6 +657,31 @@ export interface DemoConcurrentResult {
   steps: DemoScenarioStep[]
 }
 
+export interface DemoConcurrentShortageResult {
+  concurrency: number
+  qty_per_order: number
+  total_demand: number
+  stock_before: number
+  available_before: number
+  allocated_before: number
+  success: number
+  insufficient_rejected: number
+  other_failed: number
+  allocated_quantity: number
+  remaining_available: number
+  stock_total: number
+  available_total: number
+  allocated_total: number
+  negative_rows: number
+  limit_respected: boolean
+  invariant_ok: boolean
+  invariant_message: string
+  validation_scope: string
+  not_validated: string
+  summary: string
+  steps: DemoScenarioStep[]
+}
+
 export interface DemoPickingResult {
   workers: number
   contenders: number
