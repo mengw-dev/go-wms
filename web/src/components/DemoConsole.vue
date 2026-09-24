@@ -8,13 +8,18 @@ import {
   heartbeatDemoSession,
   releaseDemoSession,
   resetDemoData,
-  runDemoScenario,
+  runDemoScenario as requestDemoScenario,
 } from '@/api/demo'
 import { ApiError } from '@/api/request'
 import type { DemoScenarioResult } from '@/api/types'
 import DemoRunViewer from '@/components/demo/DemoRunViewer.vue'
 import { useAuthStore } from '@/stores/auth'
-import { emitDataChanged, OPEN_DEMO_CONSOLE_EVENT } from '@/utils/events'
+import {
+  emitDataChanged,
+  OPEN_DEMO_CONSOLE_EVENT,
+  RUN_DEMO_SCENARIO_EVENT,
+  type DemoConsoleScenario,
+} from '@/utils/events'
 import { rememberDemoEvidence } from '@/utils/demoEvidence'
 
 const router = useRouter()
@@ -26,6 +31,7 @@ const resetting = ref(false)
 const exiting = ref(false)
 const remaining = ref(0)
 const result = ref<DemoScenarioResult | null>(null)
+const runningScenario = ref<DemoConsoleScenario | null>(null)
 let countdownTimer: number | undefined
 let renewTimer: number | undefined
 let redirectingToLogin = false
@@ -61,7 +67,15 @@ const sessionState = computed(() => {
   return '未建立'
 })
 const currentActivity = computed(() => {
-  if (scenarioRunning.value) return '完整业务闭环'
+  if (scenarioRunning.value) {
+    const labels: Record<DemoConsoleScenario, string> = {
+      inbound: '入库自动演示',
+      outbound: '出库自动演示',
+      stocktake: '盘点自动演示',
+      full: '完整业务闭环',
+    }
+    return runningScenario.value ? labels[runningScenario.value] : '业务演示'
+  }
   if (resetting.value) return '正在重置数据'
   if (exiting.value) return '正在退出演示'
   if (acquiring.value) return '正在接入演示会话'
@@ -201,13 +215,14 @@ async function initialize() {
   await acquire()
 }
 
-async function runFullScenario() {
+async function runScenario(scenario: DemoConsoleScenario) {
   if (busy.value) return
   scenarioRunning.value = true
+  runningScenario.value = scenario
   result.value = null
   const startedAt = new Date().toISOString()
   try {
-    const demoResult = await runDemoScenario('full')
+    const demoResult = await requestDemoScenario(scenario)
     result.value = demoResult
     rememberDemoEvidence(demoResult, startedAt)
     emitDataChanged()
@@ -222,7 +237,14 @@ async function runFullScenario() {
     }
   } finally {
     scenarioRunning.value = false
+    runningScenario.value = null
   }
+}
+
+function onRunDemoScenario(event: unknown) {
+  const scenario = (event as { detail?: { scenario?: DemoConsoleScenario } }).detail?.scenario || 'full'
+  visible.value = true
+  void runScenario(scenario)
 }
 
 function isDemoScenarioResult(value: unknown): value is DemoScenarioResult {
@@ -307,6 +329,7 @@ onMounted(() => {
   window.addEventListener('beforeunload', releaseKeepalive)
   window.addEventListener('pagehide', releaseKeepalive)
   window.addEventListener(OPEN_DEMO_CONSOLE_EVENT, onOpenDemoConsole)
+  window.addEventListener(RUN_DEMO_SCENARIO_EVENT, onRunDemoScenario)
   // 用户交互才会刷新空闲倒计时并向后端续期。
   window.addEventListener('mousemove', markActivity, { passive: true })
   window.addEventListener('mousedown', markActivity, { passive: true })
@@ -322,6 +345,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('beforeunload', releaseKeepalive)
   window.removeEventListener('pagehide', releaseKeepalive)
   window.removeEventListener(OPEN_DEMO_CONSOLE_EVENT, onOpenDemoConsole)
+  window.removeEventListener(RUN_DEMO_SCENARIO_EVENT, onRunDemoScenario)
   window.removeEventListener('mousemove', markActivity)
   window.removeEventListener('mousedown', markActivity)
   window.removeEventListener('wheel', markActivity)
@@ -403,7 +427,7 @@ onBeforeUnmount(() => {
             :icon="VideoPlay"
             :loading="scenarioRunning"
             :disabled="busy && !scenarioRunning"
-            @click="runFullScenario"
+            @click="runScenario('full')"
           >
             完整业务闭环
           </el-button>

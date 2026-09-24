@@ -14,3 +14,11 @@ export const OPEN_DEMO_CONSOLE_EVENT = 'wms:open-demo-console'
 export function openDemoConsole(): void {
   window.dispatchEvent(new Event(OPEN_DEMO_CONSOLE_EVENT))
 }
+
+export type DemoConsoleScenario = 'inbound' | 'outbound' | 'stocktake' | 'full'
+
+export const RUN_DEMO_SCENARIO_EVENT = 'wms:run-demo-scenario'
+
+export function runDemoScenarioInConsole(scenario: DemoConsoleScenario): void {
+  window.dispatchEvent(new CustomEvent<{ scenario: DemoConsoleScenario }>(RUN_DEMO_SCENARIO_EVENT, { detail: { scenario } }))
+}

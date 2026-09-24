@@ -23,7 +23,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useGuideStore, type GuideScenario } from '@/stores/guide'
 import { statusText, taskTypeText } from '@/constants'
 import { formatTime } from '@/utils'
-import { onDataChanged, openDemoConsole } from '@/utils/events'
+import { onDataChanged, runDemoScenarioInConsole } from '@/utils/events'
 
 interface EvidenceItem {
   kind: string
@@ -138,6 +138,10 @@ function startManualGuide(scenario: GuideScenario) {
   void router.push(firstStep.route)
 }
 
+function runScenario(scenario: 'inbound' | 'outbound' | 'stocktake' | 'full') {
+  runDemoScenarioInConsole(scenario)
+}
+
 function goPerformance() {
   router.push('/demo/performance')
 }
@@ -237,11 +241,11 @@ onBeforeUnmount(() => {
           事务边界和多租户隔离。
         </p>
         <div class="hero-actions">
-          <el-button type="primary" size="large" :icon="VideoPlay" @click="openDemoConsole">
-            开始完整演示
+          <el-button type="primary" size="large" :icon="VideoPlay" @click="runScenario('full')">
+            自动演示完整业务闭环
           </el-button>
           <el-button size="large" :icon="ArrowRight" @click="startManualGuide('inbound')">
-            亲自体验
+            亲自体验入库
           </el-button>
         </div>
       </div>
@@ -279,7 +283,7 @@ onBeforeUnmount(() => {
           <h3>批量入库</h3>
           <p>批量创建入库草稿，再通过真实业务页面完成收货、残品登记与上架。</p>
           <div class="scenario-actions">
-            <el-button text type="primary" @click="openDemoConsole">自动演示</el-button>
+            <el-button text type="primary" @click="runScenario('inbound')">自动演示</el-button>
             <el-button text @click="startManualGuide('inbound')">亲自体验入库</el-button>
           </div>
         </article>
@@ -288,7 +292,7 @@ onBeforeUnmount(() => {
           <h3>上游出库</h3>
           <p>模拟上游订单批量创建出库单，连续体验审核、FIFO 分配与拣货。</p>
           <div class="scenario-actions">
-            <el-button text type="primary" @click="openDemoConsole">自动演示</el-button>
+            <el-button text type="primary" @click="runScenario('outbound')">自动演示</el-button>
             <el-button text @click="startManualGuide('outbound')">亲自体验出库</el-button>
           </div>
         </article>
@@ -297,7 +301,7 @@ onBeforeUnmount(() => {
           <h3>库存盘点</h3>
           <p>批量生成盘点草稿，录入实盘数量并完成盘盈盘亏审核。</p>
           <div class="scenario-actions">
-            <el-button text type="primary" @click="openDemoConsole">自动演示</el-button>
+            <el-button text type="primary" @click="runScenario('stocktake')">自动演示</el-button>
             <el-button text @click="startManualGuide('stocktake')">亲自体验盘点</el-button>
           </div>
         </article>
@@ -417,7 +421,7 @@ onBeforeUnmount(() => {
       </div>
     </section>
 
-    <DemoTour ref="demoTour" @complete="openDemoConsole" />
+    <DemoTour ref="demoTour" @complete="runScenario('full')" />
   </div>
 </template>
 

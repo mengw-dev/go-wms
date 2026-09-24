@@ -1,3 +1,4 @@
+/* global console, process */
 import { copyFile, mkdir, readFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
