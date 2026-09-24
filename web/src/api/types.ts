@@ -687,10 +687,20 @@ export interface DemoPickingResult {
   contenders: number
   task_count: number
   total_target: number
+  concurrent_scan_attempts: number
+  concurrent_success: number
+  competition_rejected: number
+  still_incomplete_after_concurrent: number
   worker_success: number
   worker_rejected: number
   contender_success: number
   contender_rejected: number
+  cleanup_remaining_tasks: number
+  cleanup_picked_quantity: number
+  cleanup_rejected: number
+  duplicate_scan_attempts: number
+  duplicate_scan_rejected: number
+  duplicate_scan_success: number
   final_picked: number
   completed_tasks: number
   shipped_orders: number
@@ -699,6 +709,21 @@ export interface DemoPickingResult {
   available_total: number
   allocated_total: number
   negative_rows: number
+  invariant_ok: boolean
+  invariant_message: string
+  inventory_trans: DemoPickingInventoryEvidence[]
   summary: string
   steps: DemoScenarioStep[]
+}
+
+export interface DemoPickingInventoryEvidence {
+  trans_type: string
+  quantity_change: number
+  before_quantity: number
+  after_quantity: number
+  available_before: number
+  available_after: number
+  order_no: string
+  task_no: string
+  created_at: string
 }

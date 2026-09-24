@@ -332,10 +332,10 @@ onBeforeUnmount(() => {
         <article class="verify-card">
           <div class="card-icon"><Document /></div>
           <div>
-            <h3>并发拣货</h3>
-            <p>多名拣货员与抢单者同时执行任务，观察任务领取和防超拣结果。</p>
+            <h3>模拟 PDA 并发拣货</h3>
+            <p>并发扫码后明确展示仍未完成任务，再分开展示顺序收尾和最终业务状态。</p>
           </div>
-          <el-button @click="openDemoConsole">打开实验</el-button>
+          <el-button @click="goPerformance">打开实验</el-button>
         </article>
         <article class="verify-card">
           <div class="card-icon"><Monitor /></div>

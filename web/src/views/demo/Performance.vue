@@ -2,8 +2,8 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { Refresh, Tickets, TrendCharts } from '@element-plus/icons-vue'
-import { getDemoPerformance, restockDemo, runConcurrentDemo, runConcurrentShortageDemo } from '@/api/demo'
-import type { DemoConcurrentResult, DemoConcurrentShortageResult, DemoPerformanceSnapshot } from '@/api/types'
+import { getDemoPerformance, restockDemo, runConcurrentDemo, runConcurrentPicking, runConcurrentShortageDemo } from '@/api/demo'
+import type { DemoConcurrentResult, DemoConcurrentShortageResult, DemoPerformanceSnapshot, DemoPickingResult } from '@/api/types'
 import { useAutoRefresh } from '@/composables/autoRefresh'
 
 const router = useRouter()
@@ -21,6 +21,11 @@ const shortageQty = ref(10)
 const shortageRunning = ref(false)
 const shortageResult = ref<DemoConcurrentShortageResult | null>(null)
 const shortageError = ref('')
+const pickingWorkers = ref(10)
+const pickingContenders = ref(5)
+const pickingRunning = ref(false)
+const pickingResult = ref<DemoPickingResult | null>(null)
+const pickingError = ref('')
 
 const concurrentDemand = computed(() => concurrentConcurrency.value * concurrentQty.value)
 const shortageDemand = computed(() => shortageConcurrency.value * shortageQty.value)
@@ -59,6 +64,21 @@ async function runShortageExperiment() {
     shortageError.value = error instanceof Error ? error.message : '供给不足并发验证未完成'
   } finally {
     shortageRunning.value = false
+  }
+}
+
+async function runPickingExperiment() {
+  if (pickingRunning.value) return
+  pickingRunning.value = true
+  pickingResult.value = null
+  pickingError.value = ''
+  try {
+    pickingResult.value = await runConcurrentPicking(pickingWorkers.value, pickingContenders.value)
+    await load(true)
+  } catch (error) {
+    pickingError.value = error instanceof Error ? error.message : '并发拣货实验未完成'
+  } finally {
+    pickingRunning.value = false
   }
 }
 
@@ -310,6 +330,94 @@ useAutoRefresh(() => load(true), 3000)
         <div class="experiment-summary" :class="{ failed: !shortageResult.invariant_ok }">
           {{ shortageResult.summary }}
         </div>
+      </template>
+    </section>
+
+    <section class="experiment-panel experiment-panel--picking">
+      <div class="experiment-head">
+        <div>
+          <span class="experiment-kicker">工程验证</span>
+          <h3>模拟 PDA 并发拣货</h3>
+          <p>使用模拟扫码请求并发生成真实 PICK 调用；执行结果按并发阶段、收尾阶段和最终业务状态分段展示。</p>
+        </div>
+        <el-tag type="primary" effect="plain">不是真实 PDA 硬件</el-tag>
+      </div>
+
+      <div class="experiment-controls">
+        <label>
+          <span>并发拣货员</span>
+          <el-input-number v-model="pickingWorkers" :min="1" :max="100" />
+        </label>
+        <label>
+          <span>抢单/重复扫码请求</span>
+          <el-input-number v-model="pickingContenders" :min="0" :max="50" />
+        </label>
+        <el-button type="primary" :loading="pickingRunning" @click="runPickingExperiment">
+          运行模拟 PDA 实验
+        </el-button>
+      </div>
+
+      <el-alert
+        title="最终“任务完成”包含并发之后的顺序收尾阶段，不能理解为所有任务都由纯并发请求完成。"
+        type="warning"
+        :closable="false"
+        show-icon
+      />
+
+      <el-alert
+        v-if="pickingError"
+        :title="pickingError"
+        type="warning"
+        :closable="false"
+        show-icon
+        class="shortage-error"
+      />
+
+      <template v-if="pickingResult">
+        <div class="phase-grid">
+          <div>
+            <b>并发阶段</b>
+            <span>扫码尝试 <strong>{{ pickingResult.concurrent_scan_attempts }}</strong></span>
+            <span>成功扫码 <strong>{{ pickingResult.concurrent_success }}</strong></span>
+            <span>竞争拒绝 <strong>{{ pickingResult.competition_rejected }}</strong></span>
+            <span>仍未完成任务 <strong>{{ pickingResult.still_incomplete_after_concurrent }}</strong></span>
+          </div>
+          <div>
+            <b>收尾阶段（顺序执行）</b>
+            <span>剩余任务 <strong>{{ pickingResult.cleanup_remaining_tasks }}</strong></span>
+            <span>顺序补齐数量 <strong>{{ pickingResult.cleanup_picked_quantity }}</strong></span>
+            <span>收尾拒绝 <strong>{{ pickingResult.cleanup_rejected }}</strong></span>
+          </div>
+          <div>
+            <b>重复扫码验证</b>
+            <span>重复请求 <strong>{{ pickingResult.duplicate_scan_attempts }}</strong></span>
+            <span>真实拒绝 <strong>{{ pickingResult.duplicate_scan_rejected }}</strong></span>
+            <span>异常成功 <strong>{{ pickingResult.duplicate_scan_success }}</strong></span>
+          </div>
+          <div :class="{ failed: !pickingResult.invariant_ok }">
+            <b>最终状态</b>
+            <span>PICK task <strong>{{ pickingResult.completed_tasks }}/{{ pickingResult.task_count }}</strong></span>
+            <span>Outbound order <strong>{{ pickingResult.shipped_orders }} 已发货</strong></span>
+            <span>最终拣货 <strong>{{ pickingResult.final_picked }}/{{ pickingResult.total_target }}</strong></span>
+            <span>库存 <strong>stock {{ pickingResult.stock_total }} / available {{ pickingResult.available_total }} / allocated {{ pickingResult.allocated_total }}</strong></span>
+          </div>
+        </div>
+
+        <div class="experiment-summary" :class="{ failed: !pickingResult.invariant_ok }">
+          {{ pickingResult.summary }}
+        </div>
+        <p class="invariant-note">{{ pickingResult.invariant_message }}</p>
+
+        <div class="section-title"><b>本次拣货产生的库存流水</b><span>共 {{ pickingResult.inventory_trans.length }} 条</span></div>
+        <el-table v-if="pickingResult.inventory_trans.length" :data="pickingResult.inventory_trans" border stripe size="small">
+          <el-table-column prop="task_no" label="任务号" min-width="150" />
+          <el-table-column prop="order_no" label="出库单" min-width="150" />
+          <el-table-column prop="trans_type" label="类型" width="90" />
+          <el-table-column prop="quantity_change" label="数量变化" width="100" align="right" />
+          <el-table-column label="库存变化" width="130"><template #default="{ row }">{{ row.before_quantity }} → {{ row.after_quantity }}</template></el-table-column>
+          <el-table-column label="可用量变化" width="140"><template #default="{ row }">{{ row.available_before }} → {{ row.available_after }}</template></el-table-column>
+          <el-table-column label="时间" width="170"><template #default="{ row }">{{ formatTime(row.created_at) }}</template></el-table-column>
+        </el-table>
       </template>
     </section>
 
@@ -606,6 +714,52 @@ useAutoRefresh(() => load(true), 3000)
   margin-top: 10px;
 }
 
+.experiment-panel--picking {
+  border-top: 3px solid var(--el-color-primary);
+}
+
+.phase-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.phase-grid > div {
+  padding: 14px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 9px;
+  background: var(--el-fill-color-extra-light);
+}
+
+.phase-grid > div.failed {
+  border-color: var(--el-color-danger-light-5);
+}
+
+.phase-grid b,
+.phase-grid span {
+  display: block;
+}
+
+.phase-grid b {
+  margin-bottom: 8px;
+}
+
+.phase-grid span {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 2px 0;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+
+.invariant-note {
+  margin: 10px 0 18px;
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
+}
+
 .health-grid,
 .metrics-grid {
   display: grid;
@@ -780,7 +934,8 @@ useAutoRefresh(() => load(true), 3000)
   }
 
   .scope-grid,
-  .experiment-grid {
+  .experiment-grid,
+  .phase-grid {
     grid-template-columns: 1fr;
   }
 
