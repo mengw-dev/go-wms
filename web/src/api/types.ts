@@ -630,14 +630,28 @@ export interface DemoConcurrentResult {
   concurrency: number
   qty_per_order: number
   total_demand: number
+  stock_before: number
+  available_before: number
+  allocated_before: number
+  created_orders: number
+  submitted_orders: number
+  approved_orders: number
+  approval_failed: number
+  other_failed: number
+  allocated_quantity: number
+  pick_task_count: number
   success: number
   failed: number
   duration_ms: number
-  pick_task_count: number
   stock_total: number
   available_total: number
   allocated_total: number
   negative_rows: number
+  invariant_ok: boolean
+  invariant_message: string
+  validation_scope: string
+  not_validated: string
+  task_stats_scope: string
   test_focus: string
   summary: string
   steps: DemoScenarioStep[]

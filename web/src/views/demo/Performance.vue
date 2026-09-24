@@ -2,14 +2,22 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { Refresh, Tickets, TrendCharts } from '@element-plus/icons-vue'
-import { getDemoPerformance } from '@/api/demo'
-import type { DemoPerformanceSnapshot } from '@/api/types'
+import { getDemoPerformance, restockDemo, runConcurrentDemo } from '@/api/demo'
+import type { DemoConcurrentResult, DemoPerformanceSnapshot } from '@/api/types'
 import { useAutoRefresh } from '@/composables/autoRefresh'
 
 const router = useRouter()
 const loading = ref(false)
 const data = ref<DemoPerformanceSnapshot | null>(null)
 const loadError = ref('')
+const concurrentConcurrency = ref(20)
+const concurrentQty = ref(1)
+const concurrentRunning = ref(false)
+const restockRunning = ref(false)
+const concurrentResult = ref<DemoConcurrentResult | null>(null)
+const concurrentError = ref('')
+
+const concurrentDemand = computed(() => concurrentConcurrency.value * concurrentQty.value)
 
 const dbHealthy = computed(() => data.value?.database.status === 'ok')
 const redisHealthy = computed(() => data.value?.redis.status === 'ok')
@@ -18,6 +26,32 @@ const poolUsage = computed(() => {
   if (!pool || pool.max_open_connections <= 0) return 0
   return Math.min(100, Math.round((pool.open_connections / pool.max_open_connections) * 100))
 })
+async function runAllocationExperiment() {
+  if (concurrentRunning.value) return
+  concurrentRunning.value = true
+  concurrentResult.value = null
+  concurrentError.value = ''
+  try {
+    concurrentResult.value = await runConcurrentDemo(concurrentConcurrency.value, concurrentQty.value)
+    await load(true)
+  } catch (error) {
+    concurrentError.value = error instanceof Error ? error.message : '并发实验未完成'
+  } finally {
+    concurrentRunning.value = false
+  }
+}
+
+async function restockForExperiment() {
+  if (restockRunning.value) return
+  restockRunning.value = true
+  try {
+    await restockDemo(500)
+    await load(true)
+  } finally {
+    restockRunning.value = false
+  }
+}
+
 async function load(silent = false) {
   if (!silent) loading.value = true
   try {
@@ -60,6 +94,104 @@ useAutoRefresh(() => load(true), 3000)
       :closable="false"
       class="page-alert"
     />
+
+    <section class="experiment-panel">
+      <div class="experiment-head">
+        <div>
+          <span class="experiment-kicker">工程验证</span>
+          <h3>并发库存分配一致性</h3>
+          <p>只验证库存充足时，多张出库单并发创建、提交、审核后的 FIFO 分配和库存三数量一致性。</p>
+        </div>
+        <el-tag type="warning" effect="plain">不是供不应求证明</el-tag>
+      </div>
+
+      <div class="experiment-controls">
+        <label>
+          <span>并发订单数</span>
+          <el-input-number v-model="concurrentConcurrency" :min="1" :max="100" />
+        </label>
+        <label>
+          <span>每单需求</span>
+          <el-input-number v-model="concurrentQty" :min="1" :max="10" />
+        </label>
+        <div class="demand-preview">
+          <span>本次总需求</span>
+          <b>{{ concurrentDemand }} 件</b>
+        </div>
+        <el-button :loading="restockRunning" @click="restockForExperiment">补货 500 件</el-button>
+        <el-button type="primary" :loading="concurrentRunning" @click="runAllocationExperiment">
+          运行真实并发实验
+        </el-button>
+      </div>
+
+      <el-alert
+        v-if="concurrentError"
+        :title="concurrentError"
+        type="warning"
+        :closable="false"
+        show-icon
+      />
+
+      <template v-if="concurrentResult">
+        <div class="scope-grid">
+          <div>
+            <span>验证范围</span>
+            <p>{{ concurrentResult.validation_scope }}</p>
+          </div>
+          <div>
+            <span>不验证什么</span>
+            <p>{{ concurrentResult.not_validated }}</p>
+          </div>
+          <div>
+            <span>统计口径</span>
+            <p>{{ concurrentResult.task_stats_scope }}</p>
+          </div>
+        </div>
+
+        <div class="experiment-grid">
+          <div class="snapshot-box">
+            <b>实验开始前库存</b>
+            <span>stock <strong>{{ concurrentResult.stock_before }}</strong></span>
+            <span>available <strong>{{ concurrentResult.available_before }}</strong></span>
+            <span>allocated <strong>{{ concurrentResult.allocated_before }}</strong></span>
+          </div>
+          <div class="snapshot-box">
+            <b>本次实验输入</b>
+            <span>订单数 <strong>{{ concurrentResult.concurrency }}</strong></span>
+            <span>总需求 <strong>{{ concurrentResult.total_demand }}</strong></span>
+            <span>每单需求 <strong>{{ concurrentResult.qty_per_order }}</strong></span>
+          </div>
+          <div class="snapshot-box">
+            <b>单据执行结果</b>
+            <span>创建成功 <strong>{{ concurrentResult.created_orders }}</strong></span>
+            <span>提交成功 <strong>{{ concurrentResult.submitted_orders }}</strong></span>
+            <span>审核成功 <strong>{{ concurrentResult.approved_orders }}</strong></span>
+          </div>
+          <div class="snapshot-box">
+            <b>审核与任务证据</b>
+            <span>审核失败 <strong>{{ concurrentResult.approval_failed }}</strong></span>
+            <span>实际分配 <strong>{{ concurrentResult.allocated_quantity }} 件</strong></span>
+            <span>本次 PICK <strong>{{ concurrentResult.pick_task_count }}</strong></span>
+          </div>
+          <div class="snapshot-box">
+            <b>实验结束库存</b>
+            <span>stock <strong>{{ concurrentResult.stock_total }}</strong></span>
+            <span>available <strong>{{ concurrentResult.available_total }}</strong></span>
+            <span>allocated <strong>{{ concurrentResult.allocated_total }}</strong></span>
+          </div>
+          <div class="snapshot-box" :class="{ failed: !concurrentResult.invariant_ok }">
+            <b>一致性检查</b>
+            <span>负数库存行 <strong>{{ concurrentResult.negative_rows }}</strong></span>
+            <span>stock = available + allocated <strong>{{ concurrentResult.invariant_ok ? '成立' : '异常' }}</strong></span>
+            <span>其他失败 <strong>{{ concurrentResult.other_failed }}</strong></span>
+          </div>
+        </div>
+
+        <div class="experiment-summary" :class="{ failed: !concurrentResult.invariant_ok }">
+          {{ concurrentResult.summary }}
+        </div>
+      </template>
+    </section>
 
     <template v-if="data">
       <div class="health-grid">
@@ -203,6 +335,147 @@ useAutoRefresh(() => load(true), 3000)
 
 .page-alert {
   margin-bottom: 16px;
+}
+
+.experiment-panel {
+  margin-bottom: 16px;
+  padding: 20px;
+  border: 1px solid var(--el-border-color-light);
+  border-radius: 12px;
+  background: var(--el-bg-color);
+  box-shadow: var(--el-box-shadow-light);
+}
+
+.experiment-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.experiment-head h3 {
+  margin: 4px 0 6px;
+  font-size: 18px;
+}
+
+.experiment-head p {
+  max-width: 720px;
+  margin: 0;
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.experiment-kicker {
+  color: var(--el-color-primary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.experiment-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  margin: 16px 0;
+}
+
+.experiment-controls label,
+.demand-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+
+.demand-preview {
+  min-width: 100px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: var(--el-fill-color-light);
+}
+
+.demand-preview b {
+  color: var(--el-text-color-primary);
+  font-size: 15px;
+}
+
+.scope-grid,
+.experiment-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.scope-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 14px;
+}
+
+.scope-grid div {
+  padding: 12px;
+  border-left: 3px solid var(--el-color-primary);
+  border-radius: 6px;
+  background: var(--el-fill-color-extra-light);
+}
+
+.scope-grid span {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+
+.scope-grid p {
+  margin: 5px 0 0;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.experiment-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 12px;
+}
+
+.snapshot-box {
+  padding: 14px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 9px;
+  background: var(--el-fill-color-extra-light);
+}
+
+.snapshot-box b {
+  display: block;
+  margin-bottom: 8px;
+}
+
+.snapshot-box span {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 2px 0;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+
+.snapshot-box strong {
+  color: var(--el-text-color-primary);
+}
+
+.snapshot-box.failed {
+  border-color: var(--el-color-danger-light-5);
+}
+
+.experiment-summary {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  color: var(--el-color-success);
+  background: var(--el-color-success-light-9);
+  font-weight: 600;
+}
+
+.experiment-summary.failed {
+  color: var(--el-color-danger);
+  background: var(--el-color-danger-light-9);
 }
 
 .health-grid,
@@ -367,12 +640,22 @@ useAutoRefresh(() => load(true), 3000)
 }
 
 @media (max-width: 1100px) {
-  .health-grid {
+  .health-grid,
+  .experiment-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 768px) {
+  .experiment-head {
+    flex-direction: column;
+  }
+
+  .scope-grid,
+  .experiment-grid {
+    grid-template-columns: 1fr;
+  }
+
   .page-head,
   .health-grid,
   .metrics-grid {

@@ -316,10 +316,10 @@ onBeforeUnmount(() => {
         <article class="verify-card">
           <div class="card-icon"><Box /></div>
           <div>
-            <h3>并发库存分配</h3>
-            <p>并发审核出库单，查看 FIFO 分配、库存锁定与库存不足拒绝结果。</p>
+            <h3>并发库存分配一致性</h3>
+            <p>库存充足时并发审核出库单，核对本次订单的 FIFO 分配、PICK 任务和库存不变量。</p>
           </div>
-          <el-button @click="openDemoConsole">打开实验</el-button>
+          <el-button @click="goPerformance">打开实验</el-button>
         </article>
         <article class="verify-card">
           <div class="card-icon"><Document /></div>
