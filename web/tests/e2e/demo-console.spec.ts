@@ -228,6 +228,18 @@ test('manual inbound guide completes through inventory evidence', async ({ page 
   await expect(completed.getByRole('button', { name: '查看业务证据', exact: true })).toBeVisible()
   await expect(completed.getByRole('button', { name: '查看技术实现', exact: true })).toBeVisible()
   await expect(completed.getByRole('button', { name: '返回 Demo', exact: true })).toBeVisible()
+
+  const orderFact = await completed.locator('.guide-complete-facts span').filter({ hasText: '入库单：' }).textContent()
+  const orderNo = orderFact?.split('：').at(-1)?.trim() || ''
+  expect(orderNo).toBeTruthy()
+  await completed.getByRole('button', { name: '查看业务证据', exact: true }).click()
+  await expect(page).toHaveURL(/\/demo\/activity\?/)
+  await expect(page).toHaveURL(/source=manual/)
+  await expect(page).toHaveURL(/order_id=/)
+  await expect(page).toHaveURL(new RegExp(`order_no=${encodeURIComponent(orderNo)}`))
+  await expect(page.getByRole('heading', { name: '本次业务执行证据' })).toBeVisible()
+  await expect(page.getByText('入库手动体验', { exact: true })).toBeVisible()
+  await expect(page.getByText(orderNo, { exact: true }).first()).toBeVisible()
 })
 
 test('engineering verification cards open their corresponding experiment sections', async ({ page }) => {

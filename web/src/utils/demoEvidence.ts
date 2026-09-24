@@ -13,6 +13,7 @@ export interface DemoEvidenceContext {
 
 export interface DemoEvidenceFocus {
   scenario: string
+  source: string
   startedAt: string
   completedAt: string
   summary: string
@@ -73,6 +74,7 @@ function addUnique(target: string[], value: string): void {
 function focusFromContext(context: DemoEvidenceContext): DemoEvidenceFocus {
   const focus: DemoEvidenceFocus = {
     scenario: context.scenario,
+    source: 'auto',
     startedAt: context.startedAt,
     completedAt: context.completedAt,
     summary: context.summary,
@@ -109,8 +111,11 @@ export function resolveDemoEvidenceFocus(
   query: Record<string, unknown>,
   context: DemoEvidenceContext | null,
 ): DemoEvidenceFocus {
-  const base = context ? focusFromContext(context) : {
+  const requestedSource = queryText(query, 'source')
+  const useContext = requestedSource !== 'manual' && Boolean(context)
+  const base = useContext && context ? focusFromContext(context) : {
     scenario: '',
+    source: '',
     startedAt: '',
     completedAt: '',
     summary: '',
@@ -120,6 +125,7 @@ export function resolveDemoEvidenceFocus(
   }
 
   const scenario = queryText(query, 'scenario') || base.scenario
+  const source = requestedSource || base.source
   const startedAt = queryText(query, 'started_at') || base.startedAt
   const completedAt = queryText(query, 'completed_at') || base.completedAt
   const orderId = queryText(query, 'order_id')
@@ -142,6 +148,7 @@ export function resolveDemoEvidenceFocus(
   return {
     ...base,
     scenario,
+    source,
     startedAt,
     completedAt,
     orderIds: { ...base.orderIds },

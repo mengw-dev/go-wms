@@ -41,7 +41,8 @@ const scenarioLabel = computed(() => {
     stocktake: '盘点自动演示',
     full: '完整业务闭环',
   }
-  return labels[focus.value.scenario] || '最近一次演示'
+  const label = labels[focus.value.scenario] || '最近一次演示'
+  return focus.value.source === 'manual' ? label.replace('自动演示', '手动体验') : label
 })
 const relatedNumbers = computed(() => {
   const values = [...focus.value.orderNos]
@@ -111,7 +112,7 @@ useAutoRefresh(() => load(true), 5000)
         <el-tab-pane label="业务证据" name="evidence">
           <el-alert
             v-if="focused"
-            title="以下对象按最近一次真实执行的时间窗和业务编号关联，不展示同一演示环境中的旧执行数据。"
+            title="优先按本次业务编号关联；缺少直接编号的记录再使用执行时间窗辅助过滤。"
             type="success"
             :closable="false"
             show-icon

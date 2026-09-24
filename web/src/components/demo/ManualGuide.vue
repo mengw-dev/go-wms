@@ -209,6 +209,19 @@ async function completeNavigate(path: string): Promise<void> {
   await router.push(path)
 }
 
+function manualEvidencePath(): string {
+  const params = new window.URLSearchParams()
+  if (guide.scenario) params.set('scenario', guide.scenario)
+  params.set('source', 'manual')
+  if (guide.orderId) params.set('order_id', guide.orderId)
+  if (guide.orderNo) params.set('order_no', guide.orderNo)
+  if (guide.taskId) params.set('task_id', guide.taskId)
+  if (guide.taskNo) params.set('task_no', guide.taskNo)
+  if (guide.startedAt) params.set('started_at', new Date(guide.startedAt).toISOString())
+  params.set('completed_at', new Date().toISOString())
+  return `/demo/activity?${params.toString()}`
+}
+
 function openTechnicalImplementation(): void {
   window.open('/overview.html#design', '_blank', 'noopener,noreferrer')
 }
@@ -305,7 +318,7 @@ onBeforeUnmount(() => {
             <span v-for="fact in guide.facts" :key="fact.label">{{ fact.label }}：{{ fact.value }}</span>
           </div>
           <div class="guide-complete-actions">
-            <el-button size="small" @click="completeNavigate('/demo/activity')">查看业务证据</el-button>
+            <el-button size="small" @click="completeNavigate(manualEvidencePath())">查看业务证据</el-button>
             <el-button v-if="guide.orderId" size="small" @click="completeNavigate(completedOrderPath())">
               查看{{ orderFactLabel }}
             </el-button>

@@ -45,6 +45,29 @@ describe('demo evidence focus', () => {
     expect(focus.orderNos).toEqual(['IN-1'])
   })
 
+  it('manual focus does not inherit stale automatic scenario context', () => {
+    const manualSnapshot = {
+      ...snapshot,
+      inbound_orders: [
+        ...snapshot.inbound_orders,
+        { id: '202', order_no: 'IN-2', status: 'COMPLETED', expected_qty: 3, received_qty: 3, created_at: '2026-09-24T02:00:01.000Z' },
+      ],
+    } as unknown as DemoActivitySnapshot
+    const focus = resolveDemoEvidenceFocus({
+      scenario: 'inbound',
+      source: 'manual',
+      order_id: '202',
+      order_no: 'IN-2',
+      started_at: '2026-09-24T02:00:00.000Z',
+      completed_at: '2026-09-24T02:00:05.000Z',
+    }, context)
+
+    expect(focus.source).toBe('manual')
+    expect(focus.orderIds.inbound).toEqual(['202'])
+    expect(focus.orderNos).toEqual(['IN-2'])
+    expect(filterDemoActivity(manualSnapshot, focus).inbound_orders.map((item) => item.order_no)).toEqual(['IN-2'])
+  })
+
   it('shows only real evidence from the focused execution window', () => {
     const focus = resolveDemoEvidenceFocus({}, context)
     const filtered = filterDemoActivity(snapshot, focus)
