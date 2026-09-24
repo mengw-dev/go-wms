@@ -24,6 +24,35 @@ const completedCount = computed(() => {
 const progress = computed(() =>
   steps.value.length ? Math.round((completedCount.value / steps.value.length) * 100) : 0,
 )
+const currentReplayStep = computed(() => steps.value[replayIndex.value] ?? null)
+const evidenceCards = computed(() => props.result.evidence ?? [])
+const fifoRows = computed(() => {
+  const rows: Array<{ batch: string; stockIn: string; available: string; allocated: string; location: string }> = []
+  for (const step of steps.value) {
+    for (const fact of step.facts ?? []) {
+      if (!fact.label.startsWith('FIFO ')) continue
+      rows.push({
+        batch: fact.value.match(/批次 ([^/]+)/)?.[1]?.trim() || '-',
+        stockIn: fact.value.match(/入库 ([^/]+)/)?.[1]?.trim() || '-',
+        available: fact.value.match(/分配后可用 (\d+)/)?.[1] || '-',
+        allocated: fact.value.match(/本次分配 (\d+)/)?.[1] || '-',
+        location: fact.value.match(/库位 ([^/]+)/)?.[1]?.trim() || '-',
+      })
+    }
+  }
+  return rows
+})
+const quantityRelations = computed(() => {
+  const labels = new Set(['现存量', '可用量', '已分配', '账面数量', '实盘数量', '差异', '确认差异', '库存变化'])
+  const values = new Map<string, string>()
+  for (const step of steps.value) {
+    for (const fact of step.facts ?? []) {
+      if (labels.has(fact.label)) values.set(fact.label, fact.value)
+    }
+  }
+  return Array.from(values, ([label, value]) => ({ label, value }))
+})
+
 const technicalSteps = computed(() => steps.value.filter((step) => Boolean(step.technical)))
 const technicalSourceGroups = computed(() => {
   const implementation = props.result.implementation
@@ -190,16 +219,43 @@ onBeforeUnmount(clearReplayTimer)
       :stroke-width="7"
     />
 
-    <div v-if="replayDone && result.evidence?.length" class="run-evidence">
+    <div v-if="currentReplayStep" class="replay-context">
+      <span>当前回放步骤</span>
+      <b>{{ currentReplayStep.title }}</b>
+      <small>{{ currentReplayStep.status_change || currentReplayStep.detail }}</small>
+    </div>
+
+    <div v-if="replayDone" class="run-evidence">
       <div class="evidence-head">
         <span>{{ result.evidence_title || '本次执行产生' }}</span>
         <small>以下数据来自本次真实业务执行</small>
       </div>
-      <div class="evidence-grid">
-        <div v-for="item in result.evidence" :key="item.label" class="evidence-item">
+      <div v-if="evidenceCards.length" class="evidence-grid">
+        <div v-for="item in evidenceCards" :key="item.label" class="evidence-item">
           <span>{{ item.label }}</span>
           <b>{{ item.value }}</b>
           <small v-if="item.detail">{{ item.detail }}</small>
+        </div>
+      </div>
+
+      <div v-if="fifoRows.length" class="business-subsection">
+        <div class="business-subtitle"><b>FIFO 批次分配</b><span>按真实入库时间顺序展开</span></div>
+        <el-table :data="fifoRows" border stripe size="small">
+          <el-table-column prop="batch" label="批次" min-width="110" />
+          <el-table-column prop="stockIn" label="入库时间" min-width="140" />
+          <el-table-column prop="available" label="分配后可用" width="105" align="right" />
+          <el-table-column prop="allocated" label="本次分配" width="95" align="right" />
+          <el-table-column prop="location" label="库位" min-width="90" />
+        </el-table>
+      </div>
+
+      <div v-if="quantityRelations.length" class="business-subsection">
+        <div class="business-subtitle"><b>数量关系</b><span>执行前 / 执行后来自真实业务结果</span></div>
+        <div class="quantity-grid">
+          <div v-for="item in quantityRelations" :key="item.label">
+            <span>{{ item.label }}</span>
+            <b>{{ item.value }}</b>
+          </div>
         </div>
       </div>
     </div>
@@ -373,6 +429,89 @@ onBeforeUnmount(clearReplayTimer)
   color: var(--el-text-color-primary);
   font-family: var(--gowms-num-font);
   font-variant-numeric: tabular-nums;
+}
+
+.replay-context {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-left: 3px solid var(--el-color-primary);
+  border-radius: 6px;
+  background: var(--el-fill-color-extra-light);
+}
+
+.replay-context span,
+.replay-context b,
+.replay-context small {
+  display: block;
+}
+
+.replay-context span {
+  color: var(--el-text-color-secondary);
+  font-size: 11px;
+}
+
+.replay-context b {
+  margin-top: 3px;
+  color: var(--el-text-color-primary);
+  font-size: 13px;
+}
+
+.replay-context small {
+  margin-top: 3px;
+  color: var(--el-text-color-secondary);
+  font-size: 11px;
+}
+
+.business-subsection {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--el-color-primary-light-8);
+}
+
+.business-subtitle {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.business-subtitle b {
+  font-size: 13px;
+}
+
+.business-subtitle span {
+  color: var(--el-text-color-secondary);
+  font-size: 11px;
+}
+
+.quantity-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.quantity-grid div {
+  padding: 10px;
+  border-radius: 8px;
+  background: var(--el-fill-color-light);
+}
+
+.quantity-grid span,
+.quantity-grid b {
+  display: block;
+}
+
+.quantity-grid span {
+  color: var(--el-text-color-secondary);
+  font-size: 11px;
+}
+
+.quantity-grid b {
+  margin-top: 4px;
+  color: var(--el-text-color-primary);
+  font-family: var(--gowms-num-font);
+  font-size: 14px;
 }
 
 .run-steps {
