@@ -234,10 +234,18 @@ test('engineering verification cards open their corresponding experiment section
   await loginByUi(page, demoUsername, demoPassword, /从真实业务流程理解这套 WMS/)
   await skipTour(page)
 
-  for (const card of ['并发库存分配一致性', '供给不足并发验证', '模拟 PDA 并发拣货']) {
-    await page.locator('.verify-card').filter({ hasText: card }).getByRole('button', { name: '打开实验' }).click()
-    await expect(page).toHaveURL(/\/demo\/performance/)
-    await expect(page.getByRole('heading', { name: card, exact: true })).toBeVisible()
+  const entries = [
+    { card: '并发库存分配一致性', section: 'allocation', button: '打开实验', heading: '并发库存分配一致性' },
+    { card: '供给不足并发验证', section: 'shortage', button: '打开实验', heading: '供给不足并发验证' },
+    { card: '模拟 PDA 并发拣货', section: 'picking', button: '打开实验', heading: '模拟 PDA 并发拣货' },
+    { card: '运行状态', section: 'runtime', button: '查看状态', heading: '运行状态与指标快照' },
+  ]
+  for (const entry of entries) {
+    await page.locator('.verify-card').filter({ hasText: entry.card }).getByRole('button', { name: entry.button }).click()
+    await expect(page).toHaveURL(new RegExp(`/demo/performance\\?section=${entry.section}`))
+    const target = page.locator(`[data-section="${entry.section}"]`)
+    await expect(target.getByRole('heading', { name: entry.heading, exact: true })).toBeVisible()
+    await expect(target).toBeInViewport()
     await page.goto('/demo')
   }
 })

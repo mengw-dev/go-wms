@@ -142,8 +142,8 @@ function runScenario(scenario: 'inbound' | 'outbound' | 'stocktake' | 'full') {
   runDemoScenarioInConsole(scenario)
 }
 
-function goPerformance() {
-  router.push('/demo/performance')
+function goPerformance(section: 'allocation' | 'shortage' | 'picking' | 'runtime' = 'runtime') {
+  router.push({ path: '/demo/performance', query: { section } })
 }
 
 function goActivity() {
@@ -323,7 +323,7 @@ onBeforeUnmount(() => {
             <h3>并发库存分配一致性</h3>
             <p>库存充足时并发审核出库单，核对本次订单的 FIFO 分配、PICK 任务和库存不变量。</p>
           </div>
-          <el-button @click="goPerformance">打开实验</el-button>
+          <el-button @click="goPerformance('allocation')">打开实验</el-button>
         </article>
         <article class="verify-card">
           <div class="card-icon"><Connection /></div>
@@ -331,7 +331,7 @@ onBeforeUnmount(() => {
             <h3>供给不足并发验证</h3>
             <p>总需求大于可用库存时并发执行真实出库审核，区分库存不足拒绝和其他失败。</p>
           </div>
-          <el-button @click="goPerformance">打开实验</el-button>
+          <el-button @click="goPerformance('shortage')">打开实验</el-button>
         </article>
         <article class="verify-card">
           <div class="card-icon"><Document /></div>
@@ -339,7 +339,7 @@ onBeforeUnmount(() => {
             <h3>模拟 PDA 并发拣货</h3>
             <p>并发扫码后明确展示仍未完成任务，再分开展示顺序收尾和最终业务状态。</p>
           </div>
-          <el-button @click="goPerformance">打开实验</el-button>
+          <el-button @click="goPerformance('picking')">打开实验</el-button>
         </article>
         <article class="verify-card">
           <div class="card-icon"><Monitor /></div>
@@ -347,7 +347,7 @@ onBeforeUnmount(() => {
             <h3>运行状态</h3>
             <p>查看数据库、Redis、连接池、Go 运行时和当前业务指标快照。</p>
           </div>
-          <el-button @click="goPerformance">查看状态</el-button>
+          <el-button @click="goPerformance('runtime')">查看状态</el-button>
         </article>
       </div>
     </section>

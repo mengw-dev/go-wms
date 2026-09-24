@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { Refresh, Tickets, TrendCharts } from '@element-plus/icons-vue'
 import { getDemoPerformance, restockDemo, runConcurrentDemo, runConcurrentPicking, runConcurrentShortageDemo } from '@/api/demo'
 import type { DemoConcurrentResult, DemoConcurrentShortageResult, DemoPerformanceSnapshot, DemoPickingResult } from '@/api/types'
 import { useAutoRefresh } from '@/composables/autoRefresh'
 
+const route = useRoute()
 const router = useRouter()
 const loading = ref(false)
 const data = ref<DemoPerformanceSnapshot | null>(null)
@@ -16,6 +17,7 @@ const concurrentRunning = ref(false)
 const restockRunning = ref(false)
 const concurrentResult = ref<DemoConcurrentResult | null>(null)
 const concurrentError = ref('')
+const lastScrolledSection = ref('')
 const shortageConcurrency = ref(20)
 const shortageQty = ref(10)
 const shortageRunning = ref(false)
@@ -93,6 +95,21 @@ async function restockForExperiment() {
   }
 }
 
+function requestedSection(): string {
+  const value = route.query.section
+  return typeof value === 'string' ? value : ''
+}
+
+async function scrollToRequestedSection(): Promise<void> {
+  const section = requestedSection()
+  if (!section || lastScrolledSection.value === section) return
+  await nextTick()
+  const target = document.querySelector<HTMLElement>(`[data-section="${section}"]`)
+  if (!target) return
+  target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  lastScrolledSection.value = section
+}
+
 async function load(silent = false) {
   if (!silent) loading.value = true
   try {
@@ -110,18 +127,30 @@ function formatTime(value?: string) {
   return new Date(value).toLocaleString('zh-CN', { hour12: false })
 }
 
-onMounted(() => load())
+onMounted(async () => {
+  await load()
+  await scrollToRequestedSection()
+})
+watch(
+  () => route.query.section,
+  async () => {
+    lastScrolledSection.value = ''
+    await scrollToRequestedSection()
+  },
+)
+watch(data, () => void scrollToRequestedSection())
 useAutoRefresh(() => load(true), 3000)
 </script>
 
 <template>
   <div v-loading="loading" class="performance-page">
-    <div class="page-head">
+    <div class="page-head" data-section="runtime">
       <div>
         <h2>运行状态与指标快照</h2>
         <p>数据来自当前在线演示实例的真实状态查询；每 3 秒刷新一次。本页不是压力测试、吞吐量测试或容量结论。</p>
       </div>
       <div class="head-actions">
+        <el-button @click="router.push('/demo')">返回演示中心</el-button>
         <el-button :icon="Tickets" @click="router.push('/demo/activity')">业务证据</el-button>
         <el-button :icon="Refresh" type="primary" @click="load()">立即刷新</el-button>
       </div>
@@ -136,7 +165,7 @@ useAutoRefresh(() => load(true), 3000)
       class="page-alert"
     />
 
-    <section class="experiment-panel">
+    <section class="experiment-panel" data-section="allocation">
       <div class="experiment-head">
         <div>
           <span class="experiment-kicker">工程验证</span>
@@ -234,7 +263,7 @@ useAutoRefresh(() => load(true), 3000)
       </template>
     </section>
 
-    <section class="experiment-panel experiment-panel--shortage">
+    <section class="experiment-panel experiment-panel--shortage" data-section="shortage">
       <div class="experiment-head">
         <div>
           <span class="experiment-kicker">工程验证</span>
@@ -333,7 +362,7 @@ useAutoRefresh(() => load(true), 3000)
       </template>
     </section>
 
-    <section class="experiment-panel experiment-panel--picking">
+    <section class="experiment-panel experiment-panel--picking" data-section="picking">
       <div class="experiment-head">
         <div>
           <span class="experiment-kicker">工程验证</span>
@@ -429,7 +458,7 @@ useAutoRefresh(() => load(true), 3000)
       </template>
     </section>
 
-    <template v-if="data">
+    <section v-if="data">
       <div class="health-grid">
         <div class="health-card" :class="{ down: !dbHealthy }">
           <div class="health-icon">DB</div>
@@ -536,7 +565,7 @@ useAutoRefresh(() => load(true), 3000)
       </section>
 
       <div class="last-updated">最后更新时间：{{ formatTime(data.checked_at) }}</div>
-    </template>
+    </section>
   </div>
 </template>
 
