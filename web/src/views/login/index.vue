@@ -194,7 +194,7 @@ async function startPersonal() {
             <ul class="entry-points">
               <li>自动分配空闲演示席位，多人同时体验互不影响</li>
               <li>退出或 5 分钟无操作后，数据<b>自动重置</b></li>
-              <li>含“业务流程中心”：一键模拟完整业务流程</li>
+              <li>含“演示中心”：一键执行完整业务闭环</li>
             </ul>
             <el-button
               type="primary"

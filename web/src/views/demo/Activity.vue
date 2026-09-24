@@ -78,7 +78,7 @@ useAutoRefresh(() => load(true), 5000)
   <div v-loading="loading" class="activity-page">
     <div class="page-head">
       <div>
-        <h2>{{ focused ? '本次业务执行证据' : '业务证据与操作记录' }}</h2>
+        <h2>{{ focused ? '本次业务执行证据' : '业务证据' }}</h2>
         <p v-if="focused">
           {{ focus.summary || '从最近一次自动演示结果进入，页面只聚焦该次执行产生的真实业务对象。' }}
         </p>
@@ -193,7 +193,7 @@ useAutoRefresh(() => load(true), 5000)
           />
         </el-tab-pane>
 
-        <el-tab-pane label="接口 / 操作记录" name="operations">
+        <el-tab-pane label="接口调用记录" name="operations">
           <p class="tab-note">接口记录用于排查调用过程，不作为业务结果的第一层证据。</p>
           <el-table :data="evidence.operations" border stripe>
             <el-table-column label="时间" width="170"><template #default="{ row }">{{ formatTime(row.created_at) }}</template></el-table-column>

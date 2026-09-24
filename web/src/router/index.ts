@@ -25,19 +25,19 @@ const routes: RouteRecordRaw[] = [
         path: 'demo',
         name: 'demo-home',
         component: () => import('@/views/demo/index.vue'),
-        meta: { title: 'Demo 体验中心', perm: 'wms:demo' },
+        meta: { title: '演示中心', perm: 'wms:demo' },
       },
       {
         path: 'demo/performance',
         name: 'demo-performance',
         component: () => import('@/views/demo/Performance.vue'),
-        meta: { title: '运行状态与指标', perm: 'wms:demo' },
+        meta: { title: '运行状态与指标快照', perm: 'wms:demo' },
       },
       {
         path: 'demo/activity',
         name: 'demo-activity',
         component: () => import('@/views/demo/Activity.vue'),
-        meta: { title: '演示记录', perm: 'wms:demo' },
+        meta: { title: '业务证据', perm: 'wms:demo' },
       },
       {
         path: 'system/users',

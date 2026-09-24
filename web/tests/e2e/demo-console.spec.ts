@@ -5,7 +5,7 @@ const demoUsername = process.env.E2E_DEMO_USERNAME || process.env.WMS_DEMO_USERN
 const demoPassword = process.env.E2E_DEMO_PASSWORD || process.env.WMS_DEMO_PASSWORD || 'demo123456'
 
 function drawer(page: Page): Locator {
-  return page.getByRole('dialog', { name: 'Demo 快捷控制器' })
+  return page.getByRole('dialog', { name: '演示快捷入口' })
 }
 
 async function skipTour(page: Page): Promise<void> {
@@ -71,7 +71,7 @@ test('full demo runs from the home CTA and exposes replayable business evidence'
     await expect(demoDrawer.getByRole('button', { name: label, exact: true }).first()).toBeVisible()
   }
 
-  const consoleButton = page.getByRole('button', { name: /Demo 快捷控制器/ })
+  const consoleButton = page.getByRole('button', { name: /演示快捷入口/ })
   await demoDrawer.locator('.el-drawer__close-btn').click()
   await expect(demoDrawer).not.toBeVisible()
   await consoleButton.click()

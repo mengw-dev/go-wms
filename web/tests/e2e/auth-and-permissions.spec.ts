@@ -63,7 +63,7 @@ test('personal space entry lists persistent accounts and signs in with the chose
   await expect(page).toHaveURL(/\/dashboard$/)
   await expect(page.getByRole('heading', { name: /欢迎回来/ })).toBeVisible()
   // 持久账号不含 wms:demo：不应出现演示中心的悬浮入口
-  await expect(page.getByText('业务流程中心')).toHaveCount(0)
+  await expect(page.getByText('演示中心')).toHaveCount(0)
 })
 
 test('limited user cannot see or open system management', async ({ browser, request }) => {

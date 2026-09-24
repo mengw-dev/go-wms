@@ -112,10 +112,10 @@ async function submitPassword() {
         <el-sub-menu v-if="auth.isDemo" index="demo-center">
           <template #title>
             <el-icon><TrendCharts /></el-icon>
-            <span>业务中心</span>
+            <span>演示中心</span>
           </template>
-          <el-menu-item index="/demo/performance">运行状态与指标</el-menu-item>
-          <el-menu-item index="/demo/activity">操作记录</el-menu-item>
+          <el-menu-item index="/demo/performance">运行状态与指标快照</el-menu-item>
+          <el-menu-item index="/demo/activity">业务证据</el-menu-item>
         </el-sub-menu>
         <el-sub-menu v-if="auth.hasPerm('wms:inbound:view')" index="inbound">
           <template #title>

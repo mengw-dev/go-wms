@@ -333,18 +333,18 @@ onBeforeUnmount(() => {
     v-if="auth.isDemo"
     class="demo-fab"
     type="button"
-    aria-label="打开 Demo 快捷控制器"
+    aria-label="打开演示快捷入口"
     @click="visible = true"
   >
     <el-icon><VideoPlay /></el-icon>
-    <span>Demo 快捷控制器</span>
+    <span>演示快捷入口</span>
     <small v-if="showCountdown" class="fab-countdown">{{ remainingText }}</small>
   </button>
 
   <el-drawer
     v-model="visible"
     class="demo-console-drawer"
-    title="Demo 快捷控制器"
+    title="演示快捷入口"
     size="min(420px, 92vw)"
     direction="rtl"
     append-to-body

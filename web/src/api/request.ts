@@ -82,7 +82,7 @@ service.interceptors.response.use(
         router.push('/login')
       }
     } else if (code === 70005 || code === 70006) {
-      // 这两类演示错误由业务流程中心给出下一步操作对话框，避免同时出现重复提示。
+      // 这两类演示错误由演示中心给出下一步操作对话框，避免同时出现重复提示。
     } else if (status === 423 && code === 70003) {
       // 演示会话失效：清空登录态并跳转登录页，防刷屏。
       handleDemoSessionExpired()

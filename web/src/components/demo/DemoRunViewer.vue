@@ -339,7 +339,7 @@ onBeforeUnmount(clearReplayTimer)
     </div>
 
     <el-collapse v-if="replayDone && result.implementation" class="run-implementation">
-      <el-collapse-item title="技术视角 / 查看技术实现" name="implementation">
+      <el-collapse-item title="查看技术实现" name="implementation">
         <p class="technical-intro">
           以下入口对应本次真实调用。Demo 只负责编排，入库、出库、盘点和库存能力仍由现有业务 Service 完成。
         </p>
