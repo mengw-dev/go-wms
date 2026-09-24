@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { CircleCheckFilled, CircleCloseFilled, Clock } from '@element-plus/icons-vue'
 import type { DemoScenarioResult, DemoScenarioStep } from '@/api/types'
 
@@ -9,22 +9,21 @@ const props = defineProps<{ result: DemoScenarioResult }>()
 const emit = defineEmits<{ navigate: [path: string] }>()
 
 const steps = computed(() => props.result.steps || [])
+const replayIndex = ref(0)
+const replayDone = ref(false)
+let replayTimer: number | undefined
 const runStatus = computed<'completed' | 'failed'>(() =>
   props.result.status === 'failed' || steps.value.some((step) => stepStatus(step) === 'failed')
     ? 'failed'
     : 'completed',
 )
-const completedCount = computed(
-  () => steps.value.filter((step) => stepStatus(step) === 'completed').length,
-)
+const completedCount = computed(() => {
+  if (!steps.value.length) return 0
+  return Math.min(replayIndex.value + 1, steps.value.length)
+})
 const progress = computed(() =>
   steps.value.length ? Math.round((completedCount.value / steps.value.length) * 100) : 0,
 )
-const activeIndex = computed(() => {
-  const failedIndex = steps.value.findIndex((step) => stepStatus(step) === 'failed')
-  if (failedIndex >= 0) return failedIndex
-  return steps.value.length - 1
-})
 const technicalSteps = computed(() => steps.value.filter((step) => Boolean(step.technical)))
 const technicalSourceGroups = computed(() => {
   const implementation = props.result.implementation
@@ -80,9 +79,83 @@ function durationText(duration?: number): string {
   return `${duration} ms`
 }
 
+function clearReplayTimer(): void {
+  if (replayTimer !== undefined) {
+    window.clearTimeout(replayTimer)
+    replayTimer = undefined
+  }
+}
+
+function replayIntervalMs(): number {
+  if (steps.value.length <= 1) return 0
+  return Math.min(500, Math.max(320, Math.round(2500 / (steps.value.length - 1))))
+}
+
+function finishReplay(): void {
+  replayIndex.value = Math.max(0, steps.value.length - 1)
+  replayDone.value = true
+  clearReplayTimer()
+}
+
+function replayNextStep(): void {
+  const next = replayIndex.value + 1
+  if (next >= steps.value.length) {
+    replayDone.value = true
+    return
+  }
+  replayIndex.value = next
+  if (stepStatus(steps.value[next]) === 'failed') {
+    replayDone.value = true
+    return
+  }
+  replayTimer = window.setTimeout(replayNextStep, replayIntervalMs())
+}
+
+function startReplay(): void {
+  clearReplayTimer()
+  replayIndex.value = 0
+  replayDone.value = steps.value.length <= 1
+  if (!steps.value.length || steps.value.length === 1) return
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+    finishReplay()
+    return
+  }
+  if (stepStatus(steps.value[0]) === 'failed') {
+    replayDone.value = true
+    return
+  }
+  replayTimer = window.setTimeout(replayNextStep, replayIntervalMs())
+}
+
+function showAllResults(): void {
+  finishReplay()
+}
+
+function isStepReplayed(index: number): boolean {
+  return index <= replayIndex.value
+}
+
+function displayedStepStatus(step: DemoScenarioStep, index: number): StepStatus {
+  return isStepReplayed(index) ? stepStatus(step) : 'pending'
+}
+
+function displayedStatusText(step: DemoScenarioStep, index: number): string {
+  if (isStepReplayed(index)) return statusText(stepStatus(step))
+  if (replayDone.value && runStatus.value === 'failed') return '未执行'
+  return '未回放'
+}
+
 function navigate(path: string) {
   emit('navigate', path)
 }
+
+watch(
+  () => [props.result.summary, props.result.status, props.result.steps.length] as const,
+  startReplay,
+  { immediate: true },
+)
+
+onBeforeUnmount(clearReplayTimer)
 </script>
 
 <template>
@@ -97,13 +170,18 @@ function navigate(path: string) {
         <h3>{{ result.summary }}</h3>
       </div>
       <el-tag :type="runStatus === 'failed' ? 'danger' : 'success'" effect="plain">
-        {{ runStatus === 'failed' ? '执行失败' : '执行完成' }}
+        {{ replayDone ? (runStatus === 'failed' ? '执行失败' : '结果已回放') : '结果回放中' }}
       </el-tag>
     </header>
 
     <div class="run-progress">
-      <span>步骤完成</span>
-      <b>{{ completedCount }} / {{ steps.length }}</b>
+      <span>真实结果回放进度</span>
+      <div>
+        <b>{{ completedCount }} / {{ steps.length }}</b>
+        <el-button v-if="!replayDone" link type="primary" size="small" @click="showAllResults">
+          显示全部结果
+        </el-button>
+      </div>
     </div>
     <el-progress
       :percentage="progress"
@@ -112,7 +190,7 @@ function navigate(path: string) {
       :stroke-width="7"
     />
 
-    <div v-if="result.evidence?.length" class="run-evidence">
+    <div v-if="replayDone && result.evidence?.length" class="run-evidence">
       <div class="evidence-head">
         <span>{{ result.evidence_title || '本次执行产生' }}</span>
         <small>以下数据来自本次真实业务执行</small>
@@ -131,12 +209,18 @@ function navigate(path: string) {
         v-for="(step, index) in steps"
         :key="`${step.title}-${index}`"
         class="run-step"
-        :class="[`is-${stepStatus(step)}`, { 'is-active': index === activeIndex }]"
-        :style="{ animationDelay: `${index * 45}ms` }"
+        :class="[
+          `is-${displayedStepStatus(step, index)}`,
+          {
+            'is-active': index === replayIndex,
+            'is-replaying': !replayDone && index === replayIndex,
+            'is-awaiting': !isStepReplayed(index),
+          },
+        ]"
       >
         <div class="step-marker" aria-hidden="true">
-          <el-icon v-if="stepStatus(step) === 'completed'"><CircleCheckFilled /></el-icon>
-          <el-icon v-else-if="stepStatus(step) === 'failed'"><CircleCloseFilled /></el-icon>
+          <el-icon v-if="displayedStepStatus(step, index) === 'completed'"><CircleCheckFilled /></el-icon>
+          <el-icon v-else-if="displayedStepStatus(step, index) === 'failed'"><CircleCloseFilled /></el-icon>
           <el-icon v-else><Clock /></el-icon>
         </div>
 
@@ -144,18 +228,18 @@ function navigate(path: string) {
           <div class="step-head">
             <div>
               <b>{{ step.title }}</b>
-              <span v-if="durationText(step.duration_ms)" class="step-duration">
+              <span v-if="isStepReplayed(index) && durationText(step.duration_ms)" class="step-duration">
                 {{ durationText(step.duration_ms) }}
               </span>
             </div>
-            <el-tag size="small" :type="tagType(stepStatus(step))" effect="light">
-              {{ statusText(stepStatus(step)) }}
+            <el-tag size="small" :type="tagType(displayedStepStatus(step, index))" effect="light">
+              {{ displayedStatusText(step, index) }}
             </el-tag>
           </div>
 
-          <p>{{ step.detail }}</p>
+          <p v-if="isStepReplayed(index)">{{ step.detail }}</p>
 
-          <dl v-if="step.object || step.status_change || step.facts?.length" class="step-meta">
+          <dl v-if="isStepReplayed(index) && (step.object || step.status_change || step.facts?.length)" class="step-meta">
             <div v-if="step.object">
               <dt>业务对象</dt>
               <dd>{{ step.object }}</dd>
@@ -171,7 +255,7 @@ function navigate(path: string) {
           </dl>
 
           <el-alert
-            v-if="step.error"
+            v-if="isStepReplayed(index) && step.error"
             class="step-error"
             type="error"
             :closable="false"
@@ -182,7 +266,7 @@ function navigate(path: string) {
       </li>
     </ol>
 
-    <div v-if="result.links?.length" class="run-actions">
+    <div v-if="replayDone && result.links?.length" class="run-actions">
       <span>继续核对</span>
       <div>
         <el-button
@@ -198,7 +282,7 @@ function navigate(path: string) {
       </div>
     </div>
 
-    <el-collapse v-if="result.implementation" class="run-implementation">
+    <el-collapse v-if="replayDone && result.implementation" class="run-implementation">
       <el-collapse-item title="技术视角 / 查看技术实现" name="implementation">
         <p class="technical-intro">
           以下入口对应本次真实调用。Demo 只负责编排，入库、出库、盘点和库存能力仍由现有业务 Service 完成。
@@ -279,6 +363,12 @@ function navigate(path: string) {
   font-size: 12px;
 }
 
+.run-progress > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .run-progress b {
   color: var(--el-text-color-primary);
   font-family: var(--gowms-num-font);
@@ -299,6 +389,18 @@ function navigate(path: string) {
   grid-template-columns: 24px minmax(0, 1fr);
   gap: 10px;
   padding-bottom: 14px;
+  transition: opacity 180ms ease;
+}
+
+.run-step.is-awaiting {
+  opacity: 0.48;
+}
+
+.run-step.is-replaying .step-content {
+  margin: -6px;
+  padding: 6px;
+  border-radius: 8px;
+  background: var(--el-color-primary-light-9);
   animation: run-step-fade 320ms ease both;
 }
 
@@ -631,7 +733,9 @@ function navigate(path: string) {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .run-step {
+  .run-step,
+  .step-content {
+    transition: none;
     animation: none;
   }
 }
