@@ -209,8 +209,10 @@ export function filterDemoActivity(
     const allowedTypes = taskTypes[focus.scenario]
     if (allowedTypes && allowedTypes.length > 0 && !allowedTypes.includes(item.task_type)) return false
     if (focus.scenario === 'stocktake') return false
+    if (focus.taskIds.length > 0) {
+      return (focus.taskIds.includes(String(item.id)) || focus.taskIds.includes(item.task_no)) && inExecutionWindow(item.created_at, focus)
+    }
     if (focus.orderNos.length > 0 && !focus.orderNos.includes(item.order_no)) return false
-    if (focus.taskIds.length > 0 && !focus.taskIds.includes(String(item.id)) && !focus.taskIds.includes(item.task_no)) return false
     return inExecutionWindow(item.created_at, focus)
   })
   const inventoryTrans = snapshot.inventory_trans.filter((item) => {
@@ -218,7 +220,7 @@ export function filterDemoActivity(
     if (allowedTypes && allowedTypes.length > 0 && !allowedTypes.includes(item.trans_type)) return false
     if (focus.scenario === 'stocktake' && item.trans_type !== 'ADJUST') return false
     if (focus.orderNos.length > 0 && !focus.orderNos.includes(item.order_no)) return false
-    if (focus.taskIds.length > 0 && item.task_no && !focus.taskIds.includes(item.task_no)) return false
+    if (focus.orderNos.length === 0 && focus.taskIds.length > 0 && !focus.taskIds.includes(item.task_no)) return false
     return inExecutionWindow(item.created_at, focus)
   })
   const operations = snapshot.operations.filter((item) => {

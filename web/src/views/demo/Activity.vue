@@ -110,13 +110,15 @@ useAutoRefresh(() => load(true), 5000)
     <template v-if="evidence">
       <el-tabs v-model="activeTab" class="activity-tabs">
         <el-tab-pane label="业务证据" name="evidence">
-          <el-alert
-            v-if="focused"
-            title="优先按本次业务编号关联；缺少直接编号的记录再使用执行时间窗辅助过滤。"
-            type="success"
-            :closable="false"
-            show-icon
-          />
+          <div v-if="focused" class="evidence-rule">
+            <el-alert
+              title="优先按本次业务编号关联；缺少直接编号的记录再使用执行时间窗辅助过滤。"
+              type="success"
+              :closable="false"
+              show-icon
+            />
+            <p>业务单据、任务和库存流水优先按业务编号关联；接口调用等无法直接绑定业务对象的记录使用本次执行时间窗辅助过滤。</p>
+          </div>
           <el-alert
             v-else
             title="当前展示本演示账号最近的业务记录；从自动演示结果点击“查看业务证据”可自动聚焦单次执行。"
@@ -283,6 +285,18 @@ useAutoRefresh(() => load(true), 5000)
 
 .evidence-section {
   margin-top: 18px;
+}
+
+.evidence-rule {
+  display: grid;
+  gap: 8px;
+}
+
+.evidence-rule p {
+  margin: 0;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  line-height: 1.65;
 }
 
 .section-title {

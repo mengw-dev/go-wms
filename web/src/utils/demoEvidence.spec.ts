@@ -78,3 +78,34 @@ describe('demo evidence focus', () => {
     expect(filtered.operations.map((item) => item.path)).toEqual(['/api/v1/inbound/orders'])
   })
 })
+
+  it('distinguishes consecutive executions by business id even when timestamps overlap', () => {
+    const secondContext: DemoEvidenceContext = {
+      ...context,
+      links: [
+        { label: '查看入库单', path: '/inbound/orders/202' },
+        { label: '查看任务', path: '/tasks?task_id=202' },
+        { label: '查看库存流水', path: '/inventory?order_no=IN-2' },
+      ],
+    }
+    const closeSnapshot = {
+      ...snapshot,
+      inbound_orders: [
+        ...snapshot.inbound_orders,
+        { id: '202', order_no: 'IN-2', status: 'COMPLETED', expected_qty: 3, received_qty: 3, created_at: '2026-09-24T01:00:01.000Z' },
+      ],
+      tasks: [...snapshot.tasks],
+    } as unknown as DemoActivitySnapshot
+
+    const first = filterDemoActivity(closeSnapshot, resolveDemoEvidenceFocus({}, context))
+    const second = filterDemoActivity(closeSnapshot, resolveDemoEvidenceFocus({}, secondContext))
+    expect(first.inbound_orders.map((item) => item.order_no)).toEqual(['IN-1'])
+    expect(second.inbound_orders.map((item) => item.order_no)).toEqual(['IN-2'])
+  })
+
+  it('prefers explicit task ids over order number when both are available', () => {
+    const focus = resolveDemoEvidenceFocus({ task_id: '201' }, context)
+    const tasks = snapshot.tasks.map((item) => ({ ...item, order_no: 'IN-1' }))
+    const filtered = filterDemoActivity({ ...snapshot, tasks } as DemoActivitySnapshot, focus)
+    expect(filtered.tasks.map((item) => item.id)).toEqual(['201'])
+  })
