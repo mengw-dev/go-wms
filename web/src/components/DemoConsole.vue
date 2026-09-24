@@ -15,6 +15,7 @@ import type { DemoScenarioResult } from '@/api/types'
 import DemoRunViewer from '@/components/demo/DemoRunViewer.vue'
 import { useAuthStore } from '@/stores/auth'
 import { emitDataChanged, OPEN_DEMO_CONSOLE_EVENT } from '@/utils/events'
+import { rememberDemoEvidence } from '@/utils/demoEvidence'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -204,9 +205,11 @@ async function runFullScenario() {
   if (busy.value) return
   scenarioRunning.value = true
   result.value = null
+  const startedAt = new Date().toISOString()
   try {
     const demoResult = await runDemoScenario('full')
     result.value = demoResult
+    rememberDemoEvidence(demoResult, startedAt)
     emitDataChanged()
     if (demoResult.status !== 'failed') {
       ElMessage.success(demoResult.summary)
@@ -214,6 +217,7 @@ async function runFullScenario() {
   } catch (error) {
     if (error instanceof ApiError && isDemoScenarioResult(error.data)) {
       result.value = error.data
+      rememberDemoEvidence(error.data, startedAt)
       emitDataChanged()
     }
   } finally {
