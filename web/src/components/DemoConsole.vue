@@ -302,32 +302,7 @@ async function releaseAndExit() {
   }
 }
 
-/**
- * 页面关闭/刷新时尽力释放演示会话，重置演示数据并让出会话锁。
- * 登录态由 auth store 处理：关闭标签页即登出，刷新页面也会在启动时强制登出。
- */
-function releaseKeepalive() {
-  if (!auth.isDemo || !auth.token) return
-  const token = auth.token
-  const sessionId = auth.demoSessionId
-  if (!sessionId) return
-  const baseURL = (import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(/\/$/, '')
-  void window
-    .fetch(`${baseURL}/demo/session/release`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'X-Demo-Session': sessionId,
-      },
-      keepalive: true,
-    })
-    .catch(() => undefined)
-}
-
 onMounted(() => {
-  // beforeunload 覆盖刷新/关闭，pagehide 覆盖 bfcache 等场景，双重保险确保登出。
-  window.addEventListener('beforeunload', releaseKeepalive)
-  window.addEventListener('pagehide', releaseKeepalive)
   window.addEventListener(OPEN_DEMO_CONSOLE_EVENT, onOpenDemoConsole)
   window.addEventListener(RUN_DEMO_SCENARIO_EVENT, onRunDemoScenario)
   // 用户交互才会刷新空闲倒计时并向后端续期。
@@ -342,8 +317,6 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   clearTimers()
-  window.removeEventListener('beforeunload', releaseKeepalive)
-  window.removeEventListener('pagehide', releaseKeepalive)
   window.removeEventListener(OPEN_DEMO_CONSOLE_EVENT, onOpenDemoConsole)
   window.removeEventListener(RUN_DEMO_SCENARIO_EVENT, onRunDemoScenario)
   window.removeEventListener('mousemove', markActivity)

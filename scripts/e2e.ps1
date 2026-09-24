@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
-    [switch]$NoBuild
+    [switch]$NoBuild,
+    [string]$Grep = ''
 )
 
 $ErrorActionPreference = "Stop"
@@ -65,7 +66,11 @@ try {
     Wait-WebReady
 
     Write-Host "==> Running Playwright tests" -ForegroundColor Cyan
-    & npm --prefix (Join-Path $root "web") run test:e2e
+    $playwrightArgs = @("--prefix", (Join-Path $root "web"), "run", "test:e2e", "--")
+    if ($Grep) {
+        $playwrightArgs += @("--grep", $Grep)
+    }
+    & npm @playwrightArgs
     if ($LASTEXITCODE -ne 0) {
         throw "Playwright tests failed with exit code $LASTEXITCODE"
     }

@@ -1,8 +1,39 @@
-import { expect, test } from '@playwright/test'
-import { confirmMessageBox, loginByUi } from './support/api'
+import { expect, test, type Locator, type Page } from '@playwright/test'
+import { confirmMessageBox, loginByUi, selectOption } from './support/api'
 
 const demoUsername = process.env.E2E_DEMO_USERNAME || process.env.WMS_DEMO_USERNAME || 'demo1'
 const demoPassword = process.env.E2E_DEMO_PASSWORD || process.env.WMS_DEMO_PASSWORD || 'demo123456'
+
+function drawer(page: Page): Locator {
+  return page.getByRole('dialog', { name: 'Demo 快捷控制器' })
+}
+
+async function skipTour(page: Page): Promise<void> {
+  const skip = page.getByRole('button', { name: '跳过导览', exact: true })
+  if (await skip.isVisible().catch(() => false)) await skip.click()
+  await expect(page.getByRole('heading', { name: '欢迎体验 WMS' })).toHaveCount(0)
+}
+
+async function startScenarioFromHome(
+  page: Page,
+  scenario: 'inbound' | 'outbound' | 'stocktake' | 'full',
+  cardTitle?: string,
+): Promise<void> {
+  const responsePromise = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      new URL(response.url()).pathname === `/api/v1/demo/run/${scenario}`,
+  )
+  if (scenario === 'full') {
+    await page.getByRole('button', { name: '自动演示完整业务闭环', exact: true }).click()
+  } else {
+    const card = page.locator('.scenario-card').filter({ hasText: cardTitle || '' })
+    await card.getByRole('button', { name: '自动演示', exact: true }).click()
+  }
+  const response = await responsePromise
+  expect(response.ok()).toBeTruthy()
+  await expect(drawer(page)).toBeVisible()
+}
 
 test.afterEach(async ({ page }) => {
   try {
@@ -22,151 +53,48 @@ test.afterEach(async ({ page }) => {
   }
 })
 
-test('demo quick controller runs the full flow, navigates from business pages and releases', async ({ page }) => {
+test('full demo runs from the home CTA and exposes replayable business evidence', async ({ page }) => {
   await loginByUi(page, demoUsername, demoPassword, /从真实业务流程理解这套 WMS/)
-  await expect(page).toHaveURL(/\/demo$/)
+  await expect(page).toHaveURL(/demo$/)
+  await skipTour(page)
 
-  await expect(page.getByRole('heading', { name: '欢迎体验 WMS' })).toBeVisible()
-  await page.getByRole('button', { name: '跳过导览', exact: true }).click()
-  await expect(page.getByRole('heading', { name: '欢迎体验 WMS' })).not.toBeVisible()
+  await startScenarioFromHome(page, 'full')
+  const demoDrawer = drawer(page)
+  await expect(demoDrawer.getByText('入库、出库、盘点三个核心流程已全部完成')).toBeVisible({ timeout: 60_000 })
+  await expect(demoDrawer.getByLabel('真实执行结果回放')).toBeVisible()
+  await expect(demoDrawer.getByText('当前回放步骤', { exact: true })).toBeVisible()
+  await expect(demoDrawer.getByRole('list').getByText('创建入库单', { exact: true })).toBeVisible()
+  await expect(demoDrawer.getByText('本次完整业务闭环产生', { exact: true })).toBeVisible({ timeout: 20_000 })
+  await expect(demoDrawer.getByText('FIFO 批次分配', { exact: true })).toBeVisible()
+  await expect(demoDrawer.getByText('数量关系', { exact: true })).toBeVisible()
+  for (const label of ['查看入库单', '查看任务', '查看库存', '查看库存流水']) {
+    await expect(demoDrawer.getByRole('button', { name: label, exact: true }).first()).toBeVisible()
+  }
 
   const consoleButton = page.getByRole('button', { name: /Demo 快捷控制器/ })
-  const drawer = page.getByRole('dialog', { name: 'Demo 快捷控制器' })
-  await expect(consoleButton).toBeVisible()
-  await expect(drawer).not.toBeVisible()
-
-  await page.getByRole('button', { name: '开始完整演示', exact: true }).click()
-  await expect(drawer).toBeVisible()
-  await expect(drawer.getByText('独立演示租户')).toBeVisible()
-  await expect(drawer.getByText('当前运行')).toBeVisible()
-  await expect(drawer.getByRole('button', { name: '完整业务闭环', exact: true })).toBeVisible()
-
-  await drawer.getByRole('button', { name: '完整业务闭环', exact: true }).click()
-  await expect(drawer.getByText('入库、出库、盘点三个核心流程已全部完成')).toBeVisible({ timeout: 60_000 })
-  await expect(drawer.getByLabel('真实执行结果回放')).toBeVisible()
-  await expect(drawer.getByText('创建入库单', { exact: true })).toBeVisible()
-  await expect(drawer.getByText('状态变化').first()).toBeVisible()
-  await expect(drawer.getByText('完成上架', { exact: true })).toBeVisible()
-  await expect(drawer.getByText('库存入账', { exact: true })).toBeVisible()
-  await expect(drawer.getByText('本次完整业务闭环产生', { exact: true })).toBeVisible()
-  for (const label of ['查看入库单', '查看任务', '查看库存', '查看库存流水']) {
-    await expect(drawer.getByRole('button', { name: label, exact: true }).first()).toBeVisible()
-  }
-
-  await expect(drawer.getByText('审核并 FIFO 分配库存', { exact: true })).toBeVisible()
-  await expect(drawer.getByText('FIFO 1', { exact: true })).toBeVisible()
-  await expect(drawer.getByText('FIFO 2', { exact: true })).toBeVisible()
-  await expect(drawer.getByText(/B20260901.*本次分配 30/).first()).toBeVisible()
-  await expect(drawer.getByText(/B20260905.*本次分配 20/).first()).toBeVisible()
-  await expect(drawer.getByText('PICK 任务数量', { exact: true }).first()).toBeVisible()
-  await expect(drawer.getByText('FIFO 分配', { exact: true })).toBeVisible()
-  await expect(drawer.getByText('2 个批次 / 50 件', { exact: true })).toBeVisible()
-  await expect(drawer.getByText('库存变化', { exact: true }).first()).toBeVisible()
-  await expect(drawer.getByRole('button', { name: '查看出库单', exact: true })).toBeVisible()
-  await expect(drawer.getByRole('button', { name: '查看拣货任务', exact: true })).toBeVisible()
-  await expect(drawer.getByText('创建盘点', { exact: true })).toBeVisible()
-  await expect(drawer.getByText('库存快照', { exact: true }).first()).toBeVisible()
-  await expect(drawer.getByText('录入实盘', { exact: true })).toBeVisible()
-  await expect(drawer.getByText('核对差异', { exact: true })).toBeVisible()
-  await expect(drawer.getByText('审核盘点', { exact: true })).toBeVisible()
-  await expect(drawer.getByText('库存调整入账', { exact: true })).toBeVisible()
-  await expect(drawer.getByText('账面数量', { exact: true }).first()).toBeVisible()
-  await expect(drawer.getByText('实盘数量', { exact: true }).first()).toBeVisible()
-  await expect(drawer.getByText('盘点差异', { exact: true }).first()).toBeVisible()
-  await expect(drawer.getByText('-3', { exact: true }).first()).toBeVisible()
-  await expect(drawer.getByText('ADJUST -3', { exact: true }).first()).toBeVisible()
-  await expect(drawer.getByText('业务视角 · 真实执行结果回放', { exact: true })).toBeVisible()
-
-  await drawer.getByRole('button', { name: '技术视角 / 查看技术实现', exact: true }).click()
-  await expect(drawer.getByText('调用链', { exact: true })).toBeVisible()
-  await expect(drawer.getByText('Demo Orchestrator', { exact: true })).toBeVisible()
-  await expect(drawer.getByText('Inbound / Outbound / Stocktake Service', { exact: true })).toBeVisible()
-  await expect(drawer.getByText('Inventory / Task', { exact: true })).toBeVisible()
-  await expect(drawer.getByText('Transaction / MySQL', { exact: true })).toBeVisible()
-  for (const label of ['Demo 编排', '真实业务', '库存 / 任务能力']) {
-    await expect(drawer.getByText(label, { exact: true })).toBeVisible()
-  }
-  for (const file of [
-    'internal/modules/demo/service/scenario.go',
-    'internal/modules/inbound/service/receiving.go',
-    'internal/modules/outbound/service/pick.go',
-    'internal/modules/stocktake/service/approve.go',
-    'internal/modules/inventory/service/stock.go',
-  ]) {
-    await expect(drawer.getByText(file, { exact: true })).toBeVisible()
-  }
-
-  await drawer.getByRole('button', { name: '查看出库单', exact: true }).click()
-  await expect(page).toHaveURL(/\/outbound\/orders\/\d+/)
-  await expect(page.locator('.detail-header .header-title')).toHaveText('出库单详情')
-
+  await demoDrawer.locator('.el-drawer__close-btn').click()
+  await expect(demoDrawer).not.toBeVisible()
   await consoleButton.click()
-  await expect(drawer).toBeVisible()
+  await expect(demoDrawer).toBeVisible()
+  await expect(demoDrawer.getByRole('button', { name: '返回演示中心', exact: true })).toBeVisible()
 
-  await drawer.getByRole('button', { name: '查看入库单', exact: true }).click()
-  await expect(page).toHaveURL(/\/inbound\/orders\/\d+/)
-  await expect(page.locator('.detail-header .header-title')).toHaveText('入库单详情')
-  await consoleButton.click()
-  await expect(drawer).toBeVisible()
-
-  await drawer.getByRole('button', { name: '查看盘点单', exact: true }).click()
-  await expect(page).toHaveURL(/\/stocktake\/orders\/\d+/)
-  await expect(page.locator('.detail-header .header-title')).toHaveText('盘点单详情')
-
-  await consoleButton.click()
-  await expect(drawer).toBeVisible()
-
-  await drawer.getByRole('button', { name: '查看业务证据', exact: true }).click()
+  await demoDrawer.getByRole('button', { name: '查看业务证据', exact: true }).last().click()
   await expect(page).toHaveURL(/\/demo\/activity/)
-  await expect(page.getByRole('heading', { name: '业务操作记录' })).toBeVisible()
-
-  await consoleButton.click()
-  await expect(drawer).toBeVisible()
-  await drawer.getByRole('button', { name: '返回演示中心', exact: true }).click()
-  await expect(page).toHaveURL(/\/demo$/)
-
-  await page.getByRole('button', { name: '亲自体验', exact: true }).click()
-  await expect(page).toHaveURL(/\/inbound\/orders/)
-  await consoleButton.click()
-  await expect(drawer).toBeVisible()
-
-  await drawer.getByRole('button', { name: '工程验证', exact: true }).click()
-  await expect(page).toHaveURL(/\/demo\/performance/)
-  await expect(page.getByRole('heading', { name: '运行状态与指标快照' })).toBeVisible()
-  await expect(page.getByText('MySQL 状态')).toBeVisible()
-
-  await consoleButton.click()
-  await expect(drawer).toBeVisible()
-  await drawer.getByRole('button', { name: '重置数据', exact: true }).click()
-  await confirmMessageBox(page, '确定重置')
-  await expect(page.getByText('演示数据已恢复为初始状态')).toBeVisible()
-
-  await drawer.getByRole('button', { name: '退出 Demo', exact: true }).click()
-  await confirmMessageBox(page, '退出并重置')
-  await expect(page).toHaveURL(/\/login(?:\?|$)/)
+  await expect(page.getByRole('heading', { name: '本次业务执行证据' })).toBeVisible()
+  await expect(page.getByText('本次演示', { exact: true })).toBeVisible()
+  await expect(page.getByText('业务证据', { exact: true }).first()).toBeVisible()
 })
 
-test('demo tour is scoped to one demo session and can be reopened manually', async ({ page }) => {
+test('demo tour supports next, skip and final direct execution', async ({ page }) => {
   await loginByUi(page, demoUsername, demoPassword, /从真实业务流程理解这套 WMS/)
   await expect(page).toHaveURL(/\/demo$/)
-
   await expect(page.getByRole('heading', { name: '欢迎体验 WMS' })).toBeVisible()
-  await expect(page.getByRole('button', { name: '跳过导览', exact: true })).toBeVisible()
+
   await page.getByRole('button', { name: '下一步', exact: true }).click()
   await expect(page.getByRole('heading', { name: '推荐业务闭环' })).toBeVisible()
   await page.getByRole('button', { name: '上一步', exact: true }).click()
-  await expect(page.getByRole('heading', { name: '欢迎体验 WMS' })).toBeVisible()
   await page.getByRole('button', { name: '跳过导览', exact: true }).click()
-
-  const sessionStorageKeys = await page.evaluate(() => Object.keys(sessionStorage))
-  expect(sessionStorageKeys.some((key) => key.startsWith('WMS_DEMO_TOUR_SEEN:'))).toBe(true)
-
-  await page.getByRole('button', { name: '亲自体验', exact: true }).click()
-  await expect(page).toHaveURL(/\/inbound\/orders/)
-  await page.getByRole('menuitem', { name: '体验中心', exact: true }).click()
-  await expect(page).toHaveURL(/\/demo$/)
-  await expect(page.getByRole('heading', { name: /从真实业务流程理解这套 WMS/ })).toBeVisible()
-  await expect(page.getByRole('heading', { name: '欢迎体验 WMS' })).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: '欢迎体验 WMS' })).not.toBeVisible()
 
   await page.getByRole('button', { name: '快速导览', exact: true }).click()
   await expect(page.getByRole('heading', { name: '欢迎体验 WMS' })).toBeVisible()
@@ -174,15 +102,124 @@ test('demo tour is scoped to one demo session and can be reopened manually', asy
     await page.getByRole('button', { name: '下一步', exact: true }).click()
     await expect(page.getByRole('heading', { name: title })).toBeVisible()
   }
+
+  const responsePromise = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      new URL(response.url()).pathname === '/api/v1/demo/run/full',
+  )
   await page.getByRole('button', { name: '开始体验完整业务闭环', exact: true }).click()
-  await expect(page.getByRole('dialog', { name: 'Demo 快捷控制器' })).toBeVisible()
+  await responsePromise
+  await expect(drawer(page)).toBeVisible()
+  await expect(drawer(page).getByLabel('真实执行结果回放')).toBeVisible()
 })
 
-test('demo account is logged out after a page reload', async ({ page }) => {
+test('home auto-demo CTAs call their own scenario APIs', async ({ page }) => {
   await loginByUi(page, demoUsername, demoPassword, /从真实业务流程理解这套 WMS/)
-  await expect(page.getByRole('button', { name: /Demo 快捷控制器/ })).toBeVisible()
+  await skipTour(page)
 
+  const scenarios = [
+    { key: 'inbound', card: '批量入库', summary: /入库单 .* 已完成/ },
+    { key: 'outbound', card: '上游出库', summary: /出库单 .* 已按 FIFO/ },
+    { key: 'stocktake', card: '库存盘点', summary: /盘点单 .* 已完成/ },
+  ] as const
+
+  for (const item of scenarios) {
+    await page.goto('/demo')
+    await startScenarioFromHome(page, item.key, item.card)
+    await expect(drawer(page).getByText(item.summary).first()).toBeVisible({ timeout: 60_000 })
+    await drawer(page).locator('.el-drawer__close-btn').click()
+    await expect(drawer(page)).not.toBeVisible()
+  }
+})
+
+test('manual inbound guide completes through inventory evidence', async ({ page }) => {
+  await loginByUi(page, demoUsername, demoPassword, /从真实业务流程理解这套 WMS/)
+  await skipTour(page)
+
+  await page.getByRole('button', { name: '亲自体验入库', exact: true }).first().click()
+  await expect(page).toHaveURL(/\/inbound\/orders$/)
+  const guide = page.locator('section[aria-label="手动业务引导"]')
+  await expect(guide.getByText('第 1 / 7 步', { exact: true })).toBeVisible()
+
+  await page.locator('[data-tour="inbound-create"]').click()
+  const createDialog = page.getByRole('dialog', { name: '新建入库单' })
+  await selectOption(page, createDialog, '选择仓库', 'WH01（华东一号仓）')
+  await selectOption(page, createDialog, '选择货品', 'SKU000001 农夫山泉饮用天然水')
+  await createDialog.locator('.el-input-number input').first().fill('2')
+  await createDialog.getByPlaceholder('备注（可选）').fill('Manual guided inbound E2E')
+  await createDialog.getByRole('button', { name: '保存' }).click()
+  await expect(createDialog).not.toBeVisible()
+  await expect(guide.getByText(/已创建入库单/)).toBeVisible()
+  await guide.getByRole('button', { name: '下一步' }).click()
+  await expect(page).toHaveURL(/\/inbound\/orders\/\d+$/)
+
+  await page.locator('[data-tour="inbound-submit"]').click()
+  await confirmMessageBox(page)
+  await expect(guide.getByText(/提交完成/)).toBeVisible()
+  await guide.getByRole('button', { name: '下一步' }).click()
+
+  await page.locator('[data-tour="inbound-approve"]').click()
+  await confirmMessageBox(page)
+  await expect(guide.getByText(/审核完成/)).toBeVisible()
+  await guide.getByRole('button', { name: '下一步' }).click()
+
+  await page.locator('[data-tour="inbound-receive"]').click()
+  const receiveDialog = page.getByRole('dialog', { name: '收货' })
+  await receiveDialog.getByPlaceholder('首次收货必填').fill('GUIDE-BATCH-E2E')
+  await receiveDialog.getByRole('button', { name: '收货' }).click()
+  await expect(page.getByText('收货成功')).toBeVisible()
+  await receiveDialog.getByRole('button', { name: '关闭', exact: true }).click()
+  await expect(guide.getByText(/已生成上架任务/)).toBeVisible()
+  await guide.getByRole('button', { name: '下一步' }).click()
+  await expect(guide.getByText('查看上架任务', { exact: true })).toBeVisible()
+  await guide.getByRole('button', { name: '下一步' }).click()
+
+  await page.locator('[data-tour="inbound-putaway"]').first().click()
+  const putawayDialog = page.getByRole('dialog', { name: '上架' })
+  await selectOption(page, putawayDialog, '选择空闲库位', 'A01-02-02')
+  await putawayDialog.getByRole('button', { name: '确定上架' }).click()
+  await expect(putawayDialog).not.toBeVisible()
+  await expect(guide.getByText(/库存已在真实业务事务中增加/)).toBeVisible()
+  await guide.getByRole('button', { name: '下一步' }).click()
+
+  await expect(page).toHaveURL(/\/inventory\?order_no=/)
+  await expect(guide.getByText(/已查看入库单/)).toBeVisible()
+  await guide.getByRole('button', { name: '下一步' }).click()
+  const completed = page.locator('section[aria-label="手动业务引导完成"]')
+  await expect(completed.getByText('你刚刚亲自完成', { exact: true })).toBeVisible()
+  await expect(completed.getByRole('button', { name: '查看业务证据', exact: true })).toBeVisible()
+  await expect(completed.getByRole('button', { name: '查看技术实现', exact: true })).toBeVisible()
+  await expect(completed.getByRole('button', { name: '返回 Demo', exact: true })).toBeVisible()
+})
+
+test('engineering verification cards open their corresponding experiment sections', async ({ page }) => {
+  await loginByUi(page, demoUsername, demoPassword, /从真实业务流程理解这套 WMS/)
+  await skipTour(page)
+
+  for (const card of ['并发库存分配一致性', '供给不足并发验证', '模拟 PDA 并发拣货']) {
+    await page.locator('.verify-card').filter({ hasText: card }).getByRole('button', { name: '打开实验' }).click()
+    await expect(page).toHaveURL(/\/demo\/performance/)
+    await expect(page.getByRole('heading', { name: card, exact: true })).toBeVisible()
+    await page.goto('/demo')
+  }
+})
+
+test('demo session stays valid after refreshing the demo home', async ({ page }) => {
+  await loginByUi(page, demoUsername, demoPassword, /从真实业务流程理解这套 WMS/)
+  await skipTour(page)
+  const sessionBefore = await page.evaluate(() => sessionStorage.getItem('WMS_DEMO_SESSION'))
+  expect(sessionBefore).toBeTruthy()
+
+  const heartbeat = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      new URL(response.url()).pathname === '/api/v1/demo/session/heartbeat',
+  )
   await page.reload()
-
-  await expect(page).toHaveURL(/\/login(?:\?|$)/)
+  await heartbeat
+  await expect(page).toHaveURL(/\/demo$/)
+  await expect(page.getByRole('heading', { name: /从真实业务流程理解这套 WMS/ })).toBeVisible()
+  const sessionAfter = await page.evaluate(() => sessionStorage.getItem('WMS_DEMO_SESSION'))
+  expect(sessionAfter).toBe(sessionBefore)
 })

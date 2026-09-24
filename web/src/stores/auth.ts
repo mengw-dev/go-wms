@@ -5,10 +5,6 @@ const TOKEN_KEY = 'WMS_TOKEN'
 const USER_KEY = 'WMS_USER'
 const DEMO_SESSION_KEY = 'WMS_DEMO_SESSION'
 
-// 内存标记：仅在同一次页面加载内有效。演示账号登录时置为 true，
-// 刷新页面后模块重新加载该标记必然为 false，从而实现"刷新即登出"。
-let demoFreshLogin = false
-
 export interface AuthUser {
   user_id: EntityID
   username: string
@@ -64,7 +60,6 @@ export const useAuthStore = defineStore('auth', {
       const storage = pickStorage(isDemo)
       // 切换账号类型时清理另一份存储，避免旧 token 残留。
       removeAllAuthStorage()
-      demoFreshLogin = isDemo
       this.token = result.token
       this.user = {
         user_id: result.user_id,
@@ -99,20 +94,10 @@ export const useAuthStore = defineStore('auth', {
       sessionStorage.removeItem(DEMO_SESSION_KEY)
     },
     clear() {
-      demoFreshLogin = false
       this.clearDemoSession()
       this.token = ''
       this.user = null
       removeAllAuthStorage()
-    },
-    /**
-     * 应用启动时调用：演示账号若非本次登录产生（即页面被刷新/重新打开），
-     * 直接清理登录态，路由守卫会将其送回登录页。返回是否执行了登出。
-     */
-    enforceDemoReloadLogout() {
-      if (!this.isDemo || demoFreshLogin) return false
-      this.clear()
-      return true
     },
   },
 })
