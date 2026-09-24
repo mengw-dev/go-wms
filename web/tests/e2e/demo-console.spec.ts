@@ -156,9 +156,9 @@ test('home auto-demo CTAs call their own scenario APIs', async ({ page }) => {
   await skipTour(page)
 
   const scenarios = [
-    { key: 'inbound', card: '批量入库', summary: /入库单 .* 已完成/ },
-    { key: 'outbound', card: '上游出库', summary: /出库单 .* 已按 FIFO/ },
-    { key: 'stocktake', card: '库存盘点', summary: /盘点单 .* 已完成/ },
+    { key: 'inbound', card: '完整入库流程', summary: /入库单 .* 已完成/ },
+    { key: 'outbound', card: '完整出库流程', summary: /出库单 .* 已按 FIFO/ },
+    { key: 'stocktake', card: '库存盘点流程', summary: /盘点单 .* 已完成/ },
   ] as const
 
   for (const item of scenarios) {

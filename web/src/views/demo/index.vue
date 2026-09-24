@@ -280,8 +280,8 @@ onBeforeUnmount(() => {
       <div class="scenario-grid">
         <article class="scenario-card scenario-card--primary">
           <div class="card-icon"><Download /></div>
-          <h3>批量入库</h3>
-          <p>批量创建入库草稿，再通过真实业务页面完成收货、残品登记与上架。</p>
+          <h3>完整入库流程</h3>
+          <p>从创建入库单开始，体验提交、审核、收货、上架以及最终库存变化。</p>
           <div class="scenario-actions">
             <el-button text type="primary" @click="runScenario('inbound')">自动演示</el-button>
             <el-button text @click="startManualGuide('inbound')">亲自体验入库</el-button>
@@ -289,8 +289,8 @@ onBeforeUnmount(() => {
         </article>
         <article class="scenario-card">
           <div class="card-icon"><Upload /></div>
-          <h3>上游出库</h3>
-          <p>模拟上游订单批量创建出库单，连续体验审核、FIFO 分配与拣货。</p>
+          <h3>完整出库流程</h3>
+          <p>从创建出库单开始，体验提交、审核、FIFO 库存分配、PICK 任务和拣货发货。</p>
           <div class="scenario-actions">
             <el-button text type="primary" @click="runScenario('outbound')">自动演示</el-button>
             <el-button text @click="startManualGuide('outbound')">亲自体验出库</el-button>
@@ -298,8 +298,8 @@ onBeforeUnmount(() => {
         </article>
         <article class="scenario-card">
           <div class="card-icon"><Tickets /></div>
-          <h3>库存盘点</h3>
-          <p>批量生成盘点草稿，录入实盘数量并完成盘盈盘亏审核。</p>
+          <h3>库存盘点流程</h3>
+          <p>体验库存快照、实盘录入、差异确认、审核调整以及 ADJUST 库存流水。</p>
           <div class="scenario-actions">
             <el-button text type="primary" @click="runScenario('stocktake')">自动演示</el-button>
             <el-button text @click="startManualGuide('stocktake')">亲自体验盘点</el-button>
