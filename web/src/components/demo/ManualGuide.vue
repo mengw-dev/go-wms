@@ -311,21 +311,6 @@ function resolvedCurrentStepRoute(): string {
   return resolveGuideRoute(current.route, guide.orderId, guide.orderNo)
 }
 
-async function nextStep(): Promise<void> {
-  if (!guide.next()) return
-  await nextTick()
-  const targetRoute = resolvedCurrentStepRoute()
-  if (!guide.completed && targetRoute) {
-    await router.push(targetRoute)
-  }
-}
-
-async function previousStep(): Promise<void> {
-  if (!guide.previous()) return
-  const targetRoute = resolvedCurrentStepRoute()
-  if (targetRoute) await router.push(targetRoute)
-}
-
 async function restartGuide(): Promise<void> {
   actionState.value = 'idle'
   cancellationClicked = false
@@ -419,6 +404,18 @@ watch(
     document.body.classList.toggle('manual-guide-active', isVisible && !completed)
   },
   { immediate: true },
+)
+
+watch(
+  () => guide.currentStep,
+  async (current, previous) => {
+    if (!guide.active || guide.completed || current <= previous) return
+    await nextTick()
+    const targetRoute = resolvedCurrentStepRoute()
+    if (targetRoute && targetRoute.split('?')[0] !== route.path) {
+      await router.push(targetRoute)
+    }
+  },
 )
 
 watch(guideRevision, syncActionFromGuide)
@@ -569,11 +566,8 @@ onBeforeUnmount(() => {
               <span>请完成当前高亮的真实业务操作，成功后会解锁下一步。</span>
             </div>
 
-            <div class="guide-actions">
-              <div>
-                <el-button v-if="guide.canGoPrevious" size="small" @click="previousStep">上一步</el-button>
-                <el-button v-if="guide.canAdvance" size="small" type="primary" @click="nextStep">下一步</el-button>
-              </div>
+            <div class="guide-actions guide-actions--auto">
+              <span>真实业务操作成功后，引导会自动进入下一步。</span>
               <el-button link @click="skipGuide">跳过</el-button>
             </div>
           </template>
@@ -783,9 +777,16 @@ onBeforeUnmount(() => {
 
 .guide-actions {
   justify-content: space-between;
+  gap: 8px;
   margin-top: 12px;
   padding-top: 10px;
   border-top: 1px solid var(--el-border-color-lighter);
+}
+
+.guide-actions--auto > span {
+  color: var(--el-text-color-secondary);
+  font-size: 11px;
+  line-height: 1.5;
 }
 
 .guide-actions > div {

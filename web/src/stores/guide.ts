@@ -364,21 +364,22 @@ export const useGuideStore = defineStore('guide', {
     recordBusinessResult(event: string, result: GuideBusinessResult = {}): boolean {
       const currentStep = this.currentStepDefinition
       if (!this.active || this.completed || !currentStep || !this.scenario) return false
-      const targetIndex = GUIDE_STEPS[this.scenario].findIndex((item) => item.event === event)
+      const steps = GUIDE_STEPS[this.scenario]
+      const targetIndex = steps.findIndex((item) => item.event === event)
       if (targetIndex < 0 || targetIndex < this.currentStep) {
         this.mismatch = `当前业务状态与引导不一致：当前步骤需要完成“${currentStep.title}”。`
         this.persist()
         return false
       }
-      const relocated = targetIndex > this.currentStep
-      if (relocated) {
-        for (let index = 0; index < targetIndex; index += 1) {
-          const previousId = GUIDE_STEPS[this.scenario][index].id
+
+      if (targetIndex > this.currentStep) {
+        for (let index = this.currentStep; index < targetIndex; index += 1) {
+          const previousId = steps[index].id
           if (!this.verifiedStepIds.includes(previousId)) this.verifiedStepIds.push(previousId)
         }
-        this.currentStep = targetIndex
       }
-      const step = GUIDE_STEPS[this.scenario][targetIndex]
+
+      const step = steps[targetIndex]
       if (!this.verifiedStepIds.includes(step.id)) this.verifiedStepIds.push(step.id)
       if (result.orderId) this.orderId = result.orderId
       if (result.orderNo) this.orderNo = result.orderNo
@@ -391,14 +392,24 @@ export const useGuideStore = defineStore('guide', {
         }
         this.facts = Array.from(merged.values())
       }
+
       const message = result.message || '当前步骤已在真实业务中完成。'
-      this.lastOutcome = relocated
-        ? `检测到当前业务已经进入下一阶段，已为你定位到对应步骤。${message}`
+      this.lastOutcome = targetIndex > this.currentStep
+        ? `检测到当前业务已经进入下一阶段，已自动同步引导进度。${message}`
         : message
       this.mismatch = ''
+
+      if (targetIndex >= steps.length - 1) {
+        this.currentStep = targetIndex
+        this.completed = true
+        this.active = false
+      } else {
+        this.currentStep = targetIndex + 1
+      }
       this.persist()
       return true
     },
+
     next(): boolean {
       if (!this.canAdvance) return false
       if (this.currentStep >= this.totalSteps - 1) {
