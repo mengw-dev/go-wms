@@ -217,13 +217,17 @@ const GUIDE_STEPS: Record<GuideScenario, readonly GuideStep[]> = {
   ],
 }
 
+export function getGuideStep(scenario: GuideScenario, index: number): GuideStep | null {
+  return GUIDE_STEPS[scenario][index] ?? null
+}
+
 export const GUIDE_SCENARIO_LABELS: Record<GuideScenario, string> = {
   inbound: '入库',
   outbound: '出库',
   stocktake: '盘点',
 }
 
-function resolveGuideRoute(route: string, orderId: string, orderNo: string): string {
+export function resolveGuideRoute(route: string, orderId: string, orderNo: string): string {
   return route
     .replace(':orderId', encodeURIComponent(orderId))
     .replace(':orderNo', encodeURIComponent(orderNo))

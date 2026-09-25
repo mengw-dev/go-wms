@@ -5,36 +5,50 @@ const demoUsername = process.env.E2E_DEMO_USERNAME || process.env.WMS_DEMO_USERN
 const demoPassword = process.env.E2E_DEMO_PASSWORD || process.env.WMS_DEMO_PASSWORD || 'demo123456'
 
 function drawer(page: Page): Locator {
-  return page.getByRole('dialog', { name: '演示快捷入口' })
+  return page.locator('.demo-console-drawer')
 }
 
-async function skipTour(page: Page): Promise<void> {
-  const skip = page.getByRole('button', { name: '跳过导览', exact: true })
-  if (await skip.isVisible().catch(() => false)) await skip.click()
-  await expect(page.getByRole('heading', { name: '欢迎体验 WMS' })).toHaveCount(0)
+function resultViewer(page: Page): Locator {
+  return page.getByLabel('真实业务执行结果')
+}
+
+async function loginDemo(page: Page): Promise<void> {
+  await loginByUi(page, demoUsername, demoPassword, /WMS 业务闭环/)
+  await expect(page).toHaveURL(/demo$/)
 }
 
 async function startScenarioFromHome(
   page: Page,
   scenario: 'inbound' | 'outbound' | 'stocktake' | 'full',
   cardTitle?: string,
-): Promise<void> {
+): Promise<Locator> {
   const responsePromise = page.waitForResponse(
     (response) =>
       response.request().method() === 'POST' &&
       new URL(response.url()).pathname === `/api/v1/demo/run/${scenario}`,
   )
+
   if (scenario === 'full') {
-    await page.getByRole('button', { name: '自动演示完整业务闭环', exact: true }).click()
+    await page.getByRole('button', { name: '开始自动演示', exact: true }).click()
   } else {
-    const card = page.locator('.scenario-card').filter({ hasText: cardTitle || '' })
-    await card.getByRole('button', { name: '自动演示', exact: true }).click()
+    const step = page.locator('.flow-step').filter({ hasText: cardTitle || '' }).first()
+    await step.click()
+    await page.locator('.detail-panel').getByRole('button', { name: '自动演示', exact: true }).click()
   }
+
   const response = await responsePromise
   expect(response.ok()).toBeTruthy()
-  await expect(drawer(page)).toBeVisible()
+  const viewer = resultViewer(page)
+  await expect(viewer).toBeVisible({ timeout: 60_000 })
+  return viewer
 }
 
+async function closeResultDialog(page: Page): Promise<void> {
+  const dialog = page.locator('.demo-result-dialog')
+  await expect(dialog).toBeVisible()
+  await dialog.locator('.el-dialog__headerbtn').click()
+  await expect(resultViewer(page)).toHaveCount(0)
+}
 
 type ApiEnvelope<T> = { code: number; msg: string; data: T }
 type PageData<T> = { list: T[]; total: number }
@@ -90,92 +104,72 @@ test.afterEach(async ({ page }) => {
   }
 })
 
-test('full demo runs from the home CTA and exposes replayable business evidence', async ({ page }) => {
-  await loginByUi(page, demoUsername, demoPassword, /从真实业务流程理解这套 WMS/)
-  await expect(page).toHaveURL(/demo$/)
-  await skipTour(page)
+test('demo home is a concise one-screen launcher', async ({ page }) => {
+  await loginDemo(page)
 
-  await startScenarioFromHome(page, 'full')
-  const demoDrawer = drawer(page)
-  await expect(demoDrawer.getByText('入库、出库、盘点三个核心流程已全部完成')).toBeVisible({ timeout: 60_000 })
-  await expect(demoDrawer.getByLabel('真实执行结果回放')).toBeVisible()
-  await expect(demoDrawer.getByText('当前回放步骤', { exact: true })).toBeVisible()
-  await expect(demoDrawer.getByRole('list').getByText('创建入库单', { exact: true })).toBeVisible()
-  await expect(demoDrawer.getByText('本次完整业务闭环产生', { exact: true })).toBeVisible({ timeout: 20_000 })
-  await expect(demoDrawer.getByText('FIFO 批次分配', { exact: true })).toBeVisible()
-  await expect(demoDrawer.getByText('数量关系', { exact: true })).toBeVisible()
-  for (const label of ['查看入库单', '查看任务', '查看库存', '查看库存流水']) {
-    await expect(demoDrawer.getByRole('button', { name: label, exact: true }).first()).toBeVisible()
-  }
+  await expect(page.getByRole('heading', { name: 'WMS 业务闭环', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: '开始自动演示', exact: true })).toHaveCount(1)
+  await expect(page.getByRole('button', { name: '手动体验', exact: true })).toHaveCount(1)
+  await expect(page.locator('.flow-step')).toHaveCount(5)
+  await expect(page.locator('.engineering-card')).toHaveCount(3)
+  await expect(page.getByText('库存盘点', { exact: true })).toHaveCount(0)
+  await expect(page.locator('.deep-links .el-button')).toHaveCount(2)
+  await expect(page.getByRole('button', { name: '打开演示控制' })).toHaveCount(0)
 
-  const consoleButton = page.getByRole('button', { name: /演示快捷入口/ })
-  await demoDrawer.locator('.el-drawer__close-btn').click()
-  await expect(demoDrawer).not.toBeVisible()
-  await consoleButton.click()
-  await expect(demoDrawer).toBeVisible()
-  await expect(demoDrawer.getByRole('button', { name: '返回演示中心', exact: true })).toBeVisible()
-
-  await demoDrawer.getByRole('button', { name: '查看业务证据', exact: true }).last().click()
-  await expect(page).toHaveURL(/\/demo\/activity/)
-  await expect(page.getByRole('heading', { name: '本次业务执行证据' })).toBeVisible()
-  await expect(page.getByText('本次演示', { exact: true })).toBeVisible()
-  await expect(page.getByText('业务证据', { exact: true }).first()).toBeVisible()
+  const metrics = await page.locator('.main').evaluate((element) => ({
+    scrollHeight: element.scrollHeight,
+    clientHeight: element.clientHeight,
+  }))
+  expect(metrics.scrollHeight).toBeLessThanOrEqual(metrics.clientHeight)
 })
 
-test('demo tour supports next, skip and final direct execution', async ({ page }) => {
-  await loginByUi(page, demoUsername, demoPassword, /从真实业务流程理解这套 WMS/)
-  await expect(page).toHaveURL(/\/demo$/)
-  await expect(page.getByRole('heading', { name: '欢迎体验 WMS' })).toBeVisible()
+test('full demo opens a result dialog with business summary before technical details', async ({ page }) => {
+  await loginDemo(page)
+  const viewer = await startScenarioFromHome(page, 'full')
 
-  await page.getByRole('button', { name: '下一步', exact: true }).click()
-  await expect(page.getByRole('heading', { name: '推荐业务闭环' })).toBeVisible()
-  await page.getByRole('button', { name: '上一步', exact: true }).click()
-  await page.getByRole('button', { name: '跳过导览', exact: true }).click()
-  await expect(page.getByRole('heading', { name: '欢迎体验 WMS' })).not.toBeVisible()
+  await expect(viewer.getByRole('heading', { name: '完整业务闭环已完成', exact: true })).toBeVisible()
+  await expect(viewer.locator('.evidence-item').first()).toBeVisible()
+  await expect(viewer.getByRole('button', { name: '查看业务证据', exact: true })).toBeVisible()
+  await expect(viewer.getByText('FIFO 详细拆解', { exact: true })).not.toBeVisible()
 
-  await page.getByRole('button', { name: '快速导览', exact: true }).click()
-  await expect(page.getByRole('heading', { name: '欢迎体验 WMS' })).toBeVisible()
-  for (const title of ['推荐业务闭环', '结果与证据', '工程验证', '项目与源码']) {
-    await page.getByRole('button', { name: '下一步', exact: true }).click()
-    await expect(page.getByRole('heading', { name: title })).toBeVisible()
-  }
+  await viewer.locator('.el-collapse-item__header').click()
+  await expect(viewer.getByText('FIFO 详细拆解', { exact: true })).toBeVisible()
 
-  const responsePromise = page.waitForResponse(
-    (response) =>
-      response.request().method() === 'POST' &&
-      new URL(response.url()).pathname === '/api/v1/demo/run/full',
-  )
-  await page.getByRole('button', { name: '开始体验完整业务闭环', exact: true }).click()
-  await responsePromise
-  await expect(drawer(page)).toBeVisible()
-  await expect(drawer(page).getByLabel('真实执行结果回放')).toBeVisible()
+  await closeResultDialog(page)
+  const demoDrawer = drawer(page)
+  await expect(demoDrawer).toBeVisible()
+  await expect(demoDrawer.getByLabel('真实业务执行结果')).toHaveCount(0)
+  await demoDrawer.getByRole('button', { name: '查看结果', exact: true }).click()
+  await expect(resultViewer(page)).toBeVisible()
+
+  await resultViewer(page).getByRole('button', { name: '查看业务证据', exact: true }).click()
+  await expect(page).toHaveURL(/\/demo\/activity/)
+  await expect(page.getByRole('heading', { name: '本次业务执行证据', exact: true })).toBeVisible()
+  await expect(page.getByText('业务结果概览', { exact: true })).toBeVisible()
 })
 
 test('home auto-demo CTAs call their own scenario APIs', async ({ page }) => {
-  await loginByUi(page, demoUsername, demoPassword, /从真实业务流程理解这套 WMS/)
-  await skipTour(page)
-
+  await loginDemo(page)
   const scenarios = [
-    { key: 'inbound', card: '完整入库流程', summary: /入库单 .* 已完成/ },
-    { key: 'outbound', card: '完整出库流程', summary: /出库单 .* 已按 FIFO/ },
-    { key: 'stocktake', card: '库存盘点流程', summary: /盘点单 .* 已完成/ },
+    { key: 'inbound', card: '入库单', summary: /入库单 .* 已完成/ },
+    { key: 'outbound', card: '出库单', summary: /出库单 .* 已按 FIFO/ },
   ] as const
 
   for (const item of scenarios) {
     await page.goto('/demo')
-    await startScenarioFromHome(page, item.key, item.card)
-    await expect(drawer(page).getByText(item.summary).first()).toBeVisible({ timeout: 60_000 })
-    await drawer(page).locator('.el-drawer__close-btn').click()
-    await expect(drawer(page)).not.toBeVisible()
+    const viewer = await startScenarioFromHome(page, item.key, item.card)
+    await expect(viewer.getByText(item.summary).first()).toBeVisible({ timeout: 60_000 })
+    await closeResultDialog(page)
   }
 })
 
 test('manual inbound guide completes through inventory evidence', async ({ page }) => {
-  await loginByUi(page, demoUsername, demoPassword, /从真实业务流程理解这套 WMS/)
-  await skipTour(page)
+  await loginDemo(page)
 
-  await page.getByRole('button', { name: '亲自体验入库', exact: true }).first().click()
+  await page.locator('.flow-step').filter({ hasText: '入库单' }).click()
+  await page.locator('.detail-panel').getByRole('button', { name: '进入入库页面', exact: true }).click()
   await expect(page).toHaveURL(/\/inbound\/orders$/)
+
   const guide = page.locator('section[aria-label="手动业务引导"]')
   await expect(guide.getByText('第 1 / 7 步', { exact: true })).toBeVisible()
 
@@ -221,13 +215,19 @@ test('manual inbound guide completes through inventory evidence', async ({ page 
   await guide.getByRole('button', { name: '下一步' }).click()
 
   await expect(page).toHaveURL(/\/inventory\?order_no=/)
+  const inventoryDrawer = page.getByRole('dialog', { name: '库存流水' })
+  await expect(inventoryDrawer).toBeVisible()
+  await inventoryDrawer.getByRole('button', { name: '关闭此对话框' }).click()
+  await expect(inventoryDrawer).not.toBeVisible()
   await expect(guide.getByText(/已查看入库单/)).toBeVisible()
   await guide.getByRole('button', { name: '下一步' }).click()
+
   const completed = page.locator('section[aria-label="手动业务引导完成"]')
-  await expect(completed.getByText('你刚刚亲自完成', { exact: true })).toBeVisible()
-  await expect(completed.getByRole('button', { name: '查看业务证据', exact: true })).toBeVisible()
-  await expect(completed.getByRole('button', { name: '查看技术实现', exact: true })).toBeVisible()
-  await expect(completed.getByRole('button', { name: '返回 Demo', exact: true })).toBeVisible()
+  await expect(completed.getByText('手动流程已完成', { exact: true })).toBeVisible()
+  for (const label of ['查看业务证据', '查看业务对象', '返回演示中心', '重新开始', '退出引导']) {
+    await expect(completed.getByRole('button', { name: label, exact: true })).toBeVisible()
+  }
+  await expect(completed.getByRole('button', { name: '查看技术实现', exact: true })).toHaveCount(0)
 
   const orderFact = await completed.locator('.guide-complete-facts span').filter({ hasText: '入库单：' }).textContent()
   const orderNo = orderFact?.split('：').at(-1)?.trim() || ''
@@ -237,34 +237,28 @@ test('manual inbound guide completes through inventory evidence', async ({ page 
   await expect(page).toHaveURL(/source=manual/)
   await expect(page).toHaveURL(/order_id=/)
   await expect(page).toHaveURL(new RegExp(`order_no=${encodeURIComponent(orderNo)}`))
-  await expect(page.getByRole('heading', { name: '本次业务执行证据' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '本次业务执行证据', exact: true })).toBeVisible()
   await expect(page.getByText('入库手动体验', { exact: true })).toBeVisible()
   await expect(page.getByText(orderNo, { exact: true }).first()).toBeVisible()
 })
 
-test('engineering verification cards open their corresponding experiment sections', async ({ page }) => {
-  await loginByUi(page, demoUsername, demoPassword, /从真实业务流程理解这套 WMS/)
-  await skipTour(page)
+test('engineering verification exposes three real experiments and runtime last', async ({ page }) => {
+  await loginDemo(page)
+  await page.goto('/demo/performance')
 
-  const entries = [
-    { card: '并发库存分配一致性', section: 'allocation', button: '打开实验', heading: '并发库存分配一致性' },
-    { card: '供给不足并发验证', section: 'shortage', button: '打开实验', heading: '供给不足并发验证' },
-    { card: '模拟 PDA 并发拣货', section: 'picking', button: '打开实验', heading: '模拟 PDA 并发拣货' },
-    { card: '运行状态', section: 'runtime', button: '查看状态', heading: '运行状态与指标快照' },
-  ]
-  for (const entry of entries) {
-    await page.locator('.verify-card').filter({ hasText: entry.card }).getByRole('button', { name: entry.button }).click()
-    await expect(page).toHaveURL(new RegExp(`/demo/performance\\?section=${entry.section}`))
-    const target = page.locator(`[data-section="${entry.section}"]`)
-    await expect(target.getByRole('heading', { name: entry.heading, exact: true })).toBeVisible()
-    await expect(target).toBeInViewport()
-    await page.goto('/demo')
+  await expect(page.getByRole('heading', { name: '工程验证', exact: true })).toBeVisible()
+  await expect(page.locator('.experiment-framework')).toHaveCount(3)
+  for (const section of ['allocation', 'shortage', 'picking', 'runtime']) {
+    await expect(page.locator(`[data-section="${section}"]`)).toBeVisible()
   }
+  const order = await page.locator('[data-section]').evaluateAll((nodes) => nodes.map((node) => node.getAttribute('data-section')))
+  expect(order).toEqual(['allocation', 'shortage', 'picking', 'runtime'])
+  await page.getByRole('button', { name: '返回演示中心', exact: true }).click()
+  await expect(page).toHaveURL(/\/demo$/)
 })
 
 test('demo session stays valid after refreshing the demo home', async ({ page }) => {
-  await loginByUi(page, demoUsername, demoPassword, /从真实业务流程理解这套 WMS/)
-  await skipTour(page)
+  await loginDemo(page)
   const sessionBefore = await page.evaluate(() => sessionStorage.getItem('WMS_DEMO_SESSION'))
   expect(sessionBefore).toBeTruthy()
 
@@ -276,14 +270,13 @@ test('demo session stays valid after refreshing the demo home', async ({ page })
   await page.reload()
   await heartbeat
   await expect(page).toHaveURL(/\/demo$/)
-  await expect(page.getByRole('heading', { name: /从真实业务流程理解这套 WMS/ })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'WMS 业务闭环', exact: true })).toBeVisible()
   const sessionAfter = await page.evaluate(() => sessionStorage.getItem('WMS_DEMO_SESSION'))
   expect(sessionAfter).toBe(sessionBefore)
 })
 
 test('PDA experiment prepares its own tasks on a clean demo and isolates consecutive runs', async ({ page }) => {
-  await loginByUi(page, demoUsername, demoPassword, /从真实业务流程理解这套 WMS/)
-  await skipTour(page)
+  await loginDemo(page)
   await page.goto('/demo/performance')
 
   const runExperiment = async (): Promise<PickingExperimentResult> => {
@@ -313,8 +306,7 @@ test('PDA experiment prepares its own tasks on a clean demo and isolates consecu
 })
 
 test('PDA experiment does not modify an unrelated pending pick task', async ({ page }) => {
-  await loginByUi(page, demoUsername, demoPassword, /从真实业务流程理解这套 WMS/)
-  await skipTour(page)
+  await loginDemo(page)
 
   const warehouses = await requestDemoJson<PageData<WarehouseRow>>(page, 'get', '/basic/warehouses?page=1&page_size=100&keyword=WH01')
   const skus = await requestDemoJson<PageData<SkuRow>>(page, 'get', '/basic/skus?page=1&page_size=100&keyword=SKU000001')

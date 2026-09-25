@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Document, HomeFilled, Refresh, VideoPlay } from '@element-plus/icons-vue'
 import {
@@ -22,6 +22,7 @@ import {
 } from '@/utils/events'
 import { rememberDemoEvidence } from '@/utils/demoEvidence'
 
+const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 const visible = ref(false)
@@ -346,7 +347,7 @@ onBeforeUnmount(() => {
 
 <template>
   <button
-    v-if="auth.isDemo"
+    v-if="auth.isDemo && !(route.path === '/demo' && !scenarioRunning && !result)"
     class="demo-fab"
     type="button"
     aria-label="打开演示控制"
@@ -356,6 +357,17 @@ onBeforeUnmount(() => {
     <span>演示控制</span>
     <small v-if="showCountdown" class="fab-countdown">{{ remainingText }}</small>
   </button>
+
+  <div
+    v-if="auth.isDemo && route.path === '/demo' && !scenarioRunning && !result"
+    class="demo-statusbar"
+    aria-label="演示环境状态"
+  >
+    <i aria-hidden="true"></i>
+    <span>演示环境 · 闲置剩余</span>
+    <b>{{ remainingText }}</b>
+    <button type="button" @click="visible = true">演示控制</button>
+  </div>
 
   <el-drawer
     v-model="visible"
@@ -457,6 +469,44 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.demo-statusbar {
+  position: fixed;
+  right: 24px;
+  bottom: 20px;
+  z-index: 2000;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 11px;
+  border: 1px solid var(--el-border-color-light);
+  border-radius: 9px;
+  color: var(--el-text-color-secondary);
+  background: var(--el-bg-color);
+  box-shadow: var(--el-box-shadow-light);
+  font-size: 12px;
+}
+
+.demo-statusbar > i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--el-color-success);
+}
+
+.demo-statusbar b {
+  color: var(--el-text-color-primary);
+  font-family: var(--gowms-num-font);
+}
+
+.demo-statusbar button {
+  padding: 3px 7px;
+  border: 0;
+  border-radius: 6px;
+  color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
+  cursor: pointer;
+}
+
 .demo-fab {
   position: fixed;
   right: 24px;
@@ -628,7 +678,19 @@ onBeforeUnmount(() => {
   margin-left: 0;
 }
 
+@media (max-height: 760px) and (min-width: 761px) {
+  .demo-statusbar {
+    bottom: 8px;
+    padding: 6px 9px;
+  }
+}
+
 @media (max-width: 520px) {
+  .demo-statusbar {
+    right: 12px;
+    bottom: 12px;
+  }
+
   .demo-fab {
     right: 12px;
     bottom: 12px;

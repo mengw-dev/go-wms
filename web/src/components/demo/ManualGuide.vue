@@ -2,8 +2,11 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type CSSProperties } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import { getDemoActivity } from '@/api/demo'
+import type { DemoActivitySnapshot, DemoOperationLog } from '@/api/types'
 import { useAuthStore } from '@/stores/auth'
-import { GUIDE_SCENARIO_LABELS, useGuideStore } from '@/stores/guide'
+import { GUIDE_SCENARIO_LABELS, getGuideStep, resolveGuideRoute, useGuideStore } from '@/stores/guide'
+import { formatTime } from '@/utils'
 
 interface TargetRect {
   top: number
@@ -23,6 +26,10 @@ const targetRect = ref<TargetRect | null>(null)
 const viewport = ref({ width: window.innerWidth, height: window.innerHeight })
 const businessLayerOpen = ref(false)
 const actionState = ref<ActionState>('idle')
+const recordsVisible = ref(false)
+const recordsLoading = ref(false)
+const recordsError = ref('')
+const activity = ref<DemoActivitySnapshot | null>(null)
 
 let targetObserver: InstanceType<typeof window.ResizeObserver> | undefined
 let bodyObserver: InstanceType<typeof window.MutationObserver> | undefined
@@ -53,16 +60,36 @@ const completionSteps = computed(() => {
   }
   return guide.scenario ? [GUIDE_SCENARIO_LABELS[guide.scenario] + '单', '业务已完成'] : []
 })
-const orderFactLabel = computed(() => {
-  if (guide.scenario === 'outbound') return '出库单'
-  if (guide.scenario === 'stocktake') return '盘点单'
-  return '入库单'
+const businessOperations = computed(() => {
+  const operations = activity.value?.operations ?? []
+  return operations
+    .filter((item) =>
+      ['/api/v1/inbound', '/api/v1/outbound', '/api/v1/inventory', '/api/v1/tasks'].some((prefix) =>
+        item.path.startsWith(prefix),
+      ),
+    )
+    .slice(0, 20)
 })
-const taskFactLabel = computed(() => {
-  if (guide.scenario === 'outbound') return '拣货任务'
-  if (guide.scenario === 'stocktake') return '盘点任务'
-  return '上架任务'
-})
+
+function operationTitle(operation: DemoOperationLog): string {
+  const path = operation.path
+  if (path.endsWith('/submit')) return '提交单据'
+  if (path.endsWith('/approve')) return '审核并分配'
+  if (path.includes('/receive')) return '完成收货'
+  if (path.includes('/putaway')) return '完成上架'
+  if (path.includes('/inbound/orders') && operation.method === 'POST') return '创建入库单'
+  if (path.includes('/outbound/orders') && operation.method === 'POST') return '创建出库单'
+  if (path.includes('/pick')) return '完成拣货'
+  if (path.includes('/inventory')) return '查询库存与流水'
+  if (path.includes('/tasks')) return '查询任务'
+  return operation.method + ' 业务操作'
+}
+
+function httpStatusType(status: number): 'success' | 'warning' | 'danger' {
+  if (status >= 200 && status < 300) return 'success'
+  if (status >= 400 && status < 500) return 'warning'
+  return 'danger'
+}
 
 const highlightStyle = computed<CSSProperties>(() => {
   const rect = targetRect.value
@@ -77,7 +104,7 @@ const highlightStyle = computed<CSSProperties>(() => {
 })
 
 const panelStyle = computed<CSSProperties>(() => {
-  const panelWidth = Math.min(360, viewport.value.width - 24)
+  const panelWidth = Math.min(320, viewport.value.width - 24)
   if (viewport.value.width <= 640) {
     return {
       left: '12px',
@@ -91,19 +118,33 @@ const panelStyle = computed<CSSProperties>(() => {
   if (!rect) {
     return {
       left: '50%',
-      top: '24px',
+      top: '112px',
       width: `${panelWidth}px`,
       transform: 'translateX(-50%)',
     }
   }
 
-  const estimatedHeight = 310
-  const gap = 14
-  const left = Math.min(Math.max(12, rect.left), viewport.value.width - panelWidth - 12)
+  const estimatedHeight = 188
+  const gap = 12
+  const edge = 12
+  const minTop = 112
+  let left = Math.min(Math.max(edge, rect.left), viewport.value.width - panelWidth - edge)
   let top = rect.top + rect.height + gap
-  if (top + estimatedHeight > viewport.value.height - 12) {
+
+  if (top + estimatedHeight > viewport.value.height - edge) {
     const above = rect.top - estimatedHeight - gap
-    top = above >= 12 ? above : Math.max(12, viewport.value.height - estimatedHeight - 12)
+    if (above >= minTop) {
+      top = above
+    } else if (rect.left + rect.width + panelWidth + gap <= viewport.value.width - edge) {
+      left = rect.left + rect.width + gap
+      top = Math.min(Math.max(minTop, rect.top), viewport.value.height - estimatedHeight - edge)
+    } else if (rect.left - panelWidth - gap >= edge) {
+      left = rect.left - panelWidth - gap
+      top = Math.min(Math.max(minTop, rect.top), viewport.value.height - estimatedHeight - edge)
+    } else {
+      left = Math.min(Math.max(edge, rect.left), viewport.value.width - panelWidth - edge)
+      top = Math.max(minTop, viewport.value.height - estimatedHeight - edge)
+    }
   }
 
   return {
@@ -277,16 +318,26 @@ function onKeydownCapture(event: KeyboardEvent): void {
   if (event.key === 'Escape' && hasBusinessLayer()) cancellationClicked = true
 }
 
+function resolvedCurrentStepRoute(): string {
+  if (!guide.scenario) return ''
+  const current = getGuideStep(guide.scenario, guide.currentStep)
+  if (!current) return ''
+  return resolveGuideRoute(current.route, guide.orderId, guide.orderNo)
+}
+
 async function nextStep(): Promise<void> {
   if (!guide.next()) return
-  if (!guide.completed && guide.currentStepRoute) {
-    await router.push(guide.currentStepRoute)
+  await nextTick()
+  const targetRoute = resolvedCurrentStepRoute()
+  if (!guide.completed && targetRoute) {
+    await router.push(targetRoute)
   }
 }
 
 async function previousStep(): Promise<void> {
-  if (!guide.previous() || !guide.currentStepRoute) return
-  await router.push(guide.currentStepRoute)
+  if (!guide.previous()) return
+  const targetRoute = resolvedCurrentStepRoute()
+  if (targetRoute) await router.push(targetRoute)
 }
 
 async function restartGuide(): Promise<void> {
@@ -321,6 +372,19 @@ function manualEvidencePath(): string {
   if (guide.startedAt) params.set('started_at', new Date(guide.startedAt).toISOString())
   params.set('completed_at', new Date().toISOString())
   return `/demo/activity?${params.toString()}`
+}
+
+async function openRecords(): Promise<void> {
+  recordsVisible.value = true
+  recordsLoading.value = true
+  recordsError.value = ''
+  try {
+    activity.value = await getDemoActivity(30)
+  } catch {
+    recordsError.value = '操作记录暂时无法加载，请稍后重试。'
+  } finally {
+    recordsLoading.value = false
+  }
 }
 
 function repositionGuide(): void {
@@ -359,6 +423,14 @@ watch(
     }
     await nextTick()
     scheduleTargetLocate(true)
+  },
+  { immediate: true },
+)
+
+watch(
+  [visible, () => guide.completed],
+  ([isVisible, completed]) => {
+    document.body.classList.toggle('manual-guide-active', isVisible && !completed)
   },
   { immediate: true },
 )
@@ -419,216 +491,283 @@ onBeforeUnmount(() => {
   if (locateFrame !== undefined) window.cancelAnimationFrame(locateFrame)
   targetObserver?.disconnect()
   stopBodyObserver()
+  document.body.classList.remove('manual-guide-active')
 })
 </script>
 
 <template>
   <Teleport to="body">
     <div v-if="visible" class="manual-guide" aria-live="polite">
-      <template v-if="guide.completed">
-        <section
-          class="guide-panel guide-panel--complete"
-          style="position: fixed"
-          :style="completedPanelStyle"
-          aria-label="手动业务引导完成"
-        >
-          <span class="guide-kicker">{{ scenarioLabel }}手动引导</span>
-          <h2>手动流程已完成</h2>
-          <div class="guide-complete-flow">
-            <template v-for="(item, index) in completionSteps" :key="item">
-              <span>{{ item }}</span>
-              <b v-if="index < completionSteps.length - 1">→</b>
-            </template>
-          </div>
-          <p>{{ guide.lastOutcome || '真实业务操作已完成，可以继续在业务页面核对结果。' }}</p>
-          <div class="guide-complete-facts">
-            <span v-if="guide.orderNo || guide.orderId">{{ orderFactLabel }}：{{ guide.orderNo || guide.orderId }}</span>
-            <span v-if="guide.taskNo || guide.taskId">{{ taskFactLabel }}：{{ guide.taskNo || guide.taskId }}</span>
-            <span v-for="fact in guide.facts" :key="fact.label">{{ fact.label }}：{{ fact.value }}</span>
-          </div>
-          <div class="guide-complete-actions">
-            <el-button size="small" @click="completeNavigate(manualEvidencePath())">查看业务证据</el-button>
-            <el-button size="small" :disabled="!guide.orderId" @click="completeNavigate(completedOrderPath())">
-              查看业务对象
-            </el-button>
-            <el-button size="small" type="primary" @click="completeNavigate('/demo')">返回演示中心</el-button>
-          </div>
-          <div class="guide-actions">
-            <el-button @click="restartGuide">重新开始</el-button>
-            <el-button type="primary" @click="exitGuide">退出引导</el-button>
-          </div>
-        </section>
-      </template>
+      <section v-if="guide.active && step" class="guide-strip" aria-label="手动演示状态">
+        <div class="guide-strip__mode">
+          <i aria-hidden="true"></i>
+          <span>演示模式</span>
+          <b>{{ scenarioLabel }}流程</b>
+        </div>
+        <div class="guide-strip__progress">
+          <span>第 {{ guide.currentStepNumber }} / {{ guide.totalSteps }} 步</span>
+          <i aria-hidden="true"></i>
+          <b>{{ step.title }}</b>
+          <small v-if="guide.lastOutcome">当前操作已完成</small>
+        </div>
+        <div class="guide-strip__actions">
+          <el-button link type="primary" @click="openRecords">查看操作记录</el-button>
+          <el-button link type="danger" @click="exitGuide">退出演示</el-button>
+        </div>
+      </section>
+
+      <section
+        v-if="guide.completed"
+        class="guide-panel guide-panel--complete"
+        style="position: fixed"
+        :style="completedPanelStyle"
+        aria-label="手动业务引导完成"
+      >
+        <span class="guide-kicker">{{ scenarioLabel }}手动引导</span>
+        <h2>手动流程已完成</h2>
+        <div class="guide-complete-flow">
+          <template v-for="(item, index) in completionSteps" :key="item">
+            <span>{{ item }}</span>
+            <b v-if="index < completionSteps.length - 1">→</b>
+          </template>
+        </div>
+        <p>{{ guide.lastOutcome || '真实业务操作已完成，可以继续核对结果。' }}</p>
+        <div class="guide-complete-facts">
+          <span v-if="guide.orderNo || guide.orderId">{{ guide.scenario === 'outbound' ? '出库单' : '入库单' }}：{{ guide.orderNo || guide.orderId }}</span>
+          <span v-if="guide.taskNo || guide.taskId">{{ guide.scenario === 'outbound' ? '拣货任务' : '上架任务' }}：{{ guide.taskNo || guide.taskId }}</span>
+          <span v-for="fact in guide.facts" :key="fact.label">{{ fact.label }}：{{ fact.value }}</span>
+        </div>
+        <div class="guide-complete-actions">
+          <el-button size="small" @click="completeNavigate(manualEvidencePath())">查看业务证据</el-button>
+          <el-button size="small" :disabled="!guide.orderId" @click="completeNavigate(completedOrderPath())">查看业务对象</el-button>
+          <el-button size="small" type="primary" @click="completeNavigate('/demo')">返回演示中心</el-button>
+        </div>
+        <div class="guide-actions">
+          <el-button @click="restartGuide">重新开始</el-button>
+          <el-button type="primary" @click="exitGuide">退出引导</el-button>
+        </div>
+      </section>
 
       <template v-else-if="contentVisible">
-        <div v-if="!targetRect" class="guide-shade"></div>
-        <div v-else class="guide-highlight" :style="highlightStyle"></div>
+        <div v-if="targetRect" class="guide-highlight" :style="highlightStyle"></div>
 
         <section
           v-if="step"
-          class="guide-panel"
+          class="guide-panel guide-bubble"
           style="position: fixed"
           :style="panelStyle"
           aria-label="手动业务引导"
         >
-          <div class="guide-head">
-            <span class="guide-kicker">{{ scenarioLabel }}手动引导</span>
-            <strong>第 {{ guide.currentStepNumber }} / {{ guide.totalSteps }} 步</strong>
+          <div class="guide-bubble__head">
+            <div>
+              <span class="guide-kicker">{{ scenarioLabel }}流程</span>
+              <b>{{ step.title }}</b>
+            </div>
+            <span>第 {{ guide.currentStepNumber }} / {{ guide.totalSteps }} 步</span>
           </div>
-          <h2>{{ step.title }}</h2>
           <p>{{ step.description }}</p>
 
           <div v-if="guide.mismatch" class="guide-mismatch" role="alert">
-            <b>当前业务状态与引导不一致</b>
+            <b>当前状态与引导不一致</b>
             <span>{{ guide.mismatch }}</span>
             <div class="guide-mismatch-actions">
-              <el-button size="small" @click="repositionGuide">重新定位当前步骤</el-button>
+              <el-button size="small" @click="repositionGuide">重新定位</el-button>
               <el-button size="small" @click="restartGuide">重新开始</el-button>
-              <el-button size="small" type="danger" plain @click="exitGuide">退出引导</el-button>
             </div>
           </div>
 
           <template v-else>
-            <div v-if="guide.lastOutcome" class="guide-outcome">
-              <b>刚才发生了什么</b>
-              <span>{{ guide.lastOutcome }}</span>
-            </div>
+            <div v-if="guide.lastOutcome" class="guide-outcome">{{ guide.lastOutcome }}</div>
             <div v-else class="guide-waiting">
-              <span class="guide-waiting-dot"></span>
-              请先在页面中完成当前真实业务操作，下一步会在结果确认后解锁。
+              <i aria-hidden="true"></i>
+              <span>请完成当前高亮的真实业务操作，成功后会解锁下一步。</span>
             </div>
 
             <div class="guide-actions">
               <div>
                 <el-button v-if="guide.canGoPrevious" size="small" @click="previousStep">上一步</el-button>
-                <el-button v-if="guide.canAdvance" size="small" type="primary" @click="nextStep">
-                  下一步
-                </el-button>
+                <el-button v-if="guide.canAdvance" size="small" type="primary" @click="nextStep">下一步</el-button>
               </div>
-              <div>
-                <el-button link @click="skipGuide">跳过引导</el-button>
-                <el-button link type="danger" @click="exitGuide">退出引导</el-button>
-              </div>
+              <el-button link @click="skipGuide">跳过</el-button>
             </div>
           </template>
         </section>
       </template>
     </div>
+
+    <el-drawer
+      v-model="recordsVisible"
+      class="guide-records-drawer"
+      title="本次操作记录"
+      size="min(440px, 92vw)"
+      append-to-body
+    >
+      <div v-loading="recordsLoading" class="guide-records">
+        <el-alert v-if="recordsError" :title="recordsError" type="warning" :closable="false" show-icon />
+        <template v-else>
+          <article v-for="operation in businessOperations" :key="String(operation.id)" class="guide-record">
+            <div>
+              <b>{{ operationTitle(operation) }}</b>
+              <span>{{ formatTime(operation.created_at) }}</span>
+            </div>
+            <el-tag :type="httpStatusType(operation.status)" size="small">{{ operation.status }}</el-tag>
+          </article>
+          <el-empty v-if="!recordsLoading && businessOperations.length === 0" description="本次还没有业务操作记录" />
+        </template>
+      </div>
+    </el-drawer>
   </Teleport>
 </template>
 
 <style scoped>
 .manual-guide {
   position: relative;
-  z-index: 2600;
 }
 
-.guide-shade {
+.guide-strip {
   position: fixed;
-  inset: 0;
-  z-index: 2600;
-  pointer-events: none;
-  background: rgba(8, 15, 28, 0.58);
+  top: 60px;
+  right: 0;
+  left: 220px;
+  z-index: 1900;
+  height: 48px;
+  padding: 0 18px;
+  border-bottom: 1px solid var(--el-border-color-light);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  color: var(--el-text-color-regular);
+  background: color-mix(in srgb, var(--el-bg-color-overlay) 96%, transparent);
+  box-shadow: 0 2px 8px rgba(31, 41, 55, 0.05);
+  backdrop-filter: blur(8px);
+}
+
+.guide-strip__mode,
+.guide-strip__progress,
+.guide-strip__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.guide-strip__mode i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--el-color-primary);
+  box-shadow: 0 0 0 4px var(--el-color-primary-light-9);
+}
+
+.guide-strip__mode span,
+.guide-strip__progress span,
+.guide-strip__progress small {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+
+.guide-strip__progress i {
+  width: 1px;
+  height: 14px;
+  background: var(--el-border-color);
+}
+
+.guide-strip__actions .el-button {
+  margin-left: 0;
 }
 
 .guide-highlight {
   position: fixed;
-  z-index: 2601;
+  z-index: 1800;
   pointer-events: none;
   border: 2px solid var(--el-color-primary);
-  border-radius: 10px;
-  box-shadow:
-    0 0 0 9999px rgba(8, 15, 28, 0.58),
-    0 0 0 5px color-mix(in srgb, var(--el-color-primary) 24%, transparent);
+  border-radius: 9px;
+  background: transparent;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--el-color-primary) 18%, transparent);
   transition: top 0.16s ease, left 0.16s ease, width 0.16s ease, height 0.16s ease;
 }
 
 .guide-panel {
-  z-index: 2602;
+  z-index: 1810;
   pointer-events: none;
-  padding: 18px;
   border: 1px solid var(--el-border-color-light);
-  border-radius: 14px;
+  border-radius: 12px;
   color: var(--el-text-color-primary);
   background: var(--el-bg-color-overlay);
-  box-shadow: 0 18px 48px rgba(8, 15, 28, 0.28);
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.14);
 }
 
-.guide-panel--complete {
-  border-color: var(--el-color-success-light-5);
-  background: var(--el-bg-color-overlay);
+.guide-bubble {
+  padding: 14px;
 }
 
-.guide-head {
+.guide-bubble__head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
 }
 
+.guide-bubble__head > div {
+  min-width: 0;
+}
+
+.guide-bubble__head b {
+  display: block;
+  margin-top: 3px;
+  font-size: 16px;
+}
+
+.guide-bubble__head > span {
+  flex-shrink: 0;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+
 .guide-kicker {
   color: var(--el-color-primary);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.04em;
 }
 
-.guide-head strong {
+.guide-panel > p {
+  margin: 8px 0 0;
   color: var(--el-text-color-secondary);
   font-size: 12px;
-  font-weight: 500;
-}
-
-.guide-panel h2 {
-  margin: 10px 0 8px;
-  font-size: 19px;
-}
-
-.guide-panel > p {
-  margin: 0;
-  color: var(--el-text-color-secondary);
-  font-size: 13px;
-  line-height: 1.75;
+  line-height: 1.6;
 }
 
 .guide-waiting,
 .guide-outcome,
 .guide-mismatch {
-  margin-top: 14px;
-  padding: 11px 12px;
-  border-radius: 9px;
+  margin-top: 10px;
+  padding: 9px 10px;
+  border-radius: 8px;
   font-size: 12px;
-  line-height: 1.65;
+  line-height: 1.55;
 }
 
 .guide-waiting {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
+  gap: 7px;
   color: var(--el-text-color-secondary);
   background: var(--el-fill-color-light);
 }
 
-.guide-waiting-dot {
-  width: 7px;
-  height: 7px;
+.guide-waiting i {
+  width: 6px;
+  height: 6px;
   margin-top: 5px;
-  flex: 0 0 auto;
+  flex: none;
   border-radius: 50%;
   background: var(--el-color-warning);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--el-color-warning) 14%, transparent);
 }
 
 .guide-outcome {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  color: var(--el-text-color-regular);
-  background: var(--el-color-success-light-9);
-}
-
-.guide-outcome b {
   color: var(--el-color-success);
+  background: var(--el-color-success-light-9);
 }
 
 .guide-mismatch {
@@ -643,21 +782,30 @@ onBeforeUnmount(() => {
   color: var(--el-color-danger);
 }
 
-.guide-mismatch-actions {
+.guide-mismatch-actions,
+.guide-complete-actions,
+.guide-actions {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 8px;
+}
+
+.guide-mismatch-actions {
   margin-top: 5px;
 }
 
 .guide-actions {
-  display: flex;
-  align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  margin-top: 16px;
-  padding-top: 13px;
+  margin-top: 12px;
+  padding-top: 10px;
   border-top: 1px solid var(--el-border-color-lighter);
+}
+
+.guide-actions > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .guide-panel button {
@@ -670,12 +818,21 @@ onBeforeUnmount(() => {
   margin-left: 0;
 }
 
+.guide-panel--complete {
+  padding: 16px;
+}
+
+.guide-panel--complete h2 {
+  margin: 6px 0 0;
+  font-size: 18px;
+}
+
 .guide-complete-flow {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 5px;
-  margin-top: 12px;
+  margin-top: 10px;
   color: var(--el-text-color-regular);
   font-size: 12px;
   font-weight: 600;
@@ -686,39 +843,77 @@ onBeforeUnmount(() => {
   font-weight: 400;
 }
 
+.guide-complete-actions {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--el-border-color-lighter);
+}
+
+.guide-records {
+  min-height: 120px;
+}
+
+.guide-record {
+  padding: 11px 0;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.guide-record:last-child {
+  border-bottom: 0;
+}
+
+.guide-record > div {
+  min-width: 0;
+}
+
+.guide-record b,
+.guide-record span {
+  display: block;
+}
+
+.guide-record b {
+  font-size: 13px;
+}
+
+.guide-record span {
+  margin-top: 3px;
+  color: var(--el-text-color-secondary);
+  font-size: 11px;
+}
+
+@media (max-width: 768px) {
+  .guide-strip {
+    left: 0;
+    padding: 0 12px;
+  }
+
+  .guide-strip__progress small,
+  .guide-strip__mode span {
+    display: none;
+  }
+
+  .guide-panel {
+    max-height: 54vh;
+    overflow-y: auto;
+  }
+}
 .guide-complete-facts {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px 14px;
-  margin-top: 12px;
+  gap: 5px 12px;
+  margin-top: 10px;
   color: var(--el-text-color-regular);
   font-size: 12px;
 }
 
-.guide-complete-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 14px;
-  padding-top: 13px;
-  border-top: 1px solid var(--el-border-color-lighter);
-}
+</style>
 
-@media (max-width: 640px) {
-  .guide-panel {
-    max-height: 58vh;
-    overflow-y: auto;
-  }
-
-  .guide-actions {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .guide-actions > div {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-  }
+<style>
+body.manual-guide-active .main {
+  padding-top: 64px;
 }
 </style>

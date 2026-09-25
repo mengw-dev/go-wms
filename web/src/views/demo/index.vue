@@ -1,740 +1,850 @@
 <script setup lang="ts">
-import { reactive, ref, type Component } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import {
-  ArrowRight,
-  Document,
-  Download,
-  Link,
-  Monitor,
-  Tickets,
-  Upload,
-  VideoPlay,
-} from '@element-plus/icons-vue'
-import { releaseDemoSession, resetDemoData } from '@/api/demo'
-import DemoTour from '@/components/demo/DemoTour.vue'
-import { useAuthStore } from '@/stores/auth'
+import { ArrowRight, VideoPlay } from '@element-plus/icons-vue'
 import { useGuideStore, type GuideScenario } from '@/stores/guide'
-import { runDemoScenarioInConsole } from '@/utils/events'
+import { onDataChanged, runDemoScenarioInConsole } from '@/utils/events'
+import { readDemoEvidence } from '@/utils/demoEvidence'
 
-interface ScenarioCard {
-  key: GuideScenario
+type AutomaticScenario = GuideScenario | 'full'
+type ManualTarget = 'inbound' | 'outbound' | 'inventory'
+
+interface BusinessStep {
+  key: string
+  name: string
+  short: string
+  description: string
+  object: string
+  status: string
+  quantity: string
+  evidence: string
+  actionLabel: string
+  manualTarget: ManualTarget
+  automaticScenario: GuideScenario
+}
+
+interface EngineeringCheck {
+  key: 'allocation' | 'picking' | 'import'
   title: string
   description: string
-  icon: Component
+  tag: string
+  action: string
 }
 
 const router = useRouter()
-const auth = useAuthStore()
 const guide = useGuideStore()
+const selectedStep = ref(0)
+const mechanismVisible = ref(false)
+const recentEvidence = ref(readDemoEvidence())
+let stopDataChanged: (() => void) | undefined
 
-const resetLoading = ref(false)
-const exitLoading = ref(false)
-const scenarioDialog = reactive<{
-  visible: boolean
-  scenario: GuideScenario | null
-  title: string
-}>({
-  visible: false,
-  scenario: null,
-  title: '',
-})
-
-const scenarios: ScenarioCard[] = [
+const businessSteps: BusinessStep[] = [
   {
-    key: 'inbound',
-    title: '入库流程',
-    description: '从创建入库单、收货到上架，完成一批货进入库存的真实闭环。',
-    icon: Download,
+    key: 'inbound-order',
+    name: '入库单',
+    short: '创建与审核',
+    description: '创建入库单并完成审核，形成可执行的收货任务。',
+    object: '入库单（执行后生成）',
+    status: '等待执行',
+    quantity: '按计划入库',
+    evidence: '操作记录与业务单据',
+    actionLabel: '进入入库页面',
+    manualTarget: 'inbound',
+    automaticScenario: 'inbound',
   },
   {
-    key: 'outbound',
-    title: '出库流程',
-    description: '从出库审核、FIFO 分配到拣货发货，观察库存如何被真实扣减。',
-    icon: Upload,
+    key: 'inbound-receive',
+    name: '收货上架',
+    short: '收货与上架',
+    description: '按实收数量完成收货，上架后写入库存并生成库存流水。',
+    object: '收货 / 上架任务',
+    status: '等待前序步骤',
+    quantity: '按实收数量增加',
+    evidence: '任务记录与库存流水',
+    actionLabel: '进入入库页面',
+    manualTarget: 'inbound',
+    automaticScenario: 'inbound',
   },
   {
-    key: 'stocktake',
-    title: '库存盘点',
-    description: '生成账面快照、录入实盘差异并审核调整，核对最终库存状态。',
-    icon: Tickets,
+    key: 'inventory-ready',
+    name: '库存形成',
+    short: '库存与流水',
+    description: '收货结果形成可用库存，可继续核对库存数量和流水。',
+    object: '库存与库存流水',
+    status: '等待前序步骤',
+    quantity: '现存量与可用量同步',
+    evidence: '库存流水',
+    actionLabel: '查看库存页面',
+    manualTarget: 'inventory',
+    automaticScenario: 'inbound',
+  },
+  {
+    key: 'outbound-order',
+    name: '出库单',
+    short: '审核与分配',
+    description: '审核出库单，按 FIFO 规则分配库存并生成拣货任务。',
+    object: '出库单与拣货任务',
+    status: '等待执行',
+    quantity: '按分配数量扣减可用量',
+    evidence: '库存流水与任务记录',
+    actionLabel: '进入出库页面',
+    manualTarget: 'outbound',
+    automaticScenario: 'outbound',
+  },
+  {
+    key: 'outbound-ship',
+    name: '拣货发货',
+    short: '任务与发货',
+    description: '拣货任务完成后发货，形成完整出库闭环和操作记录。',
+    object: '拣货任务与发货单据',
+    status: '等待前序步骤',
+    quantity: '按实际拣货数量发货',
+    evidence: '任务记录与发货流水',
+    actionLabel: '进入出库页面',
+    manualTarget: 'outbound',
+    automaticScenario: 'outbound',
   },
 ]
 
-function openScenarioDialog(scenario: ScenarioCard): void {
-  scenarioDialog.scenario = scenario.key
-  scenarioDialog.title = scenario.title
-  scenarioDialog.visible = true
+const engineeringChecks: EngineeringCheck[] = [
+  {
+    key: 'allocation',
+    title: '并发库存分配',
+    description: '验证 FIFO 分配、库存边界和防超卖。',
+    tag: '并发 · FIFO · 防超卖',
+    action: '配置并运行',
+  },
+  {
+    key: 'picking',
+    title: '拣货作业验证',
+    description: '观察并发拣货和重复扫码拦截。',
+    tag: '并发拣货 · 重复扫码',
+    action: '配置并运行',
+  },
+  {
+    key: 'import',
+    title: '异步导入可靠性',
+    description: '查看任务恢复、重试和行级处理。',
+    tag: '异步任务 · 可恢复',
+    action: '查看机制',
+  },
+]
+
+const currentStep = computed(() => businessSteps[selectedStep.value] ?? businessSteps[0])
+const previewSteps = computed(() => [businessSteps[0], businessSteps[1], businessSteps[3], businessSteps[4]])
+const currentEvidence = computed(() => {
+  const context = recentEvidence.value
+  if (!context) return null
+
+  const labels: Record<string, string[]> = {
+    'inbound-order': ['入库单'],
+    'inbound-receive': ['收货', '上架'],
+    'inventory-ready': ['库存'],
+    'outbound-order': ['出库单', 'FIFO', '分配'],
+    'outbound-ship': ['拣货', '发货'],
+  }
+  const candidates = labels[currentStep.value.key] ?? []
+  return (context.evidence ?? []).find((item) => candidates.some((label) => item.label.includes(label))) ?? null
+})
+const currentObject = computed(() => {
+  if (currentEvidence.value) return `${currentEvidence.value.label}：${currentEvidence.value.value}`
+  return currentStep.value.object
+})
+const currentStatus = computed(() => (recentEvidence.value ? '已有执行记录' : currentStep.value.status))
+
+function startAutomaticDemo(scenario: AutomaticScenario): void {
+  runDemoScenarioInConsole(scenario)
 }
 
-function startFullDemo(): void {
-  runDemoScenarioInConsole('full')
+function startSelectedAutomaticDemo(): void {
+  startAutomaticDemo(currentStep.value.automaticScenario)
 }
 
-function startAutomaticScenario(): void {
-  if (!scenarioDialog.scenario) return
-  runDemoScenarioInConsole(scenarioDialog.scenario)
-  scenarioDialog.visible = false
-}
-
-function startManualGuide(): void {
-  if (!scenarioDialog.scenario) return
-  const firstStep = guide.start(scenarioDialog.scenario)
-  scenarioDialog.visible = false
+function startManualExperience(scenario: Extract<GuideScenario, 'inbound' | 'outbound'>): void {
+  const firstStep = guide.start(scenario)
   void router.push(firstStep.route)
 }
 
-function goActivity(): void {
+function startSelectedManualDemo(): void {
+  if (currentStep.value.manualTarget === 'inventory') {
+    void router.push('/inventory')
+    return
+  }
+  startManualExperience(currentStep.value.manualTarget)
+}
+
+function openRecords(): void {
   void router.push('/demo/activity')
 }
 
-function goPerformance(): void {
+function goPerformance(section?: string): void {
+  if (section) {
+    void router.push({ path: '/demo/performance', query: { section } })
+    return
+  }
   void router.push('/demo/performance')
 }
 
-function openOverview(): void {
-  window.open('/overview.html', '_blank', 'noopener,noreferrer')
-}
-
-function openSource(): void {
-  window.open('https://github.com/mengw-dev/go-wms', '_blank', 'noopener,noreferrer')
-}
-
-async function resetData(): Promise<void> {
-  try {
-    await ElMessageBox.confirm(
-      '将恢复仓库、货品、库存和单据到初始演示数据，确定继续吗？',
-      '重置演示数据',
-      { type: 'warning', confirmButtonText: '确定重置', cancelButtonText: '取消' },
-    )
-  } catch {
+function openEngineeringCheck(check: EngineeringCheck): void {
+  if (check.key === 'import') {
+    mechanismVisible.value = true
     return
   }
-  resetLoading.value = true
-  try {
-    await resetDemoData()
-    ElMessage.success('演示数据已恢复为初始状态')
-  } finally {
-    resetLoading.value = false
-  }
+  goPerformance(check.key)
 }
 
-async function releaseAndExit(): Promise<void> {
-  try {
-    await ElMessageBox.confirm(
-      '退出后当前演示数据会立即恢复初始状态，确定退出吗？',
-      '退出演示',
-      { type: 'warning', confirmButtonText: '退出并重置', cancelButtonText: '继续演示' },
-    )
-  } catch {
-    return
-  }
-  exitLoading.value = true
-  try {
-    await releaseDemoSession().catch(() => undefined)
-    auth.clear()
-    await router.push('/login')
-  } finally {
-    exitLoading.value = false
-  }
-}
+onMounted(() => {
+  recentEvidence.value = readDemoEvidence()
+  stopDataChanged = onDataChanged(() => {
+    recentEvidence.value = readDemoEvidence()
+  })
+})
 
-async function onSessionCommand(command: string): Promise<void> {
-  if (resetLoading.value || exitLoading.value) return
-  if (command === 'reset') await resetData()
-  if (command === 'exit') await releaseAndExit()
-}
+onUnmounted(() => stopDataChanged?.())
 </script>
 
 <template>
   <div class="demo-home">
-    <section class="demo-hero" data-tour="demo-session">
-      <div class="hero-topline">
-        <span class="hero-kicker">WMS 演示中心</span>
-        <div class="session-tools">
-          <span class="session-ready"><i></i>演示环境已就绪</span>
-          <el-dropdown trigger="click" @command="onSessionCommand">
-            <el-button text :disabled="resetLoading || exitLoading">会话操作</el-button>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item command="reset" :disabled="resetLoading || exitLoading">
-                  重置演示数据
-                </el-dropdown-item>
-                <el-dropdown-item command="exit" divided :disabled="resetLoading || exitLoading">
-                  退出演示
-                </el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
+    <section class="app-card home-hero">
+      <div class="hero-copy">
+        <span class="eyebrow">推荐体验 · 约 3 分钟</span>
+        <h1>WMS 业务闭环</h1>
+        <p>从入库、库存到出库，查看真实单据、库存变化与操作记录。</p>
+        <div class="hero-actions">
+          <el-button type="primary" :icon="VideoPlay" @click="startAutomaticDemo('full')">
+            开始自动演示
+          </el-button>
+          <el-button @click="startManualExperience('inbound')">手动体验</el-button>
+        </div>
+        <div class="proof-line" aria-label="演示环境能力">
+          <span>真实业务接口</span>
+          <span>独立演示数据</span>
+          <span>操作记录可追溯</span>
         </div>
       </div>
 
-      <div class="hero-copy" data-tour="complete-flow">
-        <h1>用一个真实业务闭环，看懂这套 WMS</h1>
-        <p>
-          从入库、库存到出库和盘点，所有步骤都调用真实业务 Service。完成后可以继续查看单据、任务、
-          库存变化和技术实现。
-        </p>
-        <div class="hero-flow" aria-label="完整业务闭环">
-          <span>入库</span>
-          <ArrowRight />
-          <span>库存</span>
-          <ArrowRight />
-          <span>出库</span>
-          <ArrowRight />
-          <span>盘点</span>
+      <aside class="hero-side">
+        <h2>你将看到什么</h2>
+        <p>选择业务步骤，右侧会显示对应说明、单据和操作记录。</p>
+        <div class="preview-flow" aria-label="业务闭环预览">
+          <template v-for="(step, index) in previewSteps" :key="step.key">
+            <span class="preview-node">
+              <b>{{ String(index + 1).padStart(2, '0') }}</b>
+              {{ step.name }}
+            </span>
+            <i v-if="index < previewSteps.length - 1" aria-hidden="true">→</i>
+          </template>
         </div>
-        <el-button
-          class="primary-cta"
-          type="primary"
-          size="large"
-          :icon="VideoPlay"
-          @click="startFullDemo"
-        >
-          开始 3 分钟演示
-        </el-button>
-        <small>一键执行完整闭环，过程与结果均来自真实后端。</small>
+      </aside>
+    </section>
+
+    <section class="app-card flow-section">
+      <div class="section-head">
+        <div>
+          <h2>业务流程</h2>
+          <p>点击流程节点查看说明，也可以进入真实业务页面</p>
+        </div>
+        <span>本次演示 · 5 个关键步骤</span>
+      </div>
+
+      <div class="flow-layout">
+        <div class="flow-panel">
+          <div class="flow-strip" role="tablist" aria-label="业务流程步骤">
+            <template v-for="(step, index) in businessSteps" :key="step.key">
+              <button
+                type="button"
+                class="flow-step"
+                :class="{ active: selectedStep === index }"
+                role="tab"
+                :aria-selected="selectedStep === index"
+                @click="selectedStep = index"
+              >
+                <span>{{ String(index + 1).padStart(2, '0') }}</span>
+                <b>{{ step.name }}</b>
+                <small>{{ step.short }}</small>
+              </button>
+              <i v-if="index < businessSteps.length - 1" class="flow-arrow" aria-hidden="true">→</i>
+            </template>
+          </div>
+          <div class="flow-meta">
+            <b>真实业务链路</b>
+            <i>·</i>
+            <span>单据、库存、任务和流水都会留下记录</span>
+          </div>
+        </div>
+
+        <article class="detail-panel" aria-live="polite">
+          <div class="detail-head">
+            <div>
+              <span>当前步骤</span>
+              <h3>{{ currentStep.name }}</h3>
+            </div>
+            <el-tag :type="recentEvidence ? 'success' : 'info'" effect="plain">{{ currentStatus }}</el-tag>
+          </div>
+          <p>{{ currentStep.description }}</p>
+          <dl class="detail-lines">
+            <div>
+              <dt>关联对象</dt>
+              <dd>{{ currentObject }}</dd>
+            </div>
+            <div>
+              <dt>数量变化</dt>
+              <dd>{{ currentStep.quantity }}</dd>
+            </div>
+            <div>
+              <dt>证据</dt>
+              <dd>{{ currentStep.evidence }}</dd>
+            </div>
+          </dl>
+          <div class="detail-actions">
+            <el-button size="small" @click="startSelectedManualDemo">
+              {{ currentStep.actionLabel }}
+            </el-button>
+            <el-button size="small" @click="startSelectedAutomaticDemo">自动演示</el-button>
+            <el-button size="small" text type="primary" @click="openRecords">查看记录</el-button>
+          </div>
+        </article>
       </div>
     </section>
 
-    <section class="home-section business-section">
-      <div class="section-heading">
+    <section class="app-card engineering-section">
+      <div class="section-head">
         <div>
-          <span>核心业务</span>
-          <h2>选择一项业务开始体验</h2>
+          <h2>工程验证</h2>
+          <p>点击卡片后配置参数，结果以简洁方式呈现</p>
         </div>
-        <p>每项业务只保留一个入口，再选择自动演示或亲自操作。</p>
+        <el-button link type="primary" @click="goPerformance()">查看全部 →</el-button>
       </div>
 
-      <div class="scenario-grid">
-        <article v-for="scenario in scenarios" :key="scenario.key" class="scenario-card">
-          <div class="scenario-icon">
-            <component :is="scenario.icon" />
+      <div class="engineering-grid">
+        <article v-for="check in engineeringChecks" :key="check.key" class="app-card engineering-card">
+          <div>
+            <h3>{{ check.title }}</h3>
+            <p>{{ check.description }}</p>
+            <span>{{ check.tag }}</span>
           </div>
-          <h3>{{ scenario.title }}</h3>
-          <p>{{ scenario.description }}</p>
-          <el-button type="primary" plain @click="openScenarioDialog(scenario)">
-            开始体验
-            <ArrowRight />
+          <el-button text type="primary" @click="openEngineeringCheck(check)">
+            {{ check.action }} <ArrowRight />
           </el-button>
         </article>
       </div>
     </section>
 
-    <section class="home-section capability-section">
-      <div class="section-heading">
-        <div>
-          <span>项目能力</span>
-          <h2>不只是页面演示</h2>
-        </div>
-      </div>
-
-      <ul class="capability-grid">
-        <li>
-          <span>01</span>
-          <b>真实业务 Service</b>
-          <p>自动流程复用现有入库、出库、库存和盘点业务能力。</p>
-        </li>
-        <li>
-          <span>02</span>
-          <b>独立演示租户</b>
-          <p>访客使用独立演示账号，不会接触普通业务数据。</p>
-        </li>
-        <li>
-          <span>03</span>
-          <b>结果可追溯</b>
-          <p>执行后可核对单据、任务状态、库存流水和接口记录。</p>
-        </li>
-        <li>
-          <span>04</span>
-          <b>库存状态可核对</b>
-          <p>现存量、可用量和分配量均可在业务页面继续验证。</p>
-        </li>
-      </ul>
-    </section>
-
-    <section class="home-section deep-section" data-tour="demo-project">
-      <div class="section-heading">
-        <div>
-          <span>深入查看</span>
-          <h2>需要继续了解时</h2>
-        </div>
-        <p>业务结果给第一次访问的人看，技术和源码细节留在这里继续展开。</p>
-      </div>
-
-      <div class="deep-grid">
-        <button type="button" data-tour="demo-evidence" @click="goActivity">
-          <Document />
-          <span>
-            <b>业务证据</b>
-            <small>查看单据、任务和库存变化</small>
-          </span>
-          <ArrowRight />
-        </button>
-        <button type="button" data-tour="demo-verification" @click="goPerformance">
-          <Monitor />
-          <span>
-            <b>工程验证</b>
-            <small>查看并发实验和运行状态</small>
-          </span>
-          <ArrowRight />
-        </button>
-        <button type="button" @click="openOverview">
-          <Tickets />
-          <span>
-            <b>项目概览</b>
-            <small>业务流程、架构和可靠性设计</small>
-          </span>
-          <ArrowRight />
-        </button>
-        <button type="button" @click="openSource">
-          <Link />
-          <span>
-            <b>源码仓库</b>
-            <small>查看完整实现、测试和提交记录</small>
-          </span>
-          <ArrowRight />
-        </button>
-      </div>
-    </section>
-
-    <DemoTour @complete="startFullDemo" />
+    <div class="deep-links">
+      <el-button text type="primary" @click="openRecords">业务证据 →</el-button>
+      <el-button text type="primary" @click="goPerformance()">工程验证 →</el-button>
+    </div>
 
     <el-dialog
-      v-model="scenarioDialog.visible"
-      :title="`选择体验方式：${scenarioDialog.title}`"
-      width="min(540px, 92vw)"
+      v-model="mechanismVisible"
+      title="异步导入可靠性"
+      width="min(520px, 92vw)"
       append-to-body
       :close-on-click-modal="false"
     >
-      <p class="dialog-description">
-        自动演示会直接调用真实业务接口完成闭环；亲自操作会进入业务页面，由引导协助逐步完成。
-      </p>
-      <div class="mode-grid">
-        <button type="button" class="mode-card" @click="startAutomaticScenario">
-          <VideoPlay />
-          <b>自动演示</b>
-          <span>快速看完整结果，适合首次了解。</span>
-        </button>
-        <button type="button" class="mode-card" @click="startManualGuide">
-          <ArrowRight />
-          <b>亲自操作</b>
-          <span>进入真实业务页面，按步骤完成。</span>
-        </button>
-      </div>
+      <ul class="mechanism-list">
+        <li>导入任务持久化为待处理状态，由单个后台消费者领取，避免多实例重复执行。</li>
+        <li>每次执行使用独立执行标识，旧消费者不能覆盖新任务状态。</li>
+        <li>失败行保留源文件用于排查和重试，成功任务完成后才清理文件。</li>
+        <li>每行业务写入仍受租户、校验和事务边界保护。</li>
+      </ul>
+      <template #footer>
+        <el-button @click="mechanismVisible = false">关闭</el-button>
+        <el-button type="primary" @click="openRecords">查看操作记录</el-button>
+      </template>
     </el-dialog>
   </div>
 </template>
 
 <style scoped>
 .demo-home {
-  width: min(1120px, 100%);
+  width: min(1180px, 100%);
+  height: 100%;
   margin: 0 auto;
-  padding-bottom: 32px;
+  padding-bottom: 52px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  color: var(--el-text-color-primary);
+}
+
+.home-hero,
+.flow-section,
+.engineering-section {
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 14px;
+  background: var(--el-bg-color);
+}
+
+.home-hero {
+  flex: 0 0 176px;
+  padding: 20px 22px;
   display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(340px, 0.85fr);
   gap: 24px;
-}
-
-.demo-hero {
-  position: relative;
-  overflow: hidden;
-  padding: 28px;
-  border: 1px solid var(--el-border-color-light);
-  border-radius: 24px;
-  background:
-    radial-gradient(circle at 88% 18%, color-mix(in srgb, var(--el-color-primary) 18%, transparent), transparent 34%),
-    linear-gradient(135deg, var(--el-color-primary-light-9), var(--el-bg-color));
-  box-shadow: var(--el-box-shadow-light);
-}
-
-.hero-topline,
-.section-heading {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 20px;
-}
-
-.hero-kicker,
-.section-heading > div > span {
-  color: var(--el-color-primary);
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.session-tools {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.session-ready {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-}
-
-.session-ready i {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--el-color-success);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--el-color-success) 14%, transparent);
+  background: var(--el-fill-color-extra-light);
 }
 
 .hero-copy {
-  max-width: 800px;
-  padding: 58px 0 42px;
-}
-
-.hero-copy h1 {
-  margin: 0;
-  color: var(--el-text-color-primary);
-  font-size: clamp(32px, 5vw, 52px);
-  line-height: 1.12;
-  letter-spacing: -0.03em;
-}
-
-.hero-copy > p {
-  max-width: 720px;
-  margin: 18px 0 0;
-  color: var(--el-text-color-regular);
-  font-size: 16px;
-  line-height: 1.8;
-}
-
-.hero-flow {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-  margin: 26px 0;
-  color: var(--el-text-color-secondary);
-}
-
-.hero-flow span {
-  padding: 7px 12px;
-  border: 1px solid var(--el-border-color-light);
-  border-radius: 999px;
-  color: var(--el-text-color-primary);
-  background: var(--el-bg-color);
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.hero-flow svg {
-  width: 15px;
-}
-
-.primary-cta {
-  min-width: 190px;
-}
-
-.hero-copy > small {
-  display: block;
-  margin-top: 12px;
-  color: var(--el-text-color-secondary);
-}
-
-.home-section {
-  padding: 26px;
-  border: 1px solid var(--el-border-color-light);
-  border-radius: 20px;
-  background: var(--el-bg-color);
-  box-shadow: var(--el-box-shadow-light);
-}
-
-.section-heading {
-  margin-bottom: 20px;
-}
-
-.section-heading h2 {
-  margin: 6px 0 0;
-  color: var(--el-text-color-primary);
-  font-size: 24px;
-}
-
-.section-heading > p {
-  max-width: 480px;
-  margin: 0;
-  color: var(--el-text-color-secondary);
-  font-size: 13px;
-  line-height: 1.7;
-  text-align: right;
-}
-
-.scenario-grid,
-.deep-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.scenario-card {
-  min-height: 230px;
-  padding: 20px;
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 16px;
-  display: flex;
-  flex-direction: column;
-  background: var(--el-fill-color-extra-light);
-  transition:
-    transform 0.18s ease,
-    border-color 0.18s ease,
-    box-shadow 0.18s ease;
-}
-
-.scenario-card:hover {
-  transform: translateY(-2px);
-  border-color: var(--el-color-primary-light-5);
-  box-shadow: var(--el-box-shadow-light);
-}
-
-.scenario-icon {
-  width: 42px;
-  height: 42px;
-  border-radius: 12px;
-  display: grid;
-  place-items: center;
-  color: var(--el-color-primary);
-  background: var(--el-color-primary-light-9);
-}
-
-.scenario-icon svg {
-  width: 22px;
-}
-
-.scenario-card h3 {
-  margin: 18px 0 8px;
-  color: var(--el-text-color-primary);
-  font-size: 19px;
-}
-
-.scenario-card p {
-  margin: 0 0 20px;
-  color: var(--el-text-color-secondary);
-  font-size: 13px;
-  line-height: 1.75;
-}
-
-.scenario-card .el-button {
-  width: fit-content;
-  margin-top: auto;
-}
-
-.scenario-card .el-button svg {
-  margin-left: 4px;
-}
-
-.capability-grid {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.capability-grid li {
-  padding: 18px;
-  border-radius: 14px;
-  background: var(--el-fill-color-extra-light);
-}
-
-.capability-grid li > span {
-  display: block;
-  margin-bottom: 12px;
-  color: var(--el-color-primary);
-  font-family: var(--gowms-num-font);
-  font-size: 13px;
-  font-weight: 800;
-}
-
-.capability-grid b {
-  color: var(--el-text-color-primary);
-  font-size: 15px;
-}
-
-.capability-grid p {
-  margin: 8px 0 0;
-  color: var(--el-text-color-secondary);
-  font-size: 13px;
-  line-height: 1.7;
-}
-
-.deep-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
-.deep-grid button {
   min-width: 0;
-  min-height: 128px;
-  padding: 18px;
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 14px;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 12px;
-  text-align: left;
-  color: var(--el-text-color-primary);
-  background: var(--el-fill-color-extra-light);
-  cursor: pointer;
-  transition:
-    border-color 0.18s ease,
-    background-color 0.18s ease;
-}
-
-.deep-grid button:hover {
-  border-color: var(--el-color-primary-light-5);
-  background: var(--el-color-primary-light-9);
-}
-
-.deep-grid button > svg:first-child {
-  width: 22px;
-  color: var(--el-color-primary);
-}
-
-.deep-grid button > svg:last-child {
-  width: 16px;
-  color: var(--el-text-color-placeholder);
-}
-
-.deep-grid button span,
-.deep-grid button b,
-.deep-grid button small {
-  display: block;
-  min-width: 0;
-}
-
-.deep-grid button b {
-  font-size: 15px;
-}
-
-.deep-grid button small {
-  margin-top: 6px;
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-  line-height: 1.6;
-}
-
-.dialog-description {
-  margin: 0 0 18px;
-  color: var(--el-text-color-secondary);
-  font-size: 14px;
-  line-height: 1.75;
-}
-
-.mode-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.mode-card {
-  min-height: 150px;
-  padding: 20px;
-  border: 1px solid var(--el-border-color);
-  border-radius: 14px;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 8px;
-  text-align: left;
-  color: var(--el-text-color-primary);
-  background: var(--el-bg-color);
-  cursor: pointer;
-  transition:
-    border-color 0.18s ease,
-    background-color 0.18s ease,
-    transform 0.18s ease;
 }
 
-.mode-card:hover {
-  transform: translateY(-2px);
+.eyebrow,
+.detail-head > div > span {
+  color: var(--el-color-primary);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+}
+
+.hero-copy h1 {
+  margin: 7px 0 5px;
+  font-size: clamp(26px, 2.2vw, 32px);
+  line-height: 1.16;
+  letter-spacing: -0.02em;
+}
+
+.hero-copy > p,
+.hero-side > p {
+  margin: 0;
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.hero-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.hero-actions .el-button {
+  margin-left: 0;
+}
+
+.proof-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: auto;
+  padding-top: 10px;
+}
+
+.proof-line span {
+  padding: 3px 8px;
+  border: 1px solid var(--el-color-success-light-7);
+  border-radius: 999px;
+  color: var(--el-color-success);
+  background: var(--el-color-success-light-9);
+  font-size: 11px;
+}
+
+.hero-side {
+  min-width: 0;
+  padding: 15px 16px;
+  border: 1px solid var(--el-color-primary-light-8);
+  border-radius: 12px;
+  background: var(--el-color-primary-light-9);
+}
+
+.hero-side h2 {
+  margin: 0 0 4px;
+  font-size: 15px;
+}
+
+.preview-flow {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 14px;
+}
+
+.preview-flow i {
+  flex: none;
+  color: var(--el-text-color-placeholder);
+  font-style: normal;
+}
+
+.preview-node {
+  min-width: 0;
+  flex: 1;
+  padding: 8px 6px;
+  border: 1px solid var(--el-color-primary-light-8);
+  border-radius: 8px;
+  text-align: center;
+  color: var(--el-text-color-regular);
+  background: var(--el-bg-color);
+  font-size: 11px;
+}
+
+.preview-node b {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--el-color-primary);
+  font-size: 11px;
+}
+
+.flow-section {
+  flex: 0 0 auto;
+  padding: 14px 16px;
+}
+
+.section-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.section-head h2 {
+  margin: 0 0 2px;
+  font-size: 16px;
+}
+
+.section-head p,
+.section-head > span {
+  margin: 0;
+  color: var(--el-text-color-secondary);
+  font-size: 11px;
+}
+
+.flow-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(360px, 0.85fr);
+  gap: 12px;
+}
+
+.flow-panel,
+.detail-panel {
+  min-width: 0;
+  min-height: 176px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 12px;
+}
+
+.flow-panel {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  background: var(--el-fill-color-extra-light);
+}
+
+.flow-strip {
+  display: flex;
+  align-items: stretch;
+  gap: 5px;
+}
+
+.flow-step {
+  min-width: 0;
+  flex: 1;
+  padding: 9px 5px;
+  border: 1px solid var(--el-border-color-light);
+  border-radius: 9px;
+  color: var(--el-text-color-regular);
+  background: var(--el-bg-color);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.16s ease,
+    background-color 0.16s ease;
+}
+
+.flow-step:hover,
+.flow-step.active {
   border-color: var(--el-color-primary);
   background: var(--el-color-primary-light-9);
 }
 
-.mode-card svg {
-  width: 24px;
+.flow-step span,
+.flow-step b,
+.flow-step small {
+  display: block;
+  min-width: 0;
+}
+
+.flow-step span {
+  margin-bottom: 9px;
   color: var(--el-color-primary);
+  font-size: 11px;
+  font-weight: 800;
 }
 
-.mode-card b {
-  margin-top: 6px;
-  font-size: 16px;
+.flow-step b {
+  font-size: 12px;
 }
 
-.mode-card span {
+.flow-step small {
+  margin-top: 5px;
   color: var(--el-text-color-secondary);
-  font-size: 13px;
-  line-height: 1.6;
+  font-size: 10px;
+  line-height: 1.35;
 }
 
-@media (max-width: 920px) {
-  .scenario-grid,
-  .capability-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .deep-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+.flow-arrow {
+  align-self: center;
+  flex: none;
+  color: var(--el-text-color-placeholder);
+  font-style: normal;
 }
 
-@media (max-width: 640px) {
+.flow-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: auto;
+  padding-top: 14px;
+  color: var(--el-text-color-secondary);
+  font-size: 11px;
+}
+
+.flow-meta b {
+  color: var(--el-color-success);
+}
+
+.flow-meta i {
+  font-style: normal;
+}
+
+.detail-panel {
+  padding: 15px 16px;
+  display: flex;
+  flex-direction: column;
+  background: var(--el-fill-color-extra-light);
+}
+
+.detail-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.detail-head h3 {
+  margin: 4px 0 0;
+  font-size: 18px;
+}
+
+.detail-panel > p {
+  margin: 8px 0 10px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.detail-lines {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.detail-lines div {
+  min-width: 0;
+  padding: 8px 9px;
+  border-radius: 8px;
+  background: var(--el-bg-color);
+}
+
+.detail-lines dt {
+  color: var(--el-text-color-secondary);
+  font-size: 10px;
+}
+
+.detail-lines dd {
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: auto;
+  padding-top: 12px;
+}
+
+.detail-actions .el-button {
+  margin-left: 0;
+}
+
+.engineering-section {
+  flex: 1 1 auto;
+  min-height: 160px;
+  padding: 14px 16px;
+}
+
+.engineering-grid {
+  height: calc(100% - 36px);
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.engineering-card {
+  min-width: 0;
+  padding: 13px 14px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 11px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  background: var(--el-fill-color-extra-light);
+}
+
+.engineering-card h3 {
+  margin: 0 0 5px;
+  font-size: 15px;
+}
+
+.engineering-card p {
+  margin: 0 0 8px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.engineering-card span {
+  display: inline-block;
+  padding: 3px 7px;
+  border-radius: 999px;
+  color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
+  font-size: 10px;
+}
+
+.engineering-card .el-button {
+  justify-content: flex-start;
+  margin: 8px 0 0 -4px;
+}
+
+.deep-links {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+  min-height: 24px;
+}
+
+.deep-links .el-button {
+  margin-left: 0;
+}
+
+.mechanism-list {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--el-text-color-secondary);
+  line-height: 1.8;
+}
+
+@media (max-height: 760px) and (min-width: 761px) {
   .demo-home {
-    gap: 16px;
+    gap: 8px;
+    padding-bottom: 24px;
   }
 
-  .demo-hero,
-  .home-section {
-    padding: 20px;
-    border-radius: 16px;
+  .home-hero {
+    flex-basis: 154px;
+    padding-top: 14px;
+    padding-bottom: 14px;
   }
 
-  .hero-topline,
-  .section-heading {
-    flex-direction: column;
-    gap: 10px;
+  .hero-side > p,
+  .detail-panel > p {
+    display: none;
   }
 
-  .session-tools {
-    width: 100%;
-    justify-content: space-between;
+  .proof-line {
+    padding-top: 6px;
   }
 
-  .hero-copy {
-    padding: 38px 0 22px;
+  .flow-panel,
+  .detail-panel {
+    min-height: 158px;
   }
 
-  .hero-copy h1 {
-    font-size: 34px;
+  .detail-lines div {
+    padding: 6px 8px;
   }
 
-  .section-heading > p {
-    text-align: left;
+  .deep-links {
+    display: none;
   }
 
-  .scenario-grid,
-  .capability-grid,
-  .deep-grid,
-  .mode-grid {
+  .engineering-section {
+    min-height: 142px;
+  }
+
+  .engineering-card {
+    padding: 10px 12px;
+  }
+
+  .engineering-card p,
+  .engineering-card span {
+    display: none;
+  }
+
+  .engineering-card h3 {
+    margin-bottom: 0;
+  }
+
+  .engineering-card .el-button {
+    margin-top: 2px;
+  }
+}
+
+@media (max-width: 980px) {
+  .home-hero,
+  .flow-layout {
     grid-template-columns: 1fr;
   }
 
-  .scenario-card {
-    min-height: 0;
+  .demo-home {
+    height: auto;
+    padding-bottom: 0;
   }
 
-  .deep-grid button {
-    min-height: 104px;
+  .home-hero {
+    flex-basis: auto;
+  }
+
+  .preview-flow,
+  .flow-strip {
+    flex-wrap: wrap;
+  }
+
+  .flow-arrow {
+    display: none;
+  }
+
+  .flow-step {
+    flex: 1 0 calc(33.333% - 5px);
+  }
+}
+
+@media (max-width: 680px) {
+  .engineering-grid {
+    height: auto;
+    grid-template-columns: 1fr;
+  }
+
+  .detail-lines {
+    grid-template-columns: 1fr;
+  }
+
+  .flow-step {
+    flex-basis: calc(50% - 5px);
+  }
+
+  .section-head {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
 </style>

@@ -20,6 +20,7 @@ import type { BatchOperResult, EntityID, OutboundOrderItem } from '@/api/types'
 import { OUTBOUND_STATUS_OPTIONS, statusTag, statusText } from '@/constants'
 import { cleanParams, formatTime } from '@/utils'
 import { loadSkuMap, loadWarehouseOptions, toOptionMap, type IdOption } from '@/utils/options'
+import PageHeader from '@/components/common/PageHeader.vue'
 import PickDialog from '@/components/PickDialog.vue'
 import { GUIDE_EVENTS, useGuideStore, type GuideBusinessResult } from '@/stores/guide'
 
@@ -62,7 +63,11 @@ const query = reactive({
   warehouse_id: '' as EntityID | '',
   status: '',
   keyword: '',
+  created_at_from: '',
+  created_at_to: '',
 })
+const dateRange = ref<[string, string] | null>(null)
+const dateRangeDefaultTime: [Date, Date] = [new Date(2000, 0, 1, 0, 0, 0), new Date(2000, 0, 1, 23, 59, 59)]
 
 async function load(silent = false) {
   if (!silent) loading.value = true
@@ -78,6 +83,24 @@ async function load(silent = false) {
 function search() {
   query.page = 1
   load()
+}
+
+function resetSearch(): void {
+  query.page = 1
+  query.page_size = 10
+  query.warehouse_id = ''
+  query.status = ''
+  query.keyword = ''
+  query.created_at_from = ''
+  query.created_at_to = ''
+  dateRange.value = null
+  load()
+}
+
+function onDateRangeChange(value: [string, string] | null): void {
+  query.created_at_from = value?.[0] ?? ''
+  query.created_at_to = value?.[1] ?? ''
+  search()
 }
 
 // ---------- 行操作 ----------
@@ -282,8 +305,15 @@ useAutoRefresh(() => load(true), 0, () => selectedRows.value.length === 0)
 </script>
 
 <template>
-  <div class="page-card">
-    <el-form inline class="query-form" @submit.prevent="search">
+  <div class="app-page order-page">
+    <PageHeader title="出库管理" description="管理出库单创建、审核、FIFO 分配、拣货和发货。">
+      <template #actions>
+        <el-button v-permission="'wms:outbound:create'" data-tour="outbound-create" type="primary" @click="openCreate">新建出库单</el-button>
+      </template>
+    </PageHeader>
+
+    <section class="app-card app-card--flush">
+    <el-form inline class="query-form app-filter-bar order-filters" @submit.prevent="search">
       <el-form-item label="仓库">
         <el-select v-model="query.warehouse_id" placeholder="全部" clearable style="width: 200px" @change="search">
           <el-option v-for="w in warehouseOptions" :key="w.id" :label="w.label" :value="w.id" />
@@ -294,52 +324,51 @@ useAutoRefresh(() => load(true), 0, () => selectedRows.value.length === 0)
           <el-option v-for="s in OUTBOUND_STATUS_OPTIONS" :key="s" :label="statusText(s)" :value="s" />
         </el-select>
       </el-form-item>
+      <el-form-item label="创建时间">
+        <el-date-picker
+          v-model="dateRange"
+          type="daterange"
+          value-format="YYYY-MM-DD HH:mm:ss"
+          :default-time="dateRangeDefaultTime"
+          start-placeholder="开始日期"
+          end-placeholder="结束日期"
+          unlink-panels
+          style="width: 250px"
+          @change="onDateRangeChange"
+        />
+      </el-form-item>
       <el-form-item label="单号">
         <el-input v-model="query.keyword" placeholder="单号模糊搜索" clearable style="width: 180px" @keyup.enter="search" @clear="search" />
       </el-form-item>
       <el-form-item>
         <el-button type="primary" @click="search">查询</el-button>
+        <el-button @click="resetSearch">重置</el-button>
       </el-form-item>
     </el-form>
 
-    <div class="toolbar">
-      <div class="toolbar-left">
-        <el-button
-          v-permission="'wms:outbound:create'"
-          data-tour="outbound-create"
-          type="primary"
-          @click="openCreate"
-        >
-          新建出库单
-        </el-button>
+    <div class="app-table-region">
+      <div class="app-toolbar">
+        <div class="app-toolbar__actions">
+          <span class="selected-hint" :class="{ 'is-hidden': selectedRows.length === 0 }">已选 {{ selectedRows.length }} 项</span>
+        </div>
+        <div class="app-toolbar__actions">
+          <el-dropdown trigger="click" @command="onBatchCommand">
+            <el-button plain>
+              批量操作
+              <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+            </el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="delete" :disabled="!availableBatchOps.delete"><el-icon><Delete /></el-icon>批量删除</el-dropdown-item>
+                <el-dropdown-item command="submit" :disabled="!availableBatchOps.submit"><el-icon><Promotion /></el-icon>批量提交</el-dropdown-item>
+                <el-dropdown-item command="approve" :disabled="!availableBatchOps.approve"><el-icon><Select /></el-icon>批量审核</el-dropdown-item>
+                <el-dropdown-item command="cancel" :disabled="!availableBatchOps.cancel"><el-icon><CloseBold /></el-icon>批量作废</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+          <el-button link :disabled="selectedRows.length === 0" @click="tableRef?.clearSelection()">清除选择</el-button>
+        </div>
       </div>
-      <div class="toolbar-right">
-        <span class="selected-hint" :class="{ 'is-hidden': selectedRows.length === 0 }">已选 {{ selectedRows.length }} 项</span>
-        <el-dropdown trigger="click" @command="onBatchCommand">
-          <el-button plain>
-            批量操作
-            <el-icon class="el-icon--right"><ArrowDown /></el-icon>
-          </el-button>
-          <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item command="delete" :disabled="!availableBatchOps.delete">
-                <el-icon><Delete /></el-icon>批量删除
-              </el-dropdown-item>
-              <el-dropdown-item command="submit" :disabled="!availableBatchOps.submit">
-                <el-icon><Promotion /></el-icon>批量提交
-              </el-dropdown-item>
-              <el-dropdown-item command="approve" :disabled="!availableBatchOps.approve">
-                <el-icon><Select /></el-icon>批量审核
-              </el-dropdown-item>
-              <el-dropdown-item command="cancel" :disabled="!availableBatchOps.cancel">
-                <el-icon><CloseBold /></el-icon>批量作废
-              </el-dropdown-item>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
-        <el-button link :disabled="selectedRows.length === 0" @click="tableRef?.clearSelection()">清除选择</el-button>
-      </div>
-    </div>
 
     <el-table ref="tableRef" v-loading="loading" :data="list" border stripe @selection-change="onSelectionChange">
       <el-table-column type="selection" width="42" />
@@ -357,11 +386,9 @@ useAutoRefresh(() => load(true), 0, () => selectedRows.value.length === 0)
           <el-tag :type="statusTag(row.status)" size="small">{{ statusText(row.status) }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="expected_qty" label="需求数量" width="100" align="right" />
-      <el-table-column prop="allocated_qty" label="已分配" width="90" align="right" />
-      <el-table-column prop="picked_qty" label="已拣货" width="90" align="right" />
-      <el-table-column prop="remark" label="备注" min-width="120" show-overflow-tooltip />
-      <el-table-column prop="created_by" label="创建人" width="100" />
+      <el-table-column label="数量" width="130" align="right">
+        <template #default="{ row }"><span class="quantity-main">{{ row.picked_qty }} / {{ row.expected_qty }}</span><small class="quantity-note">已分配 {{ row.allocated_qty }}</small></template>
+      </el-table-column>
       <el-table-column label="创建时间" width="170">
         <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
       </el-table-column>
@@ -396,6 +423,8 @@ useAutoRefresh(() => load(true), 0, () => selectedRows.value.length === 0)
       @current-change="load"
       @size-change="search"
     />
+
+      </div>
 
     <!-- 新建 -->
     <el-dialog
@@ -442,6 +471,7 @@ useAutoRefresh(() => load(true), 0, () => selectedRows.value.length === 0)
 
     <!-- 拣货 -->
     <PickDialog ref="pickRef" @success="load" />
+    </section>
   </div>
 </template>
 
@@ -489,4 +519,18 @@ useAutoRefresh(() => load(true), 0, () => selectedRows.value.length === 0)
   gap: 10px;
   margin-bottom: 8px;
 }
+.quantity-main {
+  display: block;
+  color: var(--el-text-color-primary);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.quantity-note {
+  display: block;
+  margin-top: 2px;
+  color: var(--el-text-color-secondary);
+  font-size: 11px;
+}
+
 </style>

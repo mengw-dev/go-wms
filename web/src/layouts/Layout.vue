@@ -110,7 +110,7 @@ async function submitPassword() {
             <el-icon><TrendCharts /></el-icon>
             <span>演示中心</span>
           </template>
-          <el-menu-item index="/demo">演示首页</el-menu-item>
+          <el-menu-item index="/demo">开始演示</el-menu-item>
           <el-menu-item index="/demo/activity">业务证据</el-menu-item>
           <el-menu-item index="/demo/performance">工程验证</el-menu-item>
         </el-sub-menu>
@@ -198,7 +198,9 @@ async function submitPassword() {
         </div>
       </el-header>
       <el-main class="main">
-        <router-view />
+        <div class="page-stage">
+          <router-view />
+        </div>
       </el-main>
     </el-container>
 
@@ -376,8 +378,15 @@ async function submitPassword() {
 }
 
 .main {
-  padding: 16px;
+  padding: 16px 18px 24px;
   overflow-y: auto;
   background: var(--el-bg-color-page);
+}
+
+.page-stage {
+  width: 100%;
+  max-width: 1280px;
+  height: 100%;
+  margin: 0 auto;
 }
 </style>
