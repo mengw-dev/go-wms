@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { List, Refresh, Tickets, TrendCharts } from '@element-plus/icons-vue'
@@ -60,7 +60,6 @@ const experimentVisible = ref(false)
 const experimentLoading = ref(false)
 const experimentError = ref('')
 const experimentRows = ref<DemoOperationRow[]>([])
-let experimentRefreshTimer: number | undefined
 
 const currentAvailable = computed(() => data.value?.business.available_total ?? 0)
 const allocationDemand = computed(() => allocationConcurrency.value * allocationQty.value)
@@ -139,17 +138,24 @@ async function openExperiments(): Promise<void> {
 }
 
 async function loadExperimentRows(): Promise<void> {
-  await fetchExperimentRows()
+  await fetchExperimentRows(true)
+  const initialLatestKey = experimentRows.value[0]?.key
   if (!experimentVisible.value) return
-  window.clearTimeout(experimentRefreshTimer)
-  experimentRefreshTimer = window.setTimeout(() => {
-    if (experimentVisible.value) void fetchExperimentRows()
-  }, 800)
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    await new Promise((resolve) => window.setTimeout(resolve, 500))
+    if (!experimentVisible.value) return
+    await fetchExperimentRows(false)
+    const latestKey = experimentRows.value[0]?.key
+    if (latestKey && latestKey !== initialLatestKey) return
+    if (!initialLatestKey && latestKey) return
+  }
 }
 
-async function fetchExperimentRows(): Promise<void> {
-  if (experimentLoading.value) return
-  experimentLoading.value = true
+async function fetchExperimentRows(showLoading: boolean): Promise<void> {
+  if (showLoading) {
+    if (experimentLoading.value) return
+    experimentLoading.value = true
+  }
   experimentError.value = ''
   try {
     const activity: DemoActivitySnapshot = await getDemoActivity(50)
@@ -157,7 +163,7 @@ async function fetchExperimentRows(): Promise<void> {
   } catch {
     experimentError.value = '实验记录暂时无法加载，请稍后重试。'
   } finally {
-    experimentLoading.value = false
+    if (showLoading) experimentLoading.value = false
   }
 }
 
@@ -214,7 +220,6 @@ function openAllocation(mode: AllocationMode): void {
 }
 
 onMounted(() => load())
-onBeforeUnmount(() => window.clearTimeout(experimentRefreshTimer))
 useAutoRefresh(
   () => load(true),
   5000,
@@ -288,7 +293,9 @@ useAutoRefresh(
       <label><span>初始库存目标</span><el-input-number v-model="allocationInitialStock" :min="1" :max="5000" /></label>
       <label><span>每单申请数量</span><el-input-number v-model="allocationQty" :min="1" :max="10" /></label>
     </div>
-    <div class="config-note">本次总需求 {{ allocationDemand }} 件；初始库存不足目标值时，会先调用真实补货接口。</div>
+    <div class="config-note">
+      本次总需求 {{ allocationDemand }} 件。前端调用实验入口，后端在演示租户内并发执行真实出库创建、提交和审核 Service，审核会触发 FIFO 分配；实验包装请求只进入“实验记录”，不混入业务操作记录。
+    </div>
     <el-alert v-if="allocationError" :title="allocationError" type="warning" :closable="false" show-icon />
     <div v-if="allocationMetrics.length" class="result-grid">
       <div v-for="item in allocationMetrics" :key="item.label"><span>{{ item.label }}</span><b :class="item.tone">{{ item.value }}</b></div>
@@ -307,7 +314,9 @@ useAutoRefresh(
       <label class="switch-field"><span>模拟并发操作</span><el-switch :model-value="true" disabled /></label>
       <label class="switch-field"><span>模拟重复扫码</span><el-switch :model-value="true" disabled /></label>
     </div>
-    <div class="config-note">拣货任务由实验接口按真实库存自动准备；“重复发货”没有独立接口字段，结果不会伪造。</div>
+    <div class="config-note">
+      后端先准备真实出库单和拣货任务，再并发调用真实 outbound.Pick Service，模拟多个 PDA 抢单和重复扫码；实验包装请求只进入“实验记录”，不混入业务操作记录。
+    </div>
     <el-alert v-if="pickingError" :title="pickingError" type="warning" :closable="false" show-icon />
     <div v-if="pickingMetrics.length" class="result-grid">
       <div v-for="item in pickingMetrics" :key="item.label"><span>{{ item.label }}</span><b :class="item.tone">{{ item.value }}</b></div>

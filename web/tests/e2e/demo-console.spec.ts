@@ -89,6 +89,12 @@ test('demo home is a concise one-screen launcher', async ({ page }) => {
   await expect(page.getByRole('button', { name: '开始自动演示', exact: true })).toHaveCount(1)
   await expect(page.getByRole('button', { name: '引导体验 · 入库', exact: true })).toHaveCount(1)
   await expect(page.getByRole('button', { name: '系统架构图', exact: true })).toHaveCount(1)
+  const [overview] = await Promise.all([
+    page.waitForEvent('popup'),
+    page.getByRole('button', { name: '系统架构图', exact: true }).click(),
+  ])
+  await expect(overview).toHaveURL(/\/overview\.html$/)
+  await overview.close()
   await expect(page.locator('.flow-step')).toHaveCount(5)
   await expect(page.locator('.engineering-card')).toHaveCount(3)
   await expect(page.getByText('库存盘点', { exact: true })).toHaveCount(0)

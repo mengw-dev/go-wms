@@ -33,7 +33,7 @@ interface EngineeringCheck {
 
 const router = useRouter()
 const guide = useGuideStore()
-const ARCHITECTURE_URL = 'https://mengw21.cn/overview.html'
+const ARCHITECTURE_URL = '/overview.html'
 const selectedStep = ref(0)
 const mechanismVisible = ref(false)
 const runModeDialogVisible = ref(false)
