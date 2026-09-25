@@ -22,10 +22,13 @@ async function startScenarioFromHome(
   scenario: 'inbound' | 'outbound' | 'stocktake' | 'full',
   cardTitle?: string,
 ): Promise<Locator> {
-  const responsePromise = page.waitForResponse(
-    (response) =>
-      response.request().method() === 'POST' &&
-      new URL(response.url()).pathname === `/api/v1/demo/run/${scenario}`,
+  const expectedPaths = scenario === 'full'
+    ? ['/api/v1/demo/run/inbound', '/api/v1/demo/run/outbound']
+    : [`/api/v1/demo/run/${scenario}`]
+  const responsePromises = expectedPaths.map((path) =>
+    page.waitForResponse(
+      (response) => response.request().method() === 'POST' && new URL(response.url()).pathname === path,
+    ),
   )
 
   if (scenario === 'full') {
@@ -36,8 +39,9 @@ async function startScenarioFromHome(
     await page.locator('.detail-panel').getByRole('button', { name: '自动演示', exact: true }).click()
   }
 
-  const response = await responsePromise
-  expect(response.ok()).toBeTruthy()
+  for (const response of await Promise.all(responsePromises)) {
+    expect(response.ok()).toBeTruthy()
+  }
   const viewer = resultViewer(page)
   await expect(viewer).toBeVisible({ timeout: 60_000 })
   return viewer
@@ -123,29 +127,30 @@ test('demo home is a concise one-screen launcher', async ({ page }) => {
   expect(metrics.scrollHeight).toBeLessThanOrEqual(metrics.clientHeight)
 })
 
-test('full demo opens a result dialog with business summary before technical details', async ({ page }) => {
+test('full demo opens a three-column result panel without stocktake', async ({ page }) => {
   await loginDemo(page)
   const viewer = await startScenarioFromHome(page, 'full')
 
   await expect(viewer.getByRole('heading', { name: '完整业务闭环已完成', exact: true })).toBeVisible()
-  await expect(viewer.locator('.evidence-item').first()).toBeVisible()
-  await expect(viewer.getByRole('button', { name: '查看业务证据', exact: true })).toBeVisible()
-  await expect(viewer.getByText('FIFO 详细拆解', { exact: true })).not.toBeVisible()
-
-  await viewer.locator('.el-collapse-item__header').click()
-  await expect(viewer.getByText('FIFO 详细拆解', { exact: true })).toBeVisible()
+  await expect(viewer.locator('.stage-item')).toHaveCount(5)
+  await expect(viewer.locator('.summary-strip > div')).toHaveCount(6)
+  await expect(viewer.getByText('盘点', { exact: true })).toHaveCount(0)
+  await expect(viewer.getByRole('button', { name: '暂停', exact: true })).toBeVisible()
+  await expect(viewer.getByRole('button', { name: '下一步', exact: true })).toBeVisible()
+  await expect(viewer.getByRole('button', { name: '打开真实页面', exact: true })).toBeVisible()
 
   await closeResultDialog(page)
+  const consoleButton = page.getByRole('button', { name: /打开演示控制/ })
+  await expect(consoleButton).toBeVisible()
+  await consoleButton.click()
   const demoDrawer = drawer(page)
   await expect(demoDrawer).toBeVisible()
-  await expect(demoDrawer.getByLabel('真实业务执行结果')).toHaveCount(0)
   await demoDrawer.getByRole('button', { name: '查看结果', exact: true }).click()
   await expect(resultViewer(page)).toBeVisible()
 
-  await resultViewer(page).getByRole('button', { name: '查看业务证据', exact: true }).click()
+  await resultViewer(page).getByRole('button', { name: '查看操作记录', exact: true }).click()
   await expect(page).toHaveURL(/\/demo\/activity/)
   await expect(page.getByRole('heading', { name: '本次业务执行证据', exact: true })).toBeVisible()
-  await expect(page.getByText('业务结果概览', { exact: true })).toBeVisible()
 })
 
 test('home auto-demo CTAs call their own scenario APIs', async ({ page }) => {

@@ -21,6 +21,7 @@ import {
   type DemoConsoleScenario,
 } from '@/utils/events'
 import { rememberDemoEvidence } from '@/utils/demoEvidence'
+import { mergeDemoScenarioResults } from '@/utils/demoScenario'
 
 const route = useRoute()
 const router = useRouter()
@@ -226,6 +227,19 @@ async function initialize() {
   await acquire()
 }
 
+async function runFullScenario(): Promise<DemoScenarioResult> {
+  const inbound = await requestDemoScenario('inbound')
+  try {
+    const outbound = await requestDemoScenario('outbound')
+    return mergeDemoScenarioResults([inbound, outbound])
+  } catch (error) {
+    if (error instanceof ApiError && isDemoScenarioResult(error.data)) {
+      return mergeDemoScenarioResults([inbound, error.data])
+    }
+    throw error
+  }
+}
+
 async function runScenario(scenario: DemoConsoleScenario) {
   if (busy.value) return
   scenarioRunning.value = true
@@ -234,7 +248,7 @@ async function runScenario(scenario: DemoConsoleScenario) {
   resultDialogVisible.value = false
   const startedAt = new Date().toISOString()
   try {
-    const demoResult = await requestDemoScenario(scenario)
+    const demoResult = scenario === 'full' ? await runFullScenario() : await requestDemoScenario(scenario)
     result.value = demoResult
     resultDialogVisible.value = true
     rememberDemoEvidence(demoResult, startedAt)
@@ -257,7 +271,7 @@ async function runScenario(scenario: DemoConsoleScenario) {
 
 function onRunDemoScenario(event: unknown) {
   const scenario = (event as { detail?: { scenario?: DemoConsoleScenario } }).detail?.scenario || 'full'
-  visible.value = true
+  if (route.path !== '/demo') visible.value = true
   void runScenario(scenario)
 }
 
@@ -457,8 +471,8 @@ onBeforeUnmount(() => {
   <el-dialog
     v-model="resultDialogVisible"
     class="demo-result-dialog"
-    width="min(960px, 96vw)"
-    top="3vh"
+    width="min(1120px, 96vw)"
+    top="4vh"
     append-to-body
     destroy-on-close
     :close-on-click-modal="false"

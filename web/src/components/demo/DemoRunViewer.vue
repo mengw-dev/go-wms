@@ -1,206 +1,212 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { CircleCheckFilled, CircleCloseFilled, Clock, Document } from '@element-plus/icons-vue'
-import type { DemoScenarioFact, DemoScenarioResult, DemoScenarioStep } from '@/api/types'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import {
+  ArrowLeft,
+  ArrowRight,
+  CircleCheckFilled,
+  CircleCloseFilled,
+  Clock,
+  Document,
+  VideoPause,
+  VideoPlay,
+} from '@element-plus/icons-vue'
+import type { DemoScenarioEvidence, DemoScenarioResult, DemoScenarioStep } from '@/api/types'
 
-type StepStatus = 'pending' | 'completed' | 'failed'
+type StageStatus = 'completed' | 'active' | 'pending' | 'failed'
+
+interface StageDefinition {
+  key: string
+  title: string
+  subtitle: string
+  description: string
+}
+
+interface StageView extends StageDefinition {
+  steps: DemoScenarioStep[]
+  status: StageStatus
+}
 
 const props = defineProps<{ result: DemoScenarioResult }>()
 const emit = defineEmits<{ navigate: [path: string] }>()
 
-const QUANTITY_LABELS = new Set(['现存量', '可用量', '已分配', '账面数量', '实盘数量', '差异', '确认差异', '库存变化'])
+const STAGE_DEFINITIONS: StageDefinition[] = [
+  { key: 'inbound-order', title: '入库单', subtitle: '创建与审核', description: '创建并审核入库单，形成可执行的收货任务。' },
+  { key: 'receiving', title: '收货上架', subtitle: '收货与上架', description: '真实登记收货批次并完成上架，库存事务同步落账。' },
+  { key: 'inventory', title: '库存形成', subtitle: '库存与流水', description: '入库结果形成现存量、可用量，并保留可追溯流水。' },
+  { key: 'outbound-order', title: '出库单', subtitle: '审核与 FIFO', description: '审核出库需求，并按 FIFO 锁定真实库存批次。' },
+  { key: 'pick-ship', title: '拣货发货', subtitle: '任务与发货', description: '完成拣货任务并扣减库存，形成完整出库闭环。' },
+]
 
-const steps = computed(() => props.result.steps || [])
-const replayIndex = ref(0)
+const currentIndex = ref(0)
+const playing = ref(false)
 const replayDone = ref(false)
-const technicalPanels = ref<string[]>([])
-const stepsSection = ref<HTMLElement | null>(null)
 let replayTimer: number | undefined
 
-const runStatus = computed<'completed' | 'failed'>(() =>
-  props.result.status === 'failed' || steps.value.some((step) => stepStatus(step) === 'failed')
-    ? 'failed'
-    : 'completed',
-)
+const runFailed = computed(() => props.result.status === 'failed' || props.result.steps.some((step) => step.status === 'failed'))
 const businessTitle = computed(() => {
-  if (runStatus.value === 'failed') return '业务流程执行失败'
+  if (runFailed.value) return '业务流程执行未完成'
   return props.result.name === 'full' ? '完整业务闭环已完成' : '本次业务执行已完成'
 })
-const failedStep = computed(() =>
-  steps.value.find((step) => stepStatus(step) === 'failed') ?? null,
-)
-const completedCount = computed(() => {
-  if (!steps.value.length) return 0
-  return Math.min(replayIndex.value + 1, steps.value.length)
-})
-const progress = computed(() =>
-  steps.value.length ? Math.round((completedCount.value / steps.value.length) * 100) : 0,
-)
-const currentReplayStep = computed(() => steps.value[replayIndex.value] ?? null)
-const evidenceCards = computed(() => props.result.evidence ?? [])
-const technicalSteps = computed(() => steps.value.filter((step) => Boolean(step.technical)))
 
-const fifoRows = computed(() => {
-  const rows: Array<{ batch: string; stockIn: string; available: string; allocated: string; location: string }> = []
-  for (const step of steps.value) {
+function stepIndexes(): number[][] {
+  if (props.result.name === 'full') return [[0, 1, 2], [3, 4], [5], [6, 7, 8], [9]]
+  if (props.result.name === 'outbound') return [[], [], [], [0, 1, 2], [3]]
+  return [[0, 1, 2], [3, 4], [5], [], []]
+}
+
+function stageStatus(steps: DemoScenarioStep[]): StageStatus {
+  if (!steps.length) return 'pending'
+  if (steps.some((step) => step.status === 'failed')) return 'failed'
+  if (steps.every((step) => step.status === 'completed')) return 'completed'
+  if (steps.some((step) => step.status === 'completed')) return 'active'
+  return 'pending'
+}
+
+const stages = computed<StageView[]>(() => {
+  const indexes = stepIndexes()
+  return STAGE_DEFINITIONS.map((definition, index) => {
+    const steps = (indexes[index] ?? []).map((stepIndex) => props.result.steps[stepIndex]).filter(Boolean)
+    return { ...definition, steps, status: stageStatus(steps) }
+  })
+})
+
+const activeIndexes = computed(() => {
+  const indexes = stages.value.map((stage, index) => (stage.steps.length ? index : -1)).filter((index) => index >= 0)
+  return indexes.length ? indexes : [0]
+})
+const currentStage = computed(() => stages.value[currentIndex.value] ?? stages.value[0])
+const currentStageLink = computed(() => {
+  const links = props.result.links ?? []
+  const stage = currentStage.value
+  if (!stage) return ''
+  if (stage.key === 'inbound-order') return links.find((link) => link.path.startsWith('/inbound/orders/'))?.path ?? '/inbound/orders'
+  if (stage.key === 'receiving') return links.find((link) => link.label.includes('任务'))?.path ?? links.find((link) => link.path.startsWith('/tasks'))?.path ?? '/tasks'
+  if (stage.key === 'inventory') return links.find((link) => link.path.startsWith('/inventory'))?.path ?? '/inventory'
+  if (stage.key === 'outbound-order') return links.find((link) => link.path.startsWith('/outbound/orders/'))?.path ?? '/outbound/orders'
+  return links.find((link) => link.path.startsWith('/tasks'))?.path ?? '/tasks'
+})
+
+function factValue(labels: string[]): string {
+  for (const step of currentStage.value?.steps ?? []) {
     for (const fact of step.facts ?? []) {
-      if (!fact.label.startsWith('FIFO ')) continue
-      rows.push({
-        batch: fact.value.match(/批次 ([^/]+)/)?.[1]?.trim() || '-',
-        stockIn: fact.value.match(/入库 ([^/]+)/)?.[1]?.trim() || '-',
-        available: fact.value.match(/分配后可用 (\d+)/)?.[1] || '-',
-        allocated: fact.value.match(/本次分配 (\d+)/)?.[1] || '-',
-        location: fact.value.match(/库位 ([^/]+)/)?.[1]?.trim() || '-',
-      })
+      if (labels.some((label) => fact.label.includes(label))) return fact.value
     }
   }
-  return rows
+  return '-'
+}
+
+const stageFacts = computed(() => {
+  const stage = currentStage.value
+  if (!stage?.steps.length) return []
+  const completed = stage.steps.filter((step) => step.status === 'completed').length
+  return [
+    { label: '业务对象', value: stage.steps.find((step) => step.object)?.object || '-' },
+    { label: '当前状态', value: statusText(stage.status) },
+    { label: '数量变化', value: factValue(['入库数量', '收货数量', '上架数量', '出库需求', '分配汇总', '库存变化']) },
+    { label: '库存变化', value: factValue(['库存变化', '现存量', '可用量']) },
+    { label: '作业任务', value: factValue(['上架任务', 'PICK 任务数量', '流水任务']) },
+    { label: '操作记录', value: completed + ' / ' + stage.steps.length + (completed === stage.steps.length ? ' 已记录' : ' 处理中') },
+  ]
 })
 
-const quantityRelations = computed(() => {
-  const values = new Map<string, string>()
-  for (const step of steps.value) {
-    for (const fact of step.facts ?? []) {
-      if (QUANTITY_LABELS.has(fact.label)) values.set(fact.label, fact.value)
-    }
-  }
-  return Array.from(values, ([label, value]) => ({ label, value }))
-})
-
-const technicalSourceGroups = computed(() => {
-  const implementation = props.result.implementation
-  if (!implementation) return []
-
-  const businessFiles: string[] = []
-  const capabilityFiles: string[] = []
-  for (const file of implementation.business_files || []) {
-    if (isCapabilityFile(file)) {
-      capabilityFiles.push(file)
-    } else {
-      businessFiles.push(file)
-    }
-  }
+const summaryCards = computed(() => {
+  const evidence = props.result.evidence ?? []
+  const find = (labels: string[]) => evidence.find((item) => labels.some((label) => item.label.includes(label)))
+  const findLast = (labels: string[]) => [...evidence].reverse().find((item) => labels.some((label) => item.label.includes(label)))
 
   return [
-    { label: 'Demo 编排', files: uniqueFiles([implementation.orchestration]) },
-    { label: '真实业务', files: uniqueFiles(businessFiles) },
-    { label: '库存 / 任务能力', files: uniqueFiles(capabilityFiles) },
-  ].filter((group) => group.files.length > 0)
+    { label: '入库单', item: find(['入库单']) },
+    { label: '出库单', item: find(['出库单']) },
+    { label: '作业任务', item: findLast(['作业任务', 'PICK 任务']) },
+    { label: 'FIFO 分配', item: find(['FIFO 分配']) },
+    { label: '库存流水', item: findLast(['库存流水']) },
+    { label: '库存前后变化', item: findLast(['库存变化']) },
+  ].filter((item): item is { label: string; item: DemoScenarioEvidence } => Boolean(item.item))
 })
 
-const hasTechnicalDetails = computed(() =>
-  Boolean(
-    props.result.implementation ||
-    technicalSteps.value.length ||
-    fifoRows.value.length ||
-    quantityRelations.value.length,
-  ),
-)
+const progress = computed(() => Math.round(((currentIndex.value + 1) / stages.value.length) * 100))
 
-function isCapabilityFile(file: string): boolean {
-  return file.includes('/inventory/service/') || file.includes('/task/service/')
-}
-
-function uniqueFiles(files: string[]): string[] {
-  return Array.from(new Set(files.filter(Boolean)))
-}
-
-function stepStatus(step: DemoScenarioStep): StepStatus {
-  if (step.status === 'pending' || step.status === 'failed' || step.status === 'completed') {
-    return step.status
-  }
-  return 'completed'
-}
-
-function statusText(status: StepStatus): string {
+function statusText(status: StageStatus): string {
   if (status === 'failed') return '失败'
   if (status === 'pending') return '待执行'
-  return '完成'
+  if (status === 'active') return '进行中'
+  return '已完成'
 }
 
-function tagType(status: StepStatus): 'success' | 'warning' | 'danger' {
-  if (status === 'failed') return 'danger'
-  if (status === 'pending') return 'warning'
-  return 'success'
-}
-
-function durationText(duration?: number): string {
-  if (duration === undefined) return ''
-  if (duration < 1) return '<1 ms'
-  return `${duration} ms`
-}
-
-function businessFacts(step: DemoScenarioStep): DemoScenarioFact[] {
-  return (step.facts ?? []).filter(
-    (fact) => !fact.label.startsWith('FIFO ') && !QUANTITY_LABELS.has(fact.label),
-  )
-}
-
-function clearReplayTimer(): void {
+function stopTimer(): void {
   if (replayTimer !== undefined) {
     window.clearTimeout(replayTimer)
     replayTimer = undefined
   }
 }
 
-function replayIntervalMs(): number {
-  if (steps.value.length <= 1) return 0
-  return Math.min(500, Math.max(320, Math.round(2500 / (steps.value.length - 1))))
+function nextActiveIndex(from: number): number | null {
+  return activeIndexes.value.find((index) => index > from) ?? null
 }
 
-function finishReplay(): void {
-  replayIndex.value = Math.max(0, steps.value.length - 1)
-  replayDone.value = true
-  clearReplayTimer()
+function previousActiveIndex(from: number): number | null {
+  return [...activeIndexes.value].reverse().find((index) => index < from) ?? null
 }
 
-function replayNextStep(): void {
-  const next = replayIndex.value + 1
-  if (next >= steps.value.length) {
+function advance(): void {
+  const next = nextActiveIndex(currentIndex.value)
+  if (next === null) {
     replayDone.value = true
+    playing.value = false
+    stopTimer()
     return
   }
-  replayIndex.value = next
-  if (stepStatus(steps.value[next]) === 'failed') {
+  currentIndex.value = next
+  if (stages.value[next].status === 'failed') {
     replayDone.value = true
+    playing.value = false
+    stopTimer()
     return
   }
-  replayTimer = window.setTimeout(replayNextStep, replayIntervalMs())
+  replayTimer = window.setTimeout(advance, 700)
 }
 
 function startReplay(): void {
-  clearReplayTimer()
-  replayIndex.value = 0
-  replayDone.value = steps.value.length <= 1
-  if (!steps.value.length || steps.value.length === 1) return
-  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
-    finishReplay()
+  stopTimer()
+  currentIndex.value = activeIndexes.value[0] ?? 0
+  replayDone.value = activeIndexes.value.length <= 1
+  playing.value = !replayDone.value
+  if (!replayDone.value) replayTimer = window.setTimeout(advance, 500)
+}
+
+function togglePlayback(): void {
+  if (replayDone.value) {
+    startReplay()
     return
   }
-  if (stepStatus(steps.value[0]) === 'failed') {
-    replayDone.value = true
-    return
-  }
-  replayTimer = window.setTimeout(replayNextStep, replayIntervalMs())
+  playing.value = !playing.value
+  if (playing.value) replayTimer = window.setTimeout(advance, 500)
+  else stopTimer()
 }
 
-function showAllSteps(): void {
-  finishReplay()
-  void nextTick(() => stepsSection.value?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+function previousStage(): void {
+  const previous = previousActiveIndex(currentIndex.value)
+  if (previous === null) return
+  playing.value = false
+  replayDone.value = false
+  stopTimer()
+  currentIndex.value = previous
 }
 
-function isStepReplayed(index: number): boolean {
-  return index <= replayIndex.value
+function nextStage(): void {
+  const next = nextActiveIndex(currentIndex.value)
+  if (next === null) return
+  playing.value = false
+  replayDone.value = false
+  stopTimer()
+  currentIndex.value = next
 }
 
-function displayedStepStatus(step: DemoScenarioStep, index: number): StepStatus {
-  return isStepReplayed(index) ? stepStatus(step) : 'pending'
-}
-
-function displayedStatusText(step: DemoScenarioStep, index: number): string {
-  if (isStepReplayed(index)) return statusText(stepStatus(step))
-  if (replayDone.value && runStatus.value === 'failed') return '未执行'
-  return '未回放'
+function selectStage(index: number): void {
+  playing.value = false
+  replayDone.value = true
+  stopTimer()
+  currentIndex.value = index
 }
 
 function navigate(path: string): void {
@@ -213,759 +219,128 @@ watch(
   { immediate: true },
 )
 
-onBeforeUnmount(clearReplayTimer)
+onBeforeUnmount(stopTimer)
 </script>
 
 <template>
-  <section
-    class="run-viewer"
-    :class="{ 'run-viewer--failed': runStatus === 'failed' }"
-    aria-label="真实业务执行结果"
-  >
-    <header class="summary-card" :class="{ failed: runStatus === 'failed' }">
-      <div class="summary-copy">
-        <span class="summary-kicker">真实业务执行结果</span>
+  <section class="run-viewer" :class="{ 'run-viewer--failed': runFailed }" aria-label="真实业务执行结果">
+    <header class="run-header">
+      <div>
+        <span class="run-kicker">自动演示 · 真实业务执行</span>
         <h3>{{ businessTitle }}</h3>
         <p>{{ result.summary }}</p>
       </div>
-      <el-tag :type="runStatus === 'failed' ? 'danger' : 'success'" effect="plain">
-        {{ runStatus === 'failed' ? '执行失败' : '执行成功' }}
-      </el-tag>
+      <el-tag :type="runFailed ? 'danger' : 'success'" effect="plain">{{ runFailed ? '执行失败' : '执行成功' }}</el-tag>
     </header>
 
-    <el-alert
-      v-if="failedStep"
-      class="failure-alert"
-      type="error"
-      :closable="false"
-      show-icon
-      :title="failedStep.title"
-      :description="failedStep.error || failedStep.detail"
-    />
+    <el-progress :percentage="progress" :status="runFailed ? 'exception' : 'success'" :show-text="false" :stroke-width="5" />
 
-    <section class="business-summary">
-      <div class="section-heading">
-        <div>
-          <span>业务摘要</span>
-          <h4>{{ result.evidence_title || '本次执行产生' }}</h4>
-        </div>
-        <small>数据来自本次真实业务执行</small>
-      </div>
-
-      <div v-if="evidenceCards.length" class="evidence-grid">
-        <article v-for="item in evidenceCards" :key="item.label" class="evidence-item">
-          <span>{{ item.label }}</span>
-          <b>{{ item.value }}</b>
-          <small v-if="item.detail">{{ item.detail }}</small>
-        </article>
-      </div>
-      <p v-else class="summary-empty">本次执行没有返回独立业务摘要，请继续查看业务步骤。</p>
-
-      <div class="summary-actions">
-        <el-button type="primary" :icon="Document" @click="navigate('/demo/activity')">
-          查看业务证据
-        </el-button>
-        <el-button @click="showAllSteps">查看完整步骤</el-button>
-      </div>
-    </section>
-
-    <section ref="stepsSection" class="business-steps">
-      <div class="steps-head">
-        <div>
-          <span class="section-kicker">业务步骤</span>
-          <h4>真实执行轨迹</h4>
-        </div>
-        <div class="progress-meta">
-          <b>{{ completedCount }} / {{ steps.length }}</b>
-          <el-button v-if="!replayDone" link type="primary" size="small" @click="finishReplay">
-            显示全部结果
-          </el-button>
-        </div>
-      </div>
-
-      <el-progress
-        :percentage="progress"
-        :status="runStatus === 'failed' ? 'exception' : 'success'"
-        :show-text="false"
-        :stroke-width="7"
-      />
-
-      <div v-if="currentReplayStep" class="current-step">
-        <span>当前回放步骤</span>
-        <b>{{ currentReplayStep.title }}</b>
-        <small>{{ currentReplayStep.status_change || currentReplayStep.detail }}</small>
-      </div>
-
-      <ol class="run-steps">
-        <li
-          v-for="(step, index) in steps"
-          :key="`${step.title}-${index}`"
-          class="run-step"
-          :class="[
-            `is-${displayedStepStatus(step, index)}`,
-            {
-              'is-active': index === replayIndex,
-              'is-replaying': !replayDone && index === replayIndex,
-              'is-awaiting': !isStepReplayed(index),
-            },
-          ]"
+    <div class="run-layout">
+      <aside class="stage-list" aria-label="自动演示步骤">
+        <span class="panel-title">业务步骤</span>
+        <button
+          v-for="(stage, index) in stages"
+          :key="stage.key"
+          type="button"
+          class="stage-item"
+          :class="{ active: currentIndex === index, completed: stage.status === 'completed', failed: stage.status === 'failed' }"
+          @click="selectStage(index)"
         >
-          <div class="step-marker" aria-hidden="true">
-            <el-icon v-if="displayedStepStatus(step, index) === 'completed'"><CircleCheckFilled /></el-icon>
-            <el-icon v-else-if="displayedStepStatus(step, index) === 'failed'"><CircleCloseFilled /></el-icon>
-            <el-icon v-else><Clock /></el-icon>
-          </div>
+          <span class="stage-item__index">{{ String(index + 1).padStart(2, '0') }}</span>
+          <span class="stage-item__copy"><b>{{ stage.title }}</b><small>{{ stage.subtitle }}</small></span>
+          <el-icon v-if="stage.status === 'completed'"><CircleCheckFilled /></el-icon>
+          <el-icon v-else-if="stage.status === 'failed'"><CircleCloseFilled /></el-icon>
+          <el-icon v-else><Clock /></el-icon>
+        </button>
+      </aside>
 
-          <article class="step-content">
-            <div class="step-head">
-              <div>
-                <b>{{ step.title }}</b>
-                <span v-if="isStepReplayed(index) && durationText(step.duration_ms)" class="step-duration">
-                  {{ durationText(step.duration_ms) }}
-                </span>
-              </div>
-              <el-tag size="small" :type="tagType(displayedStepStatus(step, index))" effect="light">
-                {{ displayedStatusText(step, index) }}
+      <main class="stage-focus">
+        <div class="stage-focus__head">
+          <span>当前步骤</span>
+          <h4>{{ currentStage.title }}</h4>
+          <p>{{ currentStage.description }}</p>
+        </div>
+
+        <div v-if="currentStage.steps.length" class="stage-step-list">
+          <article v-for="step in currentStage.steps" :key="step.title" class="stage-step">
+            <div>
+              <b>{{ step.title }}</b>
+              <el-tag size="small" :type="step.status === 'failed' ? 'danger' : step.status === 'pending' ? 'info' : 'success'" effect="light">
+                {{ step.status === 'completed' ? '完成' : step.status === 'failed' ? '失败' : '待执行' }}
               </el-tag>
             </div>
-
-            <p v-if="isStepReplayed(index)">{{ step.detail }}</p>
-
-            <dl
-              v-if="isStepReplayed(index) && (step.object || step.status_change || businessFacts(step).length)"
-              class="step-meta"
-            >
-              <div v-if="step.object">
-                <dt>业务对象</dt>
-                <dd>{{ step.object }}</dd>
-              </div>
-              <div v-if="step.status_change">
-                <dt>状态变化</dt>
-                <dd>{{ step.status_change }}</dd>
-              </div>
-              <div v-for="fact in businessFacts(step)" :key="fact.label">
-                <dt>{{ fact.label }}</dt>
-                <dd>{{ fact.value }}</dd>
-              </div>
-            </dl>
-
-            <el-alert
-              v-if="isStepReplayed(index) && step.error"
-              class="step-error"
-              type="error"
-              :closable="false"
-              show-icon
-              :title="step.error"
-            />
+            <p>{{ step.status_change || step.detail }}</p>
           </article>
-        </li>
-      </ol>
-    </section>
+        </div>
+        <el-empty v-else description="当前流程尚未执行或不属于本次演示" :image-size="64" />
+      </main>
 
-    <section v-if="result.links?.length" class="object-links">
-      <div>
-        <span>继续核对</span>
-        <b>业务对象</b>
+      <aside class="stage-facts">
+        <span class="panel-title">业务结果</span>
+        <dl>
+          <div v-for="item in stageFacts" :key="item.label"><dt>{{ item.label }}</dt><dd>{{ item.value }}</dd></div>
+        </dl>
+        <div class="stage-actions">
+          <el-button size="small" :disabled="!currentStage.steps.length" @click="navigate(currentStageLink)">打开真实页面</el-button>
+          <el-button size="small" type="primary" plain @click="navigate('/demo/activity')">查看操作记录</el-button>
+        </div>
+      </aside>
+    </div>
+
+    <footer class="run-footer">
+      <div v-if="summaryCards.length" class="summary-strip">
+        <div v-for="item in summaryCards" :key="item.label" :title="item.item.detail"><span>{{ item.label }}</span><b>{{ item.item.value }}</b></div>
       </div>
-      <div class="object-link-actions">
-        <el-button
-          v-for="link in result.links"
-          :key="link.path"
-          type="primary"
-          plain
-          size="small"
-          @click="navigate(link.path)"
-        >
-          {{ link.label }}
-        </el-button>
+
+      <div class="run-controls">
+        <el-button :icon="ArrowLeft" :disabled="previousActiveIndex(currentIndex) === null" @click="previousStage">上一步</el-button>
+        <el-button :icon="playing ? VideoPause : VideoPlay" @click="togglePlayback">{{ playing ? '暂停' : replayDone ? '重新播放' : '继续' }}</el-button>
+        <el-button :disabled="nextActiveIndex(currentIndex) === null" @click="nextStage">下一步 <el-icon class="el-icon--right"><ArrowRight /></el-icon></el-button>
+        <el-button :icon="Document" type="primary" @click="navigate('/demo/activity')">操作记录</el-button>
       </div>
-    </section>
-
-    <el-collapse v-if="hasTechnicalDetails" v-model="technicalPanels" class="technical-collapse">
-      <el-collapse-item name="technical">
-        <template #title>
-          <div class="technical-title">
-            <b>技术详情</b>
-            <span>调用链、技术步骤、源码、FIFO、数量关系和接口记录</span>
-          </div>
-        </template>
-
-        <p class="technical-intro">
-          Demo 只负责编排，入库、出库、盘点和库存能力仍由现有业务 Service 完成。
-        </p>
-
-        <div v-if="result.implementation?.call_chain?.length" class="technical-section">
-          <span class="technical-label">调用链</span>
-          <div class="call-chain">
-            <span v-for="stepName in result.implementation.call_chain" :key="stepName">
-              {{ stepName }}
-            </span>
-          </div>
-        </div>
-
-        <div v-if="technicalSourceGroups.length" class="technical-section">
-          <span class="technical-label">关键源码入口</span>
-          <div class="source-groups">
-            <div v-for="group in technicalSourceGroups" :key="group.label" class="source-group">
-              <b>{{ group.label }}</b>
-              <code v-for="file in group.files" :key="file">{{ file }}</code>
-            </div>
-          </div>
-        </div>
-
-        <div v-if="technicalSteps.length" class="technical-section">
-          <span class="technical-label">技术步骤</span>
-          <ol class="technical-step-list">
-            <li v-for="(step, index) in technicalSteps" :key="`${index}-${step.technical}`">
-              <span class="technical-step-index">{{ index + 1 }}</span>
-              <code>{{ step.technical }}</code>
-            </li>
-          </ol>
-        </div>
-
-        <div v-if="fifoRows.length" class="technical-section">
-          <span class="technical-label">FIFO 详细拆解</span>
-          <div class="table-scroll">
-            <el-table :data="fifoRows" border stripe size="small">
-              <el-table-column prop="batch" label="批次" min-width="110" />
-              <el-table-column prop="stockIn" label="入库时间" min-width="140" />
-              <el-table-column prop="available" label="分配后可用" width="105" align="right" />
-              <el-table-column prop="allocated" label="本次分配" width="95" align="right" />
-              <el-table-column prop="location" label="库位" min-width="90" />
-            </el-table>
-          </div>
-        </div>
-
-        <div v-if="quantityRelations.length" class="technical-section">
-          <span class="technical-label">数量关系</span>
-          <div class="quantity-grid">
-            <div v-for="item in quantityRelations" :key="item.label">
-              <span>{{ item.label }}</span>
-              <b>{{ item.value }}</b>
-            </div>
-          </div>
-        </div>
-
-        <div class="technical-section interface-note">
-          <span class="technical-label">接口记录</span>
-          <p>接口调用属于底层排查信息，已放在业务证据页的“接口调用记录”中，不默认占用结果页首屏。</p>
-          <el-button plain size="small" @click="navigate('/demo/activity')">
-            查看接口调用记录
-          </el-button>
-        </div>
-      </el-collapse-item>
-    </el-collapse>
+    </footer>
   </section>
 </template>
 
 <style scoped>
-.run-viewer {
-  min-width: 0;
-  display: grid;
-  gap: 16px;
-}
-
-.summary-card,
-.business-summary,
-.business-steps,
-.object-links,
-.technical-collapse {
-  min-width: 0;
-  border: 1px solid var(--el-border-color-light);
-  border-radius: 14px;
-  background: var(--el-bg-color);
-}
-
-.summary-card {
-  padding: 20px;
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 20px;
-  background:
-    linear-gradient(135deg, var(--el-color-success-light-9), var(--el-bg-color));
-}
-
-.summary-card.failed {
-  border-color: var(--el-color-danger-light-5);
-  background: linear-gradient(135deg, var(--el-color-danger-light-9), var(--el-bg-color));
-}
-
-.summary-copy {
-  min-width: 0;
-}
-
-.summary-kicker,
-.section-kicker,
-.section-heading > div > span,
-.technical-label {
-  color: var(--el-color-primary);
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.05em;
-}
-
-.summary-card.failed .summary-kicker {
-  color: var(--el-color-danger);
-}
-
-.summary-copy h3 {
-  margin: 8px 0 6px;
-  color: var(--el-text-color-primary);
-  font-size: 23px;
-}
-
-.summary-copy p {
-  margin: 0;
-  color: var(--el-text-color-secondary);
-  line-height: 1.7;
-}
-
-.failure-alert {
-  margin: 0;
-}
-
-.business-summary,
-.business-steps,
-.object-links,
-.technical-collapse {
-  padding: 18px;
-}
-
-.section-heading,
-.steps-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.section-heading h4,
-.steps-head h4 {
-  margin: 5px 0 0;
-  color: var(--el-text-color-primary);
-  font-size: 18px;
-}
-
-.section-heading > small {
-  max-width: 360px;
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-  line-height: 1.6;
-  text-align: right;
-}
-
-.evidence-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 10px;
-  margin-top: 16px;
-}
-
-.evidence-item {
-  min-width: 0;
-  padding: 14px;
-  border-radius: 10px;
-  background: var(--el-fill-color-extra-light);
-}
-
-.evidence-item span,
-.evidence-item b,
-.evidence-item small {
-  display: block;
-}
-
-.evidence-item span {
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-}
-
-.evidence-item b {
-  margin-top: 6px;
-  overflow-wrap: anywhere;
-  color: var(--el-text-color-primary);
-  font-family: var(--gowms-num-font);
-  font-size: 18px;
-}
-
-.evidence-item small {
-  margin-top: 6px;
-  overflow-wrap: anywhere;
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-  line-height: 1.6;
-}
-
-.summary-empty {
-  margin: 16px 0 0;
-  padding: 14px;
-  border-radius: 10px;
-  color: var(--el-text-color-secondary);
-  background: var(--el-fill-color-lighter);
-  font-size: 13px;
-}
-
-.summary-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 16px;
-}
-
-.progress-meta {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: var(--el-text-color-secondary);
-}
-
-.progress-meta b {
-  font-family: var(--gowms-num-font);
-}
-
-.current-step {
-  display: grid;
-  gap: 3px;
-  margin: 14px 0 4px;
-  padding: 12px 14px;
-  border-left: 3px solid var(--el-color-primary);
-  border-radius: 8px;
-  background: var(--el-color-primary-light-9);
-}
-
-.current-step span,
-.current-step small {
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-}
-
-.current-step b {
-  color: var(--el-text-color-primary);
-}
-
-.run-steps {
-  margin: 12px 0 0;
-  padding: 0;
-  list-style: none;
-}
-
-.run-step {
-  position: relative;
-  display: grid;
-  grid-template-columns: 32px minmax(0, 1fr);
-  gap: 12px;
-  padding: 12px 0;
-}
-
-.run-step:not(:last-child)::after {
-  content: '';
-  position: absolute;
-  left: 15px;
-  top: 43px;
-  bottom: -7px;
-  width: 1px;
-  background: var(--el-border-color-light);
-}
-
-.step-marker {
-  width: 32px;
-  height: 32px;
-  z-index: 1;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  color: var(--el-text-color-placeholder);
-  background: var(--el-fill-color-light);
-}
-
-.run-step.is-completed .step-marker {
-  color: var(--el-color-success);
-  background: var(--el-color-success-light-9);
-}
-
-.run-step.is-failed .step-marker {
-  color: var(--el-color-danger);
-  background: var(--el-color-danger-light-9);
-}
-
-.run-step.is-active .step-marker {
-  box-shadow: 0 0 0 4px color-mix(in srgb, currentColor 14%, transparent);
-}
-
-.step-content {
-  min-width: 0;
-  padding: 12px 14px;
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 10px;
-  background: var(--el-fill-color-extra-light);
-}
-
-.run-step.is-replaying .step-content {
-  border-color: var(--el-color-primary-light-5);
-}
-
-.run-step.is-awaiting .step-content {
-  opacity: 0.64;
-}
-
-.step-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.step-head > div {
-  min-width: 0;
-}
-
-.step-head b {
-  color: var(--el-text-color-primary);
-}
-
-.step-duration {
-  margin-left: 8px;
-  color: var(--el-text-color-placeholder);
-  font-size: 12px;
-}
-
-.step-content > p {
-  margin: 9px 0 0;
-  color: var(--el-text-color-secondary);
-  font-size: 13px;
-  line-height: 1.7;
-}
-
-.step-meta {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 8px;
-  margin: 12px 0 0;
-}
-
-.step-meta div {
-  min-width: 0;
-  padding: 9px 10px;
-  border-radius: 8px;
-  background: var(--el-bg-color);
-}
-
-.step-meta dt {
-  color: var(--el-text-color-secondary);
-  font-size: 11px;
-}
-
-.step-meta dd {
-  margin: 4px 0 0;
-  overflow-wrap: anywhere;
-  color: var(--el-text-color-regular);
-  font-size: 12px;
-}
-
-.step-error {
-  margin-top: 10px;
-}
-
-.object-links {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.object-links > div:first-child {
-  display: grid;
-  gap: 4px;
-}
-
-.object-links span {
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-}
-
-.object-link-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-.object-link-actions .el-button {
-  margin-left: 0;
-}
-
-.technical-title {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  min-width: 0;
-}
-
-.technical-title b {
-  color: var(--el-text-color-primary);
-}
-
-.technical-title span {
-  min-width: 0;
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-}
-
-.technical-intro {
-  margin: 0 0 16px;
-  color: var(--el-text-color-secondary);
-  font-size: 13px;
-  line-height: 1.7;
-}
-
-.technical-section + .technical-section {
-  margin-top: 18px;
-}
-
-.technical-label {
-  display: block;
-  margin-bottom: 8px;
-}
-
-.call-chain {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 7px;
-}
-
-.call-chain span {
-  padding: 6px 9px;
-  border-radius: 7px;
-  color: var(--el-text-color-regular);
-  background: var(--el-fill-color-light);
-  font-family: var(--gowms-num-font);
-  font-size: 12px;
-}
-
-.source-groups {
-  display: grid;
-  gap: 10px;
-}
-
-.source-group {
-  min-width: 0;
-  padding: 11px;
-  border-radius: 9px;
-  background: var(--el-fill-color-extra-light);
-}
-
-.source-group b {
-  display: block;
-  margin-bottom: 7px;
-  color: var(--el-text-color-primary);
-  font-size: 13px;
-}
-
-.source-group code,
-.technical-step-list code {
-  display: block;
-  overflow-wrap: anywhere;
-  color: var(--el-text-color-regular);
-  font-size: 12px;
-}
-
-.technical-step-list {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: grid;
-  gap: 7px;
-}
-
-.technical-step-list li {
-  display: grid;
-  grid-template-columns: 22px minmax(0, 1fr);
-  align-items: start;
-  gap: 8px;
-}
-
-.technical-step-index {
-  width: 22px;
-  height: 22px;
-  display: grid;
-  place-items: center;
-  border-radius: 6px;
-  color: var(--el-color-primary);
-  background: var(--el-color-primary-light-9);
-  font-size: 11px;
-}
-
-.table-scroll {
-  max-width: 100%;
-  overflow-x: auto;
-}
-
-.quantity-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-  gap: 8px;
-}
-
-.quantity-grid div {
-  padding: 11px;
-  border-radius: 9px;
-  background: var(--el-fill-color-extra-light);
-}
-
-.quantity-grid span,
-.quantity-grid b {
-  display: block;
-}
-
-.quantity-grid span {
-  color: var(--el-text-color-secondary);
-  font-size: 11px;
-}
-
-.quantity-grid b {
-  margin-top: 5px;
-  overflow-wrap: anywhere;
-  color: var(--el-text-color-primary);
-}
-
-.interface-note p {
-  margin: 0 0 10px;
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-  line-height: 1.7;
-}
-
-@media (max-width: 700px) {
-  .summary-card,
-  .section-heading,
-  .steps-head,
-  .object-links,
-  .technical-title {
-    flex-direction: column;
-  }
-
-  .section-heading > small {
-    max-width: none;
-    text-align: left;
-  }
-
-  .object-link-actions {
-    justify-content: flex-start;
-  }
-
-  .run-step {
-    grid-template-columns: 28px minmax(0, 1fr);
-    gap: 9px;
-  }
-
-  .step-marker {
-    width: 28px;
-    height: 28px;
-  }
-
-  .run-step:not(:last-child)::after {
-    left: 13px;
-    top: 39px;
-  }
-}
+.run-viewer { display: grid; gap: 14px; color: var(--el-text-color-primary); }
+.run-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+.run-kicker, .panel-title, .stage-focus__head > span { color: var(--el-color-primary); font-size: 11px; font-weight: 700; letter-spacing: 0.05em; }
+.run-header h3 { margin: 4px 0 3px; font-size: 21px; }
+.run-header p, .stage-focus__head p { margin: 0; color: var(--el-text-color-secondary); font-size: 13px; line-height: 1.6; }
+.run-layout { min-height: 360px; display: grid; grid-template-columns: 210px minmax(0, 1fr) 260px; gap: 12px; }
+.stage-list, .stage-focus, .stage-facts { min-width: 0; padding: 14px; border: 1px solid var(--el-border-color-light); border-radius: 12px; background: var(--el-fill-color-extra-light); }
+.stage-list { display: grid; align-content: start; gap: 7px; }
+.panel-title { display: block; margin-bottom: 4px; }
+.stage-item { min-width: 0; padding: 10px; border: 1px solid transparent; border-radius: 9px; display: grid; grid-template-columns: 26px minmax(0, 1fr) 16px; align-items: center; gap: 8px; text-align: left; color: var(--el-text-color-regular); background: var(--el-bg-color); cursor: pointer; }
+.stage-item.active { border-color: var(--el-color-primary-light-5); background: var(--el-color-primary-light-9); }
+.stage-item.completed .stage-item__index, .stage-item.completed .el-icon { color: var(--el-color-success); }
+.stage-item.failed .el-icon { color: var(--el-color-danger); }
+.stage-item__index { color: var(--el-color-primary); font-family: var(--gowms-num-font); font-size: 12px; font-weight: 700; }
+.stage-item__copy b, .stage-item__copy small { display: block; }
+.stage-item__copy b { font-size: 13px; }
+.stage-item__copy small { margin-top: 3px; color: var(--el-text-color-secondary); font-size: 11px; }
+.stage-focus { background: var(--el-bg-color); }
+.stage-focus__head h4 { margin: 4px 0 5px; font-size: 20px; }
+.stage-step-list { display: grid; gap: 8px; margin-top: 14px; }
+.stage-step { padding: 10px 11px; border-radius: 9px; background: var(--el-fill-color-lighter); }
+.stage-step > div { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.stage-step b { font-size: 13px; }
+.stage-step p { margin: 5px 0 0; color: var(--el-text-color-secondary); font-size: 12px; line-height: 1.55; }
+.stage-facts { display: flex; flex-direction: column; }
+.stage-facts dl { margin: 0; display: grid; gap: 7px; }
+.stage-facts dl > div { min-width: 0; padding: 8px 9px; border-radius: 8px; background: var(--el-bg-color); }
+.stage-facts dt { color: var(--el-text-color-secondary); font-size: 11px; }
+.stage-facts dd { margin: 3px 0 0; overflow-wrap: anywhere; font-size: 12px; font-weight: 600; }
+.stage-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: auto; padding-top: 12px; }
+.stage-actions .el-button, .run-controls .el-button { margin-left: 0; }
+.run-footer { display: grid; gap: 10px; }
+.summary-strip { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
+.summary-strip > div { min-width: 0; padding: 9px 10px; border: 1px solid var(--el-border-color-lighter); border-radius: 9px; background: var(--el-fill-color-extra-light); }
+.summary-strip span, .summary-strip b { display: block; }
+.summary-strip span { color: var(--el-text-color-secondary); font-size: 10px; }
+.summary-strip b { margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.run-controls { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+@media (max-width: 980px) { .run-layout { grid-template-columns: 1fr; } .stage-list { grid-template-columns: repeat(5, minmax(0, 1fr)); } .stage-item { grid-template-columns: 1fr; } .stage-item__copy small, .stage-item .el-icon { display: none; } .summary-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .stage-list, .summary-strip { grid-template-columns: 1fr; } }
 </style>
