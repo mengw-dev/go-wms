@@ -151,6 +151,15 @@ test('full demo opens a three-column result panel without stocktake', async ({ p
   await resultViewer(page).getByRole('button', { name: '查看操作记录', exact: true }).click()
   await expect(page).toHaveURL(/\/demo\/activity/)
   await expect(page.getByRole('heading', { name: '本次业务执行证据', exact: true })).toBeVisible()
+  await expect(page.locator('.summary-card > div')).toHaveCount(6)
+  await expect(page.getByRole('tab', { name: '业务对象', exact: true })).toBeVisible()
+  await expect(page.getByRole('tab', { name: '库存流水', exact: true })).toBeVisible()
+  await expect(page.getByRole('tab', { name: '操作记录', exact: true })).toBeVisible()
+  await expect(page.getByText('盘点', { exact: true })).toHaveCount(0)
+  await page.getByRole('button', { name: '详情', exact: true }).first().click()
+  const detailDrawer = page.getByRole('dialog', { name: /详情$/ }).last()
+  await expect(detailDrawer).toBeVisible()
+  await expect(detailDrawer.locator('.el-descriptions')).toBeVisible()
 })
 
 test('home auto-demo CTAs call their own scenario APIs', async ({ page }) => {

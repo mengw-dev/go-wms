@@ -3,36 +3,77 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Refresh, TrendCharts } from '@element-plus/icons-vue'
 import { getDemoActivity } from '@/api/demo'
-import type { DemoActivitySnapshot } from '@/api/types'
+import type {
+  DemoActivitySnapshot,
+  DemoOperationLog,
+  EntityID,
+  InboundOrderItem,
+  InventoryTransItem,
+  OutboundOrderItem,
+  TaskItem,
+} from '@/api/types'
 import { statusTag, statusText, taskTypeText } from '@/constants'
 import { formatTime } from '@/utils'
-import {
-  clearDemoEvidence,
-  filterDemoActivity,
-  readDemoEvidence,
-  resolveDemoEvidenceFocus,
-} from '@/utils/demoEvidence'
+import { clearDemoEvidence, filterDemoActivity, readDemoEvidence, resolveDemoEvidenceFocus } from '@/utils/demoEvidence'
 import { useAutoRefresh } from '@/composables/autoRefresh'
+
+interface DetailRow {
+  label: string
+  value: string
+}
+
+interface BusinessObjectRow {
+  key: string
+  type: string
+  objectNo: string
+  status: string
+  quantity: string
+  createdAt: string
+  route: string
+  details: DetailRow[]
+}
+
+interface InventoryRow {
+  key: string
+  type: string
+  objectNo: string
+  quantityChange: number
+  createdAt: string
+  orderNo: string
+  details: DetailRow[]
+}
+
+interface OperationRow {
+  key: string
+  operation: string
+  objectNo: string
+  beforeStatus: string
+  afterStatus: string
+  createdAt: string
+  raw: DemoOperationLog
+  details: DetailRow[]
+}
 
 const route = useRoute()
 const router = useRouter()
 const loading = ref(false)
 const data = ref<DemoActivitySnapshot | null>(null)
-const activeTab = ref('evidence')
+const activeTab = ref('objects')
 const context = ref(readDemoEvidence())
+const objectPage = ref(1)
+const inventoryPage = ref(1)
+const operationPage = ref(1)
+const pageSize = 5
+const detailVisible = ref(false)
+const detailTitle = ref('')
+const detailRows = ref<DetailRow[]>([])
+const detailPayload = ref('')
 
 const focus = computed(() => resolveDemoEvidenceFocus(route.query as Record<string, unknown>, context.value))
 const focused = computed(() => Boolean(focus.value.scenario || focus.value.startedAt || focus.value.orderNos.length))
-const evidence = computed(() => (data.value ? filterDemoActivity(data.value, focus.value) : null))
-const evidenceCount = computed(() => {
-  if (!evidence.value) return 0
-  return (
-    evidence.value.inbound_orders.length +
-    evidence.value.outbound_orders.length +
-    evidence.value.stocktake_orders.length +
-    evidence.value.tasks.length +
-    evidence.value.inventory_trans.length
-  )
+const evidence = computed(() => {
+  if (!data.value) return null
+  return { ...filterDemoActivity(data.value, focus.value), stocktake_orders: [] }
 })
 const scenarioLabel = computed(() => {
   const labels: Record<string, string> = {
@@ -44,38 +85,251 @@ const scenarioLabel = computed(() => {
   const label = labels[focus.value.scenario] || '最近一次演示'
   return focus.value.source === 'manual' ? label.replace('自动演示', '手动体验') : label
 })
-const relatedNumbers = computed(() => {
-  const values = [...focus.value.orderNos]
-  for (const ids of Object.values(focus.value.orderIds)) values.push(...ids)
-  return Array.from(new Set(values.filter(Boolean)))
+
+function parseLeadingNumber(value: string): number | null {
+  const matched = value.match(/-?\d+/)?.[0]
+  if (!matched) return null
+  const parsed = Number(matched)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+const evidenceStats = computed(() => {
+  const items = context.value?.evidence ?? []
+  const labels = (targets: string[]) => items.filter((item) => targets.some((target) => item.label.includes(target)))
+  const taskItems = labels(['作业任务', 'PICK 任务'])
+  const transItems = labels(['库存流水'])
+  return {
+    inbound: labels(['入库单']).length,
+    outbound: labels(['出库单']).length,
+    tasks: taskItems.reduce((total, item) => total + (item.value.includes('个') ? parseLeadingNumber(item.value) ?? 1 : 1), 0),
+    inventoryTrans: transItems.reduce((total, item) => total + (item.value.includes('条') ? parseLeadingNumber(item.value) ?? 1 : 1), 0),
+    inventoryChange: items
+      .filter((item) => item.label.includes('库存变化'))
+      .reduce((total, item) => total + (parseLeadingNumber(item.value) ?? 0), 0),
+  }
 })
-const evidenceOverview = computed(() => {
+
+function evidenceFallbackObject(label: string, type: string): BusinessObjectRow | null {
+  const item = context.value?.evidence?.find((entry) => entry.label === label)
+  if (!item) return null
+  const route = type === '入库单'
+    ? context.value?.links?.find((link) => link.path.startsWith('/inbound/orders/'))?.path
+    : context.value?.links?.find((link) => link.path.startsWith('/outbound/orders/'))?.path
+  if (!route) return null
+  return {
+    key: `evidence-${type}-${item.value}`,
+    type,
+    objectNo: item.value,
+    status: 'COMPLETED',
+    quantity: item.detail || '-',
+    createdAt: context.value?.completedAt || '',
+    route,
+    details: [
+      { label: type + '号', value: item.value },
+      { label: '业务明细', value: item.detail || '-' },
+      { label: '结果来源', value: '本次真实自动演示结果' },
+      { label: '完成时间', value: formatTime(context.value?.completedAt || '') },
+    ],
+  }
+}
+
+const businessObjects = computed<BusinessObjectRow[]>(() => {
   const current = evidence.value
   if (!current) return []
-
-  const orders = [
-    ...current.inbound_orders,
-    ...current.outbound_orders,
-    ...current.stocktake_orders,
+  const rows = [
+    ...current.inbound_orders.map(inboundObject),
+    ...current.outbound_orders.map(outboundObject),
+    ...current.tasks.map(taskObject),
   ]
-  const completedOrders = orders.filter((order) => order.status === 'COMPLETED').length
-  const quantityChange = current.inventory_trans.reduce(
-    (total, item) => total + item.quantity_change,
-    0,
-  )
+  const fallbackInbound = evidenceFallbackObject('入库单', '入库单')
+  const fallbackOutbound = evidenceFallbackObject('出库单', '出库单')
+  for (const fallback of [fallbackInbound, fallbackOutbound]) {
+    if (fallback && !rows.some((row) => row.type === fallback.type && row.objectNo === fallback.objectNo)) rows.push(fallback)
+  }
+  return rows.sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
+})
+const inventoryRows = computed<InventoryRow[]>(() => (evidence.value?.inventory_trans ?? []).map(inventoryObject))
+const operationRows = computed<OperationRow[]>(() => (evidence.value?.operations ?? []).map(operationObject))
 
+const summaryCards = computed(() => {
+  const current = evidence.value
+  if (!current) return []
+  const stats = evidenceStats.value
+  const orders = [...current.inbound_orders, ...current.outbound_orders]
+  const completedOrders = orders.filter((order) => order.status === 'COMPLETED' || order.status === 'SHIPPED').length
+  const snapshotQuantityChange = current.inventory_trans.reduce((total, item) => total + item.quantity_change, 0)
+  const inboundCount = Math.max(current.inbound_orders.length, stats.inbound)
+  const outboundCount = Math.max(current.outbound_orders.length, stats.outbound)
+  const taskCount = Math.max(current.tasks.length, stats.tasks)
+  const transCount = Math.max(current.inventory_trans.length, stats.inventoryTrans)
+  const quantityChange = context.value?.evidence?.length ? stats.inventoryChange : snapshotQuantityChange
   return [
-    { label: '入库单', value: String(current.inbound_orders.length) },
-    { label: '出库单', value: String(current.outbound_orders.length) },
-    { label: '盘点单', value: String(current.stocktake_orders.length) },
-    { label: '作业任务', value: String(current.tasks.length) },
-    { label: '库存流水', value: String(current.inventory_trans.length) },
-    { label: '业务状态', value: `${completedOrders} / ${orders.length} 已完成` },
-    { label: '数量变化', value: `${quantityChange > 0 ? '+' : ''}${quantityChange} 件` },
+    { label: '入库单', value: String(inboundCount) },
+    { label: '出库单', value: String(outboundCount) },
+    { label: '作业任务', value: String(taskCount) },
+    { label: '库存流水', value: String(transCount) },
+    { label: '业务状态', value: context.value?.completedAt && focus.value.scenario === 'full' ? '闭环已完成' : `${completedOrders} / ${orders.length} 已完成` },
+    { label: '库存变化', value: `${quantityChange > 0 ? '+' : ''}${quantityChange} 件` },
   ]
 })
 
-async function load(silent = false) {
+function shortId(value?: EntityID | null, prefix = '编号'): string {
+  if (!value) return '-'
+  const text = String(value)
+  return `${prefix} · ${text.slice(-8)}`
+}
+
+function inboundObject(order: InboundOrderItem): BusinessObjectRow {
+  return {
+    key: `inbound-${order.id}`,
+    type: '入库单',
+    objectNo: order.order_no,
+    status: order.status,
+    quantity: `${order.received_qty} / ${order.expected_qty}`,
+    createdAt: order.created_at,
+    route: `/inbound/orders/${order.id}`,
+    details: [
+      { label: '完整对象 ID', value: String(order.id) },
+      { label: '入库单号', value: order.order_no },
+      { label: '仓库 ID', value: String(order.warehouse_id) },
+      { label: '应收数量', value: String(order.expected_qty) },
+      { label: '已收数量', value: String(order.received_qty) },
+      { label: '不良品数量', value: String(order.defective_qty) },
+      { label: '状态', value: statusText(order.status) },
+      { label: '创建时间', value: formatTime(order.created_at) },
+    ],
+  }
+}
+
+function outboundObject(order: OutboundOrderItem): BusinessObjectRow {
+  return {
+    key: `outbound-${order.id}`,
+    type: '出库单',
+    objectNo: order.order_no,
+    status: order.status,
+    quantity: `${order.picked_qty} / ${order.expected_qty}`,
+    createdAt: order.created_at,
+    route: `/outbound/orders/${order.id}`,
+    details: [
+      { label: '完整对象 ID', value: String(order.id) },
+      { label: '出库单号', value: order.order_no },
+      { label: '业务单号', value: order.biz_order_no || '-' },
+      { label: '仓库 ID', value: String(order.warehouse_id) },
+      { label: '需求数量', value: String(order.expected_qty) },
+      { label: '已分配数量', value: String(order.allocated_qty) },
+      { label: '已拣数量', value: String(order.picked_qty) },
+      { label: '状态', value: statusText(order.status) },
+      { label: '创建时间', value: formatTime(order.created_at) },
+    ],
+  }
+}
+
+function taskObject(task: TaskItem): BusinessObjectRow {
+  return {
+    key: `task-${task.id}`,
+    type: taskTypeText(task.task_type),
+    objectNo: task.task_no,
+    status: task.status,
+    quantity: `${task.done_qty} / ${task.target_qty}`,
+    createdAt: task.created_at,
+    route: task.order_id ? `/tasks?order_id=${task.order_id}` : '/tasks',
+    details: [
+      { label: '完整对象 ID', value: String(task.id) },
+      { label: '任务号', value: task.task_no },
+      { label: '任务类型', value: taskTypeText(task.task_type) },
+      { label: '关联单号', value: task.order_no || '-' },
+      { label: '库位', value: task.location_code || '-' },
+      { label: '批次', value: task.batch_no || '-' },
+      { label: '完成 / 目标', value: `${task.done_qty} / ${task.target_qty}` },
+      { label: '状态', value: statusText(task.status) },
+      { label: '创建时间', value: formatTime(task.created_at) },
+    ],
+  }
+}
+
+function inventoryObject(item: InventoryTransItem): InventoryRow {
+  const objectNo = item.task_no || item.order_no || shortId(item.id, '流水')
+  return {
+    key: `inventory-${item.id}`,
+    type: statusText(item.trans_type),
+    objectNo,
+    quantityChange: item.quantity_change,
+    createdAt: item.created_at,
+    orderNo: item.order_no || '-',
+    details: [
+      { label: '完整流水 ID', value: String(item.id) },
+      { label: '流水类型', value: statusText(item.trans_type) },
+      { label: '关联单号', value: item.order_no || '-' },
+      { label: '关联任务', value: item.task_no || '-' },
+      { label: '数量变化', value: String(item.quantity_change) },
+      { label: '现存量', value: `${item.before_quantity} → ${item.after_quantity}` },
+      { label: '可用量', value: `${item.available_before} → ${item.available_after}` },
+      { label: '操作时间', value: formatTime(item.created_at) },
+    ],
+  }
+}
+
+function pathId(path: string, pattern: RegExp): string {
+  return path.match(pattern)?.[1] || ''
+}
+
+function operationMeta(operation: DemoOperationLog): { title: string; type: string; objectNo: string; before: string; after: string } {
+  const path = operation.path
+  const inboundID = pathId(path, /\/inbound\/orders\/(\d+)/)
+  const outboundID = pathId(path, /\/outbound\/orders\/(\d+)/)
+  const taskID = pathId(path, /\/tasks\/(\d+)/)
+  const inbound = evidence.value?.inbound_orders.find((item) => String(item.id) === inboundID)
+  const outbound = evidence.value?.outbound_orders.find((item) => String(item.id) === outboundID)
+  const task = evidence.value?.tasks.find((item) => String(item.id) === taskID)
+  const objectNo = inbound?.order_no || outbound?.order_no || task?.task_no || shortId(inboundID || outboundID || taskID, '对象')
+
+  if (path.includes('/inbound/orders') && path.endsWith('/submit')) return { title: '提交入库单', type: '入库单', objectNo, before: '草稿', after: '已提交' }
+  if (path.includes('/inbound/orders') && path.endsWith('/approve')) return { title: '审核入库单', type: '入库单', objectNo, before: '已提交', after: '已审核' }
+  if (path.includes('/receive')) return { title: '完成收货', type: '入库单', objectNo, before: '已审核', after: '收货中' }
+  if (path.includes('/putaway')) return { title: '完成上架', type: '上架任务', objectNo, before: '上架中', after: '已完成' }
+  if (path.includes('/inbound/orders') && operation.method === 'POST') return { title: '创建入库单', type: '入库单', objectNo, before: '-', after: '草稿' }
+  if (path.includes('/outbound/orders') && path.endsWith('/submit')) return { title: '提交出库单', type: '出库单', objectNo, before: '草稿', after: '已提交' }
+  if (path.includes('/outbound/orders') && path.endsWith('/approve')) return { title: '审核并 FIFO 分配', type: '出库单', objectNo, before: '已提交', after: '分配完成' }
+  if (path.includes('/outbound/orders') && operation.method === 'POST') return { title: '创建出库单', type: '出库单', objectNo, before: '-', after: '草稿' }
+  if (path.includes('/pick')) return { title: '完成拣货', type: '拣货任务', objectNo, before: '拣货中', after: '已发货' }
+  if (path.includes('/inventory')) return { title: '查询库存', type: '库存', objectNo, before: '-', after: '-' }
+  if (path.includes('/tasks')) return { title: '查询任务', type: '任务', objectNo, before: '-', after: '-' }
+  return { title: operation.method + ' 业务操作', type: '业务对象', objectNo, before: '-', after: '-' }
+}
+
+function operationObject(operation: DemoOperationLog): OperationRow {
+  const meta = operationMeta(operation)
+  const failed = operation.status < 200 || operation.status >= 300
+  return {
+    key: `operation-${operation.id}`,
+    operation: meta.title,
+    objectNo: meta.objectNo,
+    beforeStatus: meta.before,
+    afterStatus: failed ? '处理失败' : meta.after,
+    createdAt: operation.created_at,
+    raw: operation,
+    details: [
+      { label: '操作类型', value: meta.title },
+      { label: '业务对象', value: meta.type },
+      { label: '对象编号', value: meta.objectNo },
+      { label: '前置状态', value: meta.before },
+      { label: '后置状态', value: failed ? '处理失败' : meta.after },
+      { label: '请求', value: operation.method + ' ' + operation.path },
+      { label: 'HTTP 状态', value: String(operation.status) },
+      { label: '操作时间', value: formatTime(operation.created_at) },
+    ],
+  }
+}
+
+function paginate<T>(items: T[], page: number): T[] {
+  return items.slice((page - 1) * pageSize, page * pageSize)
+}
+
+const pagedObjects = computed(() => paginate(businessObjects.value, objectPage.value))
+const pagedInventory = computed(() => paginate(inventoryRows.value, inventoryPage.value))
+const pagedOperations = computed(() => paginate(operationRows.value, operationPage.value))
+
+async function load(silent = false): Promise<void> {
   if (!silent) loading.value = true
   try {
     data.value = await getDemoActivity(50)
@@ -84,16 +338,48 @@ async function load(silent = false) {
   }
 }
 
-function showAll() {
+function showAll(): void {
   clearDemoEvidence()
   context.value = null
   void router.replace('/demo/activity')
 }
 
-function httpStatusType(status: number) {
-  if (status >= 200 && status < 300) return 'success'
-  if (status >= 400 && status < 500) return 'warning'
-  return 'danger'
+function openDetail(title: string, rows: DetailRow[], payload = ''): void {
+  detailTitle.value = title
+  detailRows.value = rows
+  detailPayload.value = payload
+  detailVisible.value = true
+}
+
+function openOperationDetail(row: OperationRow): void {
+  openDetail('操作记录详情', row.details, prettyPayload(row.raw.result || ''))
+}
+
+function openBusinessDetail(row: BusinessObjectRow): void {
+  openDetail(row.type + '详情', row.details)
+}
+
+function openInventoryDetail(row: InventoryRow): void {
+  openDetail('库存流水详情', row.details)
+}
+
+function viewObject(row: BusinessObjectRow): void {
+  void router.push(row.route)
+}
+
+function prettyPayload(value: string): string {
+  if (!value) return ''
+  try {
+    return JSON.stringify(JSON.parse(value), null, 2)
+  } catch {
+    return value
+  }
+}
+
+function onTabChange(): void {
+  objectPage.value = 1
+  inventoryPage.value = 1
+  operationPage.value = 1
 }
 
 onMounted(() => load())
@@ -101,315 +387,93 @@ useAutoRefresh(() => load(true), 5000)
 </script>
 
 <template>
-  <div v-loading="loading" class="activity-page">
-    <div class="page-head">
-      <div>
-        <h2>{{ focused ? '本次业务执行证据' : '业务证据' }}</h2>
-        <p v-if="focused">
-          {{ focus.summary || '从最近一次自动演示结果进入，页面只聚焦该次执行产生的真实业务对象。' }}
+  <div v-loading="loading" class="app-page activity-page">
+    <header class="page-header">
+      <div class="page-header__main">
+        <span class="page-header__eyebrow">结果核对</span>
+        <h1 class="page-header__title">{{ focused ? '本次业务执行证据' : '业务证据' }}</h1>
+        <p class="page-header__description">
+          <template v-if="focused"><span class="scenario-name">{{ scenarioLabel }}</span><span> · 只展示本次执行关联的真实业务对象。</span></template>
+          <template v-else>展示当前演示账号最近产生的业务对象、库存流水和操作记录。</template>
         </p>
-        <p v-else>完成一次自动演示或手动业务后，可在这里核对对应单据、任务和库存流水。</p>
       </div>
-      <div class="head-actions">
+      <div class="page-header__actions">
         <el-button v-if="focused" @click="showAll">查看全部记录</el-button>
-        <el-button :icon="TrendCharts" @click="router.push('/demo/performance')">运行状态与指标</el-button>
-        <el-button :icon="Refresh" type="primary" @click="load()">立即刷新</el-button>
+        <el-button :icon="TrendCharts" @click="router.push('/demo/performance')">运行状态</el-button>
+        <el-button :icon="Refresh" type="primary" @click="load()">刷新</el-button>
       </div>
-    </div>
+    </header>
 
-    <section v-if="focused" class="focus-card">
-      <div>
-        <span>本次演示</span>
-        <b>{{ scenarioLabel }}</b>
-      </div>
-      <div>
-        <span>执行时间</span>
-        <b>{{ formatTime(focus.startedAt) }}</b>
-      </div>
-      <div>
-        <span>相关业务编号</span>
-        <b>{{ relatedNumbers.length ? relatedNumbers.join('、') : '按执行时间聚焦' }}</b>
+    <section class="app-card summary-card">
+      <div v-for="item in summaryCards" :key="item.label">
+        <span>{{ item.label }}</span>
+        <b>{{ item.value }}</b>
       </div>
     </section>
 
-    <template v-if="evidence">
-      <el-tabs v-model="activeTab" class="activity-tabs">
-        <el-tab-pane label="业务证据" name="evidence">
-          <section class="evidence-overview">
-            <div class="section-title">
-              <b>业务结果概览</b>
-              <span>优先展示与本次执行关联的业务对象</span>
-            </div>
-            <div class="overview-grid">
-              <div v-for="item in evidenceOverview" :key="item.label">
-                <span>{{ item.label }}</span>
-                <b>{{ item.value }}</b>
-              </div>
-            </div>
-          </section>
-
-          <div v-if="focused" class="evidence-rule">
-            <el-alert
-              title="优先按本次业务编号关联；缺少直接编号的记录再使用执行时间窗辅助过滤。"
-              type="success"
-              :closable="false"
-              show-icon
-            />
-            <p>业务单据、任务和库存流水优先按业务编号关联；接口调用等无法直接绑定业务对象的记录使用本次执行时间窗辅助过滤。</p>
-          </div>
-          <el-alert
-            v-else
-            title="当前展示本演示账号最近的业务记录；从自动演示结果点击“查看业务证据”可自动聚焦单次执行。"
-            type="info"
-            :closable="false"
-            show-icon
-          />
-
-          <section class="evidence-section">
-            <div class="section-title"><b>业务单据</b><span>本次关联 {{ evidence.inbound_orders.length + evidence.outbound_orders.length + evidence.stocktake_orders.length }} 条</span></div>
-            <el-table v-if="evidence.inbound_orders.length" :data="evidence.inbound_orders" border stripe>
-              <el-table-column label="类型" width="90"><template #default>入库单</template></el-table-column>
-              <el-table-column label="单号" min-width="170">
-                <template #default="{ row }"><el-link type="primary" @click="router.push(`/inbound/orders/${row.id}`)">{{ row.order_no }}</el-link></template>
-              </el-table-column>
-              <el-table-column label="状态" width="100"><template #default="{ row }"><el-tag :type="statusTag(row.status)" size="small">{{ statusText(row.status) }}</el-tag></template></el-table-column>
-              <el-table-column prop="expected_qty" label="应收" width="90" align="right" />
-              <el-table-column prop="received_qty" label="已收" width="90" align="right" />
-              <el-table-column label="创建时间" width="170"><template #default="{ row }">{{ formatTime(row.created_at) }}</template></el-table-column>
-            </el-table>
-
-            <el-table v-if="evidence.outbound_orders.length" :data="evidence.outbound_orders" border stripe>
-              <el-table-column label="类型" width="90"><template #default>出库单</template></el-table-column>
-              <el-table-column label="单号" min-width="170">
-                <template #default="{ row }"><el-link type="primary" @click="router.push(`/outbound/orders/${row.id}`)">{{ row.order_no }}</el-link></template>
-              </el-table-column>
-              <el-table-column prop="biz_order_no" label="业务单号" min-width="150" />
-              <el-table-column label="状态" width="100"><template #default="{ row }"><el-tag :type="statusTag(row.status)" size="small">{{ statusText(row.status) }}</el-tag></template></el-table-column>
-              <el-table-column prop="allocated_qty" label="已分配" width="90" align="right" />
-              <el-table-column prop="picked_qty" label="已拣" width="90" align="right" />
-              <el-table-column label="创建时间" width="170"><template #default="{ row }">{{ formatTime(row.created_at) }}</template></el-table-column>
-            </el-table>
-
-            <el-table v-if="evidence.stocktake_orders.length" :data="evidence.stocktake_orders" border stripe>
-              <el-table-column label="类型" width="90"><template #default>盘点单</template></el-table-column>
-              <el-table-column label="单号" min-width="170">
-                <template #default="{ row }"><el-link type="primary" @click="router.push(`/stocktake/orders/${row.id}`)">{{ row.order_no }}</el-link></template>
-              </el-table-column>
-              <el-table-column label="状态" width="100"><template #default="{ row }"><el-tag :type="statusTag(row.status)" size="small">{{ statusText(row.status) }}</el-tag></template></el-table-column>
-              <el-table-column prop="location_code" label="库位" min-width="120" />
-              <el-table-column label="创建时间" width="170"><template #default="{ row }">{{ formatTime(row.created_at) }}</template></el-table-column>
-            </el-table>
-          </section>
-
-          <section class="evidence-section">
-            <div class="section-title"><b>作业任务</b><span>本次关联 {{ evidence.tasks.length }} 条</span></div>
-            <el-table v-if="evidence.tasks.length" :data="evidence.tasks" border stripe>
-              <el-table-column prop="task_no" label="任务号" min-width="170" />
-              <el-table-column label="类型" width="90"><template #default="{ row }">{{ taskTypeText(row.task_type) }}</template></el-table-column>
-              <el-table-column label="状态" width="100"><template #default="{ row }"><el-tag :type="statusTag(row.status)" size="small">{{ statusText(row.status) }}</el-tag></template></el-table-column>
-              <el-table-column prop="order_no" label="关联单号" min-width="150" />
-              <el-table-column label="完成/目标" width="110" align="right"><template #default="{ row }">{{ row.done_qty }} / {{ row.target_qty }}</template></el-table-column>
-              <el-table-column label="创建时间" width="170"><template #default="{ row }">{{ formatTime(row.created_at) }}</template></el-table-column>
-            </el-table>
-            <div v-else class="empty-inline">本次执行没有单独生成作业任务。</div>
-          </section>
-
-          <section class="evidence-section">
-            <div class="section-title"><b>库存流水</b><span>本次关联 {{ evidence.inventory_trans.length }} 条</span></div>
-            <el-table v-if="evidence.inventory_trans.length" :data="evidence.inventory_trans" border stripe>
-              <el-table-column prop="order_no" label="关联单号" min-width="150" />
-              <el-table-column label="类型" width="100"><template #default="{ row }">{{ statusText(row.trans_type) }}</template></el-table-column>
-              <el-table-column prop="quantity_change" label="数量变化" width="100" align="right" />
-              <el-table-column label="库存变化" width="140"><template #default="{ row }">{{ row.before_quantity }} → {{ row.after_quantity }}</template></el-table-column>
-              <el-table-column label="可用量变化" width="140"><template #default="{ row }">{{ row.available_before }} → {{ row.available_after }}</template></el-table-column>
-              <el-table-column prop="task_no" label="任务号" min-width="150" />
-              <el-table-column label="时间" width="170"><template #default="{ row }">{{ formatTime(row.created_at) }}</template></el-table-column>
-            </el-table>
-            <div v-else class="empty-inline">本次执行没有库存数量变更。</div>
-          </section>
-
-          <el-empty
-            v-if="evidenceCount === 0"
-            :description="focused ? '暂未找到这次执行的业务对象。请确认演示已成功完成，或点击“查看全部记录”。' : '完成一次自动演示或手动流程后，可以在这里查看对应业务证据。'"
-          />
+    <section class="app-card app-card--flush evidence-card">
+      <el-tabs v-model="activeTab" class="evidence-tabs" @tab-change="onTabChange">
+        <el-tab-pane label="业务对象" name="objects">
+          <el-table :data="pagedObjects" size="small" border stripe empty-text="本次执行没有业务对象">
+            <el-table-column prop="type" label="类型" width="100" />
+            <el-table-column prop="objectNo" label="单号" min-width="170" />
+            <el-table-column label="状态" width="100"><template #default="{ row }"><el-tag :type="statusTag(row.status)" size="small">{{ statusText(row.status) }}</el-tag></template></el-table-column>
+            <el-table-column prop="quantity" label="数量" width="100" align="right" />
+            <el-table-column label="创建时间" width="170"><template #default="{ row }">{{ formatTime(row.createdAt) }}</template></el-table-column>
+            <el-table-column label="查看" width="140" fixed="right"><template #default="{ row }"><el-button link type="primary" @click="openBusinessDetail(row)">详情</el-button><el-button link type="primary" @click="viewObject(row)">打开</el-button></template></el-table-column>
+          </el-table>
+          <el-pagination v-if="businessObjects.length > pageSize" v-model:current-page="objectPage" small background layout="prev, pager, next" :page-size="pageSize" :total="businessObjects.length" />
         </el-tab-pane>
 
-        <el-tab-pane label="接口调用记录" name="operations">
-          <p class="tab-note">接口记录用于排查调用过程，不作为业务结果的第一层证据。</p>
-          <el-table :data="evidence.operations" border stripe>
-            <el-table-column label="时间" width="170"><template #default="{ row }">{{ formatTime(row.created_at) }}</template></el-table-column>
-            <el-table-column prop="method" label="方法" width="80" />
-            <el-table-column prop="path" label="接口路径" min-width="260" />
-            <el-table-column label="状态" width="90"><template #default="{ row }"><el-tag :type="httpStatusType(row.status)" size="small">{{ row.status }}</el-tag></template></el-table-column>
-            <el-table-column label="耗时" width="100" align="right"><template #default="{ row }">{{ row.cost_ms }} ms</template></el-table-column>
+        <el-tab-pane label="库存流水" name="inventory">
+          <el-table :data="pagedInventory" size="small" border stripe empty-text="本次执行没有库存流水" @row-click="openInventoryDetail">
+            <el-table-column prop="type" label="操作类型" width="100" />
+            <el-table-column prop="objectNo" label="业务对象" min-width="170" />
+            <el-table-column label="数量变化" width="100" align="right"><template #default="{ row }"><span :class="row.quantityChange >= 0 ? 'up' : 'down'">{{ row.quantityChange > 0 ? '+' : '' }}{{ row.quantityChange }}</span></template></el-table-column>
+            <el-table-column label="操作时间" width="170"><template #default="{ row }">{{ formatTime(row.createdAt) }}</template></el-table-column>
+            <el-table-column prop="orderNo" label="关联单据" min-width="160" />
           </el-table>
+          <el-pagination v-if="inventoryRows.length > pageSize" v-model:current-page="inventoryPage" small background layout="prev, pager, next" :page-size="pageSize" :total="inventoryRows.length" />
+        </el-tab-pane>
+
+        <el-tab-pane label="操作记录" name="operations">
+          <el-table :data="pagedOperations" size="small" border stripe empty-text="本次执行没有操作记录" @row-click="openOperationDetail">
+            <el-table-column prop="operation" label="操作" min-width="150" />
+            <el-table-column prop="objectNo" label="对象" min-width="170" />
+            <el-table-column prop="beforeStatus" label="前置状态" width="110" />
+            <el-table-column prop="afterStatus" label="后置状态" width="110" />
+            <el-table-column label="时间" width="170"><template #default="{ row }">{{ formatTime(row.createdAt) }}</template></el-table-column>
+          </el-table>
+          <el-pagination v-if="operationRows.length > pageSize" v-model:current-page="operationPage" small background layout="prev, pager, next" :page-size="pageSize" :total="operationRows.length" />
         </el-tab-pane>
       </el-tabs>
-    </template>
+    </section>
+
+    <el-drawer v-model="detailVisible" :title="detailTitle" size="min(520px, 94vw)" append-to-body>
+      <el-descriptions :column="1" border>
+        <el-descriptions-item v-for="item in detailRows" :key="item.label" :label="item.label">{{ item.value }}</el-descriptions-item>
+      </el-descriptions>
+      <pre v-if="detailPayload" class="detail-payload">{{ detailPayload }}</pre>
+    </el-drawer>
   </div>
 </template>
 
 <style scoped>
-.activity-page {
-  min-height: 100%;
-}
-
-.page-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 20px;
-  margin-bottom: 16px;
-}
-
-.page-head h2 {
-  margin: 0 0 6px;
-  font-size: 22px;
-}
-
-.page-head p {
-  max-width: 760px;
-  margin: 0;
-  color: var(--el-text-color-secondary);
-  line-height: 1.7;
-}
-
-.head-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 8px;
-  flex-shrink: 0;
-}
-
-.focus-card {
-  display: grid;
-  grid-template-columns: 0.8fr 1fr 1.6fr;
-  gap: 12px;
-  margin-bottom: 14px;
-  padding: 16px;
-  border: 1px solid var(--el-color-success-light-7);
-  border-radius: 12px;
-  background: var(--el-color-success-light-9);
-}
-
-.focus-card div {
-  min-width: 0;
-}
-
-.focus-card span,
-.focus-card b {
-  display: block;
-}
-
-.focus-card span {
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-}
-
-.focus-card b {
-  margin-top: 5px;
-  overflow-wrap: anywhere;
-  color: var(--el-text-color-primary);
-}
-
-.activity-tabs {
-  padding: 16px;
-  border: 1px solid var(--el-border-color-light);
-  border-radius: 12px;
-  background: var(--el-bg-color);
-  box-shadow: var(--el-box-shadow-light);
-}
-
-.evidence-overview {
-  margin-bottom: 18px;
-}
-
-.overview-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-  gap: 8px;
-}
-
-.overview-grid div {
-  min-width: 0;
-  padding: 12px;
-  border-radius: 9px;
-  background: var(--el-fill-color-light);
-}
-
-.overview-grid span,
-.overview-grid b {
-  display: block;
-}
-
-.overview-grid span {
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-}
-
-.overview-grid b {
-  margin-top: 5px;
-  overflow-wrap: anywhere;
-  color: var(--el-text-color-primary);
-  font-family: var(--gowms-num-font);
-  font-size: 17px;
-}
-
-.evidence-section {
-  margin-top: 18px;
-}
-
-.evidence-rule {
-  display: grid;
-  gap: 8px;
-}
-
-.evidence-rule p {
-  margin: 0;
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-  line-height: 1.65;
-}
-
-.section-title {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin: 0 0 10px;
-  color: var(--el-text-color-secondary);
-}
-
-.section-title b {
-  color: var(--el-text-color-primary);
-}
-
-.empty-inline,
-.tab-note {
-  padding: 12px 14px;
-  border-radius: 8px;
-  color: var(--el-text-color-secondary);
-  background: var(--el-fill-color-lighter);
-  font-size: 13px;
-}
-
-.tab-note {
-  margin: 0 0 12px;
-}
-
-@media (max-width: 768px) {
-  .page-head {
-    display: block;
-  }
-
-  .head-actions {
-    justify-content: flex-start;
-    margin-top: 12px;
-  }
-
-  .focus-card,
-  .overview-grid {
-    grid-template-columns: 1fr;
-  }
-}
+.activity-page { width: min(1180px, 100%); margin: 0 auto; }
+.scenario-name { font-weight: 600; color: var(--el-text-color-primary); }
+.summary-card { padding: 14px 16px; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; }
+.summary-card > div { min-width: 0; padding: 10px 12px; border-radius: 9px; background: var(--el-fill-color-lighter); }
+.summary-card span, .summary-card b { display: block; }
+.summary-card span { color: var(--el-text-color-secondary); font-size: 11px; }
+.summary-card b { margin-top: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 17px; }
+.evidence-card { min-height: 0; }
+.evidence-tabs { padding: 0 16px 14px; }
+.evidence-tabs :deep(.el-tabs__header) { margin-bottom: 12px; }
+.evidence-tabs :deep(.el-pagination) { justify-content: flex-end; margin-top: 12px; }
+.evidence-tabs :deep(.el-table__row) { cursor: pointer; }
+.up { color: var(--el-color-success); font-weight: 600; }
+.down { color: var(--el-color-danger); font-weight: 600; }
+.detail-payload { max-height: 280px; margin: 14px 0 0; padding: 12px; overflow: auto; border-radius: 8px; color: var(--el-text-color-regular); background: var(--el-fill-color-light); font-family: var(--gowms-num-font); font-size: 12px; white-space: pre-wrap; }
+@media (max-width: 900px) { .summary-card { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 600px) { .summary-card { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 </style>
