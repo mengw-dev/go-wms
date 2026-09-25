@@ -140,9 +140,9 @@ test('full demo opens a three-column result panel without stocktake', async ({ p
   await expect(viewer.getByRole('button', { name: '打开真实页面', exact: true })).toBeVisible()
 
   await closeResultDialog(page)
-  const consoleButton = page.getByRole('button', { name: /打开演示控制/ })
-  await expect(consoleButton).toBeVisible()
-  await consoleButton.click()
+  const statusbar = page.locator('.demo-statusbar')
+  await expect(statusbar).toBeVisible()
+  await statusbar.getByRole('button', { name: '演示控制', exact: true }).click()
   const demoDrawer = drawer(page)
   await expect(demoDrawer).toBeVisible()
   await demoDrawer.getByRole('button', { name: '查看结果', exact: true }).click()
@@ -186,6 +186,15 @@ test('manual inbound guide completes through inventory evidence', async ({ page 
 
   const guide = page.locator('section[aria-label="手动业务引导"]')
   await expect(guide.getByText('第 1 / 7 步', { exact: true })).toBeVisible()
+  await expect(page.locator('.guide-highlight')).toHaveCount(1)
+  await expect(page.locator('.demo-statusbar')).toBeVisible()
+
+  await page.getByRole('button', { name: '查看操作记录', exact: true }).click()
+  const guideRecords = page.getByRole('dialog', { name: '本次操作记录' })
+  await expect(guideRecords).toBeVisible()
+  await expect(page.locator('.guide-bubble')).toHaveCount(0)
+  await guideRecords.getByRole('button', { name: '关闭此对话框' }).click()
+  await expect(page.locator('.guide-bubble')).toBeVisible()
 
   await page.locator('[data-tour="inbound-create"]').click()
   const createDialog = page.getByRole('dialog', { name: '新建入库单' })
@@ -304,11 +313,21 @@ test('engineering verification exposes three compact experiments without separat
   await expect(page).toHaveURL(/\/demo$/)
 })
 
-test('demo session stays valid after refreshing the demo home', async ({ page }) => {
+test('demo session stays valid across refresh and page navigation', async ({ page }) => {
   await loginDemo(page)
   const sessionBefore = await page.evaluate(() => sessionStorage.getItem('WMS_DEMO_SESSION'))
   expect(sessionBefore).toBeTruthy()
+  await expect(page.locator('.demo-statusbar')).toBeVisible()
 
+  await page.goto('/inbound/orders')
+  await expect(page.locator('.demo-statusbar')).toBeVisible()
+  expect(await page.evaluate(() => sessionStorage.getItem('WMS_DEMO_SESSION'))).toBe(sessionBefore)
+
+  await page.goto('/demo/activity')
+  await expect(page.locator('.demo-statusbar')).toBeVisible()
+  expect(await page.evaluate(() => sessionStorage.getItem('WMS_DEMO_SESSION'))).toBe(sessionBefore)
+
+  await page.goto('/demo')
   const heartbeat = page.waitForResponse(
     (response) =>
       response.request().method() === 'POST' &&

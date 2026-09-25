@@ -5,7 +5,6 @@ import { Refresh, TrendCharts } from '@element-plus/icons-vue'
 import { getDemoActivity } from '@/api/demo'
 import type {
   DemoActivitySnapshot,
-  DemoOperationLog,
   EntityID,
   InboundOrderItem,
   InventoryTransItem,
@@ -15,6 +14,7 @@ import type {
 import { statusTag, statusText, taskTypeText } from '@/constants'
 import { formatTime } from '@/utils'
 import { clearDemoEvidence, filterDemoActivity, readDemoEvidence, resolveDemoEvidenceFocus } from '@/utils/demoEvidence'
+import { buildDemoOperationRows, type DemoOperationRow } from '@/utils/demoOperations'
 import { useAutoRefresh } from '@/composables/autoRefresh'
 
 interface DetailRow {
@@ -43,17 +43,6 @@ interface InventoryRow {
   details: DetailRow[]
 }
 
-interface OperationRow {
-  key: string
-  operation: string
-  objectNo: string
-  beforeStatus: string
-  afterStatus: string
-  createdAt: string
-  raw: DemoOperationLog
-  details: DetailRow[]
-}
-
 const route = useRoute()
 const router = useRouter()
 const loading = ref(false)
@@ -67,7 +56,6 @@ const pageSize = 5
 const detailVisible = ref(false)
 const detailTitle = ref('')
 const detailRows = ref<DetailRow[]>([])
-const detailPayload = ref('')
 
 const focus = computed(() => resolveDemoEvidenceFocus(route.query as Record<string, unknown>, context.value))
 const focused = computed(() => Boolean(focus.value.scenario || focus.value.startedAt || focus.value.orderNos.length))
@@ -149,7 +137,7 @@ const businessObjects = computed<BusinessObjectRow[]>(() => {
   return rows.sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
 })
 const inventoryRows = computed<InventoryRow[]>(() => (evidence.value?.inventory_trans ?? []).map(inventoryObject))
-const operationRows = computed<OperationRow[]>(() => (evidence.value?.operations ?? []).map(operationObject))
+const operationRows = computed<DemoOperationRow[]>(() => buildDemoOperationRows(evidence.value?.operations ?? [], evidence.value))
 
 const summaryCards = computed(() => {
   const current = evidence.value
@@ -269,58 +257,6 @@ function inventoryObject(item: InventoryTransItem): InventoryRow {
   }
 }
 
-function pathId(path: string, pattern: RegExp): string {
-  return path.match(pattern)?.[1] || ''
-}
-
-function operationMeta(operation: DemoOperationLog): { title: string; type: string; objectNo: string; before: string; after: string } {
-  const path = operation.path
-  const inboundID = pathId(path, /\/inbound\/orders\/(\d+)/)
-  const outboundID = pathId(path, /\/outbound\/orders\/(\d+)/)
-  const taskID = pathId(path, /\/tasks\/(\d+)/)
-  const inbound = evidence.value?.inbound_orders.find((item) => String(item.id) === inboundID)
-  const outbound = evidence.value?.outbound_orders.find((item) => String(item.id) === outboundID)
-  const task = evidence.value?.tasks.find((item) => String(item.id) === taskID)
-  const objectNo = inbound?.order_no || outbound?.order_no || task?.task_no || shortId(inboundID || outboundID || taskID, '对象')
-
-  if (path.includes('/inbound/orders') && path.endsWith('/submit')) return { title: '提交入库单', type: '入库单', objectNo, before: '草稿', after: '已提交' }
-  if (path.includes('/inbound/orders') && path.endsWith('/approve')) return { title: '审核入库单', type: '入库单', objectNo, before: '已提交', after: '已审核' }
-  if (path.includes('/receive')) return { title: '完成收货', type: '入库单', objectNo, before: '已审核', after: '收货中' }
-  if (path.includes('/putaway')) return { title: '完成上架', type: '上架任务', objectNo, before: '上架中', after: '已完成' }
-  if (path.includes('/inbound/orders') && operation.method === 'POST') return { title: '创建入库单', type: '入库单', objectNo, before: '-', after: '草稿' }
-  if (path.includes('/outbound/orders') && path.endsWith('/submit')) return { title: '提交出库单', type: '出库单', objectNo, before: '草稿', after: '已提交' }
-  if (path.includes('/outbound/orders') && path.endsWith('/approve')) return { title: '审核并 FIFO 分配', type: '出库单', objectNo, before: '已提交', after: '分配完成' }
-  if (path.includes('/outbound/orders') && operation.method === 'POST') return { title: '创建出库单', type: '出库单', objectNo, before: '-', after: '草稿' }
-  if (path.includes('/pick')) return { title: '完成拣货', type: '拣货任务', objectNo, before: '拣货中', after: '已发货' }
-  if (path.includes('/inventory')) return { title: '查询库存', type: '库存', objectNo, before: '-', after: '-' }
-  if (path.includes('/tasks')) return { title: '查询任务', type: '任务', objectNo, before: '-', after: '-' }
-  return { title: operation.method + ' 业务操作', type: '业务对象', objectNo, before: '-', after: '-' }
-}
-
-function operationObject(operation: DemoOperationLog): OperationRow {
-  const meta = operationMeta(operation)
-  const failed = operation.status < 200 || operation.status >= 300
-  return {
-    key: `operation-${operation.id}`,
-    operation: meta.title,
-    objectNo: meta.objectNo,
-    beforeStatus: meta.before,
-    afterStatus: failed ? '处理失败' : meta.after,
-    createdAt: operation.created_at,
-    raw: operation,
-    details: [
-      { label: '操作类型', value: meta.title },
-      { label: '业务对象', value: meta.type },
-      { label: '对象编号', value: meta.objectNo },
-      { label: '前置状态', value: meta.before },
-      { label: '后置状态', value: failed ? '处理失败' : meta.after },
-      { label: '请求', value: operation.method + ' ' + operation.path },
-      { label: 'HTTP 状态', value: String(operation.status) },
-      { label: '操作时间', value: formatTime(operation.created_at) },
-    ],
-  }
-}
-
 function paginate<T>(items: T[], page: number): T[] {
   return items.slice((page - 1) * pageSize, page * pageSize)
 }
@@ -344,15 +280,14 @@ function showAll(): void {
   void router.replace('/demo/activity')
 }
 
-function openDetail(title: string, rows: DetailRow[], payload = ''): void {
+function openDetail(title: string, rows: DetailRow[]): void {
   detailTitle.value = title
   detailRows.value = rows
-  detailPayload.value = payload
   detailVisible.value = true
 }
 
-function openOperationDetail(row: OperationRow): void {
-  openDetail('操作记录详情', row.details, prettyPayload(row.raw.result || ''))
+function openOperationDetail(row: DemoOperationRow): void {
+  openDetail('操作记录详情', row.details)
 }
 
 function openBusinessDetail(row: BusinessObjectRow): void {
@@ -365,15 +300,6 @@ function openInventoryDetail(row: InventoryRow): void {
 
 function viewObject(row: BusinessObjectRow): void {
   void router.push(row.route)
-}
-
-function prettyPayload(value: string): string {
-  if (!value) return ''
-  try {
-    return JSON.stringify(JSON.parse(value), null, 2)
-  } catch {
-    return value
-  }
 }
 
 function onTabChange(): void {
@@ -453,7 +379,6 @@ useAutoRefresh(() => load(true), 5000)
       <el-descriptions :column="1" border>
         <el-descriptions-item v-for="item in detailRows" :key="item.label" :label="item.label">{{ item.value }}</el-descriptions-item>
       </el-descriptions>
-      <pre v-if="detailPayload" class="detail-payload">{{ detailPayload }}</pre>
     </el-drawer>
   </div>
 </template>
@@ -473,7 +398,6 @@ useAutoRefresh(() => load(true), 5000)
 .evidence-tabs :deep(.el-table__row) { cursor: pointer; }
 .up { color: var(--el-color-success); font-weight: 600; }
 .down { color: var(--el-color-danger); font-weight: 600; }
-.detail-payload { max-height: 280px; margin: 14px 0 0; padding: 12px; overflow: auto; border-radius: 8px; color: var(--el-text-color-regular); background: var(--el-fill-color-light); font-family: var(--gowms-num-font); font-size: 12px; white-space: pre-wrap; }
 @media (max-width: 900px) { .summary-card { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 600px) { .summary-card { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 </style>

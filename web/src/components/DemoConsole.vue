@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Document, HomeFilled, Refresh, VideoPlay } from '@element-plus/icons-vue'
+import { Document, HomeFilled, Refresh } from '@element-plus/icons-vue'
 import {
   acquireDemoSession,
   heartbeatDemoSession,
@@ -44,6 +44,7 @@ let lastActivityAt = 0
 let lastRenewAt = 0
 // 有交互后置为 true，等待续期定时器把后端 TTL 同步刷新。
 let renewPending = false
+let countdownWarningShown = false
 
 // 交互事件节流：鼠标移动等高频事件最多每秒记录一次。
 const ACTIVITY_THROTTLE_MS = 1_000
@@ -52,18 +53,19 @@ const RENEW_CHECK_INTERVAL_MS = 10_000
 const RENEW_MIN_INTERVAL_MS = 20_000
 // 剩余时间低于该阈值（秒）时，用户交互立即触发续期，不等定时器。
 const RENEW_URGENT_SECONDS = 30
-// 悬浮球与状态区的倒计时只在临近释放时出现，避免一直跳数字影响观感。
-const COUNTDOWN_VISIBLE_SECONDS = 60
-
 const remainingText = computed(() => {
   const seconds = Math.max(0, remaining.value)
   return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`
 })
-const showCountdown = computed(() => remaining.value > 0 && remaining.value <= COUNTDOWN_VISIBLE_SECONDS)
 const busy = computed(
   () => acquiring.value || scenarioRunning.value || resetting.value || exiting.value,
 )
 const idleTimeoutMinutes = computed(() => Math.max(1, Math.round(idleTTL() / 60)))
+const sessionStatusText = computed(() => {
+  if (resetting.value) return '正在重新开始'
+  if (scenarioRunning.value) return '正在执行真实业务'
+  return '演示环境正常'
+})
 const sessionState = computed(() => {
   if (auth.demoSessionId) return '进行中'
   if (acquiring.value) return '接入中'
@@ -137,6 +139,10 @@ function startTimers() {
       return
     }
     remaining.value -= 1
+    if (remaining.value === 60 && !countdownWarningShown) {
+      countdownWarningShown = true
+      ElMessage.warning('演示会话将在 1 分钟内空闲释放，可继续操作或点击“重新开始”重置数据')
+    }
     if (remaining.value === 0) void handleIdleTimeout()
   }, 1000)
   renewTimer = window.setInterval(() => {
@@ -155,6 +161,7 @@ async function refreshSession() {
     const info = await heartbeatDemoSession()
     auth.setDemoSession(info)
     remaining.value = info.expires_in
+    countdownWarningShown = false
     lastRenewAt = Date.now()
     renewPending = false
   } catch (error) {
@@ -195,6 +202,7 @@ async function acquire() {
     const info = await acquireDemoSession()
     auth.setDemoSession(info)
     remaining.value = info.expires_in
+    countdownWarningShown = false
     startTimers()
   } catch {
     if (redirectingToLogin) return
@@ -290,7 +298,7 @@ async function navigateTo(path: string) {
 async function resetData() {
   try {
     await ElMessageBox.confirm(
-      '将恢复仓库、货品、库存和单据到初始演示数据，确定继续吗？',
+      '将重新开始当前演示并恢复仓库、货品、库存和单据，确定继续吗？',
       '重置演示数据',
       { type: 'warning', confirmButtonText: '确定重置', cancelButtonText: '取消' },
     )
@@ -360,25 +368,14 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <button
-    v-if="auth.isDemo && !(route.path === '/demo' && !scenarioRunning && !result)"
-    class="demo-fab"
-    type="button"
-    aria-label="打开演示控制"
-    @click="visible = true"
-  >
-    <el-icon><VideoPlay /></el-icon>
-    <span>演示控制</span>
-    <small v-if="showCountdown" class="fab-countdown">{{ remainingText }}</small>
-  </button>
-
   <div
-    v-if="auth.isDemo && route.path === '/demo' && !scenarioRunning && !result"
+    v-if="auth.isDemo && auth.demoSessionId && !visible"
     class="demo-statusbar"
+    :class="{ urgent: remaining <= 60 }"
     aria-label="演示环境状态"
   >
     <i aria-hidden="true"></i>
-    <span>演示环境 · 闲置剩余</span>
+    <span>{{ sessionStatusText }} · 闲置剩余</span>
     <b>{{ remainingText }}</b>
     <button type="button" @click="visible = true">演示控制</button>
   </div>
@@ -487,7 +484,7 @@ onBeforeUnmount(() => {
   position: fixed;
   right: 24px;
   bottom: 20px;
-  z-index: 2000;
+  z-index: 1700;
   display: inline-flex;
   align-items: center;
   gap: 7px;
@@ -507,6 +504,14 @@ onBeforeUnmount(() => {
   background: var(--el-color-success);
 }
 
+.demo-statusbar.urgent > i {
+  background: var(--el-color-warning);
+}
+
+.demo-statusbar.urgent b {
+  color: var(--el-color-warning);
+}
+
 .demo-statusbar b {
   color: var(--el-text-color-primary);
   font-family: var(--gowms-num-font);
@@ -521,197 +526,10 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 
-.demo-fab {
-  position: fixed;
-  right: 24px;
-  bottom: 24px;
-  z-index: 2000;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 11px 15px;
-  border: none;
-  border-radius: 999px;
-  color: #fff;
-  background: var(--el-color-primary);
-  box-shadow: 0 8px 22px rgba(64, 158, 255, 0.28);
-  cursor: pointer;
-  font-weight: 600;
-}
-
-.demo-fab:hover {
-  background: var(--el-color-primary-dark-2);
-}
-
-.demo-fab small {
-  padding-left: 8px;
-  border-left: 1px solid rgba(255, 255, 255, 0.45);
-  font-variant-numeric: tabular-nums;
-  font-weight: 500;
-}
-
-.demo-fab .fab-countdown {
-  color: #fff3bf;
-}
-
-.controller-body {
-  display: grid;
-  gap: 18px;
-}
-
-.controller-state,
-.run-summary {
-  padding: 16px;
-  border: 1px solid var(--el-border-color-light);
-  border-radius: 12px;
-  background: var(--el-bg-color);
-}
-
-.state-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.state-head > div:first-child {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 8px;
-}
-
-.isolation {
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-}
-
-.remaining {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 3px;
-}
-
-.remaining span {
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-}
-
-.remaining strong {
-  font-family: var(--gowms-num-font);
-  font-size: 22px;
-  font-variant-numeric: tabular-nums;
-}
-
-.status-list {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-  margin: 16px 0 0;
-}
-
-.status-list div {
-  padding: 10px 12px;
-  border-radius: 9px;
-  background: var(--el-fill-color-lighter);
-}
-
-.status-list dt {
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-}
-
-.status-list dd {
-  margin: 5px 0 0;
-  color: var(--el-text-color-primary);
-  font-weight: 600;
-}
-
-.idle-hint {
-  margin: 12px 0 0;
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-  line-height: 1.6;
-}
-
-.section-title {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.section-title b {
-  color: var(--el-text-color-primary);
-}
-
-.section-title span {
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-  text-align: right;
-}
-
-.run-summary-copy {
-  margin: 0;
-  padding: 14px;
-  border-radius: 9px;
-  color: var(--el-text-color-secondary);
-  background: var(--el-fill-color-lighter);
-  font-size: 13px;
-  line-height: 1.7;
-}
-
-.controller-actions {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-  margin-top: 12px;
-}
-
-.controller-actions .el-button {
-  width: 100%;
-  margin-left: 0;
-}
-
-.demo-result-dialog :deep(.el-dialog__body) {
-  max-height: 90vh;
-  padding-top: 8px;
-  overflow-y: auto;
-}
-
-.danger-section {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  padding-top: 2px;
-}
-
-.danger-section .el-button {
-  margin-left: 0;
-}
-
-@media (max-height: 760px) and (min-width: 761px) {
-  .demo-statusbar {
-    bottom: 8px;
-    padding: 6px 9px;
-  }
-}
-
 @media (max-width: 520px) {
   .demo-statusbar {
     right: 12px;
     bottom: 12px;
-  }
-
-  .demo-fab {
-    right: 12px;
-    bottom: 12px;
-  }
-
-  .demo-fab span {
-    display: none;
   }
 
   .state-head {

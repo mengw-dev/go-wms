@@ -3,10 +3,11 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type CSSPro
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { getDemoActivity } from '@/api/demo'
-import type { DemoActivitySnapshot, DemoOperationLog } from '@/api/types'
+import type { DemoActivitySnapshot } from '@/api/types'
 import { useAuthStore } from '@/stores/auth'
 import { GUIDE_SCENARIO_LABELS, getGuideStep, resolveGuideRoute, useGuideStore } from '@/stores/guide'
 import { formatTime } from '@/utils'
+import { buildDemoOperationRows, type DemoOperationRow } from '@/utils/demoOperations'
 
 interface TargetRect {
   top: number
@@ -60,30 +61,15 @@ const completionSteps = computed(() => {
   }
   return guide.scenario ? [GUIDE_SCENARIO_LABELS[guide.scenario] + '单', '业务已完成'] : []
 })
-const businessOperations = computed(() => {
-  const operations = activity.value?.operations ?? []
-  return operations
+const businessOperations = computed<DemoOperationRow[]>(() => {
+  return buildDemoOperationRows(activity.value?.operations ?? [])
     .filter((item) =>
       ['/api/v1/inbound', '/api/v1/outbound', '/api/v1/inventory', '/api/v1/tasks'].some((prefix) =>
-        item.path.startsWith(prefix),
+        item.raw.path.startsWith(prefix),
       ),
     )
     .slice(0, 20)
 })
-
-function operationTitle(operation: DemoOperationLog): string {
-  const path = operation.path
-  if (path.endsWith('/submit')) return '提交单据'
-  if (path.endsWith('/approve')) return '审核并分配'
-  if (path.includes('/receive')) return '完成收货'
-  if (path.includes('/putaway')) return '完成上架'
-  if (path.includes('/inbound/orders') && operation.method === 'POST') return '创建入库单'
-  if (path.includes('/outbound/orders') && operation.method === 'POST') return '创建出库单'
-  if (path.includes('/pick')) return '完成拣货'
-  if (path.includes('/inventory')) return '查询库存与流水'
-  if (path.includes('/tasks')) return '查询任务'
-  return operation.method + ' 业务操作'
-}
 
 function httpStatusType(status: number): 'success' | 'warning' | 'danger' {
   if (status >= 200 && status < 300) return 'success'
@@ -605,12 +591,12 @@ onBeforeUnmount(() => {
       <div v-loading="recordsLoading" class="guide-records">
         <el-alert v-if="recordsError" :title="recordsError" type="warning" :closable="false" show-icon />
         <template v-else>
-          <article v-for="operation in businessOperations" :key="String(operation.id)" class="guide-record">
+          <article v-for="operation in businessOperations" :key="operation.key" class="guide-record">
             <div>
-              <b>{{ operationTitle(operation) }}</b>
-              <span>{{ formatTime(operation.created_at) }}</span>
+              <b>{{ operation.operation }} · {{ operation.objectNo }}</b>
+              <span>{{ operation.beforeStatus }} → {{ operation.afterStatus }} · 数量 {{ operation.quantityChange }} · {{ formatTime(operation.createdAt) }}</span>
             </div>
-            <el-tag :type="httpStatusType(operation.status)" size="small">{{ operation.status }}</el-tag>
+            <el-tag :type="httpStatusType(operation.raw.status)" size="small">{{ operation.raw.status }}</el-tag>
           </article>
           <el-empty v-if="!recordsLoading && businessOperations.length === 0" description="本次还没有业务操作记录" />
         </template>
