@@ -3,7 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ArrowRight, VideoPlay } from '@element-plus/icons-vue'
 import { useGuideStore, type GuideScenario } from '@/stores/guide'
-import { onDataChanged, runDemoScenarioInConsole } from '@/utils/events'
+import { onDataChanged, runDemoAutomaticallyInConsole, runDemoStepByStepInConsole } from '@/utils/events'
 import { readDemoEvidence } from '@/utils/demoEvidence'
 
 type AutomaticScenario = GuideScenario | 'full'
@@ -35,6 +35,7 @@ const router = useRouter()
 const guide = useGuideStore()
 const selectedStep = ref(0)
 const mechanismVisible = ref(false)
+const runModeDialogVisible = ref(false)
 const recentEvidence = ref(readDemoEvidence())
 let stopDataChanged: (() => void) | undefined
 
@@ -153,28 +154,52 @@ const currentObject = computed(() => {
 const currentStatus = computed(() => (recentEvidence.value ? '已有执行记录' : currentStep.value.status))
 
 function startAutomaticDemo(scenario: AutomaticScenario): void {
-  runDemoScenarioInConsole(scenario)
+  if (scenario === 'full') {
+    runModeDialogVisible.value = true
+    return
+  }
+  if (scenario === 'stocktake') return
+  runDemoAutomaticallyInConsole(scenario)
+}
+
+function startOneClickDemo(): void {
+  runModeDialogVisible.value = false
+  runDemoAutomaticallyInConsole('full')
+}
+
+function startStepByStepDemo(): void {
+  runModeDialogVisible.value = false
+  runDemoStepByStepInConsole()
 }
 
 function startSelectedAutomaticDemo(): void {
   startAutomaticDemo(currentStep.value.automaticScenario)
 }
 
-function startManualExperience(scenario: Extract<GuideScenario, 'inbound' | 'outbound'>): void {
+function startGuidedExperience(scenario: Extract<GuideScenario, 'inbound' | 'outbound'>): void {
   const firstStep = guide.start(scenario)
   void router.push(firstStep.route)
 }
 
-function startSelectedManualDemo(): void {
+function startSelectedGuide(): void {
+  if (currentStep.value.manualTarget === 'inventory') return
+  startGuidedExperience(currentStep.value.manualTarget)
+}
+
+function openSelectedBusinessPage(): void {
+  if (currentStep.value.manualTarget === 'outbound') {
+    void router.push('/outbound/orders')
+    return
+  }
   if (currentStep.value.manualTarget === 'inventory') {
     void router.push('/inventory')
     return
   }
-  startManualExperience(currentStep.value.manualTarget)
+  void router.push('/inbound/orders')
 }
 
 function openRecords(): void {
-  void router.push('/demo/activity')
+  void router.push({ path: '/demo/activity', query: { tab: 'operations' } })
 }
 
 function goPerformance(section?: string): void {
@@ -214,7 +239,7 @@ onUnmounted(() => stopDataChanged?.())
           <el-button type="primary" :icon="VideoPlay" @click="startAutomaticDemo('full')">
             开始自动演示
           </el-button>
-          <el-button @click="startManualExperience('inbound')">手动体验</el-button>
+          <el-button @click="startGuidedExperience('inbound')">引导体验 · 入库</el-button>
         </div>
         <div class="proof-line" aria-label="演示环境能力">
           <span>真实业务接口</span>
@@ -297,11 +322,12 @@ onUnmounted(() => stopDataChanged?.())
             </div>
           </dl>
           <div class="detail-actions">
-            <el-button size="small" @click="startSelectedManualDemo">
+            <el-button size="small" @click="openSelectedBusinessPage">
               {{ currentStep.actionLabel }}
             </el-button>
+            <el-button v-if="currentStep.manualTarget !== 'inventory'" size="small" @click="startSelectedGuide">引导演示</el-button>
             <el-button size="small" @click="startSelectedAutomaticDemo">自动演示</el-button>
-            <el-button size="small" text type="primary" @click="openRecords">查看记录</el-button>
+            <el-button size="small" text type="primary" @click="openRecords">查看操作日志</el-button>
           </div>
         </article>
       </div>
@@ -334,6 +360,27 @@ onUnmounted(() => stopDataChanged?.())
       <el-button text type="primary" @click="openRecords">业务证据 →</el-button>
       <el-button text type="primary" @click="goPerformance()">工程验证 →</el-button>
     </div>
+
+    <el-dialog
+      v-model="runModeDialogVisible"
+      title="选择自动演示方式"
+      width="min(560px, 94vw)"
+      append-to-body
+      :close-on-click-modal="false"
+    >
+      <div class="run-mode-grid">
+        <button type="button" class="run-mode-card" @click="startOneClickDemo">
+          <b>一键自动完成</b>
+          <span>连续调用真实入库和出库接口，完成后展示业务结果。</span>
+          <small>适合快速查看完整闭环</small>
+        </button>
+        <button type="button" class="run-mode-card" @click="startStepByStepDemo">
+          <b>分步执行</b>
+          <span>点击一次“执行下一步”，系统才执行当前真实业务步骤。</span>
+          <small>每一步都可打开真实页面核对</small>
+        </button>
+      </div>
+    </el-dialog>
 
     <el-dialog
       v-model="mechanismVisible"
@@ -845,6 +892,51 @@ onUnmounted(() => stopDataChanged?.())
   .section-head {
     align-items: flex-start;
     flex-direction: column;
+  }
+}
+
+.run-mode-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.run-mode-card {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--el-border-color);
+  border-radius: 11px;
+  display: grid;
+  gap: 7px;
+  text-align: left;
+  color: var(--el-text-color-primary);
+  background: var(--el-bg-color);
+  cursor: pointer;
+}
+
+.run-mode-card:hover {
+  border-color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
+}
+
+.run-mode-card b {
+  font-size: 16px;
+}
+
+.run-mode-card span {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.run-mode-card small {
+  color: var(--el-color-primary);
+  font-size: 11px;
+}
+
+@media (max-width: 680px) {
+  .run-mode-grid {
+    grid-template-columns: 1fr;
   }
 }
 </style>

@@ -4,14 +4,6 @@ import { confirmMessageBox, loginByUi, selectOption } from './support/api'
 const demoUsername = process.env.E2E_DEMO_USERNAME || process.env.WMS_DEMO_USERNAME || 'demo1'
 const demoPassword = process.env.E2E_DEMO_PASSWORD || process.env.WMS_DEMO_PASSWORD || 'demo123456'
 
-function drawer(page: Page): Locator {
-  return page.locator('.demo-console-drawer')
-}
-
-function resultViewer(page: Page): Locator {
-  return page.getByLabel('真实业务执行结果')
-}
-
 async function loginDemo(page: Page): Promise<void> {
   await loginByUi(page, demoUsername, demoPassword, /WMS 业务闭环/)
   await expect(page).toHaveURL(/demo$/)
@@ -22,36 +14,18 @@ async function startScenarioFromHome(
   scenario: 'inbound' | 'outbound' | 'stocktake' | 'full',
   cardTitle?: string,
 ): Promise<Locator> {
-  const expectedPaths = scenario === 'full'
-    ? ['/api/v1/demo/run/inbound', '/api/v1/demo/run/outbound']
-    : [`/api/v1/demo/run/${scenario}`]
-  const responsePromises = expectedPaths.map((path) =>
-    page.waitForResponse(
-      (response) => response.request().method() === 'POST' && new URL(response.url()).pathname === path,
-    ),
-  )
-
   if (scenario === 'full') {
     await page.getByRole('button', { name: '开始自动演示', exact: true }).click()
+    await page.getByRole('dialog', { name: '选择自动演示方式' }).getByRole('button', { name: /一键自动完成/ }).click()
   } else {
     const step = page.locator('.flow-step').filter({ hasText: cardTitle || '' }).first()
     await step.click()
     await page.locator('.detail-panel').getByRole('button', { name: '自动演示', exact: true }).click()
   }
 
-  for (const response of await Promise.all(responsePromises)) {
-    expect(response.ok()).toBeTruthy()
-  }
-  const viewer = resultViewer(page)
-  await expect(viewer).toBeVisible({ timeout: 60_000 })
-  return viewer
-}
-
-async function closeResultDialog(page: Page): Promise<void> {
-  const dialog = page.locator('.demo-result-dialog')
-  await expect(dialog).toBeVisible()
-  await dialog.locator('.el-dialog__headerbtn').click()
-  await expect(resultViewer(page)).toHaveCount(0)
+  const runner = page.getByRole('dialog', { name: '分步执行演示' })
+  await expect(runner).toBeVisible()
+  return runner
 }
 
 type ApiEnvelope<T> = { code: number; msg: string; data: T }
@@ -113,7 +87,7 @@ test('demo home is a concise one-screen launcher', async ({ page }) => {
 
   await expect(page.getByRole('heading', { name: 'WMS 业务闭环', exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: '开始自动演示', exact: true })).toHaveCount(1)
-  await expect(page.getByRole('button', { name: '手动体验', exact: true })).toHaveCount(1)
+  await expect(page.getByRole('button', { name: '引导体验 · 入库', exact: true })).toHaveCount(1)
   await expect(page.locator('.flow-step')).toHaveCount(5)
   await expect(page.locator('.engineering-card')).toHaveCount(3)
   await expect(page.getByText('库存盘点', { exact: true })).toHaveCount(0)
@@ -127,53 +101,73 @@ test('demo home is a concise one-screen launcher', async ({ page }) => {
   expect(metrics.scrollHeight).toBeLessThanOrEqual(metrics.clientHeight)
 })
 
-test('full demo opens a three-column result panel without stocktake', async ({ page }) => {
+test('start demo supports staged real execution', async ({ page }) => {
   await loginDemo(page)
-  const viewer = await startScenarioFromHome(page, 'full')
+  await page.getByRole('button', { name: '开始自动演示', exact: true }).click()
+  const modeDialog = page.getByRole('dialog', { name: '选择自动演示方式' })
+  await modeDialog.getByRole('button', { name: /分步执行/ }).click()
 
-  await expect(viewer.getByRole('heading', { name: '完整业务闭环已完成', exact: true })).toBeVisible()
-  await expect(viewer.locator('.stage-item')).toHaveCount(5)
-  await expect(viewer.locator('.summary-strip > div')).toHaveCount(6)
-  await expect(viewer.getByText('盘点', { exact: true })).toHaveCount(0)
-  await expect(viewer.getByRole('button', { name: '暂停', exact: true })).toBeVisible()
-  await expect(viewer.getByRole('button', { name: '下一步', exact: true })).toBeVisible()
-  await expect(viewer.getByRole('button', { name: '打开真实页面', exact: true })).toBeVisible()
+  const stagedDialog = page.getByRole('dialog', { name: '分步执行演示' })
+  await expect(stagedDialog).toBeVisible()
+  const responsePromise = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      new URL(response.url()).pathname === '/api/v1/inbound/orders',
+  )
+  await stagedDialog.getByRole('button', { name: '执行下一步', exact: true }).click()
+  const response = await responsePromise
+  expect(response.ok()).toBeTruthy()
+  await expect(stagedDialog.getByText('创建入库单', { exact: true }).first()).toBeVisible()
+  const objectNo = (await stagedDialog.locator('.stage-facts dd').first().textContent())?.trim() || ''
+  expect(objectNo).toMatch(/^RK/)
 
-  await closeResultDialog(page)
-  const statusbar = page.locator('.demo-statusbar')
-  await expect(statusbar).toBeVisible()
-  await statusbar.getByRole('button', { name: '演示控制', exact: true }).click()
-  const demoDrawer = drawer(page)
-  await expect(demoDrawer).toBeVisible()
-  await demoDrawer.getByRole('button', { name: '查看结果', exact: true }).click()
-  await expect(resultViewer(page)).toBeVisible()
-
-  await resultViewer(page).getByRole('button', { name: '查看操作记录', exact: true }).click()
-  await expect(page).toHaveURL(/\/demo\/activity/)
-  await expect(page.getByRole('heading', { name: '本次业务执行证据', exact: true })).toBeVisible()
-  await expect(page.locator('.summary-card > div')).toHaveCount(6)
-  await expect(page.getByRole('tab', { name: '业务对象', exact: true })).toBeVisible()
-  await expect(page.getByRole('tab', { name: '库存流水', exact: true })).toBeVisible()
-  await expect(page.getByRole('tab', { name: '操作记录', exact: true })).toBeVisible()
-  await expect(page.getByText('盘点', { exact: true })).toHaveCount(0)
-  await page.getByRole('button', { name: '详情', exact: true }).first().click()
-  const detailDrawer = page.getByRole('dialog', { name: /详情$/ }).last()
-  await expect(detailDrawer).toBeVisible()
-  await expect(detailDrawer.locator('.el-descriptions')).toBeVisible()
+  await stagedDialog.getByRole('button', { name: '打开真实页面', exact: true }).click()
+  await expect(page).toHaveURL(/\/inbound\/orders\/\d+$/)
+  await expect(page.getByText(objectNo, { exact: true }).first()).toBeVisible()
+  await expect(page.getByRole('button', { name: '继续分步演示', exact: true })).toBeVisible()
 })
 
-test('home auto-demo CTAs call their own scenario APIs', async ({ page }) => {
+test('one-click demo executes all real stages without replay controls', async ({ page }) => {
+  await loginDemo(page)
+  const runner = await startScenarioFromHome(page, 'full')
+  await expect(runner.getByText('自动执行中，每步间隔约 0.9 秒', { exact: true })).toBeVisible()
+  await expect(runner.getByText('全部流程已完成', { exact: true })).toBeVisible({ timeout: 60_000 })
+  await expect(runner.locator('.stage-item')).toHaveCount(5)
+  await expect(runner.getByText('盘点', { exact: true })).toHaveCount(0)
+  await expect(runner.getByRole('button', { name: '重新播放', exact: true })).toHaveCount(0)
+
+  await runner.getByRole('button', { name: '关闭此对话框' }).click()
+  const continueButton = page.getByRole('button', { name: '查看分步结果', exact: true })
+  await expect(continueButton).toBeVisible()
+  await continueButton.click()
+  await expect(runner).toBeVisible()
+  await runner.getByRole('button', { name: '操作日志', exact: true }).click()
+  await expect(page).toHaveURL(/\/demo\/activity\?tab=operations/)
+  await expect(page.getByRole('heading', { name: '本次业务执行证据', exact: true })).toBeVisible()
+  await expect(page.getByRole('tab', { name: '操作日志', exact: true })).toHaveClass(/is-active/)
+  await expect(page.getByText('创建入库单', { exact: true }).first()).toBeVisible({ timeout: 10_000 })
+  await expect(page.getByText('POST 业务操作', { exact: true })).toHaveCount(0)
+})
+
+test('home scoped auto demos execute their own real business APIs', async ({ page }) => {
   await loginDemo(page)
   const scenarios = [
-    { key: 'inbound', card: '入库单', summary: /入库单 .* 已完成/ },
-    { key: 'outbound', card: '出库单', summary: /出库单 .* 已按 FIFO/ },
+    { key: 'inbound', card: '入库单', path: '/api/v1/inbound/orders' },
+    { key: 'outbound', card: '出库单', path: '/api/v1/outbound/orders' },
   ] as const
 
   for (const item of scenarios) {
     await page.goto('/demo')
-    const viewer = await startScenarioFromHome(page, item.key, item.card)
-    await expect(viewer.getByText(item.summary).first()).toBeVisible({ timeout: 60_000 })
-    await closeResultDialog(page)
+    const requests: string[] = []
+    const listener = (request: { method: () => string; url: () => string }) => {
+      if (request.method() === 'POST') requests.push(new URL(request.url()).pathname)
+    }
+    page.on('request', listener)
+    const runner = await startScenarioFromHome(page, item.key, item.card)
+    await expect(runner.getByText('全部流程已完成', { exact: true })).toBeVisible({ timeout: 60_000 })
+    expect(requests).toContain(item.path)
+    page.off('request', listener)
+    await runner.getByRole('button', { name: '关闭此对话框' }).click()
   }
 })
 
@@ -181,7 +175,7 @@ test('manual inbound guide completes through inventory evidence', async ({ page 
   await loginDemo(page)
 
   await page.locator('.flow-step').filter({ hasText: '入库单' }).click()
-  await page.locator('.detail-panel').getByRole('button', { name: '进入入库页面', exact: true }).click()
+  await page.locator('.detail-panel').getByRole('button', { name: '引导演示', exact: true }).click()
   await expect(page).toHaveURL(/\/inbound\/orders$/)
 
   const guide = page.locator('section[aria-label="手动业务引导"]')
@@ -189,8 +183,8 @@ test('manual inbound guide completes through inventory evidence', async ({ page 
   await expect(page.locator('.guide-highlight')).toHaveCount(1)
   await expect(page.locator('.demo-statusbar')).toBeVisible()
 
-  await page.getByRole('button', { name: '查看操作记录', exact: true }).click()
-  const guideRecords = page.getByRole('dialog', { name: '本次操作记录' })
+  await page.getByRole('button', { name: '操作日志', exact: true }).click()
+  const guideRecords = page.getByRole('dialog', { name: '本次操作日志' })
   await expect(guideRecords).toBeVisible()
   await expect(page.locator('.guide-bubble')).toHaveCount(0)
   await guideRecords.getByRole('button', { name: '关闭此对话框' }).click()

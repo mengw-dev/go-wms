@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Document, HomeFilled, Refresh } from '@element-plus/icons-vue'
@@ -13,11 +13,13 @@ import {
 import { ApiError } from '@/api/request'
 import type { DemoScenarioResult } from '@/api/types'
 import DemoRunViewer from '@/components/demo/DemoRunViewer.vue'
+import StagedDemoRunner from '@/components/demo/StagedDemoRunner.vue'
 import { useAuthStore } from '@/stores/auth'
 import {
   emitDataChanged,
   OPEN_DEMO_CONSOLE_EVENT,
   RUN_DEMO_SCENARIO_EVENT,
+  RUN_DEMO_STAGED_EVENT,
   type DemoConsoleScenario,
 } from '@/utils/events'
 import { rememberDemoEvidence } from '@/utils/demoEvidence'
@@ -34,6 +36,12 @@ const exiting = ref(false)
 const remaining = ref(0)
 const result = ref<DemoScenarioResult | null>(null)
 const resultDialogVisible = ref(false)
+const stagedDialogVisible = ref(false)
+const stagedRunnerRef = ref<InstanceType<typeof StagedDemoRunner>>()
+const stagedStarted = ref(false)
+const stagedActive = ref(false)
+const stagedCompleted = ref(false)
+const stagedProgress = ref(0)
 const runningScenario = ref<DemoConsoleScenario | null>(null)
 let countdownTimer: number | undefined
 let renewTimer: number | undefined
@@ -64,8 +72,11 @@ const idleTimeoutMinutes = computed(() => Math.max(1, Math.round(idleTTL() / 60)
 const sessionStatusText = computed(() => {
   if (resetting.value) return '正在重新开始'
   if (scenarioRunning.value) return '正在执行真实业务'
+  if (stagedCompleted.value) return '分步流程已完成'
+  if (stagedActive.value) return `分步执行中 · ${stagedProgress.value}%`
   return '演示环境正常'
 })
+const stagedActionText = computed(() => stagedCompleted.value ? '查看分步结果' : '继续分步演示')
 const sessionState = computed(() => {
   if (auth.demoSessionId) return '进行中'
   if (acquiring.value) return '接入中'
@@ -218,6 +229,27 @@ function onOpenDemoConsole() {
   visible.value = true
 }
 
+function onOpenStagedDemo(event: globalThis.Event) {
+  const detail = (event as globalThis.CustomEvent<{ mode?: 'auto' | 'step'; scope?: 'full' | 'inbound' | 'outbound' }>).detail
+  stagedDialogVisible.value = true
+  void nextTick(() => stagedRunnerRef.value?.start(detail?.mode || 'step', detail?.scope || 'full'))
+}
+
+function onStagedState(state: { started: boolean; active: boolean; completed: boolean; progress: number }) {
+  stagedStarted.value = state.started
+  stagedActive.value = state.active
+  stagedCompleted.value = state.completed
+  stagedProgress.value = state.progress
+}
+
+function openDemoControl() {
+  if (stagedStarted.value) {
+    stagedDialogVisible.value = true
+    return
+  }
+  visible.value = true
+}
+
 async function initialize() {
   if (!auth.isDemo) return
   if (auth.demoSessionId) {
@@ -291,6 +323,7 @@ function isDemoScenarioResult(value: unknown): value is DemoScenarioResult {
 
 async function navigateTo(path: string) {
   resultDialogVisible.value = false
+  stagedDialogVisible.value = false
   visible.value = false
   await router.push(path)
 }
@@ -344,6 +377,7 @@ async function releaseAndExit() {
 onMounted(() => {
   window.addEventListener(OPEN_DEMO_CONSOLE_EVENT, onOpenDemoConsole)
   window.addEventListener(RUN_DEMO_SCENARIO_EVENT, onRunDemoScenario)
+  window.addEventListener(RUN_DEMO_STAGED_EVENT, onOpenStagedDemo)
   // 用户交互才会刷新空闲倒计时并向后端续期。
   window.addEventListener('mousemove', markActivity, { passive: true })
   window.addEventListener('mousedown', markActivity, { passive: true })
@@ -358,6 +392,7 @@ onBeforeUnmount(() => {
   clearTimers()
   window.removeEventListener(OPEN_DEMO_CONSOLE_EVENT, onOpenDemoConsole)
   window.removeEventListener(RUN_DEMO_SCENARIO_EVENT, onRunDemoScenario)
+  window.removeEventListener(RUN_DEMO_STAGED_EVENT, onOpenStagedDemo)
   window.removeEventListener('mousemove', markActivity)
   window.removeEventListener('mousedown', markActivity)
   window.removeEventListener('wheel', markActivity)
@@ -377,7 +412,7 @@ onBeforeUnmount(() => {
     <i aria-hidden="true"></i>
     <span>{{ sessionStatusText }} · 闲置剩余</span>
     <b>{{ remainingText }}</b>
-    <button type="button" @click="visible = true">演示控制</button>
+    <button type="button" @click="openDemoControl">{{ stagedStarted ? stagedActionText : '演示控制' }}</button>
   </div>
 
   <el-drawer
@@ -439,6 +474,7 @@ onBeforeUnmount(() => {
           >
             查看结果
           </el-button>
+          <el-button v-if="stagedStarted" @click="stagedDialogVisible = true">{{ stagedActionText }}</el-button>
           <el-button :icon="HomeFilled" @click="navigateTo('/demo')">返回演示中心</el-button>
         </div>
       </section>
@@ -464,6 +500,19 @@ onBeforeUnmount(() => {
       </section>
     </div>
   </el-drawer>
+
+  <el-dialog
+    v-model="stagedDialogVisible"
+    class="demo-staged-dialog"
+    title="分步执行演示"
+    width="min(1120px, 96vw)"
+    top="4vh"
+    append-to-body
+    :close-on-click-modal="false"
+    aria-label="分步执行演示"
+  >
+    <StagedDemoRunner ref="stagedRunnerRef" @navigate="navigateTo" @state-change="onStagedState" />
+  </el-dialog>
 
   <el-dialog
     v-model="resultDialogVisible"

@@ -22,3 +22,16 @@ export const RUN_DEMO_SCENARIO_EVENT = 'wms:run-demo-scenario'
 export function runDemoScenarioInConsole(scenario: DemoConsoleScenario): void {
   window.dispatchEvent(new CustomEvent<{ scenario: DemoConsoleScenario }>(RUN_DEMO_SCENARIO_EVENT, { detail: { scenario } }))
 }
+
+export type DemoRunMode = 'auto' | 'step'
+export type DemoRunScope = 'full' | 'inbound' | 'outbound'
+
+export const RUN_DEMO_STAGED_EVENT = 'wms:run-demo-staged'
+
+export function runDemoStepByStepInConsole(scope: DemoRunScope = 'full'): void {
+  window.dispatchEvent(new CustomEvent<{ mode: DemoRunMode; scope: DemoRunScope }>(RUN_DEMO_STAGED_EVENT, { detail: { mode: 'step', scope } }))
+}
+
+export function runDemoAutomaticallyInConsole(scope: DemoRunScope = 'full'): void {
+  window.dispatchEvent(new CustomEvent<{ mode: DemoRunMode; scope: DemoRunScope }>(RUN_DEMO_STAGED_EVENT, { detail: { mode: 'auto', scope } }))
+}

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Refresh, TrendCharts } from '@element-plus/icons-vue'
 import { getDemoActivity } from '@/api/demo'
@@ -47,7 +47,7 @@ const route = useRoute()
 const router = useRouter()
 const loading = ref(false)
 const data = ref<DemoActivitySnapshot | null>(null)
-const activeTab = ref('objects')
+const activeTab = ref(route.query.tab === 'operations' ? 'operations' : 'objects')
 const context = ref(readDemoEvidence())
 const objectPage = ref(1)
 const inventoryPage = ref(1)
@@ -313,6 +313,13 @@ function onTabChange(): void {
   operationPage.value = 1
 }
 
+watch(
+  () => route.query.tab,
+  (tab) => {
+    activeTab.value = tab === 'operations' ? 'operations' : 'objects'
+  },
+)
+
 onMounted(() => load())
 useAutoRefresh(() => load(true), 5000)
 </script>
@@ -367,7 +374,7 @@ useAutoRefresh(() => load(true), 5000)
           <el-pagination v-if="inventoryRows.length > pageSize" v-model:current-page="inventoryPage" small background layout="prev, pager, next" :page-size="pageSize" :total="inventoryRows.length" />
         </el-tab-pane>
 
-        <el-tab-pane label="操作记录" name="operations">
+        <el-tab-pane label="操作日志" name="operations">
           <el-table :data="pagedOperations" size="small" border stripe empty-text="本次执行没有操作记录" @row-click="openOperationDetail">
             <el-table-column prop="operation" label="操作" min-width="150" />
             <el-table-column prop="objectNo" label="对象" min-width="170" />

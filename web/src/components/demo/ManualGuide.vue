@@ -494,7 +494,7 @@ onBeforeUnmount(() => {
           <small v-if="guide.lastOutcome">当前操作已完成</small>
         </div>
         <div class="guide-strip__actions">
-          <el-button link type="primary" @click="openRecords">查看操作记录</el-button>
+          <el-button link type="primary" @click="openRecords">操作日志</el-button>
           <el-button link type="danger" @click="exitGuide">退出演示</el-button>
         </div>
       </section>
@@ -578,7 +578,7 @@ onBeforeUnmount(() => {
     <el-drawer
       v-model="recordsVisible"
       class="guide-records-drawer"
-      title="本次操作记录"
+      title="本次操作日志"
       size="min(440px, 92vw)"
       append-to-body
     >

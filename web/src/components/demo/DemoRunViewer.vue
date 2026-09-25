@@ -1,15 +1,6 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import {
-  ArrowLeft,
-  ArrowRight,
-  CircleCheckFilled,
-  CircleCloseFilled,
-  Clock,
-  Document,
-  VideoPause,
-  VideoPlay,
-} from '@element-plus/icons-vue'
+import { computed, ref, watch } from 'vue'
+import { CircleCheckFilled, CircleCloseFilled, Clock } from '@element-plus/icons-vue'
 import type { DemoScenarioEvidence, DemoScenarioResult, DemoScenarioStep } from '@/api/types'
 
 type StageStatus = 'completed' | 'active' | 'pending' | 'failed'
@@ -38,9 +29,6 @@ const STAGE_DEFINITIONS: StageDefinition[] = [
 ]
 
 const currentIndex = ref(0)
-const playing = ref(false)
-const replayDone = ref(false)
-let replayTimer: number | undefined
 
 const runFailed = computed(() => props.result.status === 'failed' || props.result.steps.some((step) => step.status === 'failed'))
 const businessTitle = computed(() => {
@@ -70,10 +58,6 @@ const stages = computed<StageView[]>(() => {
   })
 })
 
-const activeIndexes = computed(() => {
-  const indexes = stages.value.map((stage, index) => (stage.steps.length ? index : -1)).filter((index) => index >= 0)
-  return indexes.length ? indexes : [0]
-})
 const currentStage = computed(() => stages.value[currentIndex.value] ?? stages.value[0])
 const currentStageLink = computed(() => {
   const links = props.result.links ?? []
@@ -133,79 +117,11 @@ function statusText(status: StageStatus): string {
   return '已完成'
 }
 
-function stopTimer(): void {
-  if (replayTimer !== undefined) {
-    window.clearTimeout(replayTimer)
-    replayTimer = undefined
-  }
-}
-
-function nextActiveIndex(from: number): number | null {
-  return activeIndexes.value.find((index) => index > from) ?? null
-}
-
-function previousActiveIndex(from: number): number | null {
-  return [...activeIndexes.value].reverse().find((index) => index < from) ?? null
-}
-
-function advance(): void {
-  const next = nextActiveIndex(currentIndex.value)
-  if (next === null) {
-    replayDone.value = true
-    playing.value = false
-    stopTimer()
-    return
-  }
-  currentIndex.value = next
-  if (stages.value[next].status === 'failed') {
-    replayDone.value = true
-    playing.value = false
-    stopTimer()
-    return
-  }
-  replayTimer = window.setTimeout(advance, 700)
-}
-
 function startReplay(): void {
-  stopTimer()
-  currentIndex.value = activeIndexes.value[0] ?? 0
-  replayDone.value = activeIndexes.value.length <= 1
-  playing.value = !replayDone.value
-  if (!replayDone.value) replayTimer = window.setTimeout(advance, 500)
-}
-
-function togglePlayback(): void {
-  if (replayDone.value) {
-    startReplay()
-    return
-  }
-  playing.value = !playing.value
-  if (playing.value) replayTimer = window.setTimeout(advance, 500)
-  else stopTimer()
-}
-
-function previousStage(): void {
-  const previous = previousActiveIndex(currentIndex.value)
-  if (previous === null) return
-  playing.value = false
-  replayDone.value = false
-  stopTimer()
-  currentIndex.value = previous
-}
-
-function nextStage(): void {
-  const next = nextActiveIndex(currentIndex.value)
-  if (next === null) return
-  playing.value = false
-  replayDone.value = false
-  stopTimer()
-  currentIndex.value = next
+  currentIndex.value = Math.max(0, stages.value.length - 1)
 }
 
 function selectStage(index: number): void {
-  playing.value = false
-  replayDone.value = true
-  stopTimer()
   currentIndex.value = index
 }
 
@@ -219,7 +135,6 @@ watch(
   { immediate: true },
 )
 
-onBeforeUnmount(stopTimer)
 </script>
 
 <template>
@@ -282,7 +197,7 @@ onBeforeUnmount(stopTimer)
         </dl>
         <div class="stage-actions">
           <el-button size="small" :disabled="!currentStage.steps.length" @click="navigate(currentStageLink)">打开真实页面</el-button>
-          <el-button size="small" type="primary" plain @click="navigate('/demo/activity')">查看操作记录</el-button>
+          <el-button size="small" type="primary" plain @click="navigate('/demo/activity?tab=operations')">查看操作日志</el-button>
         </div>
       </aside>
     </div>
@@ -292,12 +207,6 @@ onBeforeUnmount(stopTimer)
         <div v-for="item in summaryCards" :key="item.label" :title="item.item.detail"><span>{{ item.label }}</span><b>{{ item.item.value }}</b></div>
       </div>
 
-      <div class="run-controls">
-        <el-button :icon="ArrowLeft" :disabled="previousActiveIndex(currentIndex) === null" @click="previousStage">上一步</el-button>
-        <el-button :icon="playing ? VideoPause : VideoPlay" @click="togglePlayback">{{ playing ? '暂停' : replayDone ? '重新播放' : '继续' }}</el-button>
-        <el-button :disabled="nextActiveIndex(currentIndex) === null" @click="nextStage">下一步 <el-icon class="el-icon--right"><ArrowRight /></el-icon></el-button>
-        <el-button :icon="Document" type="primary" @click="navigate('/demo/activity')">操作记录</el-button>
-      </div>
     </footer>
   </section>
 </template>

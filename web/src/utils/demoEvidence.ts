@@ -112,7 +112,7 @@ export function resolveDemoEvidenceFocus(
   context: DemoEvidenceContext | null,
 ): DemoEvidenceFocus {
   const requestedSource = queryText(query, 'source')
-  const useContext = requestedSource !== 'manual' && Boolean(context)
+  const useContext = requestedSource !== 'manual' && requestedSource !== 'staged' && Boolean(context)
   const base = useContext && context ? focusFromContext(context) : {
     scenario: '',
     source: '',
