@@ -52,10 +52,19 @@ test('inbound UI flow creates stock and inventory transaction', async ({ page, r
   await selectOption(page, formDialog, '选择货品', skuLabel)
   await formDialog.getByPlaceholder('备注（可选）').fill(remark)
   await formDialog.locator('.el-input-number input').first().fill('3')
+  // 列表精简后不再展示备注列，改从创建响应取得入库单号作为行定位依据
+  const createResponsePromise = page.waitForResponse(
+    (response) =>
+      response.url().endsWith('/inbound/orders') && response.request().method() === 'POST',
+  )
   await formDialog.getByRole('button', { name: '保存' }).click()
+  const orderNo = ((await createResponsePromise).json() as Promise<{
+    data: { order_no: string }
+  }>)
+  const inboundOrderNo = (await orderNo).data.order_no
   await expect(formDialog).not.toBeVisible()
 
-  let row = tableRow(page, remark)
+  let row = tableRow(page, inboundOrderNo)
   await expect(row).toContainText('草稿')
   await row.getByRole('button', { name: '提交' }).click()
   await confirmMessageBox(page)
@@ -72,7 +81,7 @@ test('inbound UI flow creates stock and inventory transaction', async ({ page, r
   await expect(page.getByText('收货成功')).toBeVisible()
   await receiveDialog.getByRole('button', { name: '关闭', exact: true }).click()
 
-  row = tableRow(page, remark)
+  row = tableRow(page, inboundOrderNo)
   await expect(row.getByRole('button', { name: '上架' })).toBeVisible()
   await row.getByRole('button', { name: '上架' }).click()
   const putawayDialog = dialog(page, '上架')
