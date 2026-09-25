@@ -88,6 +88,7 @@ test('demo home is a concise one-screen launcher', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'WMS 业务闭环', exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: '开始自动演示', exact: true })).toHaveCount(1)
   await expect(page.getByRole('button', { name: '引导体验 · 入库', exact: true })).toHaveCount(1)
+  await expect(page.getByRole('button', { name: '系统架构图', exact: true })).toHaveCount(1)
   await expect(page.locator('.flow-step')).toHaveCount(5)
   await expect(page.locator('.engineering-card')).toHaveCount(3)
   await expect(page.getByText('库存盘点', { exact: true })).toHaveCount(0)
@@ -226,6 +227,14 @@ test('manual inbound guide completes through inventory evidence', async ({ page 
   await expect(guide.getByText('第 1 / 7 步', { exact: true })).toBeVisible()
   await expect(page.locator('.guide-highlight')).toHaveCount(1)
   await expect(page.locator('.demo-statusbar')).toBeVisible()
+
+  await page.getByRole('button', { name: '演示控制', exact: true }).click()
+  const controlDrawer = page.getByRole('dialog', { name: '演示控制' })
+  await expect(controlDrawer.getByText('引导演示进行中 · 入库', { exact: true })).toBeVisible()
+  await expect(controlDrawer.getByText('第 1 / 7 步 · 创建入库单', { exact: true })).toBeVisible()
+  await expect(controlDrawer.getByRole('button', { name: '回到当前引导', exact: true })).toBeVisible()
+  await expect(controlDrawer.getByText('分步流程已完成', { exact: true })).toHaveCount(0)
+  await controlDrawer.getByRole('button', { name: '关闭此对话框' }).click()
 
   await page.getByRole('button', { name: '业务操作记录', exact: true }).click()
   const guideRecords = page.getByRole('dialog', { name: '本次业务操作记录' })

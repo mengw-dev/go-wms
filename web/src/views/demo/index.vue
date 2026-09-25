@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ArrowRight, VideoPlay } from '@element-plus/icons-vue'
+import { ArrowRight, Share, VideoPlay } from '@element-plus/icons-vue'
 import { getGuideStep, useGuideStore, type GuideScenario } from '@/stores/guide'
 import { onDataChanged, runDemoAutomaticallyInConsole, runDemoStepByStepInConsole } from '@/utils/events'
 import { readDemoEvidence } from '@/utils/demoEvidence'
@@ -33,6 +33,7 @@ interface EngineeringCheck {
 
 const router = useRouter()
 const guide = useGuideStore()
+const ARCHITECTURE_URL = 'https://mengw21.cn/overview.html'
 const selectedStep = ref(0)
 const mechanismVisible = ref(false)
 const runModeDialogVisible = ref(false)
@@ -183,6 +184,10 @@ async function startGuidedExperience(scenario: Extract<GuideScenario, 'inbound' 
   guide.start(scenario)
 }
 
+function openArchitecture(): void {
+  window.open(ARCHITECTURE_URL, '_blank', 'noopener,noreferrer')
+}
+
 function startSelectedGuide(): void {
   if (currentStep.value.manualTarget === 'inventory') return
   startGuidedExperience(currentStep.value.manualTarget)
@@ -242,6 +247,7 @@ onUnmounted(() => stopDataChanged?.())
             开始自动演示
           </el-button>
           <el-button @click="startGuidedExperience('inbound')">引导体验 · 入库</el-button>
+          <el-button :icon="Share" @click="openArchitecture">系统架构图</el-button>
         </div>
         <div class="proof-line" aria-label="演示环境能力">
           <span>真实业务接口</span>

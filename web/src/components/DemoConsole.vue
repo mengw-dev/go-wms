@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Document, HomeFilled, Refresh } from '@element-plus/icons-vue'
@@ -15,6 +15,7 @@ import type { DemoScenarioResult } from '@/api/types'
 import DemoRunViewer from '@/components/demo/DemoRunViewer.vue'
 import StagedDemoRunner from '@/components/demo/StagedDemoRunner.vue'
 import { useAuthStore } from '@/stores/auth'
+import { GUIDE_SCENARIO_LABELS, useGuideStore } from '@/stores/guide'
 import {
   emitDataChanged,
   OPEN_DEMO_CONSOLE_EVENT,
@@ -28,6 +29,8 @@ import { mergeDemoScenarioResults } from '@/utils/demoScenario'
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
+const guide = useGuideStore()
+const ARCHITECTURE_URL = 'https://mengw21.cn/overview.html'
 const visible = ref(false)
 const acquiring = ref(false)
 const scenarioRunning = ref(false)
@@ -68,9 +71,15 @@ const busy = computed(
 )
 const resetUnavailable = computed(() => busy.value || stagedRunning.value)
 const idleTimeoutMinutes = computed(() => Math.max(1, Math.round(idleTTL() / 60)))
+const guideActive = computed(() => guide.active && Boolean(guide.scenario))
+const guideCompleted = computed(() => !guide.active && guide.completed && Boolean(guide.scenario))
+const guideScenarioLabel = computed(() => guide.scenario ? GUIDE_SCENARIO_LABELS[guide.scenario] : '业务')
+const guideActionText = computed(() => guide.completed ? '查看业务证据' : '回到当前引导')
 const sessionStatusText = computed(() => {
   if (resetting.value) return '正在重新开始'
   if (scenarioRunning.value) return '正在执行真实业务'
+  if (guideActive.value) return `引导演示进行中 · ${guideScenarioLabel.value}`
+  if (guideCompleted.value) return '引导演示已完成'
   if (stagedCompleted.value) return '分步流程已完成'
   if (stagedRunning.value) return '正在执行真实业务'
   if (stagedActive.value) return `分步执行中 · ${stagedProgress.value}%`
@@ -86,6 +95,7 @@ const scenarioLabels: Record<DemoConsoleScenario, string> = {
 
 const currentScenarioLabel = computed(() => {
   if (runningScenario.value) return scenarioLabels[runningScenario.value]
+  if (guideActive.value || guideCompleted.value) return `引导演示 · ${guideScenarioLabel.value}`
   if (stagedStarted.value) return '分步执行演示'
   const name = result.value?.name
   if (name && Object.prototype.hasOwnProperty.call(scenarioLabels, name)) {
@@ -99,6 +109,10 @@ const currentStepText = computed(() => {
   if (exiting.value) return '正在退出演示'
   if (acquiring.value) return '正在接入演示会话'
   if (scenarioRunning.value) return '正在执行真实业务'
+  if (guideActive.value) {
+    return `第 ${guide.currentStepNumber} / ${guide.totalSteps} 步 · ${guide.currentStepDefinition?.title || '引导演示'}`
+  }
+  if (guideCompleted.value) return '引导流程已完成'
   if (stagedRunning.value) return '正在调用真实业务接口'
   if (stagedCompleted.value) return '全部业务步骤已完成'
   if (stagedActive.value) return `分步执行中 · ${stagedProgress.value}%`
@@ -230,6 +244,7 @@ function onOpenDemoConsole() {
 
 function onOpenStagedDemo(event: globalThis.Event) {
   const detail = (event as globalThis.CustomEvent<{ mode?: 'auto' | 'step'; scope?: 'full' | 'inbound' | 'outbound' }>).detail
+  if (guide.active || guide.completed) guide.cancel()
   visible.value = false
   stagedDialogVisible.value = true
   void nextTick(() => stagedRunnerRef.value?.start(detail?.mode || 'step', detail?.scope || 'full'))
@@ -243,8 +258,33 @@ function onStagedState(state: { started: boolean; active: boolean; completed: bo
   stagedRunning.value = state.running
 }
 
+watch(
+  () => guide.active,
+  (active) => {
+    if (active) clearStagedRun()
+  },
+)
+
 function openDemoControl() {
   visible.value = true
+}
+
+function openArchitecture(): void {
+  window.open(ARCHITECTURE_URL, '_blank', 'noopener,noreferrer')
+}
+
+function openCurrentGuideStep(): void {
+  if (guide.currentStepRoute) void navigateTo(guide.currentStepRoute)
+}
+
+function clearStagedRun(): void {
+  stagedDialogVisible.value = false
+  stagedStarted.value = false
+  stagedActive.value = false
+  stagedCompleted.value = false
+  stagedProgress.value = 0
+  stagedRunning.value = false
+  stagedRunnerKey.value += 1
 }
 
 async function initialize() {
@@ -279,6 +319,7 @@ async function runFullScenario(): Promise<DemoScenarioResult> {
 
 async function runScenario(scenario: DemoConsoleScenario) {
   if (busy.value) return
+  if (guide.active || guide.completed) guide.cancel()
   scenarioRunning.value = true
   runningScenario.value = scenario
   result.value = null
@@ -345,13 +386,8 @@ async function resetData() {
     await resetDemoData()
     result.value = null
     resultDialogVisible.value = false
-    stagedDialogVisible.value = false
-    stagedStarted.value = false
-    stagedActive.value = false
-    stagedCompleted.value = false
-    stagedProgress.value = 0
-    stagedRunning.value = false
-    stagedRunnerKey.value += 1
+    guide.cancel()
+    clearStagedRun()
     emitDataChanged()
     ElMessage.success('演示数据已恢复为初始状态')
   } finally {
@@ -466,7 +502,21 @@ onBeforeUnmount(() => {
       <section class="controller-section">
         <div class="controller-actions">
           <el-button
-            v-if="stagedStarted"
+            v-if="guideActive"
+            type="primary"
+            @click="openCurrentGuideStep"
+          >
+            {{ guideActionText }}
+          </el-button>
+          <el-button
+            v-else-if="guideCompleted"
+            type="primary"
+            @click="navigateTo('/demo/activity')"
+          >
+            {{ guideActionText }}
+          </el-button>
+          <el-button
+            v-else-if="stagedStarted"
             type="primary"
             @click="stagedDialogVisible = true"
           >
@@ -500,6 +550,10 @@ onBeforeUnmount(() => {
           <button type="button" @click="navigateTo('/demo/performance')">
             <b>工程验证</b>
             <span>并发、拣货与异步可靠性实验</span>
+          </button>
+          <button type="button" @click="openArchitecture">
+            <b>系统架构图</b>
+            <span>查看项目整体架构与部署链路</span>
           </button>
         </div>
       </section>
