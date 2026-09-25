@@ -366,7 +366,7 @@ onUnmounted(() => stopDataChanged?.())
       title="选择自动演示方式"
       width="min(560px, 94vw)"
       append-to-body
-      :close-on-click-modal="false"
+      :close-on-click-modal="true"
     >
       <div class="run-mode-grid">
         <button type="button" class="run-mode-card" @click="startOneClickDemo">
@@ -387,7 +387,7 @@ onUnmounted(() => stopDataChanged?.())
       title="异步导入可靠性"
       width="min(520px, 92vw)"
       append-to-body
-      :close-on-click-modal="false"
+      :close-on-click-modal="true"
     >
       <ul class="mechanism-list">
         <li>导入任务持久化为待处理状态，由单个后台消费者领取，避免多实例重复执行。</li>

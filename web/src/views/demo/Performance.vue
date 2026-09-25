@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
 import { Refresh, Tickets, TrendCharts } from '@element-plus/icons-vue'
 import {
   getDemoPerformance,
@@ -50,6 +51,7 @@ const pickingResult = ref<DemoPickingResult | null>(null)
 
 const mechanismDialogVisible = ref(false)
 const runtimeVisible = ref(false)
+const quickRestockLoading = ref(false)
 
 const currentAvailable = computed(() => data.value?.business.available_total ?? 0)
 const allocationDemand = computed(() => allocationConcurrency.value * allocationQty.value)
@@ -104,6 +106,18 @@ async function load(silent = false): Promise<void> {
     loadError.value = '运行状态暂时不可用'
   } finally {
     if (!silent) loading.value = false
+  }
+}
+
+async function quickRestock(): Promise<void> {
+  if (quickRestockLoading.value) return
+  quickRestockLoading.value = true
+  try {
+    await restockDemo(500)
+    await load(true)
+    ElMessage.success('已补货 500 件')
+  } finally {
+    quickRestockLoading.value = false
   }
 }
 
@@ -173,6 +187,7 @@ useAutoRefresh(
       <template #actions>
         <el-button @click="router.push('/demo')">返回演示中心</el-button>
         <el-button :icon="Tickets" @click="router.push('/demo/activity')">业务证据</el-button>
+        <el-button :loading="quickRestockLoading" @click="quickRestock">一键补货 500 件</el-button>
         <el-button :icon="TrendCharts" @click="runtimeVisible = true">运行状态</el-button>
         <el-button :icon="Refresh" type="primary" @click="load()">刷新</el-button>
       </template>
@@ -221,7 +236,7 @@ useAutoRefresh(
     </section>
   </div>
 
-  <el-dialog v-model="allocationDialogVisible" title="配置并发库存分配" width="min(760px, 94vw)" :close-on-click-modal="false">
+  <el-dialog v-model="allocationDialogVisible" title="配置并发库存分配" width="min(760px, 94vw)" :close-on-click-modal="true">
     <el-radio-group v-model="allocationMode" class="mode-switch">
       <el-radio-button value="sufficient">库存充足</el-radio-button>
       <el-radio-button value="shortage">供给不足</el-radio-button>
@@ -242,7 +257,7 @@ useAutoRefresh(
     </template>
   </el-dialog>
 
-  <el-dialog v-model="pickingDialogVisible" title="配置拣货作业验证" width="min(720px, 94vw)" :close-on-click-modal="false">
+  <el-dialog v-model="pickingDialogVisible" title="配置拣货作业验证" width="min(720px, 94vw)" :close-on-click-modal="true">
     <div class="config-grid">
       <label><span>并发拣货员</span><el-input-number v-model="pickingWorkers" :min="1" :max="50" /></label>
       <label><span>抢单 / 重复请求数</span><el-input-number v-model="pickingContenders" :min="0" :max="50" /></label>
@@ -261,7 +276,7 @@ useAutoRefresh(
     </template>
   </el-dialog>
 
-  <el-dialog v-model="mechanismDialogVisible" title="异步导入可靠性机制" width="min(680px, 94vw)" :close-on-click-modal="false">
+  <el-dialog v-model="mechanismDialogVisible" title="异步导入可靠性机制" width="min(680px, 94vw)" :close-on-click-modal="true">
     <div class="mechanism-grid">
       <div><b>任务领取</b><span>PENDING 任务由单消费者领取，使用执行标识防止旧 worker 覆盖新状态。</span></div>
       <div><b>行级幂等</b><span>以任务 ID 和 Excel 行号保证补偿重跑不会重复建单。</span></div>
@@ -272,7 +287,13 @@ useAutoRefresh(
     <template #footer><el-button type="primary" @click="mechanismDialogVisible = false">关闭</el-button></template>
   </el-dialog>
 
-  <el-drawer v-model="runtimeVisible" title="运行状态与指标快照" size="min(460px, 94vw)" append-to-body>
+  <el-drawer
+    v-model="runtimeVisible"
+    title="运行状态与指标快照"
+    size="min(460px, 94vw)"
+    append-to-body
+    :close-on-click-modal="true"
+  >
     <div v-if="data" class="runtime-list">
       <div><span>数据库</span><b>{{ data.database.status }} · {{ data.database.latency_ms }} ms</b></div>
       <div><span>Redis</span><b>{{ data.redis.status }} · {{ data.redis.latency_ms }} ms</b></div>

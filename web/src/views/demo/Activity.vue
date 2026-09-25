@@ -387,7 +387,13 @@ useAutoRefresh(() => load(true), 5000)
       </el-tabs>
     </section>
 
-    <el-drawer v-model="detailVisible" :title="detailTitle" size="min(520px, 94vw)" append-to-body>
+    <el-drawer
+      v-model="detailVisible"
+      :title="detailTitle"
+      size="min(520px, 94vw)"
+      append-to-body
+      :close-on-click-modal="true"
+    >
       <el-descriptions :column="1" border>
         <el-descriptions-item v-for="item in detailRows" :key="item.label" :label="item.label">{{ item.value }}</el-descriptions-item>
       </el-descriptions>

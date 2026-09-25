@@ -67,6 +67,15 @@ function operationMeta(operation: DemoOperationLog, snapshot?: DemoActivitySnaps
   const data = payloadData(operation)
   const objectNo = String(data?.order_no || data?.task_no || inbound?.order_no || outbound?.order_no || task?.task_no || shortID(inboundID || outboundID || taskID))
 
+  if (path.endsWith('/demo/run/concurrent_shortage')) return { title: '供给不足并发验证', type: '库存实验', objectNo: '-', before: '-', after: '实验完成', task: '-' }
+  if (path.endsWith('/demo/run/concurrent')) return { title: '并发库存分配实验', type: '库存实验', objectNo: '-', before: '-', after: '实验完成', task: '-' }
+  if (path.endsWith('/demo/run/picking')) return { title: 'PDA 拣货作业验证', type: '拣货实验', objectNo: '-', before: '-', after: '实验完成', task: '-' }
+  if (path.endsWith('/demo/run/restock')) return { title: '演示库存补货', type: '库存', objectNo: '-', before: '-', after: '补货完成', task: '-' }
+  if (path.endsWith('/demo/reset')) return { title: '一键重置演示数据', type: '演示会话', objectNo: '-', before: '-', after: '已恢复初始状态', task: '-' }
+  if (path.endsWith('/demo/run/inbound')) return { title: '自动演示 · 入库流程', type: '演示任务', objectNo: '-', before: '-', after: '执行完成', task: '-' }
+  if (path.endsWith('/demo/run/outbound')) return { title: '自动演示 · 出库流程', type: '演示任务', objectNo: '-', before: '-', after: '执行完成', task: '-' }
+  if (path.endsWith('/demo/run/full')) return { title: '自动演示 · 完整业务闭环', type: '演示任务', objectNo: '-', before: '-', after: '执行完成', task: '-' }
+
   if (path.includes('/inbound/orders') && path.endsWith('/submit')) return { title: '提交入库单', type: '入库单', objectNo, before: '草稿', after: '已提交', task: '-' }
   if (path.includes('/inbound/orders') && path.endsWith('/approve')) return { title: '审核入库单', type: '入库单', objectNo, before: '已提交', after: '已审核', task: '-' }
   if (path.includes('/inbound/orders') && path.endsWith('/cancel')) return { title: '取消入库单', type: '入库单', objectNo, before: '处理中', after: '已取消', task: '-' }
@@ -85,6 +94,17 @@ function operationMeta(operation: DemoOperationLog, snapshot?: DemoActivitySnaps
 
 function quantityChange(operation: DemoOperationLog): string {
   const source = { ...(params(operation) || {}), ...(payloadData(operation) || {}) }
+  if (operation.path.endsWith('/demo/run/concurrent') || operation.path.endsWith('/demo/run/concurrent_shortage')) {
+    const concurrency = Number(source.concurrency || 0)
+    const qty = Number(source.qty_per_order || 0)
+    if (concurrency || qty) return concurrency + ' 请求 × ' + qty + ' 件'
+  }
+  if (operation.path.endsWith('/demo/run/picking')) {
+    const workers = Number(source.workers || 0)
+    const contenders = Number(source.contenders || 0)
+    return workers + ' 拣货员 / ' + contenders + ' 竞争请求'
+  }
+  if (operation.path.endsWith('/demo/run/restock') && source.qty !== undefined) return '+' + String(source.qty) + ' 件'
   for (const key of ['quantity_change', 'actual_qty', 'qty', 'received_qty', 'defect_qty']) {
     const value = source[key]
     if (typeof value === 'number') return (value > 0 ? '+' : '') + String(value)

@@ -84,7 +84,7 @@ defineExpose({ open })
     title="收货"
     width="820px"
     destroy-on-close
-    :close-on-click-modal="false"
+    :close-on-click-modal="!loading && !hasSubmitting"
     :close-on-press-escape="!loading && !hasSubmitting"
     :show-close="!loading && !hasSubmitting"
   >

@@ -432,7 +432,7 @@ useAutoRefresh(() => load(true), 0, () => selectedRows.value.length === 0)
       title="新建出库单"
       width="760px"
       destroy-on-close
-      :close-on-click-modal="false"
+      :close-on-click-modal="true"
       :close-on-press-escape="!createDialog.loading"
       :show-close="!createDialog.loading"
     >

@@ -101,6 +101,29 @@ test('demo home is a concise one-screen launcher', async ({ page }) => {
   expect(metrics.scrollHeight).toBeLessThanOrEqual(metrics.clientHeight)
 })
 
+test('demo drawer and business dialog close when the blank backdrop is clicked', async ({ page }) => {
+  await loginDemo(page)
+
+  await page.getByRole('button', { name: '演示控制', exact: true }).click()
+  const controlDrawer = page.getByRole('dialog', { name: '演示控制' })
+  await expect(controlDrawer).toBeVisible()
+  await page.mouse.click(24, 24)
+  await expect(controlDrawer).not.toBeVisible()
+
+  await page.getByRole('button', { name: '开始自动演示', exact: true }).click()
+  const modeDialog = page.getByRole('dialog', { name: '选择自动演示方式' })
+  await expect(modeDialog).toBeVisible()
+  await page.mouse.click(24, 24)
+  await expect(modeDialog).not.toBeVisible()
+
+  await page.goto('/inbound/orders')
+  await page.getByRole('button', { name: '新建入库单', exact: true }).click()
+  const createDialog = page.getByRole('dialog', { name: '新建入库单' })
+  await expect(createDialog).toBeVisible()
+  await page.mouse.click(24, 24)
+  await expect(createDialog).not.toBeVisible()
+})
+
 test('start demo supports staged real execution', async ({ page }) => {
   await loginDemo(page)
   await page.getByRole('button', { name: '开始自动演示', exact: true }).click()
@@ -124,7 +147,11 @@ test('start demo supports staged real execution', async ({ page }) => {
   await stagedDialog.getByRole('button', { name: '打开真实页面', exact: true }).click()
   await expect(page).toHaveURL(/\/inbound\/orders\/\d+$/)
   await expect(page.getByText(objectNo, { exact: true }).first()).toBeVisible()
-  await expect(page.getByRole('button', { name: '继续分步演示', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: '演示控制', exact: true }).click()
+  const controlDrawer = page.getByRole('dialog', { name: '演示控制' })
+  await expect(controlDrawer).toBeVisible()
+  await controlDrawer.getByRole('button', { name: '继续分步演示', exact: true }).click()
+  await expect(stagedDialog).toBeVisible()
 })
 
 test('one-click demo executes all real stages without replay controls', async ({ page }) => {
@@ -137,9 +164,10 @@ test('one-click demo executes all real stages without replay controls', async ({
   await expect(runner.getByRole('button', { name: '重新播放', exact: true })).toHaveCount(0)
 
   await runner.getByRole('button', { name: '关闭此对话框' }).click()
-  const continueButton = page.getByRole('button', { name: '查看分步结果', exact: true })
-  await expect(continueButton).toBeVisible()
-  await continueButton.click()
+  await page.getByRole('button', { name: '演示控制', exact: true }).click()
+  const controlDrawer = page.getByRole('dialog', { name: '演示控制' })
+  await expect(controlDrawer).toBeVisible()
+  await controlDrawer.getByRole('button', { name: '查看分步结果', exact: true }).click()
   await expect(runner).toBeVisible()
   await runner.getByRole('button', { name: '操作日志', exact: true }).click()
   await expect(page).toHaveURL(/\/demo\/activity\?tab=operations/)

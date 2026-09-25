@@ -63,7 +63,7 @@ type DemoRunScope = 'full' | 'inbound' | 'outbound'
 
 const emit = defineEmits<{
   navigate: [path: string]
-  'state-change': [state: { started: boolean; active: boolean; completed: boolean; progress: number }]
+  'state-change': [state: { started: boolean; active: boolean; completed: boolean; progress: number; running: boolean }]
 }>()
 
 const GROUPS = [
@@ -132,6 +132,7 @@ function emitState(): void {
     active: started.value && !completed.value,
     completed: completed.value,
     progress: progress.value,
+    running: running.value,
   })
 }
 
@@ -323,6 +324,7 @@ async function executeNext(): Promise<void> {
   if (!started.value || completed.value || running.value || !currentStep.value) return
   running.value = true
   error.value = ''
+  emitState()
   try {
     const actions: Record<StepKey, () => Promise<void>> = {
       'inbound-create': executeInboundCreate,

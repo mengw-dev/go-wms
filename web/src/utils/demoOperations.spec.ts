@@ -40,6 +40,23 @@ describe('buildDemoOperationRows', () => {
     expect(row.afterStatus).toBe('已提交')
   })
 
+  it('maps demo experiments and restock to readable operations', () => {
+    const rows = buildDemoOperationRows([
+      operation({ id: '20', path: '/api/v1/demo/run/concurrent', params: '{"concurrency":20,"qty_per_order":5}' }),
+      operation({ id: '21', path: '/api/v1/demo/run/picking', params: '{"workers":10,"contenders":5}' }),
+      operation({ id: '22', path: '/api/v1/demo/run/restock', params: '{"qty":500}' }),
+    ])
+
+    expect(rows.map((row) => row.operation)).toEqual([
+      '并发库存分配实验',
+      'PDA 拣货作业验证',
+      '演示库存补货',
+    ])
+    expect(rows[0].quantityChange).toBe('20 请求 × 5 件')
+    expect(rows[1].quantityChange).toBe('10 拣货员 / 5 竞争请求')
+    expect(rows[2].quantityChange).toBe('+500 件')
+  })
+
   it('reads quantity and marks failed operations', () => {
     const [row] = buildDemoOperationRows([
       operation({

@@ -581,6 +581,7 @@ onBeforeUnmount(() => {
       title="本次操作日志"
       size="min(440px, 92vw)"
       append-to-body
+      :close-on-click-modal="true"
     >
       <div v-loading="recordsLoading" class="guide-records">
         <el-alert v-if="recordsError" :title="recordsError" type="warning" :closable="false" show-icon />

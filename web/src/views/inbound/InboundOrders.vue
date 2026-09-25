@@ -638,7 +638,7 @@ useAutoRefresh(() => load(true), 0, () => selectedRows.value.length === 0)
       :title="editDialog.editingId ? '编辑入库单' : '新建入库单'"
       width="720px"
       destroy-on-close
-      :close-on-click-modal="false"
+      :close-on-click-modal="true"
       :close-on-press-escape="!editDialog.loading"
       :show-close="!editDialog.loading"
     >
@@ -683,7 +683,7 @@ useAutoRefresh(() => load(true), 0, () => selectedRows.value.length === 0)
       v-model="importDialog.visible"
       title="Excel 导入入库单"
       width="560px"
-      :close-on-click-modal="false"
+      :close-on-click-modal="!importDialog.uploading"
       :close-on-press-escape="!importDialog.uploading"
       :show-close="!importDialog.uploading"
       @close="closeImport"
