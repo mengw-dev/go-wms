@@ -9,7 +9,9 @@ WMS 是一个前后端分离的轻量级 WMS，覆盖仓库、库位、货品、
 
 > 适合作为 Go + Vue 全栈学习项目、毕业设计或中小型仓储系统二次开发基础。生产环境使用前请按本文的安全配置完成加固。
 
-**在线 Demo**：<https://mengw21.cn> （内置 5 个演示账号，详见下方"演示模式"章节）
+**公网地址**：<https://mengw21.cn> （内置 5 个演示账号，详见下方"演示模式"章节）
+
+**在线架构图**：<https://mengw21.cn/overview.html>
 
 ## 界面预览
 
@@ -17,9 +19,9 @@ WMS 是一个前后端分离的轻量级 WMS，覆盖仓库、库位、货品、
 
 ![业务流程中心](docs/images/demo-console.png)
 
-**架构全景图**：涵盖技术分层、单据状态机、数据模型与架构能力视图，点击图片可查看在线交互页面（GitHub Pages，无需克隆项目）。
+**架构全景图**：涵盖技术分层、单据状态机、数据模型与架构能力视图，点击图片可查看公网在线交互页面（无需克隆项目）。
 
-[![架构全景图](docs/images/overview.png)](https://mengw-dev.github.io/go-wms/)
+[![架构全景图](docs/images/overview.png)](https://mengw21.cn/overview.html)
 
 ## 技术栈
 
