@@ -1,1156 +1,334 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { Refresh, Tickets, TrendCharts } from '@element-plus/icons-vue'
-import { getDemoPerformance, restockDemo, runConcurrentDemo, runConcurrentPicking, runConcurrentShortageDemo } from '@/api/demo'
-import type { DemoConcurrentResult, DemoConcurrentShortageResult, DemoPerformanceSnapshot, DemoPickingResult } from '@/api/types'
+import {
+  getDemoPerformance,
+  restockDemo,
+  runConcurrentDemo,
+  runConcurrentPicking,
+  runConcurrentShortageDemo,
+} from '@/api/demo'
+import type {
+  DemoConcurrentResult,
+  DemoConcurrentShortageResult,
+  DemoPerformanceSnapshot,
+  DemoPickingResult,
+} from '@/api/types'
+import PageHeader from '@/components/common/PageHeader.vue'
 import { useAutoRefresh } from '@/composables/autoRefresh'
 
-const route = useRoute()
+type AllocationMode = 'sufficient' | 'shortage'
+
+interface Metric {
+  label: string
+  value: string | number
+  tone?: 'success' | 'danger' | 'warning'
+}
+
 const router = useRouter()
 const loading = ref(false)
-const data = ref<DemoPerformanceSnapshot | null>(null)
 const loadError = ref('')
-const concurrentConcurrency = ref(20)
-const concurrentQty = ref(1)
-const concurrentRunning = ref(false)
-const restockRunning = ref(false)
+const data = ref<DemoPerformanceSnapshot | null>(null)
+
+const allocationDialogVisible = ref(false)
+const allocationMode = ref<AllocationMode>('sufficient')
+const allocationConcurrency = ref(20)
+const allocationInitialStock = ref(100)
+const allocationQty = ref(5)
+const allocationRunning = ref(false)
+const allocationError = ref('')
 const concurrentResult = ref<DemoConcurrentResult | null>(null)
-const concurrentError = ref('')
-const lastScrolledSection = ref('')
-const shortageConcurrency = ref(20)
-const shortageQty = ref(10)
-const shortageRunning = ref(false)
 const shortageResult = ref<DemoConcurrentShortageResult | null>(null)
-const shortageError = ref('')
+
+const pickingDialogVisible = ref(false)
 const pickingWorkers = ref(10)
 const pickingContenders = ref(5)
 const pickingRunning = ref(false)
-const pickingResult = ref<DemoPickingResult | null>(null)
 const pickingError = ref('')
+const pickingResult = ref<DemoPickingResult | null>(null)
 
-const concurrentDemand = computed(() => concurrentConcurrency.value * concurrentQty.value)
-const shortageDemand = computed(() => shortageConcurrency.value * shortageQty.value)
+const mechanismDialogVisible = ref(false)
+const runtimeVisible = ref(false)
 
-const dbHealthy = computed(() => data.value?.database.status === 'ok')
-const redisHealthy = computed(() => data.value?.redis.status === 'ok')
-const poolUsage = computed(() => {
-  const pool = data.value?.pool
-  if (!pool || pool.max_open_connections <= 0) return 0
-  return Math.min(100, Math.round((pool.open_connections / pool.max_open_connections) * 100))
+const currentAvailable = computed(() => data.value?.business.available_total ?? 0)
+const allocationDemand = computed(() => allocationConcurrency.value * allocationQty.value)
+const allocationResult = computed(() => allocationMode.value === 'shortage' ? shortageResult.value : concurrentResult.value)
+const allocationMetrics = computed<Metric[]>(() => {
+  const result = allocationResult.value
+  if (!result) return []
+  if (allocationMode.value === 'shortage') {
+    const shortage = result as DemoConcurrentShortageResult
+    return [
+      { label: '成功分配', value: shortage.success, tone: 'success' },
+      { label: '拒绝请求', value: shortage.insufficient_rejected + shortage.other_failed, tone: shortage.insufficient_rejected ? 'warning' : undefined },
+      { label: '剩余库存', value: shortage.remaining_available },
+      { label: '是否超卖', value: shortage.limit_respected ? '未超卖' : '异常', tone: shortage.limit_respected ? 'success' : 'danger' },
+      { label: '负库存行', value: shortage.negative_rows, tone: shortage.negative_rows ? 'danger' : 'success' },
+      { label: '库存不变量', value: shortage.invariant_ok ? '通过' : '异常', tone: shortage.invariant_ok ? 'success' : 'danger' },
+      { label: 'FIFO 执行', value: shortage.allocated_quantity > 0 ? '已执行' : '未分配' },
+    ]
+  }
+  const sufficient = result as DemoConcurrentResult
+  return [
+    { label: '成功分配', value: sufficient.success, tone: 'success' },
+    { label: '拒绝请求', value: sufficient.failed, tone: sufficient.failed ? 'warning' : undefined },
+    { label: '剩余库存', value: sufficient.available_total },
+    { label: '是否超卖', value: sufficient.negative_rows === 0 && sufficient.invariant_ok ? '未超卖' : '异常', tone: sufficient.negative_rows === 0 && sufficient.invariant_ok ? 'success' : 'danger' },
+    { label: '负库存行', value: sufficient.negative_rows, tone: sufficient.negative_rows ? 'danger' : 'success' },
+    { label: '库存不变量', value: sufficient.invariant_ok ? '通过' : '异常', tone: sufficient.invariant_ok ? 'success' : 'danger' },
+    { label: 'FIFO 执行', value: sufficient.allocated_quantity === sufficient.total_demand ? '按需求完成' : '部分完成' },
+  ]
 })
-async function runAllocationExperiment() {
-  if (concurrentRunning.value) return
-  concurrentRunning.value = true
-  concurrentResult.value = null
-  concurrentError.value = ''
-  try {
-    concurrentResult.value = await runConcurrentDemo(concurrentConcurrency.value, concurrentQty.value)
-    await load(true)
-  } catch (error) {
-    concurrentError.value = error instanceof Error ? error.message : '并发实验未完成'
-  } finally {
-    concurrentRunning.value = false
-  }
-}
+const pickingMetrics = computed<Metric[]>(() => {
+  const result = pickingResult.value
+  if (!result) return []
+  return [
+    { label: '完成任务', value: result.completed_tasks, tone: 'success' },
+    { label: '重复扫码拦截', value: result.duplicate_scan_rejected, tone: result.duplicate_scan_rejected ? 'warning' : undefined },
+    { label: '重复发货', value: '接口未返回' },
+    { label: '任务状态', value: result.completed_tasks === result.task_count ? '全部完成' : '部分完成', tone: result.completed_tasks === result.task_count ? 'success' : 'warning' },
+    { label: '库存证据', value: result.inventory_trans.length },
+    { label: '已发货订单', value: result.shipped_orders, tone: 'success' },
+  ]
+})
+const allocationLast = computed(() => allocationResult.value?.summary || '尚未运行')
+const pickingLast = computed(() => pickingResult.value?.summary || '尚未运行')
 
-async function runShortageExperiment() {
-  if (shortageRunning.value) return
-  shortageRunning.value = true
-  shortageResult.value = null
-  shortageError.value = ''
-  try {
-    shortageResult.value = await runConcurrentShortageDemo(shortageConcurrency.value, shortageQty.value)
-    await load(true)
-  } catch (error) {
-    shortageError.value = error instanceof Error ? error.message : '供给不足并发验证未完成'
-  } finally {
-    shortageRunning.value = false
-  }
-}
-
-async function runPickingExperiment() {
-  if (pickingRunning.value) return
-  pickingRunning.value = true
-  pickingResult.value = null
-  pickingError.value = ''
-  try {
-    pickingResult.value = await runConcurrentPicking(pickingWorkers.value, pickingContenders.value)
-    await load(true)
-  } catch (error) {
-    pickingError.value = error instanceof Error ? error.message : '并发拣货实验未完成'
-  } finally {
-    pickingRunning.value = false
-  }
-}
-
-async function restockForExperiment() {
-  if (restockRunning.value) return
-  restockRunning.value = true
-  try {
-    await restockDemo(500)
-    await load(true)
-  } finally {
-    restockRunning.value = false
-  }
-}
-
-function requestedSection(): string {
-  const value = route.query.section
-  return typeof value === 'string' ? value : ''
-}
-
-async function scrollToRequestedSection(): Promise<void> {
-  const section = requestedSection()
-  if (!section || lastScrolledSection.value === section) return
-  await nextTick()
-  const target = document.querySelector<HTMLElement>(`[data-section="${section}"]`)
-  if (!target) return
-  target.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  lastScrolledSection.value = section
-}
-
-async function load(silent = false) {
+async function load(silent = false): Promise<void> {
   if (!silent) loading.value = true
   try {
     data.value = await getDemoPerformance()
     loadError.value = ''
   } catch {
-    loadError.value = '运行状态数据暂时不可用，请稍后重试'
+    loadError.value = '运行状态暂时不可用'
   } finally {
     if (!silent) loading.value = false
   }
 }
 
-function formatTime(value?: string) {
-  if (!value) return '-'
-  return new Date(value).toLocaleString('zh-CN', { hour12: false })
+async function ensureAllocationStock(): Promise<void> {
+  const target = Math.max(1, allocationInitialStock.value)
+  if (target <= currentAvailable.value) return
+  await restockDemo(target - currentAvailable.value)
+  await load(true)
 }
 
-onMounted(async () => {
-  await load()
-  await scrollToRequestedSection()
-})
-watch(
-  () => route.query.section,
-  async () => {
-    lastScrolledSection.value = ''
-    await scrollToRequestedSection()
-  },
+async function runAllocation(): Promise<void> {
+  if (allocationRunning.value) return
+  allocationRunning.value = true
+  allocationError.value = ''
+  if (allocationMode.value === 'sufficient') concurrentResult.value = null
+  else shortageResult.value = null
+  try {
+    await ensureAllocationStock()
+    if (allocationMode.value === 'shortage' && allocationDemand.value <= currentAvailable.value) {
+      allocationError.value = '供给不足模式要求总需求高于当前可用库存。请提高请求数或每单数量。'
+      return
+    }
+    if (allocationMode.value === 'sufficient') {
+      concurrentResult.value = await runConcurrentDemo(allocationConcurrency.value, allocationQty.value)
+    } else {
+      shortageResult.value = await runConcurrentShortageDemo(allocationConcurrency.value, allocationQty.value)
+    }
+    await load(true)
+  } catch (error) {
+    allocationError.value = error instanceof Error ? error.message : '并发实验未完成'
+  } finally {
+    allocationRunning.value = false
+  }
+}
+
+async function runPicking(): Promise<void> {
+  if (pickingRunning.value) return
+  pickingRunning.value = true
+  pickingError.value = ''
+  pickingResult.value = null
+  try {
+    pickingResult.value = await runConcurrentPicking(pickingWorkers.value, pickingContenders.value)
+    await load(true)
+  } catch (error) {
+    pickingError.value = error instanceof Error ? error.message : '拣货实验未完成'
+  } finally {
+    pickingRunning.value = false
+  }
+}
+
+function openAllocation(mode: AllocationMode): void {
+  allocationMode.value = mode
+  allocationDialogVisible.value = true
+}
+
+onMounted(() => load())
+useAutoRefresh(
+  () => load(true),
+  5000,
+  () => !allocationDialogVisible.value && !pickingDialogVisible.value && !mechanismDialogVisible.value && !runtimeVisible.value,
 )
-watch(data, () => void scrollToRequestedSection())
-useAutoRefresh(() => load(true), 3000)
 </script>
 
 <template>
-  <div v-loading="loading" class="performance-page">
-    <div class="page-head">
-      <div>
-        <h2>工程验证</h2>
-        <p>三个实验都调用真实业务接口，并按目的、输入、执行、结果和边界说明验证范围。</p>
-      </div>
-      <div class="head-actions">
+  <div v-loading="loading" class="app-page engineering-page">
+    <PageHeader title="工程验证" description="用三个核心实验验证真实业务接口的并发边界、任务状态和异步任务可靠性。">
+      <template #actions>
         <el-button @click="router.push('/demo')">返回演示中心</el-button>
         <el-button :icon="Tickets" @click="router.push('/demo/activity')">业务证据</el-button>
-        <el-button :icon="Refresh" type="primary" @click="load()">立即刷新</el-button>
-      </div>
+        <el-button :icon="TrendCharts" @click="runtimeVisible = true">运行状态</el-button>
+        <el-button :icon="Refresh" type="primary" @click="load()">刷新</el-button>
+      </template>
+    </PageHeader>
+
+    <div class="platform-strip">
+      <span><i :class="data?.database.status === 'ok' ? 'ok' : 'warn'"></i>MySQL {{ data?.database.status || '检查中' }}</span>
+      <span><i :class="data?.redis.status === 'ok' ? 'ok' : 'warn'"></i>Redis {{ data?.redis.status || '检查中' }}</span>
+      <span>当前可用库存 <b>{{ currentAvailable }}</b></span>
+      <span v-if="loadError" class="warn-text">{{ loadError }}</span>
     </div>
 
-    <el-alert
-      v-if="loadError"
-      :title="loadError"
-      type="warning"
-      show-icon
-      :closable="false"
-      class="page-alert"
-    />
+    <section class="engineering-grid">
+      <article class="app-card engineering-card" data-section="allocation">
+        <div class="card-head">
+          <span class="card-index">01</span>
+          <div><h3>并发库存分配</h3><p>验证 FIFO、库存边界和防超卖，可切换库存充足或供给不足模式。</p></div>
+        </div>
+        <div class="tag-line"><span>并发分配</span><span>FIFO</span><span>防超卖</span></div>
+        <div class="last-result"><span>上次结果</span><b>{{ allocationLast }}</b></div>
+        <div class="card-actions">
+          <el-button type="primary" @click="openAllocation('sufficient')">库存充足模式</el-button>
+          <el-button @click="openAllocation('shortage')">供给不足模式</el-button>
+        </div>
+      </article>
 
-    <section class="experiment-panel" data-section="allocation">
-      <div class="experiment-head">
-        <div>
-          <span class="experiment-kicker">实验 01</span>
-          <h3>并发库存分配一致性</h3>
-          <p>观察库存充足时的 FIFO 分配与库存三数量一致性。</p>
+      <article class="app-card engineering-card" data-section="picking">
+        <div class="card-head">
+          <span class="card-index">02</span>
+          <div><h3>拣货作业验证</h3><p>模拟多个拣货请求并发操作，验证重复扫码拦截和任务闭环。</p></div>
         </div>
-        <el-tag type="warning" effect="plain">不是供不应求证明</el-tag>
-      </div>
+        <div class="tag-line"><span>并发拣货</span><span>重复扫码</span><span>任务状态</span></div>
+        <div class="last-result"><span>上次结果</span><b>{{ pickingLast }}</b></div>
+        <div class="card-actions"><el-button type="primary" @click="pickingDialogVisible = true">配置并运行</el-button></div>
+      </article>
 
-      <div class="experiment-framework">
-        <div>
-          <span>实验目的</span>
-          <p>验证库存充足时，多张出库单并发创建、提交和审核后，FIFO 分配与库存三数量仍保持一致。</p>
+      <article class="app-card engineering-card" data-section="import">
+        <div class="card-head">
+          <span class="card-index">03</span>
+          <div><h3>异步导入可靠性</h3><p>查看异步任务领取、行级幂等、失败保留和补偿恢复机制。</p></div>
         </div>
-        <div>
-          <span>实验输入</span>
-          <p>{{ concurrentConcurrency }} 张并发订单，每单 {{ concurrentQty }} 件，总需求 {{ concurrentDemand }} 件。</p>
-        </div>
-        <div>
-          <span>真实执行</span>
-          <p>调用真实创建、提交、审核和 FIFO 分配链路，不由前端预生成成功结果。</p>
-        </div>
-        <div>
-          <span>最终结果</span>
-          <p>{{ concurrentResult?.summary || '尚未运行实验。' }}</p>
-        </div>
-        <div>
-          <span>实验边界</span>
-          <p>{{ concurrentResult?.not_validated || '仅覆盖库存充足场景，不替代供不应求验证。' }}</p>
-        </div>
-      </div>
-
-      <div class="experiment-controls">
-        <label>
-          <span>并发订单数</span>
-          <el-input-number v-model="concurrentConcurrency" :min="1" :max="100" />
-        </label>
-        <label>
-          <span>每单需求</span>
-          <el-input-number v-model="concurrentQty" :min="1" :max="10" />
-        </label>
-        <div class="demand-preview">
-          <span>本次总需求</span>
-          <b>{{ concurrentDemand }} 件</b>
-        </div>
-        <el-button :loading="restockRunning" @click="restockForExperiment">补货 500 件</el-button>
-        <el-button type="primary" :loading="concurrentRunning" @click="runAllocationExperiment">
-          运行真实并发实验
-        </el-button>
-      </div>
-
-      <el-alert
-        v-if="concurrentError"
-        :title="concurrentError"
-        type="warning"
-        :closable="false"
-        show-icon
-      />
-
-      <template v-if="concurrentResult">
-        <div class="scope-grid">
-          <div>
-            <span>验证范围</span>
-            <p>{{ concurrentResult.validation_scope }}</p>
-          </div>
-          <div>
-            <span>不验证什么</span>
-            <p>{{ concurrentResult.not_validated }}</p>
-          </div>
-          <div>
-            <span>统计口径</span>
-            <p>{{ concurrentResult.task_stats_scope }}</p>
-          </div>
-        </div>
-
-        <div class="experiment-grid">
-          <div class="snapshot-box">
-            <b>实验开始前库存</b>
-            <span>stock <strong>{{ concurrentResult.stock_before }}</strong></span>
-            <span>available <strong>{{ concurrentResult.available_before }}</strong></span>
-            <span>allocated <strong>{{ concurrentResult.allocated_before }}</strong></span>
-          </div>
-          <div class="snapshot-box">
-            <b>本次实验输入</b>
-            <span>订单数 <strong>{{ concurrentResult.concurrency }}</strong></span>
-            <span>总需求 <strong>{{ concurrentResult.total_demand }}</strong></span>
-            <span>每单需求 <strong>{{ concurrentResult.qty_per_order }}</strong></span>
-          </div>
-          <div class="snapshot-box">
-            <b>单据执行结果</b>
-            <span>创建成功 <strong>{{ concurrentResult.created_orders }}</strong></span>
-            <span>提交成功 <strong>{{ concurrentResult.submitted_orders }}</strong></span>
-            <span>审核成功 <strong>{{ concurrentResult.approved_orders }}</strong></span>
-          </div>
-          <div class="snapshot-box">
-            <b>审核与任务证据</b>
-            <span>审核失败 <strong>{{ concurrentResult.approval_failed }}</strong></span>
-            <span>实际分配 <strong>{{ concurrentResult.allocated_quantity }} 件</strong></span>
-            <span>本次 PICK <strong>{{ concurrentResult.pick_task_count }}</strong></span>
-          </div>
-          <div class="snapshot-box">
-            <b>实验结束库存</b>
-            <span>stock <strong>{{ concurrentResult.stock_total }}</strong></span>
-            <span>available <strong>{{ concurrentResult.available_total }}</strong></span>
-            <span>allocated <strong>{{ concurrentResult.allocated_total }}</strong></span>
-          </div>
-          <div class="snapshot-box" :class="{ failed: !concurrentResult.invariant_ok }">
-            <b>一致性检查</b>
-            <span>负数库存行 <strong>{{ concurrentResult.negative_rows }}</strong></span>
-            <span>stock = available + allocated <strong>{{ concurrentResult.invariant_ok ? '成立' : '异常' }}</strong></span>
-            <span>其他失败 <strong>{{ concurrentResult.other_failed }}</strong></span>
-          </div>
-        </div>
-
-        <div class="experiment-summary" :class="{ failed: !concurrentResult.invariant_ok }">
-          {{ concurrentResult.summary }}
-        </div>
-      </template>
-    </section>
-
-    <section class="experiment-panel experiment-panel--shortage" data-section="shortage">
-      <div class="experiment-head">
-        <div>
-          <span class="experiment-kicker">实验 02</span>
-          <h3>供给不足并发验证</h3>
-          <p>让总需求超过初始可用库存，观察真实业务拒绝行为。</p>
-        </div>
-        <el-tag type="danger" effect="plain">需求 &gt; 可用库存</el-tag>
-      </div>
-
-      <div class="experiment-framework">
-        <div>
-          <span>实验目的</span>
-          <p>验证总需求大于可用库存时，成功分配量不会超过初始可用库存，并区分库存不足拒绝和其他失败。</p>
-        </div>
-        <div>
-          <span>实验输入</span>
-          <p>{{ shortageConcurrency }} 张并发订单，每单 {{ shortageQty }} 件，总需求 {{ shortageDemand }} 件。</p>
-        </div>
-        <div>
-          <span>真实执行</span>
-          <p>并发调用真实出库创建、提交和审核接口，直接记录每个请求的业务结果。</p>
-        </div>
-        <div>
-          <span>最终结果</span>
-          <p>{{ shortageResult?.summary || '尚未运行实验。' }}</p>
-        </div>
-        <div>
-          <span>实验边界</span>
-          <p>{{ shortageResult?.not_validated || '只验证受控并发供给不足，不替代容量和压力测试。' }}</p>
-        </div>
-      </div>
-
-      <div class="experiment-controls">
-        <label>
-          <span>并发订单数</span>
-          <el-input-number v-model="shortageConcurrency" :min="2" :max="100" />
-        </label>
-        <label>
-          <span>每单需求</span>
-          <el-input-number v-model="shortageQty" :min="1" :max="10" />
-        </label>
-        <div class="demand-preview">
-          <span>并发总需求</span>
-          <b>{{ shortageDemand }} 件</b>
-        </div>
-        <div class="demand-preview">
-          <span>当前可用库存快照</span>
-          <b>{{ data?.business.available_total ?? '刷新中' }} 件</b>
-        </div>
-        <el-button type="danger" plain :loading="shortageRunning" @click="runShortageExperiment">
-          运行供给不足验证
-        </el-button>
-      </div>
-
-      <el-alert
-        title="安全边界：最多 100 张订单、每单最多 10 件；后端会拒绝总需求不高于当前可用库存的输入。"
-        type="warning"
-        :closable="false"
-        show-icon
-      />
-
-      <el-alert
-        v-if="shortageError"
-        :title="shortageError"
-        type="warning"
-        :closable="false"
-        show-icon
-        class="shortage-error"
-      />
-
-      <template v-if="shortageResult">
-        <div class="scope-grid">
-          <div>
-            <span>验证范围</span>
-            <p>{{ shortageResult.validation_scope }}</p>
-          </div>
-          <div>
-            <span>不验证什么</span>
-            <p>{{ shortageResult.not_validated }}</p>
-          </div>
-          <div>
-            <span>关键约束</span>
-            <p>成功分配总量不超过初始可用库存，并检查三数量公式与负库存行。</p>
-          </div>
-        </div>
-
-        <div class="experiment-grid">
-          <div class="snapshot-box">
-            <b>执行前</b>
-            <span>初始库存 <strong>{{ shortageResult.available_before }}</strong></span>
-            <span>并发订单 <strong>{{ shortageResult.concurrency }}</strong></span>
-            <span>单笔需求 <strong>{{ shortageResult.qty_per_order }}</strong></span>
-            <span>总需求 <strong>{{ shortageResult.total_demand }}</strong></span>
-          </div>
-          <div class="snapshot-box">
-            <b>真实业务结果</b>
-            <span>成功 <strong>{{ shortageResult.success }}</strong></span>
-            <span>库存不足拒绝 <strong>{{ shortageResult.insufficient_rejected }}</strong></span>
-            <span>其他失败 <strong>{{ shortageResult.other_failed }}</strong></span>
-            <span>成功分配总量 <strong>{{ shortageResult.allocated_quantity }}</strong></span>
-          </div>
-          <div class="snapshot-box">
-            <b>执行后</b>
-            <span>剩余 available <strong>{{ shortageResult.remaining_available }}</strong></span>
-            <span>最终 allocated <strong>{{ shortageResult.allocated_total }}</strong></span>
-            <span>最终 stock <strong>{{ shortageResult.stock_total }}</strong></span>
-            <span>负数库存行 <strong>{{ shortageResult.negative_rows }}</strong></span>
-          </div>
-          <div class="snapshot-box" :class="{ failed: !shortageResult.invariant_ok }">
-            <b>限制与不变量检查</b>
-            <span>成功分配 ≤ 初始可用 <strong>{{ shortageResult.limit_respected ? '成立' : '异常' }}</strong></span>
-            <span>stock = available + allocated <strong>{{ shortageResult.invariant_ok ? '成立' : '异常' }}</strong></span>
-          </div>
-        </div>
-
-        <div class="experiment-summary" :class="{ failed: !shortageResult.invariant_ok }">
-          {{ shortageResult.summary }}
-        </div>
-      </template>
-    </section>
-
-    <section class="experiment-panel experiment-panel--picking" data-section="picking">
-      <div class="experiment-head">
-        <div>
-          <span class="experiment-kicker">实验 03</span>
-          <h3>模拟 PDA 并发拣货</h3>
-          <p>模拟并发扫码和重复抢单，观察真实 PICK 任务竞争与收尾。</p>
-        </div>
-        <el-tag type="primary" effect="plain">不是真实 PDA 硬件</el-tag>
-      </div>
-
-      <div class="experiment-framework">
-        <div>
-          <span>实验目的</span>
-          <p>验证多个模拟拣货请求并发竞争时，任务不会重复完成，并明确区分并发阶段和顺序收尾阶段。</p>
-        </div>
-        <div>
-          <span>实验输入</span>
-          <p>{{ pickingWorkers }} 个并发拣货员，{{ pickingContenders }} 个抢单或重复扫码请求。</p>
-        </div>
-        <div>
-          <span>真实执行</span>
-          <p>生成真实 PICK 调用和库存扣减，最终状态来自业务 Service，不由前端动画伪造。</p>
-        </div>
-        <div>
-          <span>最终结果</span>
-          <p>{{ pickingResult?.summary || '尚未运行实验。' }}</p>
-        </div>
-        <div>
-          <span>实验边界</span>
-          <p>使用模拟扫码请求，不是真实 PDA 硬件；最终任务完成包含并发后的顺序收尾阶段。</p>
-        </div>
-      </div>
-
-      <div class="experiment-controls">
-        <label>
-          <span>并发拣货员</span>
-          <el-input-number v-model="pickingWorkers" :min="1" :max="100" />
-        </label>
-        <label>
-          <span>抢单/重复扫码请求</span>
-          <el-input-number v-model="pickingContenders" :min="0" :max="50" />
-        </label>
-        <el-button type="primary" :loading="pickingRunning" @click="runPickingExperiment">
-          运行模拟 PDA 实验
-        </el-button>
-      </div>
-
-      <el-alert
-        title="最终“任务完成”包含并发之后的顺序收尾阶段，不能理解为所有任务都由纯并发请求完成。"
-        type="warning"
-        :closable="false"
-        show-icon
-      />
-
-      <el-alert
-        v-if="pickingError"
-        :title="pickingError"
-        type="warning"
-        :closable="false"
-        show-icon
-        class="shortage-error"
-      />
-
-      <template v-if="pickingResult">
-        <div class="prep-summary">
-          <b>实验准备</b>
-          <span>本次创建 {{ pickingResult.experiment_order_count }} 张真实出库单，产生 {{ pickingResult.task_count }} 个专属 PICK Task。</span>
-          <span v-if="pickingResult.prepared_stock_quantity > 0">
-            初始库存不足，已通过真实入库流程补充 {{ pickingResult.prepared_stock_quantity }} 件。
-          </span>
-        </div>
-
-        <div class="phase-grid">
-          <div>
-            <b>并发阶段</b>
-            <span>扫码尝试 <strong>{{ pickingResult.concurrent_scan_attempts }}</strong></span>
-            <span>成功扫码 <strong>{{ pickingResult.concurrent_success }}</strong></span>
-            <span>竞争拒绝 <strong>{{ pickingResult.competition_rejected }}</strong></span>
-            <span>仍未完成任务 <strong>{{ pickingResult.still_incomplete_after_concurrent }}</strong></span>
-          </div>
-          <div>
-            <b>收尾阶段（顺序执行）</b>
-            <span>剩余任务 <strong>{{ pickingResult.cleanup_remaining_tasks }}</strong></span>
-            <span>顺序补齐数量 <strong>{{ pickingResult.cleanup_picked_quantity }}</strong></span>
-            <span>收尾拒绝 <strong>{{ pickingResult.cleanup_rejected }}</strong></span>
-          </div>
-          <div>
-            <b>重复扫码验证</b>
-            <span>重复请求 <strong>{{ pickingResult.duplicate_scan_attempts }}</strong></span>
-            <span>真实拒绝 <strong>{{ pickingResult.duplicate_scan_rejected }}</strong></span>
-            <span>异常成功 <strong>{{ pickingResult.duplicate_scan_success }}</strong></span>
-          </div>
-          <div :class="{ failed: !pickingResult.invariant_ok }">
-            <b>最终状态</b>
-            <span>PICK task <strong>{{ pickingResult.completed_tasks }}/{{ pickingResult.task_count }}</strong></span>
-            <span>Outbound order <strong>{{ pickingResult.shipped_orders }} 已发货</strong></span>
-            <span>最终拣货 <strong>{{ pickingResult.final_picked }}/{{ pickingResult.total_target }}</strong></span>
-            <span>库存 <strong>stock {{ pickingResult.stock_total }} / available {{ pickingResult.available_total }} / allocated {{ pickingResult.allocated_total }}</strong></span>
-          </div>
-        </div>
-
-        <div class="experiment-summary" :class="{ failed: !pickingResult.invariant_ok }">
-          {{ pickingResult.summary }}
-        </div>
-        <p class="invariant-note">{{ pickingResult.invariant_message }}</p>
-
-        <div class="section-title"><b>本次拣货产生的库存流水</b><span>共 {{ pickingResult.inventory_trans.length }} 条</span></div>
-        <el-table v-if="pickingResult.inventory_trans.length" :data="pickingResult.inventory_trans" border stripe size="small">
-          <el-table-column prop="task_no" label="任务号" min-width="150" />
-          <el-table-column prop="order_no" label="出库单" min-width="150" />
-          <el-table-column prop="trans_type" label="类型" width="90" />
-          <el-table-column prop="quantity_change" label="数量变化" width="100" align="right" />
-          <el-table-column label="库存变化" width="130"><template #default="{ row }">{{ row.before_quantity }} → {{ row.after_quantity }}</template></el-table-column>
-          <el-table-column label="可用量变化" width="140"><template #default="{ row }">{{ row.available_before }} → {{ row.available_after }}</template></el-table-column>
-          <el-table-column label="时间" width="170"><template #default="{ row }">{{ formatTime(row.created_at) }}</template></el-table-column>
-        </el-table>
-      </template>
-    </section>
-
-    <section v-if="data" class="runtime-section" data-section="runtime">
-      <div class="runtime-head">
-        <div>
-          <span class="experiment-kicker">运行状态</span>
-          <h3>运行状态与指标快照</h3>
-          <p>展示查询时刻的数据库、Redis、连接池、Go 运行时和业务指标，不作为容量结论。</p>
-        </div>
-        <small>每 3 秒刷新一次</small>
-      </div>
-
-      <div class="health-grid">
-        <div class="health-card" :class="{ down: !dbHealthy }">
-          <div class="health-icon">DB</div>
-          <div>
-            <span>MySQL 状态</span>
-            <strong>{{ dbHealthy ? '正常' : '异常' }}</strong>
-            <small>当前探测延迟 {{ data.database.latency_ms }} ms</small>
-          </div>
-        </div>
-        <div class="health-card" :class="{ down: !redisHealthy }">
-          <div class="health-icon">R</div>
-          <div>
-            <span>Redis 状态</span>
-            <strong>{{ redisHealthy ? '正常' : '异常' }}</strong>
-            <small>当前探测延迟 {{ data.redis.latency_ms }} ms</small>
-          </div>
-        </div>
-        <div class="health-card">
-          <div class="health-icon">G</div>
-          <div>
-            <span>Go 协程</span>
-            <strong>{{ data.runtime.goroutines }}</strong>
-            <small>当前运行中</small>
-          </div>
-        </div>
-        <div class="health-card">
-          <div class="health-icon">M</div>
-          <div>
-            <span>进程内存</span>
-            <strong>{{ data.runtime.memory_alloc_mb.toFixed(1) }} MB</strong>
-            <small>已分配</small>
-          </div>
-        </div>
-      </div>
-
-      <div class="metrics-grid">
-        <section class="metric-panel">
-          <div class="panel-title">
-            <el-icon><TrendCharts /></el-icon>
-            <b>数据库连接池快照</b>
-          </div>
-          <p class="panel-note">当前连接数占最大连接数的 {{ poolUsage }}%，仅反映查询时刻的瞬时状态。</p>
-          <div class="metric-list">
-            <span>最大连接 <b>{{ data.pool.max_open_connections }}</b></span>
-            <span>已打开 <b>{{ data.pool.open_connections }}</b></span>
-            <span>使用中 <b>{{ data.pool.in_use }}</b></span>
-            <span>空闲 <b>{{ data.pool.idle }}</b></span>
-          </div>
-          <div class="metric-foot">
-            等待次数 {{ data.pool.wait_count }}，累计等待 {{ data.pool.wait_duration_ms }} ms
-          </div>
-        </section>
-
-        <section class="metric-panel">
-          <div class="panel-title">
-            <el-icon><Tickets /></el-icon>
-            <b>当前业务统计</b>
-          </div>
-          <div class="number-grid">
-            <div><span>今日入库</span><strong>{{ data.business.inbound_today }}</strong></div>
-            <div><span>今日出库</span><strong>{{ data.business.outbound_today }}</strong></div>
-            <div><span>待办任务</span><strong>{{ data.business.pending_tasks }}</strong></div>
-            <div><span>库存行数</span><strong>{{ data.business.inventory_rows }}</strong></div>
-          </div>
-        </section>
-
-        <section class="metric-panel">
-          <div class="panel-title">
-            <b>库存三数量校验</b>
-          </div>
-          <div class="stock-total">{{ data.business.stock_total }}</div>
-          <p class="stock-formula">
-            stock = available + allocated
-          </p>
-          <div class="metric-list two-col">
-            <span>可用量 <b>{{ data.business.available_total }}</b></span>
-            <span>分配量 <b>{{ data.business.allocated_total }}</b></span>
-          </div>
-        </section>
-
-        <section class="metric-panel">
-          <div class="panel-title">
-            <b>进程内存快照</b>
-          </div>
-          <p class="panel-note">只展示 Go 运行时当前值。实例未配置容器内存上限，因此不计算占用百分比。</p>
-          <div class="metric-list">
-            <span>Alloc <b>{{ data.runtime.memory_alloc_mb.toFixed(1) }} MB</b></span>
-            <span>Sys <b>{{ data.runtime.memory_sys_mb.toFixed(1) }} MB</b></span>
-            <span>GC 次数 <b>{{ data.runtime.num_gc }}</b></span>
-          </div>
-        </section>
-      </div>
-
-      <section class="load-panel">
-        <div class="panel-title">
-          <el-icon><TrendCharts /></el-icon>
-          <b>指标说明</b>
-        </div>
-        <p class="load-desc">
-          这是演示环境在查询时刻的运行状态与业务指标快照，不是压力测试、吞吐量测试或容量证明。
-          执行「并发分配实验」后，可以结合刷新结果观察数据库连接、Go 协程和内存等指标。
-          若出现「业务拒绝」并非故障：可用库存不足时，出库分配会按业务规则拒绝。
-        </p>
-      </section>
-
-      <div class="last-updated">最后更新时间：{{ formatTime(data.checked_at) }}</div>
+        <div class="tag-line"><span>异步任务</span><span>可重试</span><span>可恢复</span></div>
+        <div class="mechanism-note"><b>当前只展示机制</b><span>没有可用安全实验接口，不生成静态成功数据。</span></div>
+        <div class="card-actions"><el-button type="primary" @click="mechanismDialogVisible = true">查看机制</el-button></div>
+      </article>
     </section>
   </div>
+
+  <el-dialog v-model="allocationDialogVisible" title="配置并发库存分配" width="min(760px, 94vw)" :close-on-click-modal="false">
+    <el-radio-group v-model="allocationMode" class="mode-switch">
+      <el-radio-button value="sufficient">库存充足</el-radio-button>
+      <el-radio-button value="shortage">供给不足</el-radio-button>
+    </el-radio-group>
+    <div class="config-grid">
+      <label><span>并发请求数</span><el-input-number v-model="allocationConcurrency" :min="1" :max="100" /></label>
+      <label><span>初始库存目标</span><el-input-number v-model="allocationInitialStock" :min="1" :max="5000" /></label>
+      <label><span>每单申请数量</span><el-input-number v-model="allocationQty" :min="1" :max="10" /></label>
+    </div>
+    <div class="config-note">本次总需求 {{ allocationDemand }} 件；初始库存不足目标值时，会先调用真实补货接口。</div>
+    <el-alert v-if="allocationError" :title="allocationError" type="warning" :closable="false" show-icon />
+    <div v-if="allocationMetrics.length" class="result-grid">
+      <div v-for="item in allocationMetrics" :key="item.label"><span>{{ item.label }}</span><b :class="item.tone">{{ item.value }}</b></div>
+    </div>
+    <template #footer>
+      <el-button @click="allocationDialogVisible = false">关闭</el-button>
+      <el-button type="primary" :loading="allocationRunning" @click="runAllocation">运行实验</el-button>
+    </template>
+  </el-dialog>
+
+  <el-dialog v-model="pickingDialogVisible" title="配置拣货作业验证" width="min(720px, 94vw)" :close-on-click-modal="false">
+    <div class="config-grid">
+      <label><span>并发拣货员</span><el-input-number v-model="pickingWorkers" :min="1" :max="50" /></label>
+      <label><span>抢单 / 重复请求数</span><el-input-number v-model="pickingContenders" :min="0" :max="50" /></label>
+      <label class="switch-field"><span>模拟并发操作</span><el-switch :model-value="true" disabled /></label>
+      <label class="switch-field"><span>模拟重复扫码</span><el-switch :model-value="true" disabled /></label>
+    </div>
+    <div class="config-note">拣货任务由实验接口按真实库存自动准备；“重复发货”没有独立接口字段，结果不会伪造。</div>
+    <el-alert v-if="pickingError" :title="pickingError" type="warning" :closable="false" show-icon />
+    <div v-if="pickingMetrics.length" class="result-grid">
+      <div v-for="item in pickingMetrics" :key="item.label"><span>{{ item.label }}</span><b :class="item.tone">{{ item.value }}</b></div>
+    </div>
+    <template #footer>
+      <el-button @click="pickingDialogVisible = false">关闭</el-button>
+      <el-button @click="router.push('/demo/activity')">查看记录</el-button>
+      <el-button type="primary" :loading="pickingRunning" @click="runPicking">运行模拟 PDA 实验</el-button>
+    </template>
+  </el-dialog>
+
+  <el-dialog v-model="mechanismDialogVisible" title="异步导入可靠性机制" width="min(680px, 94vw)" :close-on-click-modal="false">
+    <div class="mechanism-grid">
+      <div><b>任务领取</b><span>PENDING 任务由单消费者领取，使用执行标识防止旧 worker 覆盖新状态。</span></div>
+      <div><b>行级幂等</b><span>以任务 ID 和 Excel 行号保证补偿重跑不会重复建单。</span></div>
+      <div><b>失败保留</b><span>失败任务保留源文件用于排查；成功完成后才清理源文件。</span></div>
+      <div><b>恢复与重试</b><span>处理中超时的任务会被后续 worker 重新领取，并受租户和事务边界保护。</span></div>
+    </div>
+    <el-alert title="当前页面只展示实现机制，不使用静态成功数据冒充真实实验。" type="info" :closable="false" show-icon />
+    <template #footer><el-button type="primary" @click="mechanismDialogVisible = false">关闭</el-button></template>
+  </el-dialog>
+
+  <el-drawer v-model="runtimeVisible" title="运行状态与指标快照" size="min(460px, 94vw)" append-to-body>
+    <div v-if="data" class="runtime-list">
+      <div><span>数据库</span><b>{{ data.database.status }} · {{ data.database.latency_ms }} ms</b></div>
+      <div><span>Redis</span><b>{{ data.redis.status }} · {{ data.redis.latency_ms }} ms</b></div>
+      <div><span>数据库连接</span><b>{{ data.pool.open_connections }} / {{ data.pool.max_open_connections }}</b></div>
+      <div><span>Go 协程</span><b>{{ data.runtime.goroutines }}</b></div>
+      <div><span>内存占用</span><b>{{ data.runtime.memory_alloc_mb }} MB</b></div>
+      <div><span>库存三数量</span><b>现存 {{ data.business.stock_total }} / 可用 {{ data.business.available_total }} / 分配 {{ data.business.allocated_total }}</b></div>
+    </div>
+  </el-drawer>
 </template>
 
 <style scoped>
-.performance-page {
-  min-height: 100%;
-}
-
-.page-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 20px;
-  align-items: flex-start;
-  margin-bottom: 16px;
-}
-
-.page-head h2 {
-  margin: 0 0 6px;
-  font-size: 22px;
-}
-
-.page-head p {
-  margin: 0;
-  color: var(--el-text-color-secondary);
-}
-
-.head-actions {
-  display: flex;
-  gap: 8px;
-  flex-shrink: 0;
-}
-
-.page-alert {
-  margin-bottom: 16px;
-}
-
-.experiment-panel {
-  margin-bottom: 16px;
-  padding: 20px;
-  border: 1px solid var(--el-border-color-light);
-  border-radius: 12px;
-  background: var(--el-bg-color);
-  box-shadow: var(--el-box-shadow-light);
-}
-
-.experiment-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.experiment-head h3 {
-  margin: 4px 0 6px;
-  font-size: 18px;
-}
-
-.experiment-head p {
-  max-width: 720px;
-  margin: 0;
-  color: var(--el-text-color-secondary);
-  font-size: 13px;
-  line-height: 1.7;
-}
-
-.experiment-kicker {
-  color: var(--el-color-primary);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.experiment-controls {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 12px;
-  margin: 16px 0;
-}
-
-.experiment-controls label,
-.demand-preview {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-}
-
-.demand-preview {
-  min-width: 100px;
-  padding: 7px 10px;
-  border-radius: 8px;
-  background: var(--el-fill-color-light);
-}
-
-.demand-preview b {
-  color: var(--el-text-color-primary);
-  font-size: 15px;
-}
-
-.scope-grid,
-.experiment-grid {
-  display: grid;
-  gap: 10px;
-}
-
-.scope-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  margin-top: 14px;
-}
-
-.scope-grid div {
-  padding: 12px;
-  border-left: 3px solid var(--el-color-primary);
-  border-radius: 6px;
-  background: var(--el-fill-color-extra-light);
-}
-
-.scope-grid span {
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-}
-
-.scope-grid p {
-  margin: 5px 0 0;
-  font-size: 13px;
-  line-height: 1.65;
-}
-
-.experiment-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  margin-top: 12px;
-}
-
-.snapshot-box {
-  padding: 14px;
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 9px;
-  background: var(--el-fill-color-extra-light);
-}
-
-.snapshot-box b {
-  display: block;
-  margin-bottom: 8px;
-}
-
-.snapshot-box span {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 2px 0;
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-}
-
-.snapshot-box strong {
-  color: var(--el-text-color-primary);
-}
-
-.snapshot-box.failed {
-  border-color: var(--el-color-danger-light-5);
-}
-
-.experiment-summary {
-  margin-top: 12px;
-  padding: 12px 14px;
-  border-radius: 8px;
-  color: var(--el-color-success);
-  background: var(--el-color-success-light-9);
-  font-weight: 600;
-}
-
-.experiment-summary.failed {
-  color: var(--el-color-danger);
-  background: var(--el-color-danger-light-9);
-}
-
-.experiment-panel--shortage {
-  border-top: 3px solid var(--el-color-danger);
-}
-
-.shortage-error {
-  margin-top: 10px;
-}
-
-.experiment-panel--picking {
-  border-top: 3px solid var(--el-color-primary);
-}
-
-.prep-summary {
-  display: grid;
-  gap: 3px;
-  margin-top: 14px;
-  padding: 12px 14px;
-  border-left: 3px solid var(--el-color-primary);
-  border-radius: 7px;
-  background: var(--el-fill-color-extra-light);
-}
-
-.prep-summary b {
-  color: var(--el-text-color-primary);
-}
-
-.prep-summary span {
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-}
-
-.phase-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-  margin-top: 14px;
-}
-
-.phase-grid > div {
-  padding: 14px;
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 9px;
-  background: var(--el-fill-color-extra-light);
-}
-
-.phase-grid > div.failed {
-  border-color: var(--el-color-danger-light-5);
-}
-
-.phase-grid b,
-.phase-grid span {
-  display: block;
-}
-
-.phase-grid b {
-  margin-bottom: 8px;
-}
-
-.phase-grid span {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 2px 0;
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-}
-
-.invariant-note {
-  margin: 10px 0 18px;
-  color: var(--el-text-color-secondary);
-  font-size: 13px;
-}
-
-.health-grid,
-.metrics-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.health-card,
-.metric-panel,
-.load-panel {
-  border: 1px solid var(--el-border-color-light);
-  border-radius: 12px;
-  background: var(--el-bg-color);
-  box-shadow: var(--el-box-shadow-light);
-}
-
-.health-card {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 18px;
-  border-top: 3px solid #10b981;
-}
-
-.health-card.down {
-  border-top-color: #ef4444;
-}
-
-.health-icon {
-  width: 42px;
-  height: 42px;
-  border-radius: 12px;
-  display: grid;
-  place-items: center;
-  background: var(--el-fill-color-light);
-  color: var(--el-color-primary);
-  font-weight: 800;
-}
-
-.health-card span,
-.health-card small {
-  display: block;
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-}
-
-.health-card strong {
-  display: block;
-  margin: 4px 0;
-  font-size: 20px;
-}
-
-.metrics-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  margin-top: 14px;
-}
-
-.metric-panel {
-  padding: 18px;
-}
-
-.panel-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 16px;
-  font-size: 15px;
-}
-
-.progress-row {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 8px;
-  color: var(--el-text-color-secondary);
-  font-size: 13px;
-}
-
-.panel-note {
-  margin: -4px 0 14px;
-  color: var(--el-text-color-secondary);
-  font-size: 13px;
-  line-height: 1.7;
-}
-
-.metric-list {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-  margin-top: 16px;
-  color: var(--el-text-color-secondary);
-  font-size: 13px;
-}
-
-.metric-list.two-col {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.metric-list b {
-  color: var(--el-text-color-primary);
-}
-
-.metric-foot {
-  margin-top: 14px;
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-}
-
-.number-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.number-grid div {
-  padding: 14px;
-  border-radius: 10px;
-  background: var(--el-fill-color-lighter);
-}
-
-.number-grid span {
-  display: block;
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-}
-
-.number-grid strong {
-  display: block;
-  margin-top: 6px;
-  font-size: 26px;
-}
-
-.stock-total {
-  font-size: 36px;
-  font-weight: 800;
-  color: var(--el-color-primary);
-}
-
-.stock-formula {
-  margin: 4px 0 0;
-  color: var(--el-text-color-secondary);
-  font-size: 13px;
-}
-
-.load-panel {
-  margin-top: 14px;
-  padding: 18px;
-}
-
-.load-desc {
-  margin: 0;
-  color: var(--el-text-color-secondary);
-  line-height: 1.8;
-}
-
-.experiment-framework {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 10px;
-  margin-bottom: 16px;
-}
-
-.experiment-framework > div {
-  min-width: 0;
-  padding: 13px 14px;
-  border-radius: 10px;
-  background: var(--el-fill-color-extra-light);
-}
-
-.experiment-framework span,
-.experiment-framework p {
-  display: block;
-}
-
-.experiment-framework span {
-  color: var(--el-color-primary);
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.experiment-framework p {
-  margin: 6px 0 0;
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-  line-height: 1.65;
-}
-
-.runtime-section {
-  margin-top: 24px;
-}
-
-.runtime-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 16px;
-}
-
-.runtime-head h3 {
-  margin: 6px 0 6px;
-  color: var(--el-text-color-primary);
-  font-size: 20px;
-}
-
-.runtime-head p {
-  margin: 0;
-  color: var(--el-text-color-secondary);
-  line-height: 1.7;
-}
-
-.runtime-head small {
-  color: var(--el-text-color-secondary);
-}
-
-@media (max-width: 700px) {
-  .runtime-head {
-    flex-direction: column;
-  }
-}
-
-.last-updated {
-  margin-top: 12px;
-  text-align: right;
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-}
-
-@media (max-width: 1100px) {
-  .health-grid,
-  .experiment-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 768px) {
-  .experiment-head {
-    flex-direction: column;
-  }
-
-  .scope-grid,
-  .experiment-grid,
-  .phase-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .page-head,
-  .health-grid,
-  .metrics-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .page-head {
-    display: block;
-  }
-
-  .head-actions {
-    margin-top: 12px;
-  }
-}
+.engineering-page { width: min(1180px, 100%); margin: 0 auto; }
+.platform-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; padding: 10px 14px; border: 1px solid var(--el-border-color-lighter); border-radius: 10px; color: var(--el-text-color-secondary); background: var(--el-bg-color); font-size: 12px; }
+.platform-strip span { display: inline-flex; align-items: center; gap: 6px; }
+.platform-strip i { width: 7px; height: 7px; border-radius: 50%; background: var(--el-color-warning); }
+.platform-strip i.ok { background: var(--el-color-success); }
+.platform-strip i.warn, .warn-text { color: var(--el-color-warning); }
+.platform-strip b { color: var(--el-text-color-primary); }
+.engineering-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.engineering-card { min-height: 260px; padding: 18px; display: flex; flex-direction: column; }
+.card-head { display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 10px; }
+.card-index { width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center; color: var(--el-color-primary); background: var(--el-color-primary-light-9); font-family: var(--gowms-num-font); font-size: 12px; font-weight: 700; }
+.card-head h3 { margin: 2px 0 6px; font-size: 17px; }
+.card-head p { margin: 0; color: var(--el-text-color-secondary); font-size: 12px; line-height: 1.65; }
+.tag-line { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+.tag-line span { padding: 3px 8px; border-radius: 999px; color: var(--el-color-primary); background: var(--el-color-primary-light-9); font-size: 11px; }
+.last-result, .mechanism-note { min-height: 62px; margin-top: 14px; padding: 10px 11px; border-radius: 9px; background: var(--el-fill-color-lighter); }
+.last-result span, .last-result b, .mechanism-note b, .mechanism-note span { display: block; }
+.last-result span, .mechanism-note span { color: var(--el-text-color-secondary); font-size: 11px; }
+.last-result b, .mechanism-note b { margin-top: 4px; font-size: 12px; line-height: 1.5; }
+.card-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: auto; padding-top: 14px; }
+.card-actions .el-button { margin-left: 0; }
+.mode-switch { margin-bottom: 16px; }
+.config-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.config-grid label { min-width: 0; padding: 11px 12px; border: 1px solid var(--el-border-color-lighter); border-radius: 9px; display: grid; gap: 7px; }
+.config-grid label > span { color: var(--el-text-color-secondary); font-size: 12px; }
+.config-grid .el-input-number { width: 100%; }
+.switch-field { display: flex !important; align-items: center; justify-content: space-between; }
+.config-note { margin: 12px 0; padding: 9px 11px; border-radius: 8px; color: var(--el-text-color-secondary); background: var(--el-fill-color-light); font-size: 12px; line-height: 1.6; }
+.result-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 14px; }
+.result-grid > div { min-width: 0; padding: 10px; border-radius: 9px; background: var(--el-fill-color-extra-light); }
+.result-grid span, .result-grid b { display: block; }
+.result-grid span { color: var(--el-text-color-secondary); font-size: 11px; }
+.result-grid b { margin-top: 4px; font-size: 16px; }
+.result-grid b.success { color: var(--el-color-success); }
+.result-grid b.warning { color: var(--el-color-warning); }
+.result-grid b.danger { color: var(--el-color-danger); }
+.mechanism-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
+.mechanism-grid > div { padding: 12px; border-radius: 9px; background: var(--el-fill-color-extra-light); }
+.mechanism-grid b, .mechanism-grid span { display: block; }
+.mechanism-grid span { margin-top: 5px; color: var(--el-text-color-secondary); font-size: 12px; line-height: 1.6; }
+.runtime-list { display: grid; gap: 8px; }
+.runtime-list > div { padding: 11px 12px; border-radius: 9px; background: var(--el-fill-color-extra-light); }
+.runtime-list span, .runtime-list b { display: block; }
+.runtime-list span { color: var(--el-text-color-secondary); font-size: 11px; }
+.runtime-list b { margin-top: 4px; font-size: 13px; }
+@media (max-width: 900px) { .engineering-grid { grid-template-columns: 1fr; } .result-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 </style>

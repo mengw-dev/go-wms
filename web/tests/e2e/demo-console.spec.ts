@@ -256,17 +256,50 @@ test('manual inbound guide completes through inventory evidence', async ({ page 
   await expect(page.getByText(orderNo, { exact: true }).first()).toBeVisible()
 })
 
-test('engineering verification exposes three real experiments and runtime last', async ({ page }) => {
+test('engineering verification exposes three compact experiments without separate shortage section', async ({ page }) => {
   await loginDemo(page)
   await page.goto('/demo/performance')
 
   await expect(page.getByRole('heading', { name: '工程验证', exact: true })).toBeVisible()
-  await expect(page.locator('.experiment-framework')).toHaveCount(3)
-  for (const section of ['allocation', 'shortage', 'picking', 'runtime']) {
+  await expect(page.locator('.engineering-card')).toHaveCount(3)
+  for (const section of ['allocation', 'picking', 'import']) {
     await expect(page.locator(`[data-section="${section}"]`)).toBeVisible()
   }
-  const order = await page.locator('[data-section]').evaluateAll((nodes) => nodes.map((node) => node.getAttribute('data-section')))
-  expect(order).toEqual(['allocation', 'shortage', 'picking', 'runtime'])
+  await expect(page.locator('[data-section="shortage"]')).toHaveCount(0)
+  const order = await page.locator('.engineering-card').evaluateAll((nodes) => nodes.map((node) => node.getAttribute('data-section')))
+  expect(order).toEqual(['allocation', 'picking', 'import'])
+
+  const metrics = await page.locator('.main').evaluate((element) => ({
+    scrollHeight: element.scrollHeight,
+    clientHeight: element.clientHeight,
+  }))
+  expect(metrics.scrollHeight).toBeLessThanOrEqual(metrics.clientHeight)
+
+  const allocationCard = page.locator('[data-section="allocation"]')
+  await allocationCard.getByRole('button', { name: '库存充足模式', exact: true }).click()
+  const allocationDialog = page.getByRole('dialog', { name: '配置并发库存分配' })
+  await expect(allocationDialog.getByText('库存充足', { exact: true })).toBeVisible()
+  await expect(allocationDialog.getByText('供给不足', { exact: true })).toBeVisible()
+  await expect(allocationDialog.getByText('初始库存目标', { exact: true })).toBeVisible()
+  await allocationDialog.getByRole('button', { name: '关闭', exact: true }).click()
+
+  const pickingCard = page.locator('[data-section="picking"]')
+  await pickingCard.getByRole('button', { name: '配置并运行', exact: true }).click()
+  const pickingDialog = page.getByRole('dialog', { name: '配置拣货作业验证' })
+  await expect(pickingDialog.getByText('模拟重复扫码', { exact: true })).toBeVisible()
+  await pickingDialog.getByRole('button', { name: '关闭', exact: true }).click()
+
+  const importCard = page.locator('[data-section="import"]')
+  await importCard.getByRole('button', { name: '查看机制', exact: true }).click()
+  const mechanismDialog = page.getByRole('dialog', { name: '异步导入可靠性机制' })
+  await expect(mechanismDialog.getByText('当前页面只展示实现机制，不使用静态成功数据冒充真实实验。')).toBeVisible()
+  await mechanismDialog.getByRole('button', { name: '关闭', exact: true }).click()
+
+  await page.getByRole('button', { name: '运行状态', exact: true }).click()
+  const runtimeDrawer = page.getByRole('dialog', { name: '运行状态与指标快照' })
+  await expect(runtimeDrawer).toBeVisible()
+  await runtimeDrawer.getByRole('button', { name: '关闭此对话框' }).click()
+
   await page.getByRole('button', { name: '返回演示中心', exact: true }).click()
   await expect(page).toHaveURL(/\/demo$/)
 })
@@ -292,6 +325,8 @@ test('demo session stays valid after refreshing the demo home', async ({ page })
 test('PDA experiment prepares its own tasks on a clean demo and isolates consecutive runs', async ({ page }) => {
   await loginDemo(page)
   await page.goto('/demo/performance')
+  await page.locator('[data-section="picking"]').getByRole('button', { name: '配置并运行', exact: true }).click()
+  const pickingDialog = page.getByRole('dialog', { name: '配置拣货作业验证' })
 
   const runExperiment = async (): Promise<PickingExperimentResult> => {
     const responsePromise = page.waitForResponse(
@@ -299,7 +334,7 @@ test('PDA experiment prepares its own tasks on a clean demo and isolates consecu
         response.request().method() === 'POST' &&
         new URL(response.url()).pathname === '/api/v1/demo/run/picking',
     )
-    await page.getByRole('button', { name: '运行模拟 PDA 实验' }).click()
+    await pickingDialog.getByRole('button', { name: '运行模拟 PDA 实验' }).click()
     const response = await responsePromise
     expect(response.ok()).toBeTruthy()
     const body = (await response.json()) as ApiEnvelope<PickingExperimentResult>
@@ -343,12 +378,14 @@ test('PDA experiment does not modify an unrelated pending pick task', async ({ p
   expect(unrelated).toBeTruthy()
 
   await page.goto('/demo/performance')
+  await page.locator('[data-section="picking"]').getByRole('button', { name: '配置并运行', exact: true }).click()
+  const pickingDialog = page.getByRole('dialog', { name: '配置拣货作业验证' })
   const responsePromise = page.waitForResponse(
     (response) =>
       response.request().method() === 'POST' &&
       new URL(response.url()).pathname === '/api/v1/demo/run/picking',
   )
-  await page.getByRole('button', { name: '运行模拟 PDA 实验' }).click()
+  await pickingDialog.getByRole('button', { name: '运行模拟 PDA 实验' }).click()
   await responsePromise
 
   const afterPage = await requestDemoJson<PageData<TaskRow>>(page, 'get', `/tasks?page=1&page_size=20&order_id=${order.id}&task_type=PICK`)
