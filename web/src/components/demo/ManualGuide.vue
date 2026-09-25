@@ -311,6 +311,22 @@ function resolvedCurrentStepRoute(): string {
   return resolveGuideRoute(current.route, guide.orderId, guide.orderNo)
 }
 
+function isCurrentGuideRoute(path: string): boolean {
+  if (!guide.scenario) return false
+  return guide.steps.some((item) =>
+    resolveGuideRoute(item.route, guide.orderId, guide.orderNo).split('?')[0] === path,
+  )
+}
+
+function stopGuideOutsideFlow(): void {
+  actionState.value = 'idle'
+  cancellationClicked = false
+  businessLayerOpen.value = false
+  clearTarget()
+  guide.cancel()
+  ElMessage.info('已离开引导流程，本次引导已自动结束')
+}
+
 async function restartGuide(): Promise<void> {
   actionState.value = 'idle'
   cancellationClicked = false
@@ -419,6 +435,14 @@ watch(
 )
 
 watch(guideRevision, syncActionFromGuide)
+watch(
+  () => [route.path, guide.active, guide.scenario, guide.orderId, guide.orderNo] as const,
+  ([path, active]) => {
+    if (!active || !guide.scenario) return
+    if (!isCurrentGuideRoute(path)) stopGuideOutsideFlow()
+  },
+  { immediate: true },
+)
 watch(
   () => guide.completed,
   (completed) => {

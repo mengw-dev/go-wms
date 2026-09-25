@@ -124,6 +124,22 @@ test('demo drawer and business dialog close when the blank backdrop is clicked',
   await expect(createDialog).not.toBeVisible()
 })
 
+test('guided demo ends when navigating outside its business flow', async ({ page }) => {
+  await loginDemo(page)
+
+  await page.locator('.flow-step').filter({ hasText: '入库单' }).click()
+  await page.locator('.detail-panel').getByRole('button', { name: '引导演示', exact: true }).click()
+  await expect(page).toHaveURL(/\/inbound\/orders$/)
+  await expect(page.locator('section[aria-label="手动业务引导"]')).toBeVisible()
+
+  await page.goto('/demo/performance')
+  await expect(page.getByRole('heading', { name: '工程验证', exact: true })).toBeVisible()
+  await expect(page.locator('section[aria-label="手动业务引导"]')).toHaveCount(0)
+  await expect(page.locator('.guide-bubble')).toHaveCount(0)
+  await expect(page.locator('body')).not.toHaveClass(/manual-guide-active/)
+  expect(await page.evaluate(() => sessionStorage.getItem('wms-manual-guide-v1'))).toBeNull()
+})
+
 test('start demo supports staged real execution', async ({ page }) => {
   await loginDemo(page)
   await page.getByRole('button', { name: '开始自动演示', exact: true }).click()

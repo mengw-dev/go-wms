@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ArrowRight, VideoPlay } from '@element-plus/icons-vue'
-import { useGuideStore, type GuideScenario } from '@/stores/guide'
+import { getGuideStep, useGuideStore, type GuideScenario } from '@/stores/guide'
 import { onDataChanged, runDemoAutomaticallyInConsole, runDemoStepByStepInConsole } from '@/utils/events'
 import { readDemoEvidence } from '@/utils/demoEvidence'
 
@@ -176,9 +176,11 @@ function startSelectedAutomaticDemo(): void {
   startAutomaticDemo(currentStep.value.automaticScenario)
 }
 
-function startGuidedExperience(scenario: Extract<GuideScenario, 'inbound' | 'outbound'>): void {
-  const firstStep = guide.start(scenario)
-  void router.push(firstStep.route)
+async function startGuidedExperience(scenario: Extract<GuideScenario, 'inbound' | 'outbound'>): Promise<void> {
+  const firstStep = getGuideStep(scenario, 0)
+  if (!firstStep) return
+  await router.push(firstStep.route)
+  guide.start(scenario)
 }
 
 function startSelectedGuide(): void {
