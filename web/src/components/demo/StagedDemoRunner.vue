@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { CircleCheckFilled, Clock, Document, VideoPlay } from '@element-plus/icons-vue'
-import { listLocations, listSkus, listWarehouses } from '@/api/basic'
+import { batchCreateLocations, listLocations, listSkus, listWarehouses } from '@/api/basic'
 import {
   approveInboundOrder,
   createInboundOrder,
@@ -188,8 +188,27 @@ async function idleLocation(): Promise<LocationItem> {
   if (!warehouse) throw new Error('演示仓库不存在')
   const locations = await listLocations({ page: 1, page_size: 100, warehouse_id: warehouse.id, status: 1 })
   const location = locations.list[0]
-  if (!location) throw new Error('没有可用库位')
-  return location
+  if (location) return location
+
+  const zone = `D${Date.now().toString(36).toUpperCase()}`
+  await batchCreateLocations({
+    warehouse_id: warehouse.id,
+    zone,
+    row_from: 1,
+    row_to: 1,
+    col_from: 1,
+    col_to: 1,
+  })
+  const created = await listLocations({
+    page: 1,
+    page_size: 10,
+    warehouse_id: warehouse.id,
+    status: 1,
+    keyword: zone,
+  })
+  const fallback = created.list[0]
+  if (!fallback) throw new Error('没有可用库位，自动创建库位失败，请重置演示数据')
+  return fallback
 }
 
 async function executeInboundCreate(): Promise<void> {
@@ -388,6 +407,7 @@ function openLogs(): void {
 async function runAll(): Promise<void> {
   while (started.value && !completed.value && mode.value === 'auto') {
     await executeNext()
+    if (error.value) return
     if (completed.value) break
     await new Promise((resolve) => window.setTimeout(resolve, 900))
   }

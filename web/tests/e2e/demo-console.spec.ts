@@ -39,6 +39,7 @@ interface PickingExperimentResult {
 }
 interface WarehouseRow { id: string; code: string }
 interface SkuRow { id: string; code: string }
+interface LocationRow { id: string; code: string; status: number }
 interface OutboundOrderRow { id: string; order_no: string }
 interface TaskRow { id: string; task_type: string; status: string; done_qty: number }
 
@@ -53,7 +54,7 @@ async function demoHeaders(page: Page) {
   }
 }
 
-async function requestDemoJson<T>(page: Page, method: 'get' | 'post', path: string, data?: unknown): Promise<T> {
+async function requestDemoJson<T>(page: Page, method: 'get' | 'post' | 'delete', path: string, data?: unknown): Promise<T> {
   const response = await page.request[method](`/api/v1${path}`, {
     headers: await demoHeaders(page),
     data,
@@ -145,6 +146,29 @@ test('guided demo ends when navigating outside its business flow', async ({ page
   await expect(page.locator('.guide-bubble')).toHaveCount(0)
   await expect(page.locator('body')).not.toHaveClass(/manual-guide-active/)
   expect(await page.evaluate(() => sessionStorage.getItem('wms-manual-guide-v1'))).toBeNull()
+})
+
+test('staged demo creates an idle location when none is available', async ({ page }) => {
+  await loginDemo(page)
+
+  const locations = await requestDemoJson<PageData<LocationRow>>(
+    page,
+    'get',
+    '/basic/locations?page=1&page_size=100&status=1',
+  )
+  for (const location of locations.list) {
+    await requestDemoJson<void>(page, 'delete', `/basic/locations/${location.id}`)
+  }
+
+  const runner = await startScenarioFromHome(page, 'inbound', '入库单')
+  await expect(runner.getByText('全部流程已完成', { exact: true })).toBeVisible({ timeout: 60_000 })
+
+  const refreshed = await requestDemoJson<PageData<LocationRow>>(
+    page,
+    'get',
+    '/basic/locations?page=1&page_size=100',
+  )
+  expect(refreshed.list.some((location) => location.code.startsWith('D'))).toBe(true)
 })
 
 test('start demo supports staged real execution', async ({ page }) => {
