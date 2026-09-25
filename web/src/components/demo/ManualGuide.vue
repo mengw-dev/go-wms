@@ -7,7 +7,8 @@ import type { DemoActivitySnapshot } from '@/api/types'
 import { useAuthStore } from '@/stores/auth'
 import { GUIDE_SCENARIO_LABELS, getGuideStep, resolveGuideRoute, useGuideStore } from '@/stores/guide'
 import { formatTime } from '@/utils'
-import { buildDemoOperationRows, type DemoOperationRow } from '@/utils/demoOperations'
+import { rememberDemoExecutionWindow } from '@/utils/demoEvidence'
+import { buildBusinessOperationRows, type DemoOperationRow } from '@/utils/demoOperations'
 
 interface TargetRect {
   top: number
@@ -62,13 +63,7 @@ const completionSteps = computed(() => {
   return guide.scenario ? [GUIDE_SCENARIO_LABELS[guide.scenario] + '单', '业务已完成'] : []
 })
 const businessOperations = computed<DemoOperationRow[]>(() => {
-  return buildDemoOperationRows(activity.value?.operations ?? [])
-    .filter((item) =>
-      ['/api/v1/inbound', '/api/v1/outbound', '/api/v1/inventory', '/api/v1/tasks'].some((prefix) =>
-        item.raw.path.startsWith(prefix),
-      ),
-    )
-    .slice(0, 20)
+  return buildBusinessOperationRows(activity.value?.operations ?? []).slice(0, 20)
 })
 
 function httpStatusType(status: number): 'success' | 'warning' | 'danger' {
@@ -450,6 +445,14 @@ watch(
       actionState.value = 'idle'
       businessLayerOpen.value = false
       clearTarget()
+      if (guide.scenario && guide.startedAt) {
+        rememberDemoExecutionWindow(
+          guide.scenario,
+          new Date(guide.startedAt).toISOString(),
+          new Date().toISOString(),
+          guide.orderId ? [{ label: '业务单据', path: completedOrderPath() }] : [],
+        )
+      }
     }
   },
 )
@@ -518,7 +521,7 @@ onBeforeUnmount(() => {
           <small v-if="guide.lastOutcome">当前操作已完成</small>
         </div>
         <div class="guide-strip__actions">
-          <el-button link type="primary" @click="openRecords">操作日志</el-button>
+          <el-button link type="primary" @click="openRecords">业务操作记录</el-button>
           <el-button link type="danger" @click="exitGuide">退出演示</el-button>
         </div>
       </section>
@@ -602,7 +605,7 @@ onBeforeUnmount(() => {
     <el-drawer
       v-model="recordsVisible"
       class="guide-records-drawer"
-      title="本次操作日志"
+      title="本次业务操作记录"
       size="min(440px, 92vw)"
       append-to-body
       :close-on-click-modal="true"

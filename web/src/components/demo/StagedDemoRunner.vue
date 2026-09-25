@@ -20,6 +20,7 @@ import {
 } from '@/api/outbound'
 import type { EntityID, LocationItem, SkuItem, WarehouseItem } from '@/api/types'
 import { formatTime } from '@/utils'
+import { rememberDemoExecutionWindow } from '@/utils/demoEvidence'
 
 type StepKey =
   | 'inbound-create'
@@ -160,7 +161,15 @@ function record(result: StepResult): void {
   results.value = [...results.value, result]
   currentIndex.value += 1
   error.value = ''
-  if (currentIndex.value >= activeSteps.value.length) runCompletedAt.value = new Date().toISOString()
+  if (currentIndex.value >= activeSteps.value.length) {
+    runCompletedAt.value = new Date().toISOString()
+    rememberDemoExecutionWindow(
+      scope.value,
+      runStartedAt.value,
+      runCompletedAt.value,
+      results.value.map((item) => ({ label: item.title, path: item.route })),
+    )
+  }
   emitState()
 }
 
@@ -442,7 +451,7 @@ defineExpose({ start })
           </dl>
           <div class="stage-actions">
             <el-button size="small" :disabled="running" @click="openCurrentPage">打开真实页面</el-button>
-            <el-button size="small" type="primary" plain :icon="Document" @click="openLogs">操作日志</el-button>
+            <el-button size="small" type="primary" plain :icon="Document" @click="openLogs">业务操作记录</el-button>
           </div>
         </template>
         <el-empty v-else description="点击“执行下一步”后显示真实结果" :image-size="62" />

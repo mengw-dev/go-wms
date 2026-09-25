@@ -494,7 +494,7 @@ onBeforeUnmount(() => {
             <span>本次真实单据、流水与结果</span>
           </button>
           <button type="button" @click="navigateTo('/demo/activity?tab=operations')">
-            <b>操作日志</b>
+            <b>业务操作记录</b>
             <span>演示期间调用的真实业务接口</span>
           </button>
           <button type="button" @click="navigateTo('/demo/performance')">

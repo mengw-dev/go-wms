@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import type { DemoActivitySnapshot, DemoOperationLog, InboundOrderItem } from '@/api/types'
-import { buildDemoOperationRows } from './demoOperations'
+import {
+  buildBusinessOperationRows,
+  buildDemoOperationRows,
+  buildExperimentOperationRows,
+} from './demoOperations'
 
 function operation(overrides: Partial<DemoOperationLog>): DemoOperationLog {
   return {
@@ -41,10 +45,11 @@ describe('buildDemoOperationRows', () => {
   })
 
   it('maps demo experiments and restock to readable operations', () => {
-    const rows = buildDemoOperationRows([
+    const rows = buildExperimentOperationRows([
       operation({ id: '20', path: '/api/v1/demo/run/concurrent', params: '{"concurrency":20,"qty_per_order":5}' }),
       operation({ id: '21', path: '/api/v1/demo/run/picking', params: '{"workers":10,"contenders":5}' }),
       operation({ id: '22', path: '/api/v1/demo/run/restock', params: '{"qty":500}' }),
+      operation({ id: '23', path: '/api/v1/demo/session/heartbeat' }),
     ])
 
     expect(rows.map((row) => row.operation)).toEqual([
@@ -55,6 +60,25 @@ describe('buildDemoOperationRows', () => {
     expect(rows[0].quantityChange).toBe('20 请求 × 5 件')
     expect(rows[1].quantityChange).toBe('10 拣货员 / 5 竞争请求')
     expect(rows[2].quantityChange).toBe('+500 件')
+  })
+
+  it('shows only real business actions in business evidence', () => {
+    const rows = buildBusinessOperationRows([
+      operation({ id: '30', path: '/api/v1/inbound/orders/101/submit' }),
+      operation({ id: '31', path: '/api/v1/demo/session/heartbeat' }),
+      operation({ id: '32', path: '/api/v1/demo/run/concurrent' }),
+      operation({ id: '33', path: '/api/v1/demo/reset' }),
+      operation({ id: '34', path: '/api/v1/inbound/orders/batch-submit' }),
+      operation({ id: '35', path: '/api/v1/inbound/orders/101/submit', method: 'GET' }),
+    ], snapshot)
+
+    expect(rows.map((row) => row.operation)).toEqual(['提交入库单'])
+  })
+
+  it('drops unknown business requests instead of showing generic POST operations', () => {
+    expect(buildDemoOperationRows([
+      operation({ path: '/api/v1/inbound/orders/batch-submit' }),
+    ])).toEqual([])
   })
 
   it('reads quantity and marks failed operations', () => {

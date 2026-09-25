@@ -197,7 +197,7 @@ watch(
         </dl>
         <div class="stage-actions">
           <el-button size="small" :disabled="!currentStage.steps.length" @click="navigate(currentStageLink)">打开真实页面</el-button>
-          <el-button size="small" type="primary" plain @click="navigate('/demo/activity?tab=operations')">查看操作日志</el-button>
+          <el-button size="small" type="primary" plain @click="navigate('/demo/activity?tab=operations')">查看业务操作记录</el-button>
         </div>
       </aside>
     </div>

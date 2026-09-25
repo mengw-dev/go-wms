@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Refresh, Tickets, TrendCharts } from '@element-plus/icons-vue'
+import { List, Refresh, Tickets, TrendCharts } from '@element-plus/icons-vue'
 import {
+  getDemoActivity,
   getDemoPerformance,
   restockDemo,
   runConcurrentDemo,
@@ -11,6 +12,7 @@ import {
   runConcurrentShortageDemo,
 } from '@/api/demo'
 import type {
+  DemoActivitySnapshot,
   DemoConcurrentResult,
   DemoConcurrentShortageResult,
   DemoPerformanceSnapshot,
@@ -18,6 +20,8 @@ import type {
 } from '@/api/types'
 import PageHeader from '@/components/common/PageHeader.vue'
 import { useAutoRefresh } from '@/composables/autoRefresh'
+import { formatTime } from '@/utils'
+import { buildExperimentOperationRows, type DemoOperationRow } from '@/utils/demoOperations'
 
 type AllocationMode = 'sufficient' | 'shortage'
 
@@ -52,6 +56,11 @@ const pickingResult = ref<DemoPickingResult | null>(null)
 const mechanismDialogVisible = ref(false)
 const runtimeVisible = ref(false)
 const quickRestockLoading = ref(false)
+const experimentVisible = ref(false)
+const experimentLoading = ref(false)
+const experimentError = ref('')
+const experimentRows = ref<DemoOperationRow[]>([])
+let experimentRefreshTimer: number | undefined
 
 const currentAvailable = computed(() => data.value?.business.available_total ?? 0)
 const allocationDemand = computed(() => allocationConcurrency.value * allocationQty.value)
@@ -121,6 +130,37 @@ async function quickRestock(): Promise<void> {
   }
 }
 
+async function openExperiments(): Promise<void> {
+  allocationDialogVisible.value = false
+  pickingDialogVisible.value = false
+  mechanismDialogVisible.value = false
+  experimentVisible.value = true
+  await loadExperimentRows()
+}
+
+async function loadExperimentRows(): Promise<void> {
+  await fetchExperimentRows()
+  if (!experimentVisible.value) return
+  window.clearTimeout(experimentRefreshTimer)
+  experimentRefreshTimer = window.setTimeout(() => {
+    if (experimentVisible.value) void fetchExperimentRows()
+  }, 800)
+}
+
+async function fetchExperimentRows(): Promise<void> {
+  if (experimentLoading.value) return
+  experimentLoading.value = true
+  experimentError.value = ''
+  try {
+    const activity: DemoActivitySnapshot = await getDemoActivity(50)
+    experimentRows.value = buildExperimentOperationRows(activity.operations, activity)
+  } catch {
+    experimentError.value = '实验记录暂时无法加载，请稍后重试。'
+  } finally {
+    experimentLoading.value = false
+  }
+}
+
 async function ensureAllocationStock(): Promise<void> {
   const target = Math.max(1, allocationInitialStock.value)
   if (target <= currentAvailable.value) return
@@ -174,10 +214,11 @@ function openAllocation(mode: AllocationMode): void {
 }
 
 onMounted(() => load())
+onBeforeUnmount(() => window.clearTimeout(experimentRefreshTimer))
 useAutoRefresh(
   () => load(true),
   5000,
-  () => !allocationDialogVisible.value && !pickingDialogVisible.value && !mechanismDialogVisible.value && !runtimeVisible.value,
+  () => !allocationDialogVisible.value && !pickingDialogVisible.value && !mechanismDialogVisible.value && !runtimeVisible.value && !experimentVisible.value,
 )
 </script>
 
@@ -187,6 +228,7 @@ useAutoRefresh(
       <template #actions>
         <el-button @click="router.push('/demo')">返回演示中心</el-button>
         <el-button :icon="Tickets" @click="router.push('/demo/activity')">业务证据</el-button>
+        <el-button :icon="List" @click="openExperiments">实验记录</el-button>
         <el-button :loading="quickRestockLoading" @click="quickRestock">一键补货 500 件</el-button>
         <el-button :icon="TrendCharts" @click="runtimeVisible = true">运行状态</el-button>
         <el-button :icon="Refresh" type="primary" @click="load()">刷新</el-button>
@@ -253,6 +295,7 @@ useAutoRefresh(
     </div>
     <template #footer>
       <el-button @click="allocationDialogVisible = false">关闭</el-button>
+      <el-button @click="openExperiments">查看实验记录</el-button>
       <el-button type="primary" :loading="allocationRunning" @click="runAllocation">运行实验</el-button>
     </template>
   </el-dialog>
@@ -271,7 +314,7 @@ useAutoRefresh(
     </div>
     <template #footer>
       <el-button @click="pickingDialogVisible = false">关闭</el-button>
-      <el-button @click="router.push('/demo/activity')">查看记录</el-button>
+      <el-button @click="openExperiments">查看实验记录</el-button>
       <el-button type="primary" :loading="pickingRunning" @click="runPicking">运行模拟 PDA 实验</el-button>
     </template>
   </el-dialog>
@@ -301,6 +344,33 @@ useAutoRefresh(
       <div><span>Go 协程</span><b>{{ data.runtime.goroutines }}</b></div>
       <div><span>内存占用</span><b>{{ data.runtime.memory_alloc_mb }} MB</b></div>
       <div><span>库存三数量</span><b>现存 {{ data.business.stock_total }} / 可用 {{ data.business.available_total }} / 分配 {{ data.business.allocated_total }}</b></div>
+    </div>
+  </el-drawer>
+
+  <el-drawer
+    v-model="experimentVisible"
+    title="工程实验记录"
+    size="min(520px, 94vw)"
+    append-to-body
+    :close-on-click-modal="true"
+  >
+    <div v-loading="experimentLoading" class="experiment-records">
+      <el-alert v-if="experimentError" :title="experimentError" type="warning" :closable="false" show-icon />
+      <template v-else-if="experimentRows.length">
+        <article v-for="row in experimentRows" :key="row.key" class="experiment-record">
+          <div class="experiment-record__head">
+            <b>{{ row.operation }}</b>
+            <el-tag size="small" :type="row.raw.status >= 200 && row.raw.status < 300 ? 'success' : 'danger'" effect="plain">
+              {{ row.afterStatus }}
+            </el-tag>
+          </div>
+          <div class="experiment-record__meta">
+            <span>{{ row.objectType }} · {{ formatTime(row.createdAt) }}</span>
+            <b>{{ row.quantityChange }}</b>
+          </div>
+        </article>
+      </template>
+      <el-empty v-else description="还没有实验记录" :image-size="70" />
     </div>
   </el-drawer>
 </template>
@@ -351,5 +421,12 @@ useAutoRefresh(
 .runtime-list span, .runtime-list b { display: block; }
 .runtime-list span { color: var(--el-text-color-secondary); font-size: 11px; }
 .runtime-list b { margin-top: 4px; font-size: 13px; }
+.experiment-records { min-height: 160px; }
+.experiment-record { padding: 12px 0; border-bottom: 1px solid var(--el-border-color-lighter); }
+.experiment-record:last-child { border-bottom: 0; }
+.experiment-record__head, .experiment-record__meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.experiment-record__head b { font-size: 13px; }
+.experiment-record__meta { margin-top: 7px; color: var(--el-text-color-secondary); font-size: 11px; }
+.experiment-record__meta b { color: var(--el-text-color-regular); font-size: 12px; }
 @media (max-width: 900px) { .engineering-grid { grid-template-columns: 1fr; } .result-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 </style>

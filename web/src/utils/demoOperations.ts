@@ -24,6 +24,15 @@ export interface DemoOperationRow {
   details: DemoOperationDetail[]
 }
 
+interface OperationMeta {
+  title: string
+  type: string
+  objectNo: string
+  before: string
+  after: string
+  task: string
+}
+
 function parseJSON(value?: string): unknown {
   if (!value) return null
   try {
@@ -56,8 +65,13 @@ function shortID(value?: EntityID | null, prefix = '对象'): string {
   return prefix + ' · ' + String(value).slice(-8)
 }
 
-function operationMeta(operation: DemoOperationLog, snapshot?: DemoActivitySnapshot | null) {
-  const path = operation.path
+function normalizedPath(operation: DemoOperationLog): string {
+  return operation.path.split('?')[0].replace(/\/+$/, '')
+}
+
+function operationMeta(operation: DemoOperationLog, snapshot?: DemoActivitySnapshot | null): OperationMeta | null {
+  const path = normalizedPath(operation)
+  const method = operation.method.toUpperCase()
   const inboundID = pathID(path, /\/inbound\/orders\/(\d+)/)
   const outboundID = pathID(path, /\/outbound\/orders\/(\d+)/)
   const taskID = pathID(path, /\/(?:inbound|outbound)\/tasks\/(\d+)/) || pathID(path, /\/tasks\/(\d+)/)
@@ -76,20 +90,60 @@ function operationMeta(operation: DemoOperationLog, snapshot?: DemoActivitySnaps
   if (path.endsWith('/demo/run/outbound')) return { title: '自动演示 · 出库流程', type: '演示任务', objectNo: '-', before: '-', after: '执行完成', task: '-' }
   if (path.endsWith('/demo/run/full')) return { title: '自动演示 · 完整业务闭环', type: '演示任务', objectNo: '-', before: '-', after: '执行完成', task: '-' }
 
-  if (path.includes('/inbound/orders') && path.endsWith('/submit')) return { title: '提交入库单', type: '入库单', objectNo, before: '草稿', after: '已提交', task: '-' }
-  if (path.includes('/inbound/orders') && path.endsWith('/approve')) return { title: '审核入库单', type: '入库单', objectNo, before: '已提交', after: '已审核', task: '-' }
-  if (path.includes('/inbound/orders') && path.endsWith('/cancel')) return { title: '取消入库单', type: '入库单', objectNo, before: '处理中', after: '已取消', task: '-' }
-  if (path.includes('/receive')) return { title: '完成收货', type: '入库单', objectNo, before: '已审核', after: '收货中', task: task?.task_no || '-' }
-  if (path.includes('/putaway')) return { title: '完成上架', type: '上架任务', objectNo: task?.task_no || objectNo, before: '上架中', after: '已完成', task: task?.task_no || objectNo }
-  if (path.includes('/inbound/orders') && operation.method === 'POST') return { title: '创建入库单', type: '入库单', objectNo, before: '-', after: '草稿', task: '-' }
-  if (path.includes('/outbound/orders') && path.endsWith('/submit')) return { title: '提交出库单', type: '出库单', objectNo, before: '草稿', after: '已提交', task: '-' }
-  if (path.includes('/outbound/orders') && path.endsWith('/approve')) return { title: '审核并 FIFO 分配', type: '出库单', objectNo, before: '已提交', after: '分配完成', task: '-' }
-  if (path.includes('/outbound/orders') && path.endsWith('/cancel')) return { title: '取消出库单', type: '出库单', objectNo, before: '处理中', after: '已取消', task: '-' }
-  if (path.includes('/outbound/orders') && operation.method === 'POST') return { title: '创建出库单', type: '出库单', objectNo, before: '-', after: '草稿', task: '-' }
-  if (path.includes('/pick')) return { title: '完成拣货', type: '拣货任务', objectNo: task?.task_no || objectNo, before: '拣货中', after: '已发货', task: task?.task_no || objectNo }
-  if (path.includes('/inventory')) return { title: '查询库存', type: '库存', objectNo, before: '-', after: '-', task: '-' }
-  if (path.includes('/tasks')) return { title: '查询任务', type: '任务', objectNo, before: '-', after: '-', task: '-' }
-  return { title: operation.method + ' 业务操作', type: '业务对象', objectNo, before: '-', after: '-', task: '-' }
+  if (path === '/api/v1/inbound/orders' && method === 'POST') return { title: '创建入库单', type: '入库单', objectNo, before: '-', after: '草稿', task: '-' }
+  if (/^\/api\/v1\/inbound\/orders\/\d+$/.test(path) && method === 'PUT') return { title: '编辑入库单', type: '入库单', objectNo, before: '草稿', after: '草稿', task: '-' }
+  if (/^\/api\/v1\/inbound\/orders\/\d+\/submit$/.test(path)) return { title: '提交入库单', type: '入库单', objectNo, before: '草稿', after: '已提交', task: '-' }
+  if (/^\/api\/v1\/inbound\/orders\/\d+\/approve$/.test(path)) return { title: '审核入库单', type: '入库单', objectNo, before: '已提交', after: '已审核', task: '-' }
+  if (/^\/api\/v1\/inbound\/orders\/\d+\/receive$/.test(path)) return { title: '完成收货', type: '入库单', objectNo, before: '已审核', after: '收货中', task: task?.task_no || '-' }
+  if (/^\/api\/v1\/inbound\/orders\/\d+\/cancel$/.test(path)) return { title: '取消入库单', type: '入库单', objectNo, before: '处理中', after: '已取消', task: '-' }
+  if (/^\/api\/v1\/inbound\/orders\/\d+$/.test(path) && method === 'DELETE') return { title: '删除入库单', type: '入库单', objectNo, before: '草稿', after: '已删除', task: '-' }
+  if (/^\/api\/v1\/inbound\/tasks\/\d+\/putaway$/.test(path)) return { title: '完成上架', type: '上架任务', objectNo: task?.task_no || objectNo, before: '上架中', after: '已完成', task: task?.task_no || objectNo }
+  if (path === '/api/v1/inbound/import' && method === 'POST') return { title: '提交入库导入任务', type: '导入任务', objectNo: shortID(data?.task_id as EntityID, '导入'), before: '-', after: '已提交', task: '-' }
+
+  if (path === '/api/v1/outbound/orders' && method === 'POST') return { title: '创建出库单', type: '出库单', objectNo, before: '-', after: '草稿', task: '-' }
+  if (/^\/api\/v1\/outbound\/orders\/\d+\/submit$/.test(path)) return { title: '提交出库单', type: '出库单', objectNo, before: '草稿', after: '已提交', task: '-' }
+  if (/^\/api\/v1\/outbound\/orders\/\d+\/approve$/.test(path)) return { title: '审核并 FIFO 分配', type: '出库单', objectNo, before: '已提交', after: '分配完成', task: '-' }
+  if (/^\/api\/v1\/outbound\/orders\/\d+\/cancel$/.test(path)) return { title: '取消出库单', type: '出库单', objectNo, before: '处理中', after: '已取消', task: '-' }
+  if (/^\/api\/v1\/outbound\/orders\/\d+$/.test(path) && method === 'DELETE') return { title: '删除出库单', type: '出库单', objectNo, before: '草稿', after: '已删除', task: '-' }
+  if (/^\/api\/v1\/outbound\/tasks\/\d+\/pick$/.test(path)) return { title: '完成拣货', type: '拣货任务', objectNo: task?.task_no || objectNo, before: '拣货中', after: '已发货', task: task?.task_no || objectNo }
+
+  if (path === '/api/v1/stocktake/orders' && method === 'POST') return { title: '创建盘点单', type: '盘点单', objectNo, before: '-', after: '待盘点', task: '-' }
+  if (/^\/api\/v1\/stocktake\/orders\/\d+\/actual$/.test(path)) return { title: '录入实盘数量', type: '盘点单', objectNo, before: '待盘点', after: '已实盘', task: '-' }
+  if (/^\/api\/v1\/stocktake\/orders\/\d+\/approve$/.test(path)) return { title: '审核盘点并调整库存', type: '盘点单', objectNo, before: '已实盘', after: '已完成', task: '-' }
+  if (/^\/api\/v1\/stocktake\/orders\/\d+\/cancel$/.test(path)) return { title: '取消盘点单', type: '盘点单', objectNo, before: '待盘点', after: '已取消', task: '-' }
+
+  return null
+}
+
+const BUSINESS_OPERATION_PATTERNS = [
+  /^\/api\/v1\/inbound\/orders$/,
+  /^\/api\/v1\/inbound\/orders\/\d+$/,
+  /^\/api\/v1\/inbound\/orders\/\d+\/(?:submit|approve|cancel|receive)$/,
+  /^\/api\/v1\/inbound\/tasks\/\d+\/putaway$/,
+  /^\/api\/v1\/inbound\/import$/,
+  /^\/api\/v1\/outbound\/orders$/,
+  /^\/api\/v1\/outbound\/orders\/\d+$/,
+  /^\/api\/v1\/outbound\/orders\/\d+\/(?:submit|approve|cancel)$/,
+  /^\/api\/v1\/outbound\/tasks\/\d+\/pick$/,
+  /^\/api\/v1\/stocktake\/orders$/,
+  /^\/api\/v1\/stocktake\/orders\/\d+\/(?:actual|approve|cancel)$/,
+] as const
+
+const EXPERIMENT_OPERATION_PATHS = new Set([
+  '/api/v1/demo/run/concurrent',
+  '/api/v1/demo/run/concurrent_shortage',
+  '/api/v1/demo/run/picking',
+  '/api/v1/demo/run/restock',
+])
+
+export function isBusinessOperation(operation: DemoOperationLog): boolean {
+  if (operation.method.toUpperCase() === 'GET') return false
+  const path = normalizedPath(operation)
+  return BUSINESS_OPERATION_PATTERNS.some((pattern) => pattern.test(path))
+}
+
+export function isExperimentOperation(operation: DemoOperationLog): boolean {
+  return operation.method.toUpperCase() === 'POST' && EXPERIMENT_OPERATION_PATHS.has(normalizedPath(operation))
 }
 
 function quantityChange(operation: DemoOperationLog): string {
@@ -120,6 +174,7 @@ export function buildDemoOperationRows(
   return operations
     .map((operation) => {
       const meta = operationMeta(operation, snapshot)
+      if (!meta) return null
       const failed = operation.status < 200 || operation.status >= 300
       return {
         key: 'operation-' + operation.id,
@@ -146,5 +201,20 @@ export function buildDemoOperationRows(
         ],
       }
     })
+    .filter((row): row is DemoOperationRow => row !== null)
     .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
+}
+
+export function buildBusinessOperationRows(
+  operations: DemoOperationLog[],
+  snapshot?: DemoActivitySnapshot | null,
+): DemoOperationRow[] {
+  return buildDemoOperationRows(operations.filter(isBusinessOperation), snapshot)
+}
+
+export function buildExperimentOperationRows(
+  operations: DemoOperationLog[],
+  snapshot?: DemoActivitySnapshot | null,
+): DemoOperationRow[] {
+  return buildDemoOperationRows(operations.filter(isExperimentOperation), snapshot)
 }

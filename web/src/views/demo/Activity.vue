@@ -14,7 +14,7 @@ import type {
 import { statusTag, statusText, taskTypeText } from '@/constants'
 import { formatTime } from '@/utils'
 import { clearDemoEvidence, filterDemoActivity, readDemoEvidence, resolveDemoEvidenceFocus } from '@/utils/demoEvidence'
-import { buildDemoOperationRows, type DemoOperationRow } from '@/utils/demoOperations'
+import { buildBusinessOperationRows, type DemoOperationRow } from '@/utils/demoOperations'
 import { useAutoRefresh } from '@/composables/autoRefresh'
 
 interface DetailRow {
@@ -142,7 +142,7 @@ const businessObjects = computed<BusinessObjectRow[]>(() => {
   return rows.sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
 })
 const inventoryRows = computed<InventoryRow[]>(() => (evidence.value?.inventory_trans ?? []).map(inventoryObject))
-const operationRows = computed<DemoOperationRow[]>(() => buildDemoOperationRows(evidence.value?.operations ?? [], evidence.value))
+const operationRows = computed<DemoOperationRow[]>(() => buildBusinessOperationRows(evidence.value?.operations ?? [], evidence.value))
 
 const summaryCards = computed(() => {
   const current = evidence.value
@@ -374,8 +374,8 @@ useAutoRefresh(() => load(true), 5000)
           <el-pagination v-if="inventoryRows.length > pageSize" v-model:current-page="inventoryPage" small background layout="prev, pager, next" :page-size="pageSize" :total="inventoryRows.length" />
         </el-tab-pane>
 
-        <el-tab-pane label="操作日志" name="operations">
-          <el-table :data="pagedOperations" size="small" border stripe empty-text="本次执行没有操作记录" @row-click="openOperationDetail">
+        <el-tab-pane label="业务操作记录" name="operations">
+          <el-table :data="pagedOperations" size="small" border stripe empty-text="本次执行没有真实业务操作" @row-click="openOperationDetail">
             <el-table-column prop="operation" label="操作" min-width="150" />
             <el-table-column prop="objectNo" label="对象" min-width="170" />
             <el-table-column prop="beforeStatus" label="前置状态" width="110" />

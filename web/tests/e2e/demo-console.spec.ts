@@ -185,10 +185,10 @@ test('one-click demo executes all real stages without replay controls', async ({
   await expect(controlDrawer).toBeVisible()
   await controlDrawer.getByRole('button', { name: '查看分步结果', exact: true }).click()
   await expect(runner).toBeVisible()
-  await runner.getByRole('button', { name: '操作日志', exact: true }).click()
+  await runner.getByRole('button', { name: '业务操作记录', exact: true }).click()
   await expect(page).toHaveURL(/\/demo\/activity\?tab=operations/)
   await expect(page.getByRole('heading', { name: '本次业务执行证据', exact: true })).toBeVisible()
-  await expect(page.getByRole('tab', { name: '操作日志', exact: true })).toHaveClass(/is-active/)
+  await expect(page.getByRole('tab', { name: '业务操作记录', exact: true })).toHaveClass(/is-active/)
   await expect(page.getByText('创建入库单', { exact: true }).first()).toBeVisible({ timeout: 10_000 })
   await expect(page.getByText('POST 业务操作', { exact: true })).toHaveCount(0)
 })
@@ -227,8 +227,8 @@ test('manual inbound guide completes through inventory evidence', async ({ page 
   await expect(page.locator('.guide-highlight')).toHaveCount(1)
   await expect(page.locator('.demo-statusbar')).toBeVisible()
 
-  await page.getByRole('button', { name: '操作日志', exact: true }).click()
-  const guideRecords = page.getByRole('dialog', { name: '本次操作日志' })
+  await page.getByRole('button', { name: '业务操作记录', exact: true }).click()
+  const guideRecords = page.getByRole('dialog', { name: '本次业务操作记录' })
   await expect(guideRecords).toBeVisible()
   await expect(page.locator('.guide-bubble')).toHaveCount(0)
   await guideRecords.getByRole('button', { name: '关闭此对话框' }).click()
@@ -343,6 +343,29 @@ test('engineering verification exposes three compact experiments without separat
 
   await page.getByRole('button', { name: '返回演示中心', exact: true }).click()
   await expect(page).toHaveURL(/\/demo$/)
+})
+
+test('business evidence excludes demo wrappers while engineering keeps experiment records', async ({ page }) => {
+  await loginDemo(page)
+  await page.goto('/demo/performance')
+
+  const restockResponse = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      new URL(response.url()).pathname === '/api/v1/demo/run/restock',
+  )
+  await page.getByRole('button', { name: '一键补货 500 件', exact: true }).click()
+  expect((await restockResponse).ok()).toBeTruthy()
+
+  await page.getByRole('button', { name: '实验记录', exact: true }).click()
+  const experimentDrawer = page.getByRole('dialog', { name: '工程实验记录' })
+  await expect(experimentDrawer.getByText('演示库存补货', { exact: true })).toBeVisible()
+  await experimentDrawer.getByRole('button', { name: '关闭此对话框' }).click()
+
+  await page.goto('/demo/activity?tab=operations')
+  await expect(page.getByRole('tab', { name: '业务操作记录', exact: true })).toHaveClass(/is-active/)
+  await expect(page.getByText('演示库存补货', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('POST 业务操作', { exact: true })).toHaveCount(0)
 })
 
 test('demo session stays valid across refresh and page navigation', async ({ page }) => {

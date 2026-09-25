@@ -1,4 +1,5 @@
 import type { DemoActivitySnapshot, DemoScenarioResult } from '@/api/types'
+import { isBusinessOperation } from '@/utils/demoOperations'
 
 const STORAGE_KEY = 'wms-demo-evidence-context-v1'
 
@@ -30,6 +31,26 @@ export function rememberDemoEvidence(result: DemoScenarioResult, startedAt: stri
     summary: result.summary,
     evidence: result.evidence ?? [],
     links: result.links ?? [],
+  }
+  if (typeof window !== 'undefined') {
+    window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(context))
+  }
+  return context
+}
+
+export function rememberDemoExecutionWindow(
+  scenario: string,
+  startedAt: string,
+  completedAt: string,
+  links: DemoScenarioResult['links'] = [],
+): DemoEvidenceContext {
+  const context: DemoEvidenceContext = {
+    scenario,
+    startedAt,
+    completedAt,
+    summary: '最近一次演示执行完成',
+    evidence: [],
+    links,
   }
   if (typeof window !== 'undefined') {
     window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(context))
@@ -224,6 +245,7 @@ export function filterDemoActivity(
     return inExecutionWindow(item.created_at, focus)
   })
   const operations = snapshot.operations.filter((item) => {
+    if (!isBusinessOperation(item)) return false
     if (!inExecutionWindow(item.created_at, focus)) return false
     const prefixes = operationPrefixes[focus.scenario]
     if (prefixes?.length) return prefixes.some((prefix) => item.path.startsWith(prefix))
