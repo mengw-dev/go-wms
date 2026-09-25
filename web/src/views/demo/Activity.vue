@@ -97,6 +97,11 @@ const evidenceStats = computed(() => {
   }
 })
 
+function quantityFromDetail(detail?: string): string {
+  const matched = detail?.match(/×\s*(\d+)/)
+  return matched ? matched[1] + ' 件' : detail || '-'
+}
+
 function evidenceFallbackObject(label: string, type: string): BusinessObjectRow | null {
   const item = context.value?.evidence?.find((entry) => entry.label === label)
   if (!item) return null
@@ -109,7 +114,7 @@ function evidenceFallbackObject(label: string, type: string): BusinessObjectRow 
     type,
     objectNo: item.value,
     status: 'COMPLETED',
-    quantity: item.detail || '-',
+    quantity: quantityFromDetail(item.detail),
     createdAt: context.value?.completedAt || '',
     route,
     details: [
