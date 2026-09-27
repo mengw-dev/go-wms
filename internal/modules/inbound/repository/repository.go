@@ -17,15 +17,13 @@ func New() *Repository { return &Repository{} }
 // ---------- 入库单 ----------
 
 func (r *Repository) CreateOrder(tx *gorm.DB, order *model.ReceiptOrder, details []*model.ReceiptOrderDetail) error {
-	return tx.Transaction(func(tx2 *gorm.DB) error {
-		if err := tx2.Create(order).Error; err != nil {
-			return err
-		}
-		for _, d := range details {
-			d.OrderID = order.ID
-		}
-		return tx2.CreateInBatches(details, 100).Error
-	})
+	if err := tx.Create(order).Error; err != nil {
+		return err
+	}
+	for _, d := range details {
+		d.OrderID = order.ID
+	}
+	return tx.CreateInBatches(details, 100).Error
 }
 
 // GetOrderForUpdate 事务内锁定入库单；状态推进由行锁和期望状态条件保护。

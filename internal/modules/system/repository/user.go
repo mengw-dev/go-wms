@@ -50,6 +50,8 @@ func (r *Repository) GetUserByID(ctx context.Context, id int64) (*model.SysUser,
 	return &u, nil
 }
 
+// CreateUser、UpdateUser、DeleteUser 是系统模块的聚合例外：用户与角色关联必须原子提交，
+// 且调用方没有更长的事务需要复用，因此由 Repository 自身开启短事务。
 func (r *Repository) CreateUser(ctx context.Context, u *model.SysUser, roleIDs []int64) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(u).Error; err != nil {
