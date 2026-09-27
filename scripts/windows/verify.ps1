@@ -35,6 +35,9 @@ Invoke-Step "Go vet" { go vet ./... }
 Invoke-Step "golangci-lint" {
     go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2 run
 }
+Invoke-Step "Tenant raw query audit" {
+    & (Join-Path $PSScriptRoot "check-tenant-raw.ps1")
+}
 
 if ($WithRace) {
     Invoke-Step "Go race tests (Linux + MySQL + Redis)" {
