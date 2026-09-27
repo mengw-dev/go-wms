@@ -31,3 +31,10 @@ func TestWrapPreservesCause(t *testing.T) {
 		t.Fatal("wrapped conflict should remain retryable")
 	}
 }
+
+func TestWrapPreservesHTTPStatus(t *testing.T) {
+	err := Wrap(errors.New("missing"), NotFound)
+	if err.HTTPStatus != 404 {
+		t.Fatalf("http status = %d, want 404", err.HTTPStatus)
+	}
+}

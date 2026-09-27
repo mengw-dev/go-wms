@@ -32,8 +32,7 @@ func OKPage(c *gin.Context, list any, total int64) {
 }
 
 // Fail 将 error 归一化后输出；*errcode.Error 使用其 code/msg，其他按 500 处理。
-// HTTP 状态码按业务错误码语义映射（非固定 200）：
-// 401 未登录、403 无权限、409 并发冲突、500 系统错误，其余业务错误返回 400。
+// HTTP 状态优先使用错误模板声明的 HTTPStatus；未声明时按业务错误码语义映射。
 // 前端依赖 HTTP 401 触发登录失效（清 token 跳登录页），网关/监控依赖非 2xx 感知异常。
 func Fail(c *gin.Context, err error) {
 	fail(c, err, nil)
@@ -57,11 +56,18 @@ func fail(c *gin.Context, err error, data any) {
 			"err", err,
 		)
 	}
-	c.JSON(httpStatus(bizErr.Code), Body{Code: bizErr.Code, Msg: bizErr.Msg, Data: data})
+	c.JSON(httpStatus(bizErr), Body{Code: bizErr.Code, Msg: bizErr.Msg, Data: data})
 }
 
 // httpStatus 业务错误码 → HTTP 状态码映射。
-func httpStatus(code int) int {
+func httpStatus(bizErr *errcode.Error) int {
+	if bizErr == nil {
+		return http.StatusInternalServerError
+	}
+	if bizErr.HTTPStatus != 0 {
+		return bizErr.HTTPStatus
+	}
+	code := bizErr.Code
 	switch code {
 	case errcode.Unauthorized.Code:
 		return http.StatusUnauthorized

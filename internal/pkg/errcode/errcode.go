@@ -8,9 +8,10 @@ import (
 
 // Error 统一业务错误：携带错误码与展示消息。
 type Error struct {
-	Code  int
-	Msg   string
-	cause error
+	Code       int
+	Msg        string
+	HTTPStatus int
+	cause      error
 }
 
 func (e *Error) Error() string { return fmt.Sprintf("[%d] %s", e.Code, e.Msg) }
@@ -21,6 +22,11 @@ func (e *Error) Unwrap() error { return e.cause }
 // New 创建不带底层 cause 的稳定业务错误。
 func New(code int, msg string) *Error { return &Error{Code: code, Msg: msg} }
 
+// NewHTTP 创建携带明确 HTTP 状态的稳定业务错误。
+func NewHTTP(code int, msg string, httpStatus int) *Error {
+	return &Error{Code: code, Msg: msg, HTTPStatus: httpStatus}
+}
+
 // Wrap 将底层错误包装为稳定的业务错误，同时保留原始错误链。
 func Wrap(err error, template *Error) *Error {
 	if err == nil {
@@ -29,7 +35,7 @@ func Wrap(err error, template *Error) *Error {
 	if template == nil {
 		template = Internal
 	}
-	return &Error{Code: template.Code, Msg: template.Msg, cause: err}
+	return &Error{Code: template.Code, Msg: template.Msg, HTTPStatus: template.HTTPStatus, cause: err}
 }
 
 // From 将任意 error 归一化为 *Error，未知错误归为 Internal。
@@ -74,7 +80,7 @@ var (
 	OK              = New(0, "success")
 	Internal        = New(500, "系统内部错误")
 	ParamError      = New(400, "参数错误")
-	NotFound        = New(404, "资源不存在")
+	NotFound        = NewHTTP(404, "资源不存在", 404)
 	PayloadTooLarge = New(41300, "请求内容过大")
 	Unauthorized    = New(40100, "未登录或登录已过期")
 	Forbidden       = New(40300, "无权限执行该操作")
@@ -91,8 +97,8 @@ var (
 	OldPwdWrong                = New(10006, "原密码错误")
 	OperRecordFail             = New(10007, "操作日志记录失败")
 	PermFormatInvalid          = New(10008, "权限标识格式错误，应为 wms:module:action")
-	UserIDInvalid              = New(10009, "用户不存在")
-	RoleIDInvalid              = New(10010, "角色不存在")
+	UserIDInvalid              = NewHTTP(10009, "用户不存在", 404)
+	RoleIDInvalid              = NewHTTP(10010, "角色不存在", 404)
 	ModifyAdminForbidden       = New(10011, "不允许操作内置管理员账号")
 	TooManyLoginAttempts       = New(10012, "登录失败次数过多，请稍后再试")
 	ModifyBuiltinRoleForbidden = New(10013, "不允许修改或删除内置超级管理员角色")
@@ -103,14 +109,14 @@ var (
 // 基础资料 20000+
 var (
 	WarehouseExist    = New(20001, "仓库编码已存在")
-	WarehouseNotFound = New(20002, "仓库不存在")
+	WarehouseNotFound = NewHTTP(20002, "仓库不存在", 404)
 	WarehouseHasStock = New(20003, "仓库下存在库存，禁止删除")
 	LocationExist     = New(20004, "库位编码已存在")
-	LocationNotFound  = New(20005, "库位不存在")
+	LocationNotFound  = NewHTTP(20005, "库位不存在", 404)
 	LocationHasStock  = New(20006, "库位存在库存，只能禁用不能删除")
 	SKUExist          = New(20007, "货品编码已存在")
 	BarcodeExist      = New(20008, "条码已存在")
-	SKUNotFound       = New(20009, "货品不存在")
+	SKUNotFound       = NewHTTP(20009, "货品不存在", 404)
 	WarehouseDisabled = New(20010, "仓库已禁用")
 	LocationDisabled  = New(20011, "库位已禁用")
 	SKUDisabled       = New(20012, "货品已禁用")
@@ -125,7 +131,7 @@ var (
 
 // 库存 30000+
 var (
-	InventoryNotFound  = New(30001, "库存记录不存在")
+	InventoryNotFound  = NewHTTP(30001, "库存记录不存在", 404)
 	AvailableNotEnough = New(30201, "可用库存不足")
 	AllocatedNotEnough = New(30202, "已分配库存不足")
 	StockNotEnough     = New(30203, "库存总量不足")
@@ -135,7 +141,7 @@ var (
 
 // 入库 40000+
 var (
-	OrderNotFound        = New(40001, "入库单不存在")
+	OrderNotFound        = NewHTTP(40001, "入库单不存在", 404)
 	OrderStatusWrong     = New(40002, "入库单状态不允许该操作")
 	OrderVersionBad      = New(40003, "入库单已被其他人操作，请刷新重试")
 	ReceiveQtyOver       = New(40004, "收货数量超过剩余应收数量")
@@ -144,7 +150,7 @@ var (
 	TaskStatusWrong      = New(40007, "任务状态不允许该操作")
 	BatchNoRequired      = New(40008, "缺少批次号")
 	OrderNoDuplicate     = New(40009, "单号重复，请重试")
-	ImportTaskNotFound   = New(40010, "导入任务不存在")
+	ImportTaskNotFound   = NewHTTP(40010, "导入任务不存在", 404)
 	ImportFileInvalid    = New(40011, "导入文件无效")
 	ImportTemplateHeader = New(40012, "导入文件表头不符合模板")
 	TaskQtyOver          = New(40013, "数量超过任务剩余数量")
@@ -154,7 +160,7 @@ var (
 
 // 出库 50000+
 var (
-	ShipOrderNotFound      = New(50001, "出库单不存在")
+	ShipOrderNotFound      = NewHTTP(50001, "出库单不存在", 404)
 	ShipOrderStatusWrong   = New(50002, "出库单状态不允许该操作")
 	ShipOrderVersionBad    = New(50003, "出库单已被其他人操作，请刷新重试")
 	ShipQtyOver            = New(50004, "拣货数量超过任务剩余数量")
@@ -169,7 +175,7 @@ var (
 
 // 盘点 60000+
 var (
-	StocktakeNotFound    = New(60001, "盘点单不存在")
+	StocktakeNotFound    = NewHTTP(60001, "盘点单不存在", 404)
 	StocktakeStatusWrong = New(60002, "盘点单状态不允许该操作")
 	StocktakeQtyInvalid  = New(60003, "实盘数量非法")
 	StocktakeNoDetail    = New(60004, "盘点单没有可盘点的库存明细")
@@ -185,7 +191,7 @@ var (
 	DemoPickTaskMissing = New(70005, "没有可拣货任务，请先执行并发出库审核分配测试")
 	DemoStockNotEnough  = New(70006, "可用库存不足，请先点击“一键补货入库”或减少并发数量")
 	PersonalDisabled    = New(70007, "个人体验账号未开放")
-	PersonalNotFound    = New(70008, "个人体验账号不存在")
+	PersonalNotFound    = NewHTTP(70008, "个人体验账号不存在", 404)
 )
 
 // AI 问答 80000+
