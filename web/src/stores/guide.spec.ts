@@ -173,7 +173,9 @@ describe('manual guide store', () => {
       message: '审核完成：IN-101 已进入已审核状态。',
     })).toBe(true)
     expect(guide.currentStepDefinition?.id).toBe('inbound-receive')
-    expect(guide.verifiedStepIds).toContain('inbound-submit')
+    // 被跳过的中间步骤是“推断完成”，不是真实验证
+    expect(guide.inferredStepIds).toContain('inbound-submit')
+    expect(guide.verifiedStepIds).not.toContain('inbound-submit')
     expect(guide.verifiedStepIds).toContain('inbound-approve')
     expect(guide.lastOutcome).toContain('已自动同步引导进度')
   })
@@ -210,6 +212,33 @@ describe('manual guide store', () => {
     }
   })
 
+  it('restores inferred steps separately from verified ones after a refresh', () => {
+    const values = new Map<string, string>()
+    vi.stubGlobal('window', {
+      sessionStorage: {
+        getItem: (key: string) => values.get(key) ?? null,
+        setItem: (key: string, value: string) => values.set(key, value),
+        removeItem: (key: string) => values.delete(key),
+      },
+    })
+    try {
+      const guide = useGuideStore()
+      guide.start('inbound')
+      guide.recordBusinessResult(GUIDE_EVENTS.inboundOrderCreated, { orderId: '7', orderNo: 'IN-7' })
+      guide.recordBusinessResult(GUIDE_EVENTS.inboundOrderApproved)
+
+      setActivePinia(createPinia())
+      const restored = useGuideStore()
+      expect(restored.inferredStepIds).toContain('inbound-submit')
+      expect(restored.verifiedStepIds).toContain('inbound-create')
+      expect(restored.verifiedStepIds).toContain('inbound-approve')
+      expect(restored.verifiedStepIds).not.toContain('inbound-submit')
+      restored.cancel()
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
   it('can cancel a guide without leaving stale business identifiers', () => {
     const guide = useGuideStore()
     guide.start('inbound')
@@ -220,5 +249,6 @@ describe('manual guide store', () => {
     expect(guide.scenario).toBeNull()
     expect(guide.orderId).toBe('')
     expect(guide.verifiedStepIds).toEqual([])
+    expect(guide.inferredStepIds).toEqual([])
   })
 })
