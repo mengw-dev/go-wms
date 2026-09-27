@@ -139,6 +139,16 @@ npm run dev
 .\scripts\windows\verify.ps1 -WithE2E
 ```
 
+### 5. 生成交付压缩包
+
+不要手动压缩整个工作目录，以免把 `.env`、`.git`、本地审查文档或测试产物带入交付包。使用标准脚本：
+
+```powershell
+.\scripts\windows\package.ps1
+```
+
+脚本要求工作区干净，并使用 `git archive` 只打包当前提交中的跟踪文件；默认输出到 `dist/wms-<commit>.zip`。
+
 ## Windows 一键启动
 
 只需要提前安装 [Docker Desktop](https://www.docker.com/products/docker-desktop/)。项目下载后不需要单独安装 Go、Node.js、MySQL 或 Redis。
