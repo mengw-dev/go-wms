@@ -4,25 +4,13 @@ package model
 import (
 	"time"
 
+	"gowms/internal/pkg/modelbase"
 	"gowms/internal/pkg/typex"
-
-	"gorm.io/gorm"
 )
 
-// Base 所有业务表通用字段。
-type Base struct {
-	ID        int64          `json:"id,string" gorm:"primaryKey"`
-	CreatedAt time.Time      `json:"created_at"`
-	UpdatedAt time.Time      `json:"updated_at"`
-	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
-}
-
-// Versioned 在 Base 上增加内部修订号。各模块可将其用于条件更新，
-// 但仅存在 version 字段不代表该更新使用乐观锁，实际以 SQL 条件为准。
-// Version 只参与持久化更新，不进入 API JSON。
-type Versioned struct {
-	Version int `json:"-" gorm:"default:1"`
-}
+// Base 和 Versioned 保留为系统模块兼容别名；新业务模型应直接使用 modelbase。
+type Base = modelbase.Base
+type Versioned = modelbase.Versioned
 
 // SysUser 用户（多租户：tenant_id 联合唯一用户名，各租户内独立）。
 type SysUser struct {

@@ -2,7 +2,7 @@
 package model
 
 import (
-	"gowms/internal/modules/system/model"
+	"gowms/internal/pkg/modelbase"
 )
 
 // OrderStatus 出库单状态机：DRAFT → SUBMITTED → APPROVED(即分配) → PICKING → SHIPPED（可 CANCELLED）。
@@ -42,8 +42,8 @@ func CanTransit(from, to OrderStatus) bool {
 
 // ShipmentOrder 出库单以 BizOrderNo 作为租户内幂等业务键。
 type ShipmentOrder struct {
-	model.Base
-	model.Versioned
+	modelbase.Base
+	modelbase.Versioned
 	TenantID     int64       `json:"tenant_id,string" gorm:"not null;default:0;uniqueIndex:uk_shipment_no,priority:1;uniqueIndex:uk_shipment_biz,priority:1;index:idx_so_tenant"`
 	OrderNo      string      `json:"order_no" gorm:"size:64;uniqueIndex:uk_shipment_no,priority:2;not null"`
 	BizOrderNo   string      `json:"biz_order_no" gorm:"size:64;uniqueIndex:uk_shipment_biz,priority:2;not null"` // 幂等键：业务订单号
@@ -60,7 +60,7 @@ func (ShipmentOrder) TableName() string { return "wms_shipment_order" }
 
 // ShipmentOrderDetail 记录单行货品从待分配到已拣货的进度。
 type ShipmentOrderDetail struct {
-	model.Base
+	modelbase.Base
 	TenantID     int64  `json:"tenant_id,string" gorm:"not null;default:0"`
 	OrderID      int64  `json:"order_id,string" gorm:"index;not null"`
 	SKUID        int64  `json:"sku_id,string" gorm:"column:sku_id;not null"`
@@ -85,8 +85,8 @@ const (
 // Allocation 分配明细：FIFO 分配会跨批次/库位，一行出库明细对应 N 个分配行。
 // 拣货任务、发货扣减、取消释放均以本表为准。
 type Allocation struct {
-	model.Base
-	model.Versioned
+	modelbase.Base
+	modelbase.Versioned
 	TenantID     int64            `json:"tenant_id,string" gorm:"not null;default:0;index:idx_alloc_tenant"`
 	OrderID      int64            `json:"order_id,string" gorm:"index;not null"`
 	DetailID     int64            `json:"detail_id,string" gorm:"index;not null"`

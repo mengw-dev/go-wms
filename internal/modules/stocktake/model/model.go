@@ -2,7 +2,7 @@
 package model
 
 import (
-	"gowms/internal/modules/system/model"
+	"gowms/internal/pkg/modelbase"
 )
 
 // OrderStatus 盘点单状态机：DRAFT（快照/录入实盘）→ COMPLETED（审核调整）；可 CANCELLED。
@@ -31,8 +31,8 @@ func CanTransit(from, to OrderStatus) bool {
 
 // StocktakeOrder 保存盘点范围、状态和审核结果。
 type StocktakeOrder struct {
-	model.Base
-	model.Versioned
+	modelbase.Base
+	modelbase.Versioned
 	TenantID     int64       `json:"tenant_id,string" gorm:"not null;default:0;uniqueIndex:uk_stocktake_no,priority:1;index:idx_sto_tenant"`
 	OrderNo      string      `json:"order_no" gorm:"size:64;uniqueIndex:uk_stocktake_no,priority:2;not null"`
 	WarehouseID  int64       `json:"warehouse_id,string" gorm:"not null"`
@@ -47,7 +47,7 @@ func (StocktakeOrder) TableName() string { return "wms_stocktake_order" }
 
 // StocktakeDetail 保存账面快照并在审核时记录实际调整结果。
 type StocktakeDetail struct {
-	model.Base
+	modelbase.Base
 	TenantID     int64  `json:"tenant_id,string" gorm:"not null;default:0"`
 	OrderID      int64  `json:"order_id,string" gorm:"index;not null"`
 	InventoryID  int64  `json:"inventory_id,string" gorm:"not null"`

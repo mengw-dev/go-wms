@@ -10,8 +10,8 @@ import (
 
 	"gowms/internal/modules/inventory/api"
 	"gowms/internal/modules/inventory/model"
-	sysmodel "gowms/internal/modules/system/model"
 	"gowms/internal/pkg/errcode"
+	"gowms/internal/pkg/modelbase"
 	"gowms/internal/pkg/snowflake"
 	pkgtx "gowms/internal/pkg/tx"
 )
@@ -51,7 +51,7 @@ func (s *Service) Increase(ctx context.Context, tx *gorm.DB, req *api.IncreaseRe
 		}
 		// 不存在 → 创建；唯一索引兜底并发创建
 		inv = &model.Inventory{
-			Base:        sysmodel.Base{ID: snowflake.Next()},
+			Base:        modelbase.Base{ID: snowflake.Next()},
 			WarehouseID: req.WarehouseID, LocationID: req.LocationID,
 			SKUID: req.SKUID, BatchNo: req.BatchNo,
 			StockQuantity: req.Quantity, AvailableQty: req.Quantity, AllocatedQty: 0,

@@ -8,11 +8,11 @@ import (
 
 	"gowms/internal/modules/inbound/dto"
 	"gowms/internal/modules/inbound/model"
-	sysmodel "gowms/internal/modules/system/model"
 	taskapi "gowms/internal/modules/task/api"
 	taskmodel "gowms/internal/modules/task/model"
 	"gowms/internal/pkg/errcode"
 	"gowms/internal/pkg/log"
+	"gowms/internal/pkg/modelbase"
 	"gowms/internal/pkg/quota"
 	"gowms/internal/pkg/snowflake"
 	"gowms/internal/pkg/tx"
@@ -74,7 +74,7 @@ func (s *Service) createOrder(ctx context.Context, req *dto.CreateOrderReq, oper
 	var order *model.ReceiptOrder
 	for i := 0; i < tx.MaxOrderNoRetry; i++ { // 单号冲突重试
 		order = &model.ReceiptOrder{
-			Base:        sysmodel.Base{ID: snowflake.Next()},
+			Base:        modelbase.Base{ID: snowflake.Next()},
 			OrderNo:     s.no.Next(ctx, model.OrderNoPrefix),
 			WarehouseID: req.WarehouseID, Status: model.OrderDraft,
 			Source: model.SourceManual, Remark: req.Remark, ExpectedQty: expected, CreatedBy: operator,
@@ -304,7 +304,7 @@ func (s *Service) buildDetails(ctx context.Context, items []dto.OrderDetailItem)
 			return nil, 0, err
 		}
 		details = append(details, &model.ReceiptOrderDetail{
-			Base:  sysmodel.Base{ID: snowflake.Next()},
+			Base:  modelbase.Base{ID: snowflake.Next()},
 			SKUID: sku.ID, SKUCode: sku.Code, SKUName: sku.Name,
 			ExpectedQty: it.ExpectedQty,
 		})

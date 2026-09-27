@@ -12,8 +12,8 @@ import (
 
 	"gowms/internal/modules/basic/dto"
 	"gowms/internal/modules/basic/model"
-	sysmodel "gowms/internal/modules/system/model"
 	"gowms/internal/pkg/errcode"
+	"gowms/internal/pkg/modelbase"
 	"gowms/internal/pkg/quota"
 	"gowms/internal/pkg/tenant"
 	pkgtx "gowms/internal/pkg/tx"
@@ -46,7 +46,7 @@ func (s *Service) UpdateSKU(ctx context.Context, id int64, req *dto.SKUReq) erro
 		return err
 	}
 	if err := s.repo.UpdateSKU(ctx, s.tm.DB(), &model.SKU{
-		Base: sysmodel.Base{ID: id}, Code: req.Code, Barcode: req.Barcode, Name: req.Name, Spec: req.Spec, Unit: req.Unit,
+		Base: modelbase.Base{ID: id}, Code: req.Code, Barcode: req.Barcode, Name: req.Name, Spec: req.Spec, Unit: req.Unit,
 	}); err != nil {
 		return err
 	}

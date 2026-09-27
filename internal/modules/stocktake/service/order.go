@@ -9,8 +9,8 @@ import (
 
 	"gowms/internal/modules/stocktake/dto"
 	"gowms/internal/modules/stocktake/model"
-	sysmodel "gowms/internal/modules/system/model"
 	"gowms/internal/pkg/errcode"
+	"gowms/internal/pkg/modelbase"
 	"gowms/internal/pkg/quota"
 	"gowms/internal/pkg/snowflake"
 )
@@ -35,7 +35,7 @@ func (s *Service) Create(ctx context.Context, req *dto.CreateOrderReq, operator 
 			d.ID = snowflake.Next()
 		}
 		order = &model.StocktakeOrder{
-			Base: sysmodel.Base{ID: snowflake.Next()}, OrderNo: s.no.Next(ctx, "PD"),
+			Base: modelbase.Base{ID: snowflake.Next()}, OrderNo: s.no.Next(ctx, "PD"),
 			WarehouseID: req.WarehouseID, LocationID: req.LocationID,
 			Status: model.OrderDraft,
 			Remark: req.Remark, CreatedBy: operator,

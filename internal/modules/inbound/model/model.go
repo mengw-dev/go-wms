@@ -2,7 +2,7 @@
 package model
 
 import (
-	"gowms/internal/modules/system/model"
+	"gowms/internal/pkg/modelbase"
 )
 
 // OrderStatus 入库单状态机：DRAFT → SUBMITTED → APPROVED → RECEIVING → PUTAWAY → COMPLETED（可 CANCELLED）。
@@ -48,8 +48,8 @@ func CanTransit(from, to OrderStatus) bool {
 
 // ReceiptOrder 入库单维护收货进度、残品数量和导入幂等信息。
 type ReceiptOrder struct {
-	model.Base
-	model.Versioned
+	modelbase.Base
+	modelbase.Versioned
 	TenantID     int64       `json:"tenant_id,string" gorm:"not null;default:0;uniqueIndex:uk_receipt_no,priority:1;uniqueIndex:uk_import_row,priority:1;index:idx_ro_tenant"`
 	OrderNo      string      `json:"order_no" gorm:"size:64;uniqueIndex:uk_receipt_no,priority:2;not null"`
 	WarehouseID  int64       `json:"warehouse_id,string" gorm:"not null"`
@@ -70,7 +70,7 @@ func (ReceiptOrder) TableName() string { return "wms_receipt_order" }
 
 // ReceiptOrderDetail 记录单行货品的应收、实收和残品数量。
 type ReceiptOrderDetail struct {
-	model.Base
+	modelbase.Base
 	TenantID     int64  `json:"tenant_id,string" gorm:"not null;default:0"`
 	OrderID      int64  `json:"order_id,string" gorm:"index;not null"`
 	SKUID        int64  `json:"sku_id,string" gorm:"column:sku_id;not null"`
@@ -96,7 +96,7 @@ const (
 
 // ImportTask 持久化导入任务；RunToken 标识本次执行，导入行唯一键保证重跑幂等。
 type ImportTask struct {
-	model.Base
+	modelbase.Base
 	RunToken    string           `json:"-" gorm:"size:36;not null;default:''"`
 	TenantID    int64            `json:"tenant_id,string" gorm:"not null;default:0;uniqueIndex:uk_import_task,priority:1;index:idx_import_tenant"`
 	TaskID      string           `json:"task_id" gorm:"size:64;uniqueIndex:uk_import_task,priority:2;not null"`

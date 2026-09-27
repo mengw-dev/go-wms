@@ -10,11 +10,11 @@ import (
 	invapi "gowms/internal/modules/inventory/api"
 	"gowms/internal/modules/outbound/dto"
 	"gowms/internal/modules/outbound/model"
-	sysmodel "gowms/internal/modules/system/model"
 	taskapi "gowms/internal/modules/task/api"
 	taskmodel "gowms/internal/modules/task/model"
 	"gowms/internal/pkg/errcode"
 	"gowms/internal/pkg/log"
+	"gowms/internal/pkg/modelbase"
 	"gowms/internal/pkg/quota"
 	"gowms/internal/pkg/snowflake"
 	"gowms/internal/pkg/tx"
@@ -51,7 +51,7 @@ func (s *Service) Create(ctx context.Context, req *dto.CreateOrderReq, operator 
 	var order *model.ShipmentOrder
 	for i := 0; i < tx.MaxOrderNoRetry; i++ {
 		order = &model.ShipmentOrder{
-			Base: sysmodel.Base{ID: snowflake.Next()}, OrderNo: s.no.Next(ctx, model.OrderNoPrefix),
+			Base: modelbase.Base{ID: snowflake.Next()}, OrderNo: s.no.Next(ctx, model.OrderNoPrefix),
 			BizOrderNo: req.BizOrderNo, WarehouseID: req.WarehouseID,
 			Status: model.OrderDraft, Remark: req.Remark, ExpectedQty: expected, CreatedBy: operator,
 		}
@@ -147,7 +147,7 @@ func (s *Service) Approve(ctx context.Context, id int64, operator string) error 
 			}
 			for _, row := range result.Rows {
 				allocations = append(allocations, &model.Allocation{
-					Base: sysmodel.Base{ID: snowflake.Next()}, OrderID: o.ID, DetailID: d.ID,
+					Base: modelbase.Base{ID: snowflake.Next()}, OrderID: o.ID, DetailID: d.ID,
 					InventoryID: row.InventoryID, SKUID: d.SKUID,
 					LocationID: row.LocationID, LocationCode: row.LocationCode, BatchNo: row.BatchNo,
 					AllocatedQty: row.Quantity, Status: model.AllocAllocated,
@@ -302,7 +302,7 @@ func (s *Service) buildDetails(ctx context.Context, items []dto.OrderDetailItem)
 			return nil, 0, err
 		}
 		details = append(details, &model.ShipmentOrderDetail{
-			Base: sysmodel.Base{ID: snowflake.Next()}, SKUID: sku.ID, SKUCode: sku.Code, SKUName: sku.Name,
+			Base: modelbase.Base{ID: snowflake.Next()}, SKUID: sku.ID, SKUCode: sku.Code, SKUName: sku.Name,
 			ExpectedQty: it.ExpectedQty,
 		})
 		expected += it.ExpectedQty

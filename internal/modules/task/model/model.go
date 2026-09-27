@@ -2,7 +2,7 @@
 package model
 
 import (
-	"gowms/internal/modules/system/model"
+	"gowms/internal/pkg/modelbase"
 )
 
 // TaskType 统一任务类型：收货/上架/拣货共用 wms_task。
@@ -43,8 +43,8 @@ func CanTransit(from, to TaskStatus) bool {
 
 // Task 统一任务表：任务状态只能单向流转，由 task.Service 校验。
 type Task struct {
-	model.Base
-	model.Versioned
+	modelbase.Base
+	modelbase.Versioned
 	TenantID     int64      `json:"tenant_id,string" gorm:"not null;default:0;uniqueIndex:uk_task_no,priority:1;index:idx_task_tenant"`
 	TaskNo       string     `json:"task_no" gorm:"size:64;uniqueIndex:uk_task_no,priority:2;not null"`
 	TaskType     TaskType   `json:"task_type" gorm:"size:16;index;not null"`

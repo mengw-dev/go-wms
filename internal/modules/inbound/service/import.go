@@ -11,9 +11,9 @@ import (
 
 	"gowms/internal/modules/inbound/dto"
 	"gowms/internal/modules/inbound/model"
-	sysmodel "gowms/internal/modules/system/model"
 	"gowms/internal/pkg/errcode"
 	"gowms/internal/pkg/log"
+	"gowms/internal/pkg/modelbase"
 	"gowms/internal/pkg/snowflake"
 )
 
@@ -27,7 +27,7 @@ func (s *Service) Import(ctx context.Context, fileName string, data []byte) (*dt
 		return nil, err
 	}
 	t := &model.ImportTask{
-		Base:   sysmodel.Base{ID: snowflake.Next()},
+		Base:   modelbase.Base{ID: snowflake.Next()},
 		TaskID: taskID, Status: model.ImportPending,
 		FileName: fileName, FilePath: path,
 	}

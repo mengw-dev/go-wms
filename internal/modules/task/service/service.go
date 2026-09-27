@@ -9,12 +9,12 @@ import (
 
 	"gorm.io/gorm"
 
-	sysmodel "gowms/internal/modules/system/model"
 	"gowms/internal/modules/task/api"
 	"gowms/internal/modules/task/dto"
 	"gowms/internal/modules/task/model"
 	"gowms/internal/modules/task/repository"
 	"gowms/internal/pkg/errcode"
+	"gowms/internal/pkg/modelbase"
 	"gowms/internal/pkg/snowflake"
 )
 
@@ -55,7 +55,7 @@ func (s *Service) Create(ctx context.Context, tx *gorm.DB, creates []*api.Create
 		id := snowflake.Next()
 		// 任务号直接复用任务主键，不在持有业务行锁时访问 Redis。
 		tasks = append(tasks, &model.Task{
-			Base:     sysmodel.Base{ID: id},
+			Base:     modelbase.Base{ID: id},
 			TaskNo:   fmt.Sprintf("%s%s%d", prefix, time.Now().Format("20060102"), id),
 			TaskType: ct.TaskType, Status: model.TaskCreated,
 			OrderID: ct.OrderID, OrderNo: ct.OrderNo,

@@ -4,24 +4,24 @@ package model
 import (
 	"time"
 
-	"gowms/internal/modules/system/model"
+	"gowms/internal/pkg/modelbase"
 )
 
 // Inventory 库存：仓库+库位+SKU+批次 四元组唯一（tenant_id 前置联合唯一，各租户独立）。
 // 三数量模型：stock_quantity = available_quantity + allocated_quantity。
 type Inventory struct {
-	model.Base
-	model.Versioned           // 变更版本号；库存并发控制使用行锁和数量条件更新
-	TenantID        int64     `json:"tenant_id,string" gorm:"not null;default:0;uniqueIndex:uk_inv,priority:1;index:idx_inv_tenant"`
-	WarehouseID     int64     `json:"warehouse_id,string" gorm:"not null;uniqueIndex:uk_inv,priority:2"`
-	LocationID      int64     `json:"location_id,string" gorm:"not null;uniqueIndex:uk_inv,priority:3"`
-	SKUID           int64     `json:"sku_id,string" gorm:"column:sku_id;not null;uniqueIndex:uk_inv,priority:4"`
-	BatchNo         string    `json:"batch_no" gorm:"size:64;not null;default:'';uniqueIndex:uk_inv,priority:5"`
-	StockQuantity   int       `json:"stock_quantity" gorm:"not null;default:0"`
-	AvailableQty    int       `json:"available_quantity" gorm:"column:available_quantity;not null;default:0"`
-	AllocatedQty    int       `json:"allocated_quantity" gorm:"column:allocated_quantity;not null;default:0"`
-	StockInTime     time.Time `json:"stock_in_time"`                       // FIFO 依据
-	LocationCode    string    `json:"location_code" gorm:"->;-:migration"` // 联查字段，不落库
+	modelbase.Base
+	modelbase.Versioned           // 变更版本号；库存并发控制使用行锁和数量条件更新
+	TenantID            int64     `json:"tenant_id,string" gorm:"not null;default:0;uniqueIndex:uk_inv,priority:1;index:idx_inv_tenant"`
+	WarehouseID         int64     `json:"warehouse_id,string" gorm:"not null;uniqueIndex:uk_inv,priority:2"`
+	LocationID          int64     `json:"location_id,string" gorm:"not null;uniqueIndex:uk_inv,priority:3"`
+	SKUID               int64     `json:"sku_id,string" gorm:"column:sku_id;not null;uniqueIndex:uk_inv,priority:4"`
+	BatchNo             string    `json:"batch_no" gorm:"size:64;not null;default:'';uniqueIndex:uk_inv,priority:5"`
+	StockQuantity       int       `json:"stock_quantity" gorm:"not null;default:0"`
+	AvailableQty        int       `json:"available_quantity" gorm:"column:available_quantity;not null;default:0"`
+	AllocatedQty        int       `json:"allocated_quantity" gorm:"column:allocated_quantity;not null;default:0"`
+	StockInTime         time.Time `json:"stock_in_time"`                       // FIFO 依据
+	LocationCode        string    `json:"location_code" gorm:"->;-:migration"` // 联查字段，不落库
 }
 
 func (Inventory) TableName() string { return "wms_inventory" }
