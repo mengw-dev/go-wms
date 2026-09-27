@@ -13,10 +13,9 @@ import type { EntityID,  StocktakeOrderItem } from '@/api/types'
 import { STOCKTAKE_STATUS_OPTIONS, statusTag, statusText } from '@/constants'
 import { cleanParams, formatTime } from '@/utils'
 import { loadLocationOptions, loadWarehouseOptions, toOptionMap, type IdOption } from '@/utils/options'
-import { GUIDE_EVENTS, useGuideStore } from '@/stores/guide'
+import { BUSINESS_EVENTS, emitBusinessEvent } from '@/events/businessEvents'
 
 const router = useRouter()
-const guide = useGuideStore()
 
 // ---------- 基础选项 ----------
 const warehouseOptions = ref<IdOption[]>([])
@@ -146,20 +145,11 @@ async function submitCreate() {
     })
     ElMessage.success('盘点单创建成功，已生成账面快照')
     createDialog.visible = false
-    if (
-      guide.active &&
-      guide.scenario === 'stocktake' &&
-      guide.currentStepDefinition?.event === GUIDE_EVENTS.stocktakeOrderCreated
-    ) {
-      guide.recordBusinessResult(GUIDE_EVENTS.stocktakeOrderCreated, {
-        orderId: String(created.id),
-        orderNo: created.order_no,
-        message: `已创建盘点单 ${created.order_no}，系统已生成真实账面快照。`,
-      })
-      await router.push(`/stocktake/orders/${created.id}`)
-    } else {
-      load()
-    }
+    emitBusinessEvent(BUSINESS_EVENTS.STOCKTAKE_ORDER_CREATED, {
+      orderId: String(created.id),
+      orderNo: created.order_no,
+    })
+    load()
   } finally {
     createDialog.loading = false
   }

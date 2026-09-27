@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
@@ -9,7 +9,7 @@ import {
   submitInboundOrder,
 } from '@/api/inbound'
 import type { EntityID, InboundOrderDetail as InboundDetailData } from '@/api/types'
-import { GUIDE_EVENTS, useGuideStore, type GuideBusinessResult } from '@/stores/guide'
+import { BUSINESS_EVENTS, emitBusinessEvent } from '@/events/businessEvents'
 import { statusTag, statusText, taskTypeText } from '@/constants'
 import { formatTime } from '@/utils'
 import { loadWarehouseOptions, toOptionMap } from '@/utils/options'
@@ -19,14 +19,10 @@ import PutawayDialog from '@/components/PutawayDialog.vue'
 const route = useRoute()
 const router = useRouter()
 const orderId = String(route.params.id)
-const guide = useGuideStore()
 
 const loading = ref(false)
 const data = ref<InboundDetailData | null>(null)
 const warehouseMap = ref<Record<EntityID, string>>({})
-const isGuideOrder = computed(
-  () => guide.active && guide.scenario === 'inbound' && guide.orderId === orderId,
-)
 
 function pendingPutawayTask() {
   return data.value?.tasks?.find(
@@ -34,128 +30,31 @@ function pendingPutawayTask() {
   )
 }
 
-function recordGuideEvent(event: string, result: GuideBusinessResult): void {
-  if (!isGuideOrder.value || guide.currentStepDefinition?.event !== event) return
-  guide.recordBusinessResult(event, result)
-}
-
-function syncGuideState(): void {
+/** 把页面加载到的业务状态交给业务事件层，Demo / Guide 外挂层自行判断引导进度。 */
+function emitOrderLoaded(): void {
   const order = data.value?.order
-  const step = guide.currentStepDefinition
-  if (!isGuideOrder.value || !order || !step) return
-
+  if (!order) return
   const task = pendingPutawayTask()
-  const status = order.status
-  const laterThanSubmitted = ['SUBMITTED', 'APPROVED', 'RECEIVING', 'PUTAWAY', 'COMPLETED'].includes(status)
-  const laterThanApproved = ['APPROVED', 'RECEIVING', 'PUTAWAY', 'COMPLETED'].includes(status)
-  const received = ['PUTAWAY', 'COMPLETED'].includes(status)
-
-  if (step.id === 'inbound-submit') {
-    if (status === 'DRAFT') {
-      guide.setMismatch('')
-      return
-    }
-    if (laterThanSubmitted) {
-      recordGuideEvent(GUIDE_EVENTS.inboundOrderSubmitted, {
-        orderId: String(order.id),
-        orderNo: order.order_no,
-        message: `提交完成：${order.order_no} 已从草稿变为已提交。`,
-      })
-      return
-    }
-  }
-
-  if (step.id === 'inbound-approve') {
-    if (status === 'SUBMITTED') {
-      guide.setMismatch('')
-      return
-    }
-    if (laterThanApproved) {
-      recordGuideEvent(GUIDE_EVENTS.inboundOrderApproved, {
-        orderId: String(order.id),
-        orderNo: order.order_no,
-        message: `审核完成：${order.order_no} 已从已提交变为已审核。下一步：收货。`,
-      })
-      return
-    }
-  }
-
-  if (step.id === 'inbound-receive') {
-    if (status === 'APPROVED' || status === 'RECEIVING') {
-      guide.setMismatch('')
-      return
-    }
-    if (received) {
-      recordGuideEvent(GUIDE_EVENTS.inboundReceived, {
-        orderId: String(order.id),
-        orderNo: order.order_no,
-        taskId: task ? String(task.id) : guide.taskId,
-        taskNo: task?.task_no || guide.taskNo,
-        message: task
-          ? `收货完成：${order.order_no} 已生成上架任务 ${task.task_no}。下一步：查看并完成上架。`
-          : `收货完成：${order.order_no} 已收齐。下一步：查看上架任务。`,
-      })
-      return
-    }
-  }
-
-  if (step.id === 'inbound-tasks') {
-    if (task) {
-      recordGuideEvent(GUIDE_EVENTS.inboundPutawayReady, {
-        taskId: String(task.id),
-        taskNo: task.task_no,
-        message: `上架任务已生成：${task.task_no}，待上架 ${Math.max(task.target_qty - task.done_qty, 0)}。`,
-      })
-      return
-    }
-    if (status === 'COMPLETED') {
-      guide.setMismatch('当前入库单已完成上架，没有可查看的待上架任务。请重新开始本次引导。')
-      return
-    }
-  }
-
-  if (step.id === 'inbound-putaway') {
-    if (task) {
-      guide.setMismatch('')
-      return
-    }
-    if (status === 'COMPLETED') {
-      recordGuideEvent(GUIDE_EVENTS.inboundPutawayCompleted, {
-        orderId: String(order.id),
-        orderNo: order.order_no,
-        message: `上架完成：${order.order_no} 的库存已在真实业务事务中增加。`,
-      })
-      return
-    }
-  }
-
-  if (status === 'CANCELED') {
-    guide.setMismatch(`入库单 ${order.order_no} 已取消，当前步骤无法继续。请重新开始本次引导。`)
-    return
-  }
-
-  if (step.id !== 'inbound-create') {
-    guide.setMismatch(`当前业务状态 ${status} 与引导步骤“${step.title}”不一致，请重新定位当前步骤。`)
-  }
+  emitBusinessEvent(BUSINESS_EVENTS.INBOUND_ORDER_LOADED, {
+    orderId: String(order.id),
+    orderNo: order.order_no,
+    warehouseId: String(order.warehouse_id),
+    status: order.status,
+    putawayTask: task
+      ? { taskId: String(task.id), taskNo: task.task_no, targetQty: task.target_qty, doneQty: task.done_qty }
+      : null,
+  })
 }
 
 async function load() {
   loading.value = true
   try {
     data.value = await getInboundOrder(orderId)
-    syncGuideState()
+    emitOrderLoaded()
   } finally {
     loading.value = false
   }
 }
-
-watch(
-  () => guide.currentStepDefinition?.id,
-  async () => {
-    await nextTick()
-    syncGuideState()
-  },
-)
 
 onMounted(async () => {
   warehouseMap.value = toOptionMap(await loadWarehouseOptions())

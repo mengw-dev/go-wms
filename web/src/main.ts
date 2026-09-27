@@ -33,11 +33,14 @@ import router from './router'
 import { permission } from './directives/permission'
 import './style.css'
 import { useThemeStore } from './stores/theme'
+import { installGuideBusinessBridge } from './guide/businessBridge'
 
 const app = createApp(App)
 
 app.use(createPinia())
 useThemeStore().init()
+// 外挂层：把业务页面发送的业务事件翻译成引导进度，业务页面本身不感知 Demo / Guide。
+installGuideBusinessBridge()
 app.use(router)
 app.directive('permission', permission)
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
@@ -13,19 +13,15 @@ import { statusTag, statusText, taskTypeText } from '@/constants'
 import { formatTime } from '@/utils'
 import { loadWarehouseOptions, toOptionMap } from '@/utils/options'
 import PickDialog from '@/components/PickDialog.vue'
-import { GUIDE_EVENTS, useGuideStore, type GuideBusinessResult } from '@/stores/guide'
+import { BUSINESS_EVENTS, emitBusinessEvent } from '@/events/businessEvents'
 
 const route = useRoute()
 const router = useRouter()
 const orderId = String(route.params.id)
-const guide = useGuideStore()
 
 const loading = ref(false)
 const data = ref<OutboundDetailData | null>(null)
 const warehouseMap = ref<Record<EntityID, string>>({})
-const isGuideOrder = computed(
-  () => guide.active && guide.scenario === 'outbound' && guide.orderId === orderId,
-)
 
 function pendingPickTask() {
   return data.value?.tasks?.find(
@@ -33,129 +29,41 @@ function pendingPickTask() {
   )
 }
 
-function recordGuideEvent(event: string, result: GuideBusinessResult): void {
-  if (!isGuideOrder.value || guide.currentStepDefinition?.event !== event) return
-  guide.recordBusinessResult(event, result)
-}
-
-function syncGuideState(): void {
+/** 把页面加载到的业务状态交给业务事件层，Demo / Guide 外挂层自行判断引导进度。 */
+function emitOrderLoaded(): void {
   const order = data.value?.order
-  const step = guide.currentStepDefinition
-  if (!isGuideOrder.value || !order || !step) return
-
-  const status = order.status
+  if (!order) return
   const allocations = data.value?.allocations ?? []
   const tasks = data.value?.tasks ?? []
   const pendingTask = pendingPickTask()
-  const laterThanSubmitted = ['SUBMITTED', 'APPROVED', 'PICKING', 'SHIPPED'].includes(status)
-  const allocationCompleted = ['PICKING', 'SHIPPED'].includes(status) && allocations.length > 0
-
-  if (step.id === 'outbound-submit') {
-    if (status === 'DRAFT') {
-      guide.setMismatch('')
-      return
-    }
-    if (laterThanSubmitted) {
-      recordGuideEvent(GUIDE_EVENTS.outboundOrderSubmitted, {
-        orderId: String(order.id),
-        orderNo: order.order_no,
-        message: `提交完成：${order.order_no} 已从草稿变为已提交。`,
-      })
-      return
-    }
-  }
-
-  if (step.id === 'outbound-allocate') {
-    if (status === 'SUBMITTED') {
-      guide.setMismatch('')
-      return
-    }
-    if (allocationCompleted) {
-      const allocatedQty = allocations.reduce((sum, row) => sum + row.allocated_qty, 0)
-      const pickTaskCount = tasks.filter((task) => task.task_type === 'PICK').length
-      recordGuideEvent(GUIDE_EVENTS.outboundOrderAllocated, {
-        orderId: String(order.id),
-        orderNo: order.order_no,
-        taskId: pendingTask ? String(pendingTask.id) : guide.taskId,
-        taskNo: pendingTask?.task_no || guide.taskNo,
-        message: `系统刚刚完成库存分配：共 ${allocations.length} 条分配记录、${allocatedQty} 件，已生成 ${pickTaskCount} 个拣货任务。下一步：查看拣货任务。`,
-      })
-      return
-    }
-  }
-
-  if (step.id === 'outbound-tasks') {
-    if (pendingTask) {
-      recordGuideEvent(GUIDE_EVENTS.outboundPickTasksReady, {
-        taskId: String(pendingTask.id),
-        taskNo: pendingTask.task_no,
-        message: `已查看真实分配结果和拣货任务 ${pendingTask.task_no}，待拣 ${Math.max(pendingTask.target_qty - pendingTask.done_qty, 0)} 件。`,
-      })
-      return
-    }
-    if (status === 'SHIPPED') {
-      guide.setMismatch('当前出库单已完成拣货发货，没有可查看的待执行拣货任务。请重新开始本次引导。')
-      return
-    }
-  }
-
-  if (step.id === 'outbound-pick') {
-    if (status === 'PICKING') {
-      guide.setMismatch(pendingTask ? '' : '当前没有待执行的拣货任务，请重新定位当前步骤。')
-      return
-    }
-    if (status === 'SHIPPED') {
-      recordGuideEvent(GUIDE_EVENTS.outboundPicked, {
-        orderId: String(order.id),
-        orderNo: order.order_no,
-        message: `拣货完成：${order.order_no} 的所有分配行均已拣满，系统已在真实业务事务中完成发货扣减。`,
-      })
-      return
-    }
-  }
-
-  if (step.id === 'outbound-shipped') {
-    if (status === 'PICKING') {
-      guide.setMismatch('')
-      return
-    }
-    if (status === 'SHIPPED') {
-      recordGuideEvent(GUIDE_EVENTS.outboundShipped, {
-        orderId: String(order.id),
-        orderNo: order.order_no,
-        message: `发货完成：${order.order_no} 已变为已发货。下一步：查看库存流水。`,
-      })
-      return
-    }
-  }
-
-  if (status === 'CANCELED') {
-    guide.setMismatch(`出库单 ${order.order_no} 已取消，当前步骤无法继续。请重新开始本次引导。`)
-    return
-  }
-
-  if (step.id !== 'outbound-create') {
-    guide.setMismatch(`当前业务状态 ${status} 与引导步骤“${step.title}”不一致，请重新定位当前步骤。`)
-  }
+  emitBusinessEvent(BUSINESS_EVENTS.OUTBOUND_ORDER_LOADED, {
+    orderId: String(order.id),
+    orderNo: order.order_no,
+    warehouseId: String(order.warehouse_id),
+    status: order.status,
+    allocationCount: allocations.length,
+    allocatedQty: allocations.reduce((sum, row) => sum + row.allocated_qty, 0),
+    pickTaskCount: tasks.filter((task) => task.task_type === 'PICK').length,
+    pickTask: pendingTask
+      ? {
+          taskId: String(pendingTask.id),
+          taskNo: pendingTask.task_no,
+          targetQty: pendingTask.target_qty,
+          doneQty: pendingTask.done_qty,
+        }
+      : null,
+  })
 }
 
 async function load() {
   loading.value = true
   try {
     data.value = await getOutboundOrder(orderId)
-    syncGuideState()
+    emitOrderLoaded()
   } finally {
     loading.value = false
   }
 }
-
-watch(
-  () => guide.currentStepDefinition?.id,
-  async () => {
-    await nextTick()
-    syncGuideState()
-  },
-)
 
 onMounted(async () => {
   warehouseMap.value = toOptionMap(await loadWarehouseOptions())

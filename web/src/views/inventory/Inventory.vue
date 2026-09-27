@@ -11,12 +11,11 @@ import type {
 } from '@/api/types'
 import { statusTag, statusText, TRANS_TYPE_OPTIONS } from '@/constants'
 import { cleanParams, formatTime } from '@/utils'
-import { GUIDE_EVENTS, useGuideStore } from '@/stores/guide'
+import { BUSINESS_EVENTS, emitBusinessEvent } from '@/events/businessEvents'
 import { loadSkuMap, loadWarehouseOptions, toOptionMap, type IdOption } from '@/utils/options'
 
 const activeTab = ref('detail')
 const route = useRoute()
-const guide = useGuideStore()
 
 // ---------- 仓库下拉 / 货品映射 ----------
 const warehouseOptions = ref<IdOption[]>([])
@@ -112,75 +111,14 @@ async function loadTrans(silent = false) {
     const data = await listInventoryTrans(cleanParams({ ...transQuery }))
     transList.value = data.list ?? []
     transTotal.value = data.total ?? 0
-    syncInboundGuide()
-    syncOutboundGuide()
-    syncStocktakeGuide()
+    emitBusinessEvent(BUSINESS_EVENTS.INVENTORY_TRANS_LOADED, {
+      orderNo: transQuery.order_no,
+      transTypes: transList.value.map((item) => item.trans_type),
+      transTotal: transTotal.value,
+    })
   } finally {
     if (!silent) transLoading.value = false
   }
-}
-
-function syncInboundGuide(): void {
-  if (
-    !guide.active ||
-    guide.scenario !== 'inbound' ||
-    guide.currentStepDefinition?.event !== GUIDE_EVENTS.inboundInventoryReviewed
-  ) {
-    return
-  }
-  if (!guide.orderNo || guide.orderNo !== transQuery.order_no) {
-    guide.setMismatch('当前库存流水与引导中的入库单不一致，请重新定位当前步骤。')
-    return
-  }
-  if (transList.value.length === 0) {
-    guide.setMismatch(`暂未找到入库单 ${guide.orderNo} 的库存流水，请确认上架是否完成。`)
-    return
-  }
-  guide.recordBusinessResult(GUIDE_EVENTS.inboundInventoryReviewed, {
-    message: `已查看入库单 ${guide.orderNo} 的 ${transTotal.value} 条库存流水。`,
-  })
-}
-
-function syncOutboundGuide(): void {
-  if (
-    !guide.active ||
-    guide.scenario !== 'outbound' ||
-    guide.currentStepDefinition?.event !== GUIDE_EVENTS.outboundInventoryReviewed
-  ) {
-    return
-  }
-  if (!guide.orderNo || guide.orderNo !== transQuery.order_no) {
-    guide.setMismatch('当前库存流水与引导中的出库单不一致，请重新定位当前步骤。')
-    return
-  }
-  if (!transList.value.some((item) => item.trans_type === 'SHIP')) {
-    guide.setMismatch(`暂未找到出库单 ${guide.orderNo} 的发货扣减流水，请确认拣货发货是否完成。`)
-    return
-  }
-  guide.recordBusinessResult(GUIDE_EVENTS.outboundInventoryReviewed, {
-    message: `已查看出库单 ${guide.orderNo} 的 ${transTotal.value} 条库存流水，其中包含 SHIP 发货扣减。`,
-  })
-}
-
-function syncStocktakeGuide(): void {
-  if (
-    !guide.active ||
-    guide.scenario !== 'stocktake' ||
-    guide.currentStepDefinition?.event !== GUIDE_EVENTS.stocktakeInventoryReviewed
-  ) {
-    return
-  }
-  if (!guide.orderNo || guide.orderNo !== transQuery.order_no) {
-    guide.setMismatch('当前库存流水与引导中的盘点单不一致，请重新定位当前步骤。')
-    return
-  }
-  if (!transList.value.some((item) => item.trans_type === 'ADJUST')) {
-    guide.setMismatch(`暂未找到盘点单 ${guide.orderNo} 的 ADJUST 调整流水，请确认审核是否完成。`)
-    return
-  }
-  guide.recordBusinessResult(GUIDE_EVENTS.stocktakeInventoryReviewed, {
-    message: `已查看盘点单 ${guide.orderNo} 的库存调整流水。`,
-  })
 }
 
 function searchTrans() {

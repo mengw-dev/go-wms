@@ -24,7 +24,7 @@ import {
   updateInboundOrder,
 } from '@/api/inbound'
 import type { BatchOperResult, EntityID, ImportTaskItem, InboundOrderItem } from '@/api/types'
-import { GUIDE_EVENTS, useGuideStore, type GuideBusinessResult } from '@/stores/guide'
+import { BUSINESS_EVENTS, emitBusinessEvent } from '@/events/businessEvents'
 import { INBOUND_STATUS_OPTIONS, statusTag, statusText } from '@/constants'
 import { cleanParams, formatTime } from '@/utils'
 import { loadSkuMap, loadWarehouseOptions, toOptionMap, type IdOption } from '@/utils/options'
@@ -33,13 +33,6 @@ import ReceiveDialog from '@/components/ReceiveDialog.vue'
 import PutawayDialog from '@/components/PutawayDialog.vue'
 
 const router = useRouter()
-const guide = useGuideStore()
-
-function recordGuideEvent(event: string, result: GuideBusinessResult): void {
-  if (!guide.active || guide.scenario !== 'inbound' || guide.currentStepDefinition?.event !== event) return
-  if (guide.orderId && result.orderId && guide.orderId !== result.orderId) return
-  guide.recordBusinessResult(event, result)
-}
 
 // ---------- 基础选项 ----------
 const warehouseOptions = ref<IdOption[]>([])
@@ -132,10 +125,9 @@ async function onSubmit(row: InboundOrderItem) {
     return
   }
   await submitInboundOrder(row.id)
-  recordGuideEvent(GUIDE_EVENTS.inboundOrderSubmitted, {
+  emitBusinessEvent(BUSINESS_EVENTS.INBOUND_ORDER_SUBMITTED, {
     orderId: String(row.id),
     orderNo: row.order_no,
-    message: `提交完成：${row.order_no} 已从草稿变为已提交。`,
   })
   ElMessage.success('提交成功')
   load()
@@ -148,10 +140,9 @@ async function onApprove(row: InboundOrderItem) {
     return
   }
   await approveInboundOrder(row.id)
-  recordGuideEvent(GUIDE_EVENTS.inboundOrderApproved, {
+  emitBusinessEvent(BUSINESS_EVENTS.INBOUND_ORDER_APPROVED, {
     orderId: String(row.id),
     orderNo: row.order_no,
-    message: `审核完成：${row.order_no} 已从已提交变为已审核，下一步可以收货。`,
   })
   ElMessage.success('审核通过')
   load()
@@ -373,10 +364,9 @@ async function submitEdit() {
       ElMessage.success('保存成功')
     } else {
       const created = await createInboundOrder(payload)
-      recordGuideEvent(GUIDE_EVENTS.inboundOrderCreated, {
+      emitBusinessEvent(BUSINESS_EVENTS.INBOUND_ORDER_CREATED, {
         orderId: String(created.id),
         orderNo: created.order_no,
-        message: `已创建入库单 ${created.order_no}，当前状态为草稿。`,
       })
       ElMessage.success('创建成功')
     }

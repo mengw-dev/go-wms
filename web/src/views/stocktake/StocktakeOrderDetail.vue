@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
@@ -12,12 +12,11 @@ import type { EntityID, StocktakeDetailItem, StocktakeOrderDetail as StocktakeDe
 import { statusTag, statusText } from '@/constants'
 import { formatTime } from '@/utils'
 import { loadWarehouseOptions, toOptionMap } from '@/utils/options'
-import { GUIDE_EVENTS, useGuideStore, type GuideBusinessResult, type GuideFact } from '@/stores/guide'
+import { BUSINESS_EVENTS, emitBusinessEvent } from '@/events/businessEvents'
 
 const route = useRoute()
 const router = useRouter()
 const orderId = String(route.params.id)
-const guide = useGuideStore()
 
 const loading = ref(false)
 const savingIds = reactive<Record<EntityID, boolean>>({})
@@ -28,25 +27,16 @@ const warehouseMap = ref<Record<EntityID, string>>({})
 const actualInputs = reactive<Record<EntityID, number>>({})
 
 const isDraft = () => data.value?.order?.status === 'DRAFT'
-const isGuideOrder = computed(
-  () => guide.active && guide.scenario === 'stocktake' && guide.orderId === orderId,
-)
 const countedDetails = computed(() =>
   (data.value?.details ?? []).filter((detail) => detail.actual_qty !== null),
 )
 const allActualEntered = computed(
   () => Boolean(data.value?.details?.length) && countedDetails.value.length === data.value?.details?.length,
 )
-const guideSummary = computed(() => {
+const differenceSummary = computed(() => {
   if (!allActualEntered.value) return null
   return summarizeDetails(countedDetails.value, false)
 })
-const adjustmentCompleted = computed(
-  () =>
-    data.value?.order?.status === 'COMPLETED' &&
-    Boolean(data.value.details?.length) &&
-    data.value.details.every((detail) => detail.adjusted),
-)
 
 function displayDiff(row: StocktakeDetailItem): number | null {
   if (row.actual_qty === null) return null
@@ -73,107 +63,22 @@ function signed(value: number): string {
   return `${value > 0 ? '+' : ''}${value}`
 }
 
-function stocktakeFacts(persistedDiff: boolean): GuideFact[] {
-  const details = isDraft() ? countedDetails.value : (data.value?.details ?? [])
-  if (!details.length) return []
-  const summary = summarizeDetails(details, persistedDiff)
-  return [
-    { label: '账面库存', value: String(summary.book) },
-    { label: '实盘库存', value: String(summary.actual) },
-    { label: '差异', value: signed(summary.diff) },
-    { label: '调整数量', value: signed(summary.diff) },
-    { label: '盘点明细', value: `${details.length} 行` },
-  ]
-}
-
-function recordGuideEvent(event: string, result: GuideBusinessResult = {}): void {
-  if (!isGuideOrder.value || guide.currentStepDefinition?.event !== event) return
-  guide.recordBusinessResult(event, result)
-}
-
-function syncGuideState(): void {
+/** 把页面加载到的业务状态交给业务事件层，Demo / Guide 外挂层自行判断引导进度。 */
+function emitOrderLoaded(): void {
   const order = data.value?.order
-  const step = guide.currentStepDefinition
-  if (!isGuideOrder.value || !order || !step) return
-
-  if (order.status === 'CANCELLED') {
-    guide.setMismatch(`盘点单 ${order.order_no} 已取消，当前步骤无法继续。请重新开始本次引导。`)
-    return
-  }
-
-  const snapshotReady = Boolean(data.value?.details?.length)
-  const base = {
+  if (!order) return
+  emitBusinessEvent(BUSINESS_EVENTS.STOCKTAKE_ORDER_LOADED, {
     orderId: String(order.id),
     orderNo: order.order_no,
-  }
-
-  if (step.id === 'stocktake-snapshot') {
-    if (!snapshotReady) {
-      guide.setMismatch('当前盘点单没有账面快照，无法继续。')
-      return
-    }
-    recordGuideEvent(GUIDE_EVENTS.stocktakeSnapshotReady, {
-      ...base,
-      facts: stocktakeFacts(false),
-      message: `${order.order_no} 已生成账面快照，共 ${data.value?.details?.length ?? 0} 行。`,
-    })
-    return
-  }
-
-  if (step.id === 'stocktake-actual') {
-    if (adjustmentCompleted.value) {
-      recordGuideEvent(GUIDE_EVENTS.stocktakeActualCompleted, {
-        ...base,
-        facts: stocktakeFacts(true),
-        message: '全部明细已完成实盘录入。',
-      })
-      return
-    }
-    if (allActualEntered.value) {
-      recordGuideEvent(GUIDE_EVENTS.stocktakeActualCompleted, {
-        ...base,
-        facts: stocktakeFacts(false),
-        message: `全部 ${data.value?.details?.length ?? 0} 行实盘数量已保存，可以查看差异。`,
-      })
-      return
-    }
-    guide.setMismatch('')
-    return
-  }
-
-  if (step.id === 'stocktake-difference') {
-    if (!allActualEntered.value) {
-      guide.setMismatch('请先保存全部明细的实盘数量，再查看账实差异。')
-      return
-    }
-    recordGuideEvent(GUIDE_EVENTS.stocktakeDifferenceReviewed, {
-      ...base,
-      facts: stocktakeFacts(adjustmentCompleted.value),
-      message: '已核对账面、实盘与差异汇总。',
-    })
-    return
-  }
-
-  if (step.id === 'stocktake-approve') {
-    if (adjustmentCompleted.value) {
-      recordGuideEvent(GUIDE_EVENTS.stocktakeApproved, {
-        ...base,
-        facts: stocktakeFacts(true),
-        message: `审核完成：${order.order_no} 已按实际盘点结果调整库存。`,
-      })
-      return
-    }
-    if (!allActualEntered.value) {
-      guide.setMismatch('存在尚未录入实盘数量的明细，不能审核。')
-      return
-    }
-    guide.setMismatch('')
-    return
-  }
-
-  if (step.id === 'stocktake-inventory' && adjustmentCompleted.value) {
-    guide.setMismatch('盘点已审核完成，请前往库存流水核对 ADJUST 调整记录。')
-  }
+    warehouseId: String(order.warehouse_id),
+    status: order.status,
+    details: (data.value?.details ?? []).map((detail) => ({
+      bookQty: detail.book_qty,
+      actualQty: detail.actual_qty,
+      diffQty: detail.diff_qty,
+      adjusted: detail.adjusted,
+    })),
+  })
 }
 
 async function load() {
@@ -185,7 +90,7 @@ async function load() {
         actualInputs[detail.id] = detail.actual_qty ?? detail.book_qty
       }
     }
-    syncGuideState()
+    emitOrderLoaded()
   } finally {
     loading.value = false
   }
@@ -195,12 +100,6 @@ onMounted(async () => {
   warehouseMap.value = toOptionMap(await loadWarehouseOptions())
   await load()
 })
-
-watch(
-  () => [guide.active, guide.currentStep, data.value] as const,
-  () => syncGuideState(),
-  { deep: true },
-)
 
 // ---------- 录入实盘 ----------
 async function saveActual(row: StocktakeDetailItem) {
@@ -290,19 +189,19 @@ async function onCancel() {
         </el-descriptions>
       </div>
 
-      <div v-if="guideSummary" class="page-card section difference-summary" data-tour="stocktake-difference">
+      <div v-if="differenceSummary" class="page-card section difference-summary" data-tour="stocktake-difference">
         <div>
           <span>账面库存</span>
-          <b>{{ guideSummary.book }}</b>
+          <b>{{ differenceSummary.book }}</b>
         </div>
         <div>
           <span>实盘库存</span>
-          <b>{{ guideSummary.actual }}</b>
+          <b>{{ differenceSummary.actual }}</b>
         </div>
         <div>
           <span>差异</span>
-          <b :class="{ positive: guideSummary.diff > 0, negative: guideSummary.diff < 0 }">
-            {{ signed(guideSummary.diff) }}
+          <b :class="{ positive: differenceSummary.diff > 0, negative: differenceSummary.diff < 0 }">
+            {{ signed(differenceSummary.diff) }}
           </b>
         </div>
       </div>
