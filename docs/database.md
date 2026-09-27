@@ -66,7 +66,11 @@ erDiagram
 索引与约束：
 
 - `UNIQUE uk_inv (tenant_id, warehouse_id, location_id, sku_id, batch_no)` —— 租户内库存行的业务身份，防重复建行；
-- `CHECK chk_inv_non_negative (available_quantity >= 0 AND stock_quantity >= 0)` —— 防超卖**最后兜底**，配合行锁 + 条件更新构成三层防护。
+- `CHECK chk_inv_non_negative (available_quantity >= 0 AND stock_quantity >= 0)` —— 基础非负兜底。
+- `CHECK chk_inv_allocated_non_negative (allocated_quantity >= 0)` —— 分配量非负兜底。
+- `CHECK chk_inv_quantity_balance (stock_quantity = available_quantity + allocated_quantity)` —— 三数量等式兜底。
+
+以上约束配合行锁 + 条件更新构成多层防护；约束由迁移 `000008` 添加。
 
 > 注意：MySQL 8.0.16 起 CHECK 约束才真正生效，低版本仅语法兼容不执行。
 
@@ -154,4 +158,4 @@ erDiagram
 
 `uk_loc_wh_code` 改为 `(tenant_id, warehouse_id, code)`，`uk_user_role` 改为 `(tenant_id, user_id, role_id)`。回滚脚本只恢复旧索引，不删除 `tenant_id` 字段或任何业务数据。
 
-当前没有新增 `stock = available + allocated` 的 MySQL CHECK 约束，因为已有数据的完整性必须先审计；该不变量目前由事务、行锁、条件更新和测试共同保证。
+迁移 `000008` 会添加 `stock = available + allocated` 的 MySQL CHECK 约束。历史数据若违反该等式或存在负数，迁移会直接失败；上线前必须先审计并修复数据，不能借助迁移静默改库存。

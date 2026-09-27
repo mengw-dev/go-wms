@@ -41,7 +41,7 @@ WMS 是一个前后端分离的轻量级 WMS，覆盖仓库、库位、货品、
 ## 核心能力
 
 - 三数量库存模型：`stock = available + allocated`
-- 事务内按 FIFO 行锁读取并使用 `available_quantity >= n` 条件更新，CHECK 约束作为库存数量非负的最后兜底
+- 事务内按 FIFO 行锁读取并使用 `available_quantity >= n` 条件更新；数据库 CHECK 约束兜底三数量非负与 `stock = available + allocated`
 - 出库审核即按入库时间执行 FIFO 锁库
 - 入库、出库、盘点、任务状态机
 - 库存变动全量写入流水，支持来源单据和操作人追溯

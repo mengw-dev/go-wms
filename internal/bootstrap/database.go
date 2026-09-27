@@ -82,11 +82,22 @@ func AutoMigrate(db *gorm.DB) error {
 	); err != nil {
 		return err
 	}
-	// CHECK 约束（MySQL 8.0.16+ 强制执行）；已存在时报 1061 duplicate，属预期可忽略
-	if err := db.Exec("ALTER TABLE wms_inventory ADD CONSTRAINT chk_inv_non_negative CHECK (available_quantity >= 0 AND stock_quantity >= 0)").Error; err != nil {
-		if !strings.Contains(strings.ToLower(err.Error()), "duplicate") &&
-			!strings.Contains(err.Error(), "1061") {
-			log.L().Warn("add inventory check constraint failed", "err", err)
+	// CHECK 约束（MySQL 8.0.16+ 强制执行）；已存在时报 1061 duplicate，属预期可忽略。
+	checks := []struct {
+		name       string
+		expression string
+	}{
+		{name: "chk_inv_non_negative", expression: "available_quantity >= 0 AND stock_quantity >= 0"},
+		{name: "chk_inv_allocated_non_negative", expression: "allocated_quantity >= 0"},
+		{name: "chk_inv_quantity_balance", expression: "stock_quantity = available_quantity + allocated_quantity"},
+	}
+	for _, check := range checks {
+		query := fmt.Sprintf("ALTER TABLE wms_inventory ADD CONSTRAINT %s CHECK (%s)", check.name, check.expression)
+		if err := db.Exec(query).Error; err != nil {
+			if !strings.Contains(strings.ToLower(err.Error()), "duplicate") &&
+				!strings.Contains(err.Error(), "1061") {
+				log.L().Warn("add inventory check constraint failed", "constraint", check.name, "err", err)
+			}
 		}
 	}
 	return nil

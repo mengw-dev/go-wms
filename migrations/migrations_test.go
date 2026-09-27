@@ -28,6 +28,19 @@ func indexColumns(t *testing.T, db *gorm.DB, table, index string) []string {
 	return columns
 }
 
+func hasCheckConstraint(t *testing.T, db *gorm.DB, table, constraint string) bool {
+	t.Helper()
+	var count int64
+	err := db.Raw(`SELECT COUNT(*)
+		FROM information_schema.table_constraints
+		WHERE constraint_schema = DATABASE() AND table_name = ? AND constraint_name = ?
+		AND constraint_type = 'CHECK'`, table, constraint).Scan(&count).Error
+	if err != nil {
+		t.Fatalf("read check constraint %s: %v", constraint, err)
+	}
+	return count > 0
+}
+
 func TestMigrationsAndImportTokenRollback(t *testing.T) {
 	dsn := os.Getenv("WMS_TEST_DSN")
 	if dsn == "" {
@@ -83,6 +96,25 @@ func TestMigrationsAndImportTokenRollback(t *testing.T) {
 	}) {
 		t.Fatalf("location unique index columns=%v", got)
 	}
+	for _, constraint := range []string{"chk_inv_allocated_non_negative", "chk_inv_quantity_balance"} {
+		if !hasCheckConstraint(t, db, "wms_inventory", constraint) {
+			t.Fatalf("missing inventory check constraint %s", constraint)
+		}
+	}
+	if err := m.Migrate(7); err != nil {
+		t.Fatal(err)
+	}
+	for _, constraint := range []string{"chk_inv_allocated_non_negative", "chk_inv_quantity_balance"} {
+		if hasCheckConstraint(t, db, "wms_inventory", constraint) {
+			t.Fatalf("inventory invariant rollback retained %s", constraint)
+		}
+	}
+	if !db.Migrator().HasColumn("wms_import_task", "run_token") {
+		t.Fatal("inventory invariant rollback removed run_token")
+	}
+	if !db.Migrator().HasIndex("wms_inventory", "idx_inv_tenant_fifo") {
+		t.Fatal("inventory invariant rollback removed tenant-aware FIFO index")
+	}
 	if err := m.Steps(-1); err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +138,7 @@ func TestMigrationsAndImportTokenRollback(t *testing.T) {
 	if db.Migrator().HasColumn("wms_import_task", "run_token") {
 		t.Fatal("rollback retained run_token")
 	}
-	if err := m.Steps(2); err != nil {
+	if err := m.Steps(3); err != nil {
 		t.Fatal(err)
 	}
 	if !db.Migrator().HasColumn("wms_import_task", "run_token") {
@@ -119,5 +151,10 @@ func TestMigrationsAndImportTokenRollback(t *testing.T) {
 		"tenant_id", "warehouse_id", "sku_id", "available_quantity", "stock_in_time",
 	}) {
 		t.Fatalf("reapplied tenant FIFO index columns=%v", got)
+	}
+	for _, constraint := range []string{"chk_inv_allocated_non_negative", "chk_inv_quantity_balance"} {
+		if !hasCheckConstraint(t, db, "wms_inventory", constraint) {
+			t.Fatalf("reapply missing inventory check constraint %s", constraint)
+		}
 	}
 }
