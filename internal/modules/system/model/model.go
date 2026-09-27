@@ -17,7 +17,8 @@ type Base struct {
 	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
 }
 
-// Versioned 在 Base 上增加数据库版本号，用于单据防并发状态跳变。
+// Versioned 在 Base 上增加内部修订号。各模块可将其用于条件更新，
+// 但仅存在 version 字段不代表该更新使用乐观锁，实际以 SQL 条件为准。
 // Version 只参与持久化更新，不进入 API JSON。
 type Versioned struct {
 	Version int `json:"-" gorm:"default:1"`

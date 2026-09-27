@@ -28,7 +28,7 @@ func (r *Repository) CreateOrder(tx *gorm.DB, order *model.ReceiptOrder, details
 	})
 }
 
-// GetOrderForUpdate 事务内锁定入库单（乐观锁 version 配合状态推进）。
+// GetOrderForUpdate 事务内锁定入库单；状态推进由行锁和期望状态条件保护。
 func (r *Repository) GetOrderForUpdate(tx *gorm.DB, id int64) (*model.ReceiptOrder, error) {
 	var o model.ReceiptOrder
 	err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&o, id).Error
@@ -55,11 +55,12 @@ func (r *Repository) GetOrder(ctx context.Context, db *gorm.DB, id int64) (*mode
 	return &o, nil
 }
 
-// UpdateStatus 状态推进：WHERE status = from AND version = version 防并发跳变。
+// UpdateStatus 状态推进：调用方已持有行锁，写入时使用 status CAS 防止重复流转，
+// 并递增 version 作为修订号。版本条件更新用于收货等进度累加场景。
 func (r *Repository) UpdateStatus(tx *gorm.DB, id int64, from, to model.OrderStatus) (int64, error) {
 	res := tx.Model(&model.ReceiptOrder{}).
 		Where("id = ? AND status = ?", id, from).
-		Update("status", to)
+		Updates(map[string]any{"status": to, "version": gorm.Expr("version + 1")})
 	return res.RowsAffected, res.Error
 }
 

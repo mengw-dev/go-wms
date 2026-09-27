@@ -52,9 +52,12 @@ func (r *Repository) GetOrderByBizNo(ctx context.Context, db *gorm.DB, bizNo str
 	return &o, nil
 }
 
-// UpdateStatus 状态推进（乐观：WHERE status = from）。
+// UpdateStatus 状态推进：调用方持有行锁，使用 status CAS 防止重复流转，
+// 并递增 version 作为修订号。进度更新使用 version 条件。
 func (r *Repository) UpdateStatus(tx *gorm.DB, id int64, from, to model.OrderStatus) (int64, error) {
-	res := tx.Model(&model.ShipmentOrder{}).Where("id = ? AND status = ?", id, from).Update("status", to)
+	res := tx.Model(&model.ShipmentOrder{}).
+		Where("id = ? AND status = ?", id, from).
+		Updates(map[string]any{"status": to, "version": gorm.Expr("version + 1")})
 	return res.RowsAffected, res.Error
 }
 

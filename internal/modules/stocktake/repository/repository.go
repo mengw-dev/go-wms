@@ -41,7 +41,7 @@ func (r *Repository) GetOrder(ctx context.Context, db *gorm.DB, id int64) (*mode
 	return &o, nil
 }
 
-// UpdateStatus 状态推进。
+// UpdateStatus 状态推进：行锁下使用 status CAS，并递增 version 修订号。
 func (r *Repository) UpdateStatus(tx *gorm.DB, id int64, from, to model.OrderStatus) (int64, error) {
 	res := tx.Model(&model.StocktakeOrder{}).Where("id = ? AND status = ?", id, from).Updates(map[string]any{"status": to, "version": gorm.Expr("version + 1")})
 	return res.RowsAffected, res.Error

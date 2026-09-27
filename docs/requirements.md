@@ -181,10 +181,10 @@ stateDiagram-v2
     CREATED --> IN_PROGRESS: 开始作业(收货/拣货)
     IN_PROGRESS --> COMPLETED: 完成量达标
     CREATED --> COMPLETED: 上架(一步完成)
-    note right of COMPLETED: 状态单向流转,version 乐观锁防并发跳变
+    note right of COMPLETED: 状态单向流转，行锁 + 状态条件防重复完成
 ```
 
-**通用约束**：所有单据状态流转仅允许沿上述图转移（服务层显式校验），并携带 `version` 乐观锁条件更新，防止并发双击导致重复流转。
+**通用约束**：所有单据状态流转仅允许沿上述图转移（服务层显式校验）。状态推进由事务行锁加期望状态条件保护；收货量、拣货量、任务进度和分配进度使用 `version` 条件更新。
 
 ## 5. 非功能需求
 
@@ -192,7 +192,7 @@ stateDiagram-v2
 | --- | --- | --- | --- |
 | NFR-01 | 一致性 | 并发分配不超卖：库存不足的请求必须失败且不影响他人 | 事务 + `SELECT FOR UPDATE` 行锁 + `WHERE available >= N` 条件更新 + CHECK 约束三重防护（详见架构文档） |
 | NFR-02 | 一致性 | 任何库存变动可追溯、可对账 | 全类型流水表，记录变更前后四元数量 |
-| NFR-03 | 幂等 | 出库单重复创建、单据重复审核、任务重复完成不产生副作用 | 唯一索引（biz_order_no/order_no/task_no）+ 状态机前置校验 + 乐观锁 version |
+| NFR-03 | 幂等 | 出库单重复创建、单据重复审核、任务重复完成不产生副作用 | 唯一索引（biz_order_no/order_no/task_no）+ 状态机前置校验 + 行锁/状态 CAS + 进度使用 version 条件 |
 | NFR-04 | 可用性 | Redis 故障不阻断业务 | 单号生成降级本地模式、条码缓存回源数据库、健康检查不依赖 Redis |
 | NFR-05 | 可靠性 | Excel 导入服务重启不丢任务 | 状态机 + CAS 抢占 + 2 分钟悬挂扫描补偿 |
 | NFR-06 | 安全 | 密码不明文、接口需登录、写操作有权限与审计 | bcrypt、JWT 中间件、权限中间件、异步操作日志 |
