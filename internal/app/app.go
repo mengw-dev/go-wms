@@ -88,7 +88,12 @@ func New(cfg *config.Config, db *gorm.DB, rdb *redis.Client, metrics *observabil
 	invSvc := invsrvc.New(invrepo.New(), tm)
 
 	// basic：依赖 inventory 暴露的 StockChecker
-	basicSvc := basicservice.New(basicrepo.New(), tm, newRedisAdapter(rdb), invSvc, cfg.Limits)
+	var basicSvc *basicservice.Service
+	if rdb == nil {
+		basicSvc = basicservice.New(basicrepo.New(), tm, nil, invSvc, cfg.Limits)
+	} else {
+		basicSvc = basicservice.New(basicrepo.New(), tm, newRedisAdapter(rdb), invSvc, cfg.Limits)
+	}
 
 	// task：统一任务模块
 	taskSvc := taskservice.New(taskrepo.New(), db)
