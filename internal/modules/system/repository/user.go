@@ -50,8 +50,7 @@ func (r *Repository) GetUserByID(ctx context.Context, id int64) (*model.SysUser,
 	return &u, nil
 }
 
-// CreateUser、UpdateUser、DeleteUser 是系统模块的聚合例外：用户与角色关联必须原子提交，
-// 且调用方没有更长的事务需要复用，因此由 Repository 自身开启短事务。
+// CreateUser 创建用户并原子维护角色关联。系统模块的聚合例外由 Repository 自身开启短事务。
 func (r *Repository) CreateUser(ctx context.Context, u *model.SysUser, roleIDs []int64) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(u).Error; err != nil {
@@ -61,6 +60,7 @@ func (r *Repository) CreateUser(ctx context.Context, u *model.SysUser, roleIDs [
 	})
 }
 
+// UpdateUser 更新用户资料并原子替换角色关联。系统模块的聚合例外由 Repository 自身开启短事务。
 func (r *Repository) UpdateUser(ctx context.Context, id int64, nickname *string, status *int, roleIDs []int64) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var user model.SysUser
@@ -88,6 +88,7 @@ func (r *Repository) UpdateUser(ctx context.Context, id int64, nickname *string,
 	})
 }
 
+// DeleteUser 删除用户并原子清理角色关联。系统模块的聚合例外由 Repository 自身开启短事务。
 func (r *Repository) DeleteUser(ctx context.Context, id int64) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Delete(&model.SysUser{}, id).Error; err != nil {
