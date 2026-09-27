@@ -84,7 +84,7 @@ func New(cfg *config.Config, db *gorm.DB, rdb *redis.Client, metrics *observabil
 	// system：无外部模块依赖
 	sysSvc := sysservice.New(sysrepo.New(db), cfg.JWT.Secret, cfg.JWT.ExpireHours)
 
-	// inventory：核心模块，仅依赖事务管理器
+	// inventory：核心库存模块依赖事务管理器；部分仓库查询会在事务内直接锁定 basic model。
 	invSvc := invsrvc.New(invrepo.New(), tm)
 
 	// basic：依赖 inventory 暴露的 StockChecker
