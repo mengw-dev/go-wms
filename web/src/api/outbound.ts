@@ -1,4 +1,4 @@
-import { del, get, post } from './request'
+import { del, get, post, type RequestOptions } from './request'
 import type {
   BatchOperResult,
   EntityID,
@@ -10,8 +10,8 @@ import type {
   PickParams,
 } from './types'
 
-export function listOutboundOrders(params: OutboundOrderListQuery) {
-  return get<PageData<OutboundOrderItem>>('/outbound/orders', params as Record<string, unknown>)
+export function listOutboundOrders(params: OutboundOrderListQuery, options?: RequestOptions) {
+  return get<PageData<OutboundOrderItem>>('/outbound/orders', params as Record<string, unknown>, options)
 }
 
 /** 详情：{ order, details, allocations, tasks } */

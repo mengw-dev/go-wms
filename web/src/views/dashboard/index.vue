@@ -37,42 +37,43 @@ interface StatCard {
 
 const cards = ref<StatCard[]>([])
 
-async function buildStatCards() {
+async function buildStatCards(silentError: boolean) {
+  const options = { silentError }
   const cards: StatCard[] = []
   if (auth.hasPerm('wms:inbound:view')) {
     cards.push({
       key: 'todayInbound', label: '今日入库单', icon: Download, color: '#6366f1',
       accent: '#818cf8', path: '/inbound/orders',
-      queryPromise: listInboundOrders({ page: 1, page_size: 1, created_at_from: today.from, created_at_to: today.to }).then(r => r.total ?? 0),
+      queryPromise: listInboundOrders({ page: 1, page_size: 1, created_at_from: today.from, created_at_to: today.to }, options).then(r => r.total ?? 0),
     })
     cards.push({
       key: 'abnormalInbound', label: '异常入库', icon: Warning, color: '#ef4444',
       accent: '#f87171', path: '/inbound/orders', pathQuery: '?status=CANCELLED',
-      queryPromise: listInboundOrders({ page: 1, page_size: 1, status: 'CANCELLED', created_at_from: today.from, created_at_to: today.to }).then(r => r.total ?? 0),
+      queryPromise: listInboundOrders({ page: 1, page_size: 1, status: 'CANCELLED', created_at_from: today.from, created_at_to: today.to }, options).then(r => r.total ?? 0),
     })
   }
   if (auth.hasPerm('wms:outbound:view')) {
     cards.push({
       key: 'todayOutbound', label: '今日出库单', icon: Upload, color: '#0ea5e9',
       accent: '#38bdf8', path: '/outbound/orders',
-      queryPromise: listOutboundOrders({ page: 1, page_size: 1, created_at_from: today.from, created_at_to: today.to }).then(r => r.total ?? 0),
+      queryPromise: listOutboundOrders({ page: 1, page_size: 1, created_at_from: today.from, created_at_to: today.to }, options).then(r => r.total ?? 0),
     })
     cards.push({
       key: 'abnormalOutbound', label: '异常出库', icon: Warning, color: '#ef4444',
       accent: '#f87171', path: '/outbound/orders', pathQuery: '?status=CANCELLED',
-      queryPromise: listOutboundOrders({ page: 1, page_size: 1, status: 'CANCELLED', created_at_from: today.from, created_at_to: today.to }).then(r => r.total ?? 0),
+      queryPromise: listOutboundOrders({ page: 1, page_size: 1, status: 'CANCELLED', created_at_from: today.from, created_at_to: today.to }, options).then(r => r.total ?? 0),
     })
   }
   if (auth.hasPerm('wms:task')) {
     cards.push({
       key: 'runningTasks', label: '进行中任务', icon: Clock, color: '#f59e0b',
       accent: '#fbbf24', path: '/tasks', pathQuery: '?status=IN_PROGRESS',
-      queryPromise: listTasks({ page: 1, page_size: 1, status: 'IN_PROGRESS' }).then(r => r.total ?? 0),
+      queryPromise: listTasks({ page: 1, page_size: 1, status: 'IN_PROGRESS' }, options).then(r => r.total ?? 0),
     })
     cards.push({
       key: 'pendingTasks', label: '待办任务', icon: Clock, color: '#f97316',
       accent: '#fb923c', path: '/tasks', pathQuery: '?status=CREATED',
-      queryPromise: listTasks({ page: 1, page_size: 1, status: 'CREATED' }).then(r => r.total ?? 0),
+      queryPromise: listTasks({ page: 1, page_size: 1, status: 'CREATED' }, options).then(r => r.total ?? 0),
     })
   }
   return cards
@@ -80,8 +81,8 @@ async function buildStatCards() {
 
 const stats = reactive<Record<string, number | null>>({})
 
-async function loadStats() {
-  const built = await buildStatCards()
+async function loadStats(silentError = false) {
+  const built = await buildStatCards(silentError)
   cards.value = built
   await Promise.all(built.map(async c => {
     try { stats[c.key] = await c.queryPromise } catch { stats[c.key] = null }
@@ -113,12 +114,13 @@ const taskGroups = computed(() => {
   return Object.entries(groups)
 })
 
-async function loadTasks() {
+async function loadTasks(silentError = false) {
   try {
     if (auth.hasPerm('wms:task')) {
+      const options = { silentError }
       const [cre, run] = await Promise.all([
-        listTasks({ page: 1, page_size: 10, status: 'CREATED' }),
-        listTasks({ page: 1, page_size: 5, status: 'IN_PROGRESS' }),
+        listTasks({ page: 1, page_size: 10, status: 'CREATED' }, options),
+        listTasks({ page: 1, page_size: 5, status: 'IN_PROGRESS' }, options),
       ])
       pendingTasks.value = cre.list ?? []
       // 未完成总数 = 待办 + 进行中（不含 CANCELLED / COMPLETED）
@@ -154,18 +156,19 @@ function formatTime(s: string) {
   return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
-async function loadRecent() {
+async function loadRecent(silentError = false) {
   try {
+    const options = { silentError }
     const jobs: Promise<void>[] = []
     if (auth.hasPerm('wms:inbound:view')) {
-      jobs.push(listInboundOrders({ page: 1, page_size: 5 }).then(r => {
+      jobs.push(listInboundOrders({ page: 1, page_size: 5 }, options).then(r => {
         recentInbound.value = (r.list ?? []).map(o => ({
           id: String(o.id), order_no: o.order_no, status: o.status, created_at: o.created_at,
         }))
       }))
     }
     if (auth.hasPerm('wms:outbound:view')) {
-      jobs.push(listOutboundOrders({ page: 1, page_size: 5 }).then(r => {
+      jobs.push(listOutboundOrders({ page: 1, page_size: 5 }, options).then(r => {
         recentOutbound.value = (r.list ?? []).map(o => ({
           id: String(o.id), order_no: o.order_no, status: o.status, created_at: o.created_at,
         }))
@@ -177,12 +180,13 @@ async function loadRecent() {
   }
 }
 
-async function refreshDashboard() {
-  await Promise.all([loadStats(), loadTasks(), loadRecent()])
+async function refreshDashboard(silentError = false) {
+  await Promise.all([loadStats(silentError), loadTasks(silentError), loadRecent(silentError)])
 }
 
-onMounted(refreshDashboard)
-useAutoRefresh(refreshDashboard)
+// 首次进入展示加载反馈，之后的定时/事件刷新静默失败，避免后台轮询反复弹错。
+onMounted(() => refreshDashboard())
+useAutoRefresh(() => refreshDashboard(true))
 
 // ---------- 欢迎区 ----------
 const todayDate = new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })

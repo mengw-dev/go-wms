@@ -8,7 +8,7 @@ import type {
   DemoSessionInfo,
   EntityID,
 } from './types'
-import { get, post } from './request'
+import { get, post, type RequestOptions } from './request'
 
 export function acquireDemoSession() {
   return post<DemoSessionInfo>('/demo/session/acquire')
@@ -68,12 +68,12 @@ export function restockDemo(qty = 500) {
   return post<DemoScenarioResult>('/demo/run/restock', { qty })
 }
 
-export function getDemoPerformance() {
-  return get<DemoPerformanceSnapshot>('/demo/performance')
+export function getDemoPerformance(options?: RequestOptions) {
+  return get<DemoPerformanceSnapshot>('/demo/performance', undefined, options)
 }
 
-export function getDemoActivity(limit = 20) {
-  return get<DemoActivitySnapshot>('/demo/activity', { limit })
+export function getDemoActivity(limit = 20, options?: RequestOptions) {
+  return get<DemoActivitySnapshot>('/demo/activity', { limit }, options)
 }
 
 export function resetDemoData() {

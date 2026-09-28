@@ -108,7 +108,7 @@ const pickingLast = computed(() => pickingResult.value?.summary || '尚未运行
 async function load(silent = false): Promise<void> {
   if (!silent) loading.value = true
   try {
-    data.value = await getDemoPerformance()
+    data.value = await getDemoPerformance({ silentError: silent })
     loadError.value = ''
   } catch {
     loadError.value = '运行状态暂时不可用'

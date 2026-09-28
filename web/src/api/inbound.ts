@@ -1,4 +1,4 @@
-import { del, get, post, put, upload } from './request'
+import { del, get, post, put, upload, type RequestOptions } from './request'
 import type {
   BatchOperResult,
   EntityID,
@@ -12,8 +12,8 @@ import type {
   ReceiveParams,
 } from './types'
 
-export function listInboundOrders(params: InboundOrderListQuery) {
-  return get<PageData<InboundOrderItem>>('/inbound/orders', params as Record<string, unknown>)
+export function listInboundOrders(params: InboundOrderListQuery, options?: RequestOptions) {
+  return get<PageData<InboundOrderItem>>('/inbound/orders', params as Record<string, unknown>, options)
 }
 
 /** 详情：{ order, details, tasks } */
@@ -64,8 +64,8 @@ export function importInboundExcel(file: File) {
 }
 
 /** 查询导入任务状态 */
-export function getImportStatus(taskId: string) {
-  return get<ImportTaskItem>(`/inbound/import/${taskId}`)
+export function getImportStatus(taskId: string, options?: RequestOptions) {
+  return get<ImportTaskItem>(`/inbound/import/${taskId}`, undefined, options)
 }
 
 /** 列出最近 limit 条历史导入任务（下拉筛选器专用） */

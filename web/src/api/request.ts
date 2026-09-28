@@ -17,6 +17,21 @@ export class ApiError extends Error {
   }
 }
 
+/** 单个请求的附加选项。 */
+export interface RequestOptions {
+  /**
+   * 为 true 时，本请求失败不再弹出全局错误提示，由调用方自行兜底。
+   * 用于后台自动刷新等"失败也不该打扰用户"的场景。
+   */
+  silentError?: boolean
+}
+
+declare module 'axios' {
+  interface AxiosRequestConfig {
+    silentError?: boolean
+  }
+}
+
 // 演示会话失效时只跳转一次，避免并发请求刷屏。
 let demoSessionRedirecting = false
 
@@ -65,7 +80,7 @@ service.interceptors.response.use(
     if (body && typeof body === 'object' && typeof body.code === 'number') {
       if (body.code !== 0) {
         const msg = body.msg || '操作失败'
-        ElMessage.error(msg)
+        if (!response.config.silentError) ElMessage.error(msg)
         return Promise.reject(new ApiError(msg, body.code, undefined, body.data))
       }
       return body.data
@@ -75,6 +90,8 @@ service.interceptors.response.use(
   (error) => {
     const status = error?.response?.status
     const code = error?.response?.data?.code
+    // 后台自动刷新等场景可在请求级声明静默，失败时只抛错不提示。
+    const silent = error?.config?.silentError === true
     if (status === 401) {
       useAuthStore().clear()
       if (router.currentRoute.value.path !== '/login') {
@@ -87,10 +104,12 @@ service.interceptors.response.use(
       // 演示会话失效：清空登录态并跳转登录页，防刷屏。
       handleDemoSessionExpired()
     } else if (status === 423 && code === 70002) {
-      ElMessage.warning(error?.response?.data?.msg || '演示环境正在被其他访客使用，对方空闲约 5 分钟后自动释放，请稍后重试')
+      if (!silent) {
+        ElMessage.warning(error?.response?.data?.msg || '演示环境正在被其他访客使用，对方空闲约 5 分钟后自动释放，请稍后重试')
+      }
     } else {
       const msg = error?.response?.data?.msg || error?.message || '网络异常'
-      ElMessage.error(msg)
+      if (!silent) ElMessage.error(msg)
     }
     return Promise.reject(
       new ApiError(
@@ -108,8 +127,12 @@ service.interceptors.response.use(
 // TypeScript 静态类型仍按 AxiosResponse 推断，所以这里用 `as unknown as Promise<T>`
 // 跳过结构类型检查。这是 axios 拦截器返回非标准类型的常见妥协，不应简化。
 // 调用方使用 get<T>/post<T> 时无需再断言，类型安全已得到保证。
-export function get<T = unknown>(url: string, params?: Record<string, unknown>): Promise<T> {
-  return service.get(url, { params }) as unknown as Promise<T>
+export function get<T = unknown>(
+  url: string,
+  params?: Record<string, unknown>,
+  options?: RequestOptions,
+): Promise<T> {
+  return service.get(url, { params, ...options }) as unknown as Promise<T>
 }
 
 export function post<T = unknown>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T> {

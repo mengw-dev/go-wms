@@ -51,7 +51,7 @@ export function useInboundImport(onCompleted: () => void | Promise<void>) {
       if (token !== pollToken) return
       let info: ImportTaskItem
       try {
-        info = await getImportStatus(taskId)
+        info = await getImportStatus(taskId, { silentError: true })
       } catch {
         // 轮询出错时静默停止，避免持续弹出错误提示
         return

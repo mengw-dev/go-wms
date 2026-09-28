@@ -273,7 +273,7 @@ const pagedOperations = computed(() => paginate(operationRows.value, operationPa
 async function load(silent = false): Promise<void> {
   if (!silent) loading.value = true
   try {
-    data.value = await getDemoActivity(50)
+    data.value = await getDemoActivity(50, { silentError: silent })
   } finally {
     if (!silent) loading.value = false
   }
