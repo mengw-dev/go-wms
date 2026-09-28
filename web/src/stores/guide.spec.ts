@@ -252,3 +252,95 @@ describe('manual guide store', () => {
     expect(guide.inferredStepIds).toEqual([])
   })
 })
+
+describe('manual guide continuation and repositioning', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+  })
+
+  it('advances with next() after returning to a completed step', () => {
+    const guide = useGuideStore()
+    guide.start('inbound')
+    guide.recordBusinessResult(GUIDE_EVENTS.inboundOrderCreated, { orderId: '100', orderNo: 'IN-100' })
+    expect(guide.currentStepDefinition?.id).toBe('inbound-submit')
+
+    expect(guide.reposition('/inbound/orders')).toBe(true)
+    expect(guide.currentStep).toBe(0)
+    expect(guide.canAdvance).toBe(true)
+
+    expect(guide.next()).toBe(true)
+    expect(guide.currentStep).toBe(1)
+    expect(guide.currentStepDefinition?.id).toBe('inbound-submit')
+  })
+
+  it('finishes the guide when next() is used on the last step', () => {
+    const guide = useGuideStore()
+    guide.start('stocktake')
+    guide.currentStep = guide.totalSteps - 1
+    guide.verifiedStepIds = ['stocktake-inventory']
+
+    expect(guide.canAdvance).toBe(true)
+    expect(guide.next()).toBe(true)
+    expect(guide.completed).toBe(true)
+    expect(guide.active).toBe(false)
+  })
+
+  it('moves back with previous() and stops at the first step', () => {
+    const guide = useGuideStore()
+    guide.start('inbound')
+    guide.recordBusinessResult(GUIDE_EVENTS.inboundOrderCreated, { orderId: '100', orderNo: 'IN-100' })
+    expect(guide.currentStep).toBe(1)
+
+    expect(guide.canGoPrevious).toBe(true)
+    expect(guide.previous()).toBe(true)
+    expect(guide.currentStep).toBe(0)
+
+    expect(guide.canGoPrevious).toBe(false)
+    expect(guide.previous()).toBe(false)
+  })
+
+  it('reports a mismatch when repositioning from a route outside the scenario', () => {
+    const guide = useGuideStore()
+    guide.start('inbound')
+
+    expect(guide.reposition('/system/users')).toBe(false)
+    expect(guide.mismatch).toContain('不在本次引导流程中')
+    expect(guide.currentStep).toBe(0)
+  })
+
+  it('restarts the current scenario from the first step', () => {
+    const guide = useGuideStore()
+    guide.start('inbound')
+    guide.recordBusinessResult(GUIDE_EVENTS.inboundOrderCreated, { orderId: '100', orderNo: 'IN-100' })
+
+    expect(guide.restart()).not.toBeNull()
+    expect(guide.active).toBe(true)
+    expect(guide.currentStep).toBe(0)
+    expect(guide.orderId).toBe('')
+    expect(guide.verifiedStepIds).toEqual([])
+  })
+
+  it('treats skipping as cancel and leaves nothing behind', () => {
+    const guide = useGuideStore()
+    guide.start('outbound')
+    guide.recordBusinessResult(GUIDE_EVENTS.outboundOrderCreated, { orderId: '42', orderNo: 'OUT-42' })
+
+    // “跳过”按钮走的是 guide.cancel()
+    guide.cancel()
+
+    expect(guide.active).toBe(false)
+    expect(guide.completed).toBe(false)
+    expect(guide.scenario).toBeNull()
+    expect(guide.currentStepDefinition).toBeNull()
+    expect(guide.mismatch).toBe('')
+  })
+
+  it('ignores mismatch reports while no guide is running', () => {
+    const guide = useGuideStore()
+
+    guide.setMismatch('不应写入')
+
+    expect(guide.mismatch).toBe('')
+    expect(guide.active).toBe(false)
+  })
+})
