@@ -22,7 +22,7 @@ export function useInboundImport(onCompleted: () => void | Promise<void>) {
   let pollTimer: number | undefined
 
   function onFileChange(file: UploadFile) {
-    importFile.value = (file.raw as File) ?? null
+    importFile.value = file.raw ?? null
   }
 
   function onFileRemove() {
@@ -32,7 +32,7 @@ export function useInboundImport(onCompleted: () => void | Promise<void>) {
   function handleExceed(files: File[]) {
     const raw = files[0] as UploadRawFile
     raw.uid = genFileId()
-    importFile.value = raw as unknown as File
+    importFile.value = raw
   }
 
   function stopPolling() {

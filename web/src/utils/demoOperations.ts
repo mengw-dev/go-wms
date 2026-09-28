@@ -3,7 +3,7 @@ import type {
   DemoOperationLog,
   EntityID,
 } from '@/api/types'
-import { formatTime } from '@/utils'
+import { formatTime, shortId } from '@/utils'
 
 export interface DemoOperationDetail {
   label: string
@@ -60,11 +60,6 @@ function pathID(path: string, pattern: RegExp): string {
   return path.match(pattern)?.[1] || ''
 }
 
-function shortID(value?: EntityID | null, prefix = '对象'): string {
-  if (!value) return '-'
-  return prefix + ' · ' + String(value).slice(-8)
-}
-
 function normalizedPath(operation: DemoOperationLog): string {
   return operation.path.split('?')[0].replace(/\/+$/, '')
 }
@@ -79,7 +74,7 @@ function operationMeta(operation: DemoOperationLog, snapshot?: DemoActivitySnaps
   const outbound = snapshot?.outbound_orders.find((item) => String(item.id) === outboundID)
   const task = snapshot?.tasks.find((item) => String(item.id) === taskID)
   const data = payloadData(operation)
-  const objectNo = String(data?.order_no || data?.task_no || inbound?.order_no || outbound?.order_no || task?.task_no || shortID(inboundID || outboundID || taskID))
+  const objectNo = String(data?.order_no || data?.task_no || inbound?.order_no || outbound?.order_no || task?.task_no || shortId(inboundID || outboundID || taskID, '对象'))
 
   if (path.endsWith('/demo/run/concurrent_shortage')) return { title: '供给不足并发验证', type: '库存实验', objectNo: '-', before: '-', after: '实验完成', task: '-' }
   if (path.endsWith('/demo/run/concurrent')) return { title: '并发库存分配实验', type: '库存实验', objectNo: '-', before: '-', after: '实验完成', task: '-' }
@@ -98,7 +93,7 @@ function operationMeta(operation: DemoOperationLog, snapshot?: DemoActivitySnaps
   if (/^\/api\/v1\/inbound\/orders\/\d+\/cancel$/.test(path)) return { title: '取消入库单', type: '入库单', objectNo, before: '处理中', after: '已取消', task: '-' }
   if (/^\/api\/v1\/inbound\/orders\/\d+$/.test(path) && method === 'DELETE') return { title: '删除入库单', type: '入库单', objectNo, before: '草稿', after: '已删除', task: '-' }
   if (/^\/api\/v1\/inbound\/tasks\/\d+\/putaway$/.test(path)) return { title: '完成上架', type: '上架任务', objectNo: task?.task_no || objectNo, before: '上架中', after: '已完成', task: task?.task_no || objectNo }
-  if (path === '/api/v1/inbound/import' && method === 'POST') return { title: '提交入库导入任务', type: '导入任务', objectNo: shortID(data?.task_id as EntityID, '导入'), before: '-', after: '已提交', task: '-' }
+  if (path === '/api/v1/inbound/import' && method === 'POST') return { title: '提交入库导入任务', type: '导入任务', objectNo: shortId(data?.task_id as EntityID, '导入'), before: '-', after: '已提交', task: '-' }
 
   if (path === '/api/v1/outbound/orders' && method === 'POST') return { title: '创建出库单', type: '出库单', objectNo, before: '-', after: '草稿', task: '-' }
   if (/^\/api\/v1\/outbound\/orders\/\d+\/submit$/.test(path)) return { title: '提交出库单', type: '出库单', objectNo, before: '草稿', after: '已提交', task: '-' }

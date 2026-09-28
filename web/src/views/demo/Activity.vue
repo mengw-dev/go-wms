@@ -5,14 +5,13 @@ import { Refresh, TrendCharts } from '@element-plus/icons-vue'
 import { getDemoActivity } from '@/api/demo'
 import type {
   DemoActivitySnapshot,
-  EntityID,
   InboundOrderItem,
   InventoryTransItem,
   OutboundOrderItem,
   TaskItem,
 } from '@/api/types'
 import { statusTag, statusText, taskTypeText } from '@/constants'
-import { formatTime } from '@/utils'
+import { formatTime, shortId } from '@/utils'
 import { clearDemoEvidence, filterDemoActivity, readDemoEvidence, resolveDemoEvidenceFocus } from '@/utils/demoEvidence'
 import { buildBusinessOperationRows, type DemoOperationRow } from '@/utils/demoOperations'
 import { useAutoRefresh } from '@/composables/autoRefresh'
@@ -165,12 +164,6 @@ const summaryCards = computed(() => {
     { label: '库存变化', value: `${quantityChange > 0 ? '+' : ''}${quantityChange} 件` },
   ]
 })
-
-function shortId(value?: EntityID | null, prefix = '编号'): string {
-  if (!value) return '-'
-  const text = String(value)
-  return `${prefix} · ${text.slice(-8)}`
-}
 
 function inboundObject(order: InboundOrderItem): BusinessObjectRow {
   return {
