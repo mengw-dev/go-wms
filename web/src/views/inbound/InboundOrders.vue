@@ -1,381 +1,62 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useAutoRefresh } from '@/composables/autoRefresh'
 import { useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox, genFileId } from 'element-plus'
-import type { UploadFile, UploadRawFile } from 'element-plus'
 import { ArrowDown, CloseBold, Delete, Files, Promotion, Select } from '@element-plus/icons-vue'
-import {
-  approveInboundOrder,
-  batchApproveInboundOrders,
-  batchCancelInboundOrders,
-  batchDeleteInboundOrders,
-  batchSubmitInboundOrders,
-  cancelInboundOrder,
-  createInboundOrder,
-  deleteInboundByImportTask,
-  deleteInboundOrder,
-  getImportStatus,
-  getInboundOrder,
-  importInboundExcel,
-  listImports,
-  listInboundOrders,
-  submitInboundOrder,
-  updateInboundOrder,
-} from '@/api/inbound'
-import type { BatchOperResult, EntityID, ImportTaskItem, InboundOrderItem } from '@/api/types'
-import { BUSINESS_EVENTS, emitBusinessEvent } from '@/events/businessEvents'
+import { useInboundImport } from '@/composables/inbound/useInboundImport'
+import { useInboundOrderForm } from '@/composables/inbound/useInboundOrderForm'
+import { useInboundOrders } from '@/composables/inbound/useInboundOrders'
+import type { InboundOrderItem } from '@/api/types'
 import { INBOUND_STATUS_OPTIONS, statusTag, statusText } from '@/constants'
-import { cleanParams, formatTime } from '@/utils'
-import { loadSkuMap, loadWarehouseOptions, toOptionMap, type IdOption } from '@/utils/options'
+import { formatTime } from '@/utils'
 import PageHeader from '@/components/common/PageHeader.vue'
 import ReceiveDialog from '@/components/ReceiveDialog.vue'
 import PutawayDialog from '@/components/PutawayDialog.vue'
 
 const router = useRouter()
 
-// ---------- 基础选项 ----------
-const warehouseOptions = ref<IdOption[]>([])
-const warehouseMap = ref<Record<EntityID, string>>({})
-const skuOptions = ref<IdOption[]>([])
-const importBatchOptions = ref<{ task_id: string; label: string }[]>([])
+const {
+  warehouseOptions,
+  warehouseMap,
+  skuOptions,
+  importBatchOptions,
+  loadOptions,
+  loadImports,
+  loading,
+  list,
+  total,
+  query,
+  dateRange,
+  dateRangeDefaultTime,
+  load,
+  search,
+  onDateRangeChange,
+  resetSearch,
+  onSubmit,
+  onApprove,
+  onCancel,
+  onDelete,
+  selectedRows,
+  tableRef,
+  onSelectionChange,
+  availableBatchOps,
+  singleImportBatch,
+  onBatchCommand,
+} = useInboundOrders()
 
-async function loadImports() {
-  try {
-    const imports = await listImports(20)
-    const statusMap: Record<string, string> = { PENDING: '待处理', PROCESSING: '处理中', COMPLETED: '完成', FAILED: '失败' }
-    importBatchOptions.value = imports.map((t: ImportTaskItem) => {
-      const date = t.created_at ? new Date(Date.parse(t.created_at)).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''
-      return { task_id: t.task_id, label: `${t.task_id} (${date} · ${statusMap[t.status] || t.status} · ${t.success_rows}/${t.total_rows})` }
-    })
-  } catch {
-    // 后端未部署或没有导入历史时静默忽略
-  }
-}
+const { editDialog, editForm, openCreate, openEdit, addDetail, removeDetail, submitEdit } = useInboundOrderForm(load)
 
-onMounted(async () => {
-  warehouseOptions.value = await loadWarehouseOptions()
-  warehouseMap.value = toOptionMap(warehouseOptions.value)
-  const map = await loadSkuMap()
-  skuOptions.value = Object.entries(map).map(([id, sku]) => ({
-    id,
-    label: `${sku.code} ${sku.name}`,
-  }))
-  await loadImports()
-  load()
-})
-
-// ---------- 列表 ----------
-const loading = ref(false)
-const list = ref<InboundOrderItem[]>([])
-const total = ref(0)
-const query = reactive({
-  page: 1,
-  page_size: 10,
-  warehouse_id: '' as EntityID | '',
-  status: '',
-  keyword: '',
-  import_task_id: '',
-  created_at_from: '',
-  created_at_to: '',
-})
-const dateRange = ref<[string, string] | null>(null)
-const dateRangeDefaultTime: [Date, Date] = [new Date(2000, 0, 1, 0, 0, 0), new Date(2000, 0, 1, 23, 59, 59)]
-
-async function load(silent = false) {
-  if (!silent) loading.value = true
-  try {
-    const data = await listInboundOrders(cleanParams({ ...query }))
-    list.value = data.list ?? []
-    total.value = data.total ?? 0
-  } finally {
-    if (!silent) loading.value = false
-  }
-}
-
-function search() {
-  query.page = 1
-  load()
-}
-
-function onDateRangeChange(value: [string, string] | null): void {
-  query.created_at_from = value?.[0] ?? ''
-  query.created_at_to = value?.[1] ?? ''
-  search()
-}
-
-function resetSearch() {
-  query.page = 1
-  query.page_size = 10
-  query.warehouse_id = ''
-  query.status = ''
-  query.keyword = ''
-  query.import_task_id = ''
-  query.created_at_from = ''
-  query.created_at_to = ''
-  dateRange.value = null
-  load()
-}
-
-// ---------- 行操作 ----------
-async function onSubmit(row: InboundOrderItem) {
-  try {
-    await ElMessageBox.confirm(`确定提交入库单「${row.order_no}」吗？`, '提示', { type: 'warning' })
-  } catch {
-    return
-  }
-  await submitInboundOrder(row.id)
-  emitBusinessEvent(BUSINESS_EVENTS.INBOUND_ORDER_SUBMITTED, {
-    orderId: String(row.id),
-    orderNo: row.order_no,
-  })
-  ElMessage.success('提交成功')
-  load()
-}
-
-async function onApprove(row: InboundOrderItem) {
-  try {
-    await ElMessageBox.confirm(`确定审核通过入库单「${row.order_no}」吗？`, '提示', { type: 'warning' })
-  } catch {
-    return
-  }
-  await approveInboundOrder(row.id)
-  emitBusinessEvent(BUSINESS_EVENTS.INBOUND_ORDER_APPROVED, {
-    orderId: String(row.id),
-    orderNo: row.order_no,
-  })
-  ElMessage.success('审核通过')
-  load()
-}
-
-async function onCancel(row: InboundOrderItem) {
-  try {
-    await ElMessageBox.confirm(
-      `确定取消入库单「${row.order_no}」吗？取消后不能继续收货或上架。`,
-      '取消入库单',
-      {
-        type: 'warning',
-        confirmButtonText: '确认取消',
-        cancelButtonText: '返回',
-        confirmButtonClass: 'el-button--danger',
-      },
-    )
-  } catch {
-    return
-  }
-  await cancelInboundOrder(row.id)
-  ElMessage.success('已取消')
-  load()
-}
-
-async function onDelete(row: InboundOrderItem) {
-  try {
-    await ElMessageBox.confirm(
-      `确定删除草稿入库单「${row.order_no}」吗？删除后不可恢复。`,
-      '删除入库单',
-      {
-        type: 'warning',
-        confirmButtonText: '确认删除',
-        cancelButtonText: '返回',
-        confirmButtonClass: 'el-button--danger',
-      },
-    )
-  } catch {
-    return
-  }
-  await deleteInboundOrder(row.id)
-  ElMessage.success('删除成功')
-  load()
-  loadImports()
-}
-
-function goDetail(row: InboundOrderItem) {
-  router.push(`/inbound/orders/${row.id}`)
-}
-
-// ---------- 批量操作 ----------
-const selectedRows = ref<InboundOrderItem[]>([])
-const tableRef = ref()
-
-function onSelectionChange(rows: InboundOrderItem[]) {
-  selectedRows.value = rows
-}
-
-function onBatchCommand(cmd: string) {
-  if (cmd === 'delete') onBatchDelete()
-  else if (cmd === 'submit') onBatchSubmit()
-  else if (cmd === 'approve') onBatchApprove()
-  else if (cmd === 'cancel') onBatchCancel()
-  else if (cmd === 'batch-by-task' && singleImportBatch.value) onBatchDeleteByTask(singleImportBatch.value)
-}
-
-// 动态计算可用批量操作：只要选中单据中"至少有一张能做"就显示按钮
-// 执行时后端会跳过状态不匹配的，返回部分成功/失败
-const availableBatchOps = computed(() => {
-  const rows = selectedRows.value
-  if (rows.length === 0) return { delete: false, submit: false, approve: false, cancel: false }
-  const hasDraft = rows.some(r => r.status === 'DRAFT')
-  const hasSubmitted = rows.some(r => r.status === 'SUBMITTED')
-  const hasCanCancel = rows.some(r => ['DRAFT', 'SUBMITTED', 'APPROVED'].includes(r.status))
-  return {
-    delete: hasDraft,
-    submit: hasDraft,
-    approve: hasSubmitted,
-    cancel: hasCanCancel,
-  }
-})
-
-// 是否存在可按批次删除的选中（全部来自同一次导入 + 都是 DRAFT）
-const singleImportBatch = computed(() => {
-  const rows = selectedRows.value
-  if (rows.length < 2) return null
-  const taskId = rows[0].import_task_id
-  if (!taskId) return null
-  if (!rows.every(r => r.import_task_id === taskId && r.status === 'DRAFT')) return null
-  return taskId
-})
-
-function showBatchResult(resp: BatchOperResult, action: string) {
-  if (resp.fail === 0) {
-    ElMessage.success(`${action}：全部成功 ${resp.success} 张`)
-  } else {
-    ElMessageBox.alert(
-      `${action}完成：成功 ${resp.success} 张，失败 ${resp.fail} 张`,
-      '批量操作结果',
-      { type: 'warning' },
-    )
-  }
-}
-
-async function onBatchDelete() {
-  const rows = selectedRows.value
-  try {
-    await ElMessageBox.confirm(`确定批量删除选中的 ${rows.length} 张草稿入库单吗？`, '批量删除', { type: 'warning', confirmButtonClass: 'el-button--danger' })
-  } catch { return }
-  const resp = await batchDeleteInboundOrders(rows.map(r => r.id))
-  showBatchResult(resp, '批量删除')
-  tableRef.value?.clearSelection()
-  load()
-  loadImports()
-}
-
-async function onBatchSubmit() {
-  const rows = selectedRows.value
-  try {
-    await ElMessageBox.confirm(`确定批量提交选中的 ${rows.length} 张草稿入库单吗？`, '批量提交', { type: 'warning' })
-  } catch { return }
-  const resp = await batchSubmitInboundOrders(rows.map(r => r.id))
-  showBatchResult(resp, '批量提交')
-  tableRef.value?.clearSelection()
-  load()
-}
-
-async function onBatchApprove() {
-  const rows = selectedRows.value
-  try {
-    await ElMessageBox.confirm(`确定批量审核选中的 ${rows.length} 张入库单吗？`, '批量审核', { type: 'warning' })
-  } catch { return }
-  const resp = await batchApproveInboundOrders(rows.map(r => r.id))
-  showBatchResult(resp, '批量审核')
-  tableRef.value?.clearSelection()
-  load()
-}
-
-async function onBatchCancel() {
-  const rows = selectedRows.value
-  try {
-    await ElMessageBox.confirm(`确定批量作废选中的 ${rows.length} 张入库单吗？`, '批量作废', { type: 'warning', confirmButtonClass: 'el-button--danger' })
-  } catch { return }
-  const resp = await batchCancelInboundOrders(rows.map(r => r.id))
-  showBatchResult(resp, '批量作废')
-  tableRef.value?.clearSelection()
-  load()
-}
-
-async function onBatchDeleteByTask(taskId: string) {
-  try {
-    await ElMessageBox.confirm(`确定按批次号 ${taskId} 删除全部 DRAFT 入库单吗？`, '按批次删除', { type: 'warning', confirmButtonClass: 'el-button--danger' })
-  } catch { return }
-  const resp = await deleteInboundByImportTask(taskId)
-  showBatchResult(resp, `批次 ${taskId} 删除`)
-  tableRef.value?.clearSelection()
-  query.import_task_id = ''
-  load()
-  loadImports()
-}
-
-// ---------- 新建 / 编辑 ----------
-const editDialog = reactive({ visible: false, loading: false, editingId: '' as EntityID })
-const editForm = reactive({
-  warehouse_id: undefined as EntityID | undefined,
-  remark: '',
-  details: [] as { _uid: string; sku_id: EntityID | undefined; expected_qty: number }[],
-})
-
-function makeDetail(sku_id?: EntityID, expected_qty = 1) {
-  return { _uid: crypto.randomUUID(), sku_id, expected_qty }
-}
-
-function openCreate() {
-  editDialog.editingId = ''
-  editForm.warehouse_id = undefined
-  editForm.remark = ''
-  editForm.details = [makeDetail()]
-  editDialog.visible = true
-}
-
-async function openEdit(row: InboundOrderItem) {
-  editDialog.editingId = row.id
-  editDialog.visible = true
-  const detail = await getInboundOrder(row.id)
-  editForm.warehouse_id = detail.order.warehouse_id
-  editForm.remark = detail.order.remark
-  editForm.details = (detail.details ?? []).map((d) => makeDetail(d.sku_id, d.expected_qty))
-  if (editForm.details.length === 0) editForm.details = [makeDetail()]
-}
-
-function addDetail() {
-  editForm.details.push(makeDetail())
-}
-
-function removeDetail(index: number) {
-  editForm.details.splice(index, 1)
-}
-
-async function submitEdit() {
-  if (!editForm.warehouse_id) {
-    ElMessage.warning('请选择仓库')
-    return
-  }
-  const details = editForm.details.filter((d) => d.sku_id && d.expected_qty > 0)
-  if (details.length === 0) {
-    ElMessage.warning('请至少填写一行有效的明细（选择货品且数量大于 0）')
-    return
-  }
-  const payload = {
-    warehouse_id: editForm.warehouse_id,
-    remark: editForm.remark,
-    details: details.map((d) => ({ sku_id: d.sku_id!, expected_qty: d.expected_qty })),
-  }
-  editDialog.loading = true
-  try {
-    if (editDialog.editingId) {
-      await updateInboundOrder(editDialog.editingId, payload)
-      ElMessage.success('保存成功')
-    } else {
-      const created = await createInboundOrder(payload)
-      emitBusinessEvent(BUSINESS_EVENTS.INBOUND_ORDER_CREATED, {
-        orderId: String(created.id),
-        orderNo: created.order_no,
-      })
-      ElMessage.success('创建成功')
-    }
-    editDialog.visible = false
-    load()
-  } finally {
-    editDialog.loading = false
-  }
-}
+const {
+  importDialog,
+  importFile,
+  importInfo,
+  openImport,
+  closeImport,
+  startImport,
+  onFileChange,
+  onFileRemove,
+  handleExceed,
+} = useInboundImport(load)
 
 // ---------- 收货 / 上架 ----------
 const receiveRef = ref<InstanceType<typeof ReceiveDialog>>()
@@ -389,89 +70,15 @@ function openPutaway(row: InboundOrderItem) {
   putawayRef.value?.open(row.id)
 }
 
-// ---------- Excel 导入 ----------
-const importDialog = reactive({ visible: false, uploading: false })
-const importFile = ref<File | null>(null)
-const importInfo = ref<ImportTaskItem | null>(null)
-let pollTimer = 0
-
-function onFileChange(file: UploadFile) {
-  importFile.value = (file.raw as File) ?? null
+function goDetail(row: InboundOrderItem) {
+  router.push(`/inbound/orders/${row.id}`)
 }
 
-function onFileRemove() {
-  importFile.value = null
-}
-
-function handleExceed(files: File[]) {
-  const raw = files[0] as UploadRawFile
-  raw.uid = genFileId()
-  importFile.value = raw as unknown as File
-}
-
-function stopPolling() {
-  if (pollTimer) {
-    window.clearInterval(pollTimer)
-    pollTimer = 0
-  }
-}
-
-function openImport() {
-  importFile.value = null
-  importInfo.value = null
-  importDialog.visible = true
-}
-
-function closeImport() {
-  stopPolling()
-  importDialog.visible = false
-}
-
-async function startImport() {
-  if (!importFile.value) {
-    ElMessage.warning('请先选择 Excel 文件')
-    return
-  }
-  importDialog.uploading = true
-  importInfo.value = null
-  try {
-    const resp = await importInboundExcel(importFile.value)
-    ElMessage.success('文件已上传，开始解析导入')
-    importInfo.value = {
-      task_id: resp.task_id,
-      status: 'PENDING',
-      file_name: importFile.value.name,
-      total_rows: 0,
-      success_rows: 0,
-      fail_rows: 0,
-      error_msg: '',
-    }
-    startPolling(resp.task_id)
-  } finally {
-    importDialog.uploading = false
-  }
-}
-
-function startPolling(taskId: string) {
-  stopPolling()
-  pollTimer = window.setInterval(async () => {
-    try {
-      const info = await getImportStatus(taskId)
-      importInfo.value = info
-      if (info.status === 'COMPLETED' || info.status === 'FAILED') {
-        stopPolling()
-        if (info.status === 'COMPLETED') {
-          ElMessage.success(`导入完成：成功 ${info.success_rows} 条，失败 ${info.fail_rows} 条`)
-        }
-        load()
-      }
-    } catch {
-      stopPolling()
-    }
-  }, 2000)
-}
-
-onUnmounted(stopPolling)
+onMounted(async () => {
+  await loadOptions()
+  await loadImports()
+  load()
+})
 
 useAutoRefresh(() => load(true), 0, () => selectedRows.value.length === 0)
 </script>
