@@ -35,3 +35,15 @@ export function matchGuideStepByRoute(
     .filter(({ step }) => resolveGuideRoute(step.route, orderId, orderNo).split('?')[0] === routePath)
   return matches.find(({ step }) => !doneStepIds.includes(step.id)) ?? matches.at(-1) ?? null
 }
+
+/** 当前路径是否属于该场景的任一步骤，用于检测是否偏离引导流程。 */
+export function isGuideFlowRoute(
+  scenario: GuideScenario,
+  routePath: string,
+  orderId: string,
+  orderNo: string,
+): boolean {
+  return getGuideSteps(scenario).some(
+    (step) => resolveGuideRoute(step.route, orderId, orderNo).split('?')[0] === routePath,
+  )
+}

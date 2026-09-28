@@ -1,55 +1,35 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type CSSProperties } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { computed, ref, type CSSProperties } from 'vue'
 import { getDemoActivity } from '@/api/demo'
 import type { DemoActivitySnapshot } from '@/api/types'
-import { useAuthStore } from '@/stores/auth'
-import { GUIDE_SCENARIO_LABELS, getGuideStep, resolveGuideRoute, useGuideStore } from '@/stores/guide'
+import { useGuideRunner } from '@/composables/demo/useGuideRunner'
+import { GUIDE_SCENARIO_LABELS, useGuideStore } from '@/stores/guide'
 import { formatTime } from '@/utils'
-import { rememberDemoExecutionWindow } from '@/utils/demoEvidence'
 import { buildBusinessOperationRows, type DemoOperationRow } from '@/utils/demoOperations'
 
-interface TargetRect {
-  top: number
-  left: number
-  width: number
-  height: number
-}
-
-type ActionState = 'idle' | 'pending' | 'failed'
-
-const route = useRoute()
-const router = useRouter()
-const auth = useAuthStore()
 const guide = useGuideStore()
+// 生命周期、路由与目标定位都在 runner 中，这里只消费结果做展示。
+const {
+  visible,
+  contentVisible,
+  step,
+  scenarioLabel,
+  targetRect,
+  viewport,
+  restartGuide,
+  skipGuide,
+  exitGuide,
+  repositionGuide,
+  completeNavigate,
+  completedOrderPath,
+  manualEvidencePath,
+} = useGuideRunner()
 
-const targetRect = ref<TargetRect | null>(null)
-const viewport = ref({ width: window.innerWidth, height: window.innerHeight })
-const businessLayerOpen = ref(false)
-const actionState = ref<ActionState>('idle')
 const recordsVisible = ref(false)
 const recordsLoading = ref(false)
 const recordsError = ref('')
 const activity = ref<DemoActivitySnapshot | null>(null)
 
-let targetObserver: InstanceType<typeof window.ResizeObserver> | undefined
-let bodyObserver: InstanceType<typeof window.MutationObserver> | undefined
-let locateFrame: number | undefined
-let locateAttempts = 0
-let lastLocatedStepId = ''
-let observedTarget: HTMLElement | null = null
-let actionRevision = ''
-let cancellationClicked = false
-
-const visible = computed(() => auth.isDemo && (guide.active || guide.completed))
-const contentVisible = computed(
-  () => visible.value && !guide.completed && actionState.value === 'idle' && !businessLayerOpen.value,
-)
-const step = computed(() => guide.currentStepDefinition)
-const scenarioLabel = computed(() =>
-  guide.scenario ? GUIDE_SCENARIO_LABELS[guide.scenario] : '业务',
-)
 const completionSteps = computed(() => {
   if (guide.scenario === 'inbound') {
     return ['创建', '提交', '审核', '收货', '上架', '库存增加']
@@ -141,221 +121,6 @@ const completedPanelStyle = computed<CSSProperties>(() =>
     : { right: '24px', bottom: '24px', width: 'min(420px, calc(100vw - 48px))' },
 )
 
-function clearTarget(): void {
-  targetRect.value = null
-  targetObserver?.disconnect()
-  targetObserver = undefined
-  observedTarget = null
-}
-
-function refreshTarget(): void {
-  if (!contentVisible.value || !step.value) {
-    clearTarget()
-    return
-  }
-
-  const element = document.querySelector<HTMLElement>(step.value.target)
-  if (!element) {
-    clearTarget()
-    return
-  }
-
-  if (observedTarget !== element) {
-    clearTarget()
-    observedTarget = element
-    if (window.ResizeObserver) {
-      targetObserver = new window.ResizeObserver(() => refreshTarget())
-      targetObserver.observe(element)
-    }
-  }
-
-  const rect = element.getBoundingClientRect()
-  if (rect.width <= 0 || rect.height <= 0) {
-    targetRect.value = null
-    return
-  }
-  targetRect.value = {
-    top: rect.top,
-    left: rect.left,
-    width: rect.width,
-    height: rect.height,
-  }
-
-  if (lastLocatedStepId !== step.value.id) {
-    lastLocatedStepId = step.value.id
-    element.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' })
-  }
-}
-
-function scheduleTargetLocate(reset = false): void {
-  if (reset) locateAttempts = 0
-  if (locateFrame !== undefined) window.cancelAnimationFrame(locateFrame)
-
-  const locate = () => {
-    locateFrame = undefined
-    refreshTarget()
-    if (!targetRect.value && contentVisible.value && locateAttempts < 30) {
-      locateAttempts += 1
-      locateFrame = window.requestAnimationFrame(locate)
-      return
-    }
-    if (!targetRect.value && contentVisible.value) {
-      guide.setMismatch('未找到当前步骤对应的业务按钮。请重新定位当前步骤，或重新开始/退出引导。')
-    }
-  }
-  locateFrame = window.requestAnimationFrame(locate)
-}
-
-function updateViewport(): void {
-  viewport.value = { width: window.innerWidth, height: window.innerHeight }
-  refreshTarget()
-}
-
-function guideRevision(): string {
-  return [guide.currentStep, guide.lastOutcome, guide.mismatch, ...guide.verifiedStepIds].join('|')
-}
-
-function isElementVisible(element: HTMLElement): boolean {
-  if (element.hidden) return false
-  if (element.getAttribute('aria-hidden') === 'true') return false
-  const style = window.getComputedStyle(element)
-  if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) {
-    return false
-  }
-  const rect = element.getBoundingClientRect()
-  return rect.width > 0 && rect.height > 0
-}
-
-function hasBusinessLayer(): boolean {
-  return Array.from(document.querySelectorAll<HTMLElement>('.el-overlay')).some(isElementVisible)
-}
-
-function hasBusinessError(): boolean {
-  return Array.from(
-    document.querySelectorAll<HTMLElement>('.el-message--error, .el-notification--error'),
-  ).some(isElementVisible)
-}
-
-function updateBusinessLayerState(): void {
-  const layerOpen = hasBusinessLayer()
-  const errorOpen = hasBusinessError()
-  businessLayerOpen.value = layerOpen
-
-  if (actionState.value === 'pending' && errorOpen) {
-    actionState.value = 'failed'
-    cancellationClicked = false
-    return
-  }
-
-  if (actionState.value === 'failed' && !errorOpen && !layerOpen) {
-    actionState.value = 'idle'
-    cancellationClicked = false
-    if (guide.active && !guide.completed) {
-      guide.setMismatch('当前操作未成功，请重新定位当前步骤或重新开始引导。')
-    }
-    return
-  }
-
-  if (actionState.value === 'pending' && cancellationClicked && !layerOpen && !errorOpen) {
-    actionState.value = 'idle'
-    cancellationClicked = false
-  }
-}
-
-function beginTargetAction(): void {
-  actionRevision = guideRevision()
-  cancellationClicked = false
-  actionState.value = 'pending'
-  clearTarget()
-}
-
-function syncActionFromGuide(): void {
-  if (actionState.value === 'pending' && guideRevision() !== actionRevision) {
-    actionState.value = 'idle'
-    cancellationClicked = false
-  }
-}
-
-function onDocumentClickCapture(event: globalThis.Event): void {
-  const target = event.target as HTMLElement | null
-  if (!target?.closest) return
-
-  const clickedButton = target.closest('button')
-  const clickedBusinessContainer = clickedButton?.closest('.el-dialog, .el-message-box')
-  if (clickedButton && clickedBusinessContainer) {
-    const buttonText = clickedButton.textContent?.replace(/\s+/g, '') || ''
-    if (['取消', '返回', '关闭', '继续演示'].some((label) => buttonText.includes(label))) {
-      cancellationClicked = true
-    }
-  }
-
-  if (!contentVisible.value || !step.value) return
-  const actionable = target.closest('button, a, [role="button"], .el-button')
-  if (!actionable || !actionable.closest(step.value.target)) return
-  beginTargetAction()
-}
-
-function onKeydownCapture(event: KeyboardEvent): void {
-  if (event.key === 'Escape' && hasBusinessLayer()) cancellationClicked = true
-}
-
-function resolvedCurrentStepRoute(): string {
-  if (!guide.scenario) return ''
-  const current = getGuideStep(guide.scenario, guide.currentStep)
-  if (!current) return ''
-  return resolveGuideRoute(current.route, guide.orderId, guide.orderNo)
-}
-
-function isCurrentGuideRoute(path: string): boolean {
-  if (!guide.scenario) return false
-  return guide.steps.some((item) =>
-    resolveGuideRoute(item.route, guide.orderId, guide.orderNo).split('?')[0] === path,
-  )
-}
-
-function stopGuideOutsideFlow(): void {
-  actionState.value = 'idle'
-  cancellationClicked = false
-  businessLayerOpen.value = false
-  clearTarget()
-  guide.cancel()
-  ElMessage.info('已离开引导流程，本次引导已自动结束')
-}
-
-async function restartGuide(): Promise<void> {
-  actionState.value = 'idle'
-  cancellationClicked = false
-  const firstStep = guide.restart()
-  if (!firstStep) return
-  await router.push(firstStep.route)
-}
-
-function completedOrderPath(): string {
-  if (guide.scenario === 'outbound') return `/outbound/orders/${guide.orderId}`
-  if (guide.scenario === 'stocktake') return `/stocktake/orders/${guide.orderId}`
-  return `/inbound/orders/${guide.orderId}`
-}
-
-async function completeNavigate(path: string): Promise<void> {
-  actionState.value = 'idle'
-  cancellationClicked = false
-  guide.cancel()
-  await router.push(path)
-}
-
-function manualEvidencePath(): string {
-  const params = new window.URLSearchParams()
-  if (guide.scenario) params.set('scenario', guide.scenario)
-  params.set('source', 'manual')
-  if (guide.orderId) params.set('order_id', guide.orderId)
-  if (guide.orderNo) params.set('order_no', guide.orderNo)
-  if (guide.taskId) params.set('task_id', guide.taskId)
-  if (guide.taskNo) params.set('task_no', guide.taskNo)
-  if (guide.startedAt) params.set('started_at', new Date(guide.startedAt).toISOString())
-  params.set('completed_at', new Date().toISOString())
-  return `/demo/activity?${params.toString()}`
-}
-
 async function openRecords(): Promise<void> {
   recordsVisible.value = true
   recordsLoading.value = true
@@ -368,141 +133,6 @@ async function openRecords(): Promise<void> {
     recordsLoading.value = false
   }
 }
-
-function repositionGuide(): void {
-  actionState.value = 'idle'
-  cancellationClicked = false
-  if (guide.reposition(route.path)) scheduleTargetLocate(true)
-}
-
-function skipGuide(): void {
-  actionState.value = 'idle'
-  cancellationClicked = false
-  guide.cancel()
-  ElMessage.info('已跳过本次手动引导')
-}
-
-function exitGuide(): void {
-  actionState.value = 'idle'
-  cancellationClicked = false
-  guide.cancel()
-}
-
-watch(
-  () => [visible.value, contentVisible.value, guide.currentStep, route.fullPath] as const,
-  async ([isVisible, isContentVisible]) => {
-    if (!isVisible) {
-      clearTarget()
-      stopBodyObserver()
-      lastLocatedStepId = ''
-      return
-    }
-    startBodyObserver()
-    updateBusinessLayerState()
-    if (!isContentVisible) {
-      clearTarget()
-      return
-    }
-    await nextTick()
-    scheduleTargetLocate(true)
-  },
-  { immediate: true },
-)
-
-watch(
-  [visible, () => guide.completed],
-  ([isVisible, completed]) => {
-    document.body.classList.toggle('manual-guide-active', isVisible && !completed)
-  },
-  { immediate: true },
-)
-
-watch(
-  () => guide.currentStep,
-  async (current, previous) => {
-    if (!guide.active || guide.completed || current <= previous) return
-    await nextTick()
-    const targetRoute = resolvedCurrentStepRoute()
-    if (targetRoute && targetRoute.split('?')[0] !== route.path) {
-      await router.push(targetRoute)
-    }
-  },
-)
-
-watch(guideRevision, syncActionFromGuide)
-watch(
-  () => [route.path, guide.active, guide.scenario, guide.orderId, guide.orderNo] as const,
-  ([path, active]) => {
-    if (!active || !guide.scenario) return
-    if (!isCurrentGuideRoute(path)) stopGuideOutsideFlow()
-  },
-  { immediate: true },
-)
-watch(
-  () => guide.completed,
-  (completed) => {
-    if (completed) {
-      actionState.value = 'idle'
-      businessLayerOpen.value = false
-      clearTarget()
-      if (guide.scenario && guide.startedAt) {
-        rememberDemoExecutionWindow(
-          guide.scenario,
-          new Date(guide.startedAt).toISOString(),
-          new Date().toISOString(),
-          guide.orderId ? [{ label: '业务单据', path: completedOrderPath() }] : [],
-        )
-      }
-    }
-  },
-)
-
-watch(
-  () => auth.isDemo,
-  (isDemo) => {
-    if (!isDemo) {
-      actionState.value = 'idle'
-      guide.cancel()
-    }
-  },
-)
-
-function startBodyObserver(): void {
-  if (bodyObserver) return
-  bodyObserver = new window.MutationObserver(() => {
-    updateBusinessLayerState()
-    refreshTarget()
-  })
-  bodyObserver.observe(document.body, {
-    childList: true,
-    subtree: true,
-    attributes: true,
-    attributeFilter: ['class', 'style', 'hidden'],
-  })
-}
-
-function stopBodyObserver(): void {
-  bodyObserver?.disconnect()
-  bodyObserver = undefined
-}
-
-onMounted(() => {
-  window.addEventListener('resize', updateViewport, { passive: true })
-  window.addEventListener('scroll', refreshTarget, { passive: true })
-  document.addEventListener('click', onDocumentClickCapture, true)
-  document.addEventListener('keydown', onKeydownCapture, true)
-})
-
-onBeforeUnmount(() => {
-  window.removeEventListener('resize', updateViewport)
-  window.removeEventListener('scroll', refreshTarget)
-  document.removeEventListener('click', onDocumentClickCapture, true)
-  document.removeEventListener('keydown', onKeydownCapture, true)
-  if (locateFrame !== undefined) window.cancelAnimationFrame(locateFrame)
-  targetObserver?.disconnect()
-  stopBodyObserver()
-  document.body.classList.remove('manual-guide-active')
-})
 </script>
 
 <template>
