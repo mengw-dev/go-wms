@@ -2,27 +2,44 @@ import axios, { type AxiosRequestConfig } from 'axios'
 import { ElMessage } from 'element-plus'
 import router from '@/router'
 import { useAuthStore } from '@/stores/auth'
+import type { ApiResponse } from './types'
+
+/**
+ * 错误分类，便于调用方按类型分支处理，而不用去匹配提示文案：
+ * - auth：登录态失效（HTTP 401）
+ * - demo：演示会话相关错误（70002 / 70003 / 70005 / 70006）
+ * - business：服务端返回了业务错误码（HTTP 层有响应但业务码非 0）
+ * - network：没有拿到响应（断网、超时等）
+ */
+export type ApiErrorKind = 'auth' | 'demo' | 'business' | 'network'
 
 export class ApiError extends Error {
   code?: number
   status?: number
   data?: unknown
+  kind: ApiErrorKind
 
-  constructor(message: string, code?: number, status?: number, data?: unknown) {
+  constructor(message: string, code?: number, status?: number, data?: unknown, kind: ApiErrorKind = 'business') {
     super(message)
     this.name = 'ApiError'
     this.code = code
     this.status = status
     this.data = data
+    this.kind = kind
   }
 }
 
-/** 单个请求的附加选项。 */
+/**
+ * 单个请求的附加选项。
+ *
+ * 请求按用途分为三类，错误提示策略不同：
+ * 1. 用户操作请求（保存/审核/提交/删除）——默认提示，失败必须让用户看到；
+ * 2. 后台自动刷新请求——传 `silentError: true`，失败只抛错不打扰用户；
+ * 3. 轮询请求（导入任务状态等）——同样传 `silentError: true`，由轮询逻辑决定何时提示。
+ *
+ * 认证失败（401）与演示会话失效（70003）由拦截器统一处理，不受此选项影响。
+ */
 export interface RequestOptions {
-  /**
-   * 为 true 时，本请求失败不再弹出全局错误提示，由调用方自行兜底。
-   * 用于后台自动刷新等"失败也不该打扰用户"的场景。
-   */
   silentError?: boolean
 }
 
@@ -32,6 +49,19 @@ declare module 'axios' {
   }
 }
 
+/** 判断响应体是否是后端统一结构（非统一结构时原样返回，例如第三方接口）。 */
+function isApiResponseBody(value: unknown): value is ApiResponse {
+  return !!value && typeof value === 'object' && typeof (value as { code?: unknown }).code === 'number'
+}
+
+/** 按 HTTP 状态码与业务码归类错误。 */
+function classifyError(status: number | undefined, code: number | undefined): ApiErrorKind {
+  if (status === undefined) return 'network'
+  if (status === 401) return 'auth'
+  if (code === 70002 || code === 70003 || code === 70005 || code === 70006) return 'demo'
+  return 'business'
+}
+
 // 演示会话失效时只跳转一次，避免并发请求刷屏。
 let demoSessionRedirecting = false
 
@@ -39,6 +69,22 @@ const service = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || '/api/v1',
   timeout: 20000,
 })
+
+/**
+ * 拦截器在 onFulfilled 中返回 body.data（而非 AxiosResponse），
+ * 因此 axios 实例方法的实际返回类型是 Promise<T> 而非 Promise<AxiosResponse<T>>，
+ * 静态类型与运行时不一致。这里集中做一次类型转换，
+ * 使 get/post/put/del/upload 都能声明准确的返回类型，
+ * 不必在每个函数里重复 `as unknown as Promise<T>`。
+ */
+interface ApiClient {
+  get<T>(url: string, config?: AxiosRequestConfig): Promise<T>
+  post<T>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T>
+  put<T>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T>
+  delete<T>(url: string, config?: AxiosRequestConfig): Promise<T>
+}
+
+const client = service as unknown as ApiClient
 
 /**
  * 处理演示会话失效（70003）：清空登录态并跳转登录页，全程只执行一次，
@@ -77,11 +123,11 @@ service.interceptors.response.use(
       return response.data
     }
     const body = response.data
-    if (body && typeof body === 'object' && typeof body.code === 'number') {
+    if (isApiResponseBody(body)) {
       if (body.code !== 0) {
         const msg = body.msg || '操作失败'
         if (!response.config.silentError) ElMessage.error(msg)
-        return Promise.reject(new ApiError(msg, body.code, undefined, body.data))
+        return Promise.reject(new ApiError(msg, body.code, undefined, body.data, 'business'))
       }
       return body.data
     }
@@ -90,7 +136,7 @@ service.interceptors.response.use(
   (error) => {
     const status = error?.response?.status
     const code = error?.response?.data?.code
-    // 后台自动刷新等场景可在请求级声明静默，失败时只抛错不提示。
+    // 后台自动刷新与轮询等场景可在请求级声明静默，失败时只抛错不提示。
     const silent = error?.config?.silentError === true
     if (status === 401) {
       useAuthStore().clear()
@@ -117,38 +163,34 @@ service.interceptors.response.use(
         error?.response?.data?.code,
         status,
         error?.response?.data?.data,
+        classifyError(status, code),
       ),
     )
   },
 )
 
-// 注意：拦截器在 onFulfilled 中返回 body.data（而非 AxiosResponse），
-// 因此 service.get/post 等方法的实际返回类型是 Promise<T> 而非 Promise<AxiosResponse>。
-// TypeScript 静态类型仍按 AxiosResponse 推断，所以这里用 `as unknown as Promise<T>`
-// 跳过结构类型检查。这是 axios 拦截器返回非标准类型的常见妥协，不应简化。
-// 调用方使用 get<T>/post<T> 时无需再断言，类型安全已得到保证。
 export function get<T = unknown>(
   url: string,
   params?: Record<string, unknown>,
   options?: RequestOptions,
 ): Promise<T> {
-  return service.get(url, { params, ...options }) as unknown as Promise<T>
+  return client.get<T>(url, { params, ...options })
 }
 
 export function post<T = unknown>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T> {
-  return service.post(url, data, config) as unknown as Promise<T>
+  return client.post<T>(url, data, config)
 }
 
 export function put<T = unknown>(url: string, data?: unknown): Promise<T> {
-  return service.put(url, data) as unknown as Promise<T>
+  return client.put<T>(url, data)
 }
 
 export function del<T = unknown>(url: string): Promise<T> {
-  return service.delete(url) as unknown as Promise<T>
+  return client.delete<T>(url)
 }
 
 export function upload<T = unknown>(url: string, formData: FormData): Promise<T> {
-  return service.post(url, formData, {
+  return client.post<T>(url, formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
-  }) as unknown as Promise<T>
+  })
 }
