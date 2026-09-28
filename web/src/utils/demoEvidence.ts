@@ -3,21 +3,24 @@ import { isBusinessOperation } from '@/utils/demoOperations'
 
 const STORAGE_KEY = 'wms-demo-evidence-context-v1'
 
-export interface DemoEvidenceContext {
+/**
+ * 一次演示执行的公共上下文。
+ * 业务证据与筛选条件共享同一套运行标识，避免各自维护重复字段。
+ */
+export interface DemoRunContext {
   scenario: string
   startedAt: string
   completedAt: string
   summary: string
+}
+
+export interface DemoEvidenceContext extends DemoRunContext {
   evidence: DemoScenarioResult['evidence']
   links: DemoScenarioResult['links']
 }
 
-export interface DemoEvidenceFocus {
-  scenario: string
+export interface DemoEvidenceFocus extends DemoRunContext {
   source: string
-  startedAt: string
-  completedAt: string
-  summary: string
   orderIds: Record<string, string[]>
   orderNos: string[]
   taskIds: string[]

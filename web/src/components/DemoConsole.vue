@@ -3,17 +3,11 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Document, HomeFilled, Refresh } from '@element-plus/icons-vue'
-import {
-  acquireDemoSession,
-  heartbeatDemoSession,
-  releaseDemoSession,
-  resetDemoData,
-  runDemoScenario as requestDemoScenario,
-} from '@/api/demo'
-import { ApiError } from '@/api/request'
-import type { DemoScenarioResult } from '@/api/types'
+import { resetDemoData } from '@/api/demo'
 import DemoRunViewer from '@/components/demo/DemoRunViewer.vue'
 import StagedDemoRunner from '@/components/demo/StagedDemoRunner.vue'
+import { useDemoRunner } from '@/composables/demo/useDemoRunner'
+import { useDemoSession } from '@/composables/demo/useDemoSession'
 import { useAuthStore } from '@/stores/auth'
 import { GUIDE_SCENARIO_LABELS, useGuideStore } from '@/stores/guide'
 import {
@@ -23,8 +17,6 @@ import {
   RUN_DEMO_STAGED_EVENT,
   type DemoConsoleScenario,
 } from '@/utils/events'
-import { rememberDemoEvidence } from '@/utils/demoEvidence'
-import { mergeDemoScenarioResults } from '@/utils/demoScenario'
 
 const route = useRoute()
 const router = useRouter()
@@ -32,13 +24,7 @@ const auth = useAuthStore()
 const guide = useGuideStore()
 const ARCHITECTURE_URL = '/overview.html'
 const visible = ref(false)
-const acquiring = ref(false)
-const scenarioRunning = ref(false)
 const resetting = ref(false)
-const exiting = ref(false)
-const remaining = ref(0)
-const result = ref<DemoScenarioResult | null>(null)
-const resultDialogVisible = ref(false)
 const stagedDialogVisible = ref(false)
 const stagedRunnerRef = ref<InstanceType<typeof StagedDemoRunner>>()
 const stagedStarted = ref(false)
@@ -47,30 +33,27 @@ const stagedCompleted = ref(false)
 const stagedProgress = ref(0)
 const stagedRunning = ref(false)
 const stagedRunnerKey = ref(0)
-const runningScenario = ref<DemoConsoleScenario | null>(null)
-let countdownTimer: number | undefined
-let renewTimer: number | undefined
-let redirectingToLogin = false
-let refreshing = false
-// 最近一次用户交互与最近一次向后端续期的时间戳（毫秒）。
-let lastActivityAt = 0
-let lastRenewAt = 0
-// 有交互后置为 true，等待续期定时器把后端 TTL 同步刷新。
-let renewPending = false
-let countdownWarningShown = false
 
-// 交互事件节流：鼠标移动等高频事件最多每秒记录一次。
-const ACTIVITY_THROTTLE_MS = 1_000
-// 续期检查周期与两次续期之间的最小间隔。
-const RENEW_CHECK_INTERVAL_MS = 10_000
-const RENEW_MIN_INTERVAL_MS = 20_000
-// 剩余时间低于该阈值（秒）时，用户交互立即触发续期，不等定时器。
-const RENEW_URGENT_SECONDS = 30
+// 演示会话（领取 / 心跳续期 / 空闲释放）与场景执行结果分别由 composable 维护，
+// 这里只消费它们的状态并负责展示与交互。
+const { acquiring, exiting, remaining, idleTimeoutMinutes, initialize, release } = useDemoSession({
+  onSessionClosed: () => {
+    visible.value = false
+    resultDialogVisible.value = false
+    stagedDialogVisible.value = false
+  },
+})
+const { scenarioRunning, runningScenario, result, resultDialogVisible, runScenario, clearResult } = useDemoRunner({
+  onBeforeRun: () => {
+    if (guide.active || guide.completed) guide.cancel()
+  },
+  onSettled: () => emitDataChanged(),
+})
+
 const busy = computed(
   () => acquiring.value || scenarioRunning.value || resetting.value || exiting.value,
 )
 const resetUnavailable = computed(() => busy.value || stagedRunning.value)
-const idleTimeoutMinutes = computed(() => Math.max(1, Math.round(idleTTL() / 60)))
 const guideActive = computed(() => guide.active && Boolean(guide.scenario))
 const guideCompleted = computed(() => !guide.active && guide.completed && Boolean(guide.scenario))
 const guideScenarioLabel = computed(() => guide.scenario ? GUIDE_SCENARIO_LABELS[guide.scenario] : '业务')
@@ -119,124 +102,6 @@ const currentStepText = computed(() => {
   if (result.value?.steps.length) return `已完成 ${result.value.steps.length} / ${result.value.steps.length} 步`
   return '尚未开始'
 })
-
-/** 会话空闲时长（秒），来源于后端下发的 TTL。 */
-function idleTTL() {
-  return auth.demoSessionExpiresIn || 300
-}
-
-function clearTimers() {
-  if (countdownTimer !== undefined) window.clearInterval(countdownTimer)
-  if (renewTimer !== undefined) window.clearInterval(renewTimer)
-  countdownTimer = undefined
-  renewTimer = undefined
-}
-
-/**
- * 记录一次用户交互并标记需要向后端续期。高频事件通过时间戳节流，避免频繁触发。
- * 倒计时不本地乐观重置为完整 TTL，续期成功后按后端返回的真实 TTL 同步。
- */
-function markActivity() {
-  if (!auth.isDemo || !auth.demoSessionId) return
-  const now = Date.now()
-  if (now - lastActivityAt < ACTIVITY_THROTTLE_MS) return
-  lastActivityAt = now
-  renewPending = true
-  if (remaining.value > 0 && remaining.value <= RENEW_URGENT_SECONDS) {
-    void refreshSession()
-  }
-}
-
-/**
- * 启动空闲倒计时与续期定时器：
- * - 倒计时每秒递减，表示无操作的剩余时间，归零即自动释放会话；
- * - 只有发生过用户交互时才向后端续期，挂机期间会随 TTL 到期自动释放。
- */
-function startTimers() {
-  clearTimers()
-  if (remaining.value <= 0) remaining.value = idleTTL()
-  lastRenewAt = Date.now()
-  renewPending = false
-  countdownTimer = window.setInterval(() => {
-    if (remaining.value <= 0) {
-      void handleIdleTimeout()
-      return
-    }
-    remaining.value -= 1
-    if (remaining.value === 60 && !countdownWarningShown) {
-      countdownWarningShown = true
-      ElMessage.warning('演示会话将在 1 分钟内空闲释放，可继续操作或点击“重新开始”重置数据')
-    }
-    if (remaining.value === 0) void handleIdleTimeout()
-  }, 1000)
-  renewTimer = window.setInterval(() => {
-    // 场景执行期间仍需续期，避免长流程进行中会话先过期。
-    if (!renewPending || refreshing || !auth.demoSessionId) return
-    if (Date.now() - lastRenewAt < RENEW_MIN_INTERVAL_MS) return
-    void refreshSession()
-  }, RENEW_CHECK_INTERVAL_MS)
-}
-
-/** 向后端续期演示会话（仅在最近有用户交互时调用）。 */
-async function refreshSession() {
-  if (refreshing || !auth.demoSessionId) return
-  refreshing = true
-  try {
-    const info = await heartbeatDemoSession()
-    auth.setDemoSession(info)
-    remaining.value = info.expires_in
-    countdownWarningShown = false
-    lastRenewAt = Date.now()
-    renewPending = false
-  } catch (error) {
-    if (error instanceof ApiError && error.code === 70003) {
-      if (redirectingToLogin) return
-      redirectingToLogin = true
-      clearTimers()
-      auth.clear()
-    }
-  } finally {
-    refreshing = false
-  }
-}
-
-/**
- * 空闲超时：主动释放会话（释放锁并恢复演示数据），然后回到登录页。
- * 若后端 TTL 已先到期，释放接口会返回失败，忽略即可。
- */
-async function handleIdleTimeout() {
-  if (redirectingToLogin) return
-  redirectingToLogin = true
-  clearTimers()
-  try {
-    await releaseDemoSession()
-  } catch {
-    // 后端会话可能已随 TTL 过期，继续清理本地状态。
-  }
-  auth.clear()
-  visible.value = false
-  ElMessage.warning('长时间未操作，演示会话已自动释放（数据已恢复初始状态）')
-  await router.push('/login')
-}
-
-async function acquire() {
-  if (acquiring.value) return
-  acquiring.value = true
-  try {
-    const info = await acquireDemoSession()
-    auth.setDemoSession(info)
-    remaining.value = info.expires_in
-    countdownWarningShown = false
-    startTimers()
-  } catch {
-    if (redirectingToLogin) return
-    redirectingToLogin = true
-    auth.clear()
-    await router.push('/login')
-  } finally {
-    acquiring.value = false
-  }
-}
 
 function onOpenDemoConsole() {
   visible.value = true
@@ -287,76 +152,15 @@ function clearStagedRun(): void {
   stagedRunnerKey.value += 1
 }
 
-async function initialize() {
-  if (!auth.isDemo) return
-  if (auth.demoSessionId) {
-    try {
-      const info = await heartbeatDemoSession()
-      auth.setDemoSession(info)
-      remaining.value = info.expires_in
-      startTimers()
-      return
-    } catch {
-      auth.clearDemoSession()
-      return
-    }
-  }
-  await acquire()
-}
-
-async function runFullScenario(): Promise<DemoScenarioResult> {
-  const inbound = await requestDemoScenario('inbound')
-  try {
-    const outbound = await requestDemoScenario('outbound')
-    return mergeDemoScenarioResults([inbound, outbound])
-  } catch (error) {
-    if (error instanceof ApiError && isDemoScenarioResult(error.data)) {
-      return mergeDemoScenarioResults([inbound, error.data])
-    }
-    throw error
-  }
-}
-
-async function runScenario(scenario: DemoConsoleScenario) {
+function startScenario(scenario: DemoConsoleScenario) {
   if (busy.value) return
-  if (guide.active || guide.completed) guide.cancel()
-  scenarioRunning.value = true
-  runningScenario.value = scenario
-  result.value = null
-  resultDialogVisible.value = false
-  const startedAt = new Date().toISOString()
-  try {
-    const demoResult = scenario === 'full' ? await runFullScenario() : await requestDemoScenario(scenario)
-    result.value = demoResult
-    resultDialogVisible.value = true
-    rememberDemoEvidence(demoResult, startedAt)
-    emitDataChanged()
-    if (demoResult.status !== 'failed') {
-      ElMessage.success(demoResult.summary)
-    }
-  } catch (error) {
-    if (error instanceof ApiError && isDemoScenarioResult(error.data)) {
-      result.value = error.data
-      resultDialogVisible.value = true
-      rememberDemoEvidence(error.data, startedAt)
-      emitDataChanged()
-    }
-  } finally {
-    scenarioRunning.value = false
-    runningScenario.value = null
-  }
+  void runScenario(scenario)
 }
 
 function onRunDemoScenario(event: unknown) {
   const scenario = (event as { detail?: { scenario?: DemoConsoleScenario } }).detail?.scenario || 'full'
   if (route.path !== '/demo') visible.value = true
-  void runScenario(scenario)
-}
-
-function isDemoScenarioResult(value: unknown): value is DemoScenarioResult {
-  if (!value || typeof value !== 'object') return false
-  const candidate = value as Partial<DemoScenarioResult>
-  return typeof candidate.summary === 'string' && Array.isArray(candidate.steps)
+  startScenario(scenario)
 }
 
 async function navigateTo(path: string) {
@@ -384,8 +188,7 @@ async function resetData() {
   resetting.value = true
   try {
     await resetDemoData()
-    result.value = null
-    resultDialogVisible.value = false
+    clearResult()
     guide.cancel()
     clearStagedRun()
     emitDataChanged()
@@ -410,46 +213,20 @@ async function releaseAndExit() {
   } catch {
     return
   }
-  exiting.value = true
-  try {
-    await releaseDemoSession()
-  } catch {
-    // 会话可能已过期，仍需清理本地登录态并返回登录页。
-  } finally {
-    auth.clear()
-    resultDialogVisible.value = false
-    stagedDialogVisible.value = false
-    visible.value = false
-    exiting.value = false
-    await router.push('/login')
-  }
+  await release()
 }
 
 onMounted(() => {
   window.addEventListener(OPEN_DEMO_CONSOLE_EVENT, onOpenDemoConsole)
   window.addEventListener(RUN_DEMO_SCENARIO_EVENT, onRunDemoScenario)
   window.addEventListener(RUN_DEMO_STAGED_EVENT, onOpenStagedDemo)
-  // 用户交互才会刷新空闲倒计时并向后端续期。
-  window.addEventListener('mousemove', markActivity, { passive: true })
-  window.addEventListener('mousedown', markActivity, { passive: true })
-  window.addEventListener('wheel', markActivity, { passive: true })
-  window.addEventListener('scroll', markActivity, { passive: true })
-  window.addEventListener('touchstart', markActivity, { passive: true })
-  window.addEventListener('keydown', markActivity)
   void initialize()
 })
 
 onBeforeUnmount(() => {
-  clearTimers()
   window.removeEventListener(OPEN_DEMO_CONSOLE_EVENT, onOpenDemoConsole)
   window.removeEventListener(RUN_DEMO_SCENARIO_EVENT, onRunDemoScenario)
   window.removeEventListener(RUN_DEMO_STAGED_EVENT, onOpenStagedDemo)
-  window.removeEventListener('mousemove', markActivity)
-  window.removeEventListener('mousedown', markActivity)
-  window.removeEventListener('wheel', markActivity)
-  window.removeEventListener('scroll', markActivity)
-  window.removeEventListener('touchstart', markActivity)
-  window.removeEventListener('keydown', markActivity)
 })
 </script>
 

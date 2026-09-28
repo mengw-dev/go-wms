@@ -171,6 +171,8 @@ export function buildDemoOperationRows(
   operations: DemoOperationLog[],
   snapshot?: DemoActivitySnapshot | null,
 ): DemoOperationRow[] {
+  // 主身份列始终是业务对象（单据/任务）与业务状态变化；
+  // HTTP 方法、路径与状态码只作为 details 里的补充信息，不作为操作记录的主角。
   return operations
     .map((operation) => {
       const meta = operationMeta(operation, snapshot)
@@ -205,6 +207,10 @@ export function buildDemoOperationRows(
     .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
 }
 
+/**
+ * 第一层：业务证据。
+ * 只保留真实业务写操作（建单、提交、审核、收货、上架、拣货、盘点等）产生的记录。
+ */
 export function buildBusinessOperationRows(
   operations: DemoOperationLog[],
   snapshot?: DemoActivitySnapshot | null,
@@ -212,6 +218,10 @@ export function buildBusinessOperationRows(
   return buildDemoOperationRows(operations.filter(isBusinessOperation), snapshot)
 }
 
+/**
+ * 第二层：技术证据。
+ * 单独收敛演示实验类接口（并发分配、并发拣货、补货）的调用记录，与业务证据分层展示。
+ */
 export function buildExperimentOperationRows(
   operations: DemoOperationLog[],
   snapshot?: DemoActivitySnapshot | null,
