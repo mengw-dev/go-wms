@@ -42,14 +42,26 @@ func (s *Service) CreateWarehouse(ctx context.Context, req *dto.WarehouseReq) er
 }
 
 func (s *Service) UpdateWarehouse(ctx context.Context, id int64, req *dto.WarehouseReq) error {
-	return s.repo.UpdateWarehouse(ctx, s.tm.DB(), id, req.Name, req.Remark)
+	if err := s.repo.UpdateWarehouse(ctx, s.tm.DB(), id, req.Name, req.Remark); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return errcode.WarehouseNotFound
+		}
+		return err
+	}
+	return nil
 }
 
 func (s *Service) UpdateWarehouseStatus(ctx context.Context, id int64, status int) error {
 	if status != 0 && status != 1 {
 		return errcode.ParamError
 	}
-	return s.repo.UpdateWarehouseStatus(ctx, s.tm.DB(), id, status)
+	if err := s.repo.UpdateWarehouseStatus(ctx, s.tm.DB(), id, status); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return errcode.WarehouseNotFound
+		}
+		return err
+	}
+	return nil
 }
 
 func (s *Service) DeleteWarehouse(ctx context.Context, id int64) error {

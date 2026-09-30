@@ -41,24 +41,19 @@ func (r *Repository) CreateWarehouse(ctx context.Context, db *gorm.DB, w *model.
 }
 
 func (r *Repository) UpdateWarehouse(ctx context.Context, db *gorm.DB, id int64, name, remark string) error {
-	return db.WithContext(ctx).Model(&model.Warehouse{}).Where("id = ?", id).
-		Updates(map[string]any{"name": name, "remark": remark}).Error
+	res := db.WithContext(ctx).Model(&model.Warehouse{}).Where("id = ?", id).
+		Updates(map[string]any{"name": name, "remark": remark})
+	return dbutil.RequireAffected(res)
 }
 
 // UpdateWarehouseStatus 只更新仓库状态，避免状态接口覆盖名称和备注。
 func (r *Repository) UpdateWarehouseStatus(ctx context.Context, db *gorm.DB, id int64, status int) error {
-	return db.WithContext(ctx).Model(&model.Warehouse{}).Where("id = ?", id).Update("status", status).Error
+	res := db.WithContext(ctx).Model(&model.Warehouse{}).Where("id = ?", id).Update("status", status)
+	return dbutil.RequireAffected(res)
 }
 
 func (r *Repository) DeleteWarehouse(ctx context.Context, db *gorm.DB, id int64) error {
-	res := db.WithContext(ctx).Unscoped().Delete(&model.Warehouse{}, id)
-	if res.Error != nil {
-		return res.Error
-	}
-	if res.RowsAffected == 0 {
-		return gorm.ErrRecordNotFound
-	}
-	return nil
+	return dbutil.RequireAffected(db.WithContext(ctx).Unscoped().Delete(&model.Warehouse{}, id))
 }
 
 func (r *Repository) CountLocationsByWarehouse(ctx context.Context, db *gorm.DB, warehouseID int64) (int64, error) {

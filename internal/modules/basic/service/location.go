@@ -107,7 +107,13 @@ func (s *Service) UpdateLocationStatus(ctx context.Context, id int64, status int
 	if status != model.LocationStatusIdle && status != model.LocationStatusDisabled && status != model.LocationStatusOccupied {
 		return errcode.ParamError
 	}
-	return s.repo.UpdateLocation(ctx, s.tm.DB(), id, status)
+	if err := s.repo.UpdateLocation(ctx, s.tm.DB(), id, status); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return errcode.LocationNotFound
+		}
+		return err
+	}
+	return nil
 }
 
 func (s *Service) ListLocations(ctx context.Context, q *dto.LocationQuery) ([]*model.Location, int64, error) {
@@ -184,6 +190,9 @@ func (s *Service) GetLocation(ctx context.Context, id int64) (*model.Location, e
 
 func (s *Service) UpdateLocationStatusInTx(ctx context.Context, tx *gorm.DB, id int64, status int) error {
 	if err := s.repo.UpdateLocationStatusInTx(tx, id, status); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return errcode.LocationNotFound
+		}
 		return err
 	}
 	log.WithContext(ctx).Debug("location status updated", "location_id", id, "status", status)

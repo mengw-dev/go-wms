@@ -50,20 +50,14 @@ func (r *Repository) CreateSKU(ctx context.Context, db *gorm.DB, s *model.SKU) e
 }
 
 func (r *Repository) UpdateSKU(ctx context.Context, db *gorm.DB, s *model.SKU) error {
-	return db.WithContext(ctx).Model(&model.SKU{}).Where("id = ?", s.ID).Updates(map[string]any{
+	res := db.WithContext(ctx).Model(&model.SKU{}).Where("id = ?", s.ID).Updates(map[string]any{
 		"code": s.Code, "barcode": s.Barcode, "name": s.Name, "spec": s.Spec, "unit": s.Unit,
-	}).Error
+	})
+	return dbutil.RequireAffected(res)
 }
 
 func (r *Repository) DeleteSKU(ctx context.Context, db *gorm.DB, id int64) error {
-	res := db.WithContext(ctx).Unscoped().Delete(&model.SKU{}, id)
-	if res.Error != nil {
-		return res.Error
-	}
-	if res.RowsAffected == 0 {
-		return gorm.ErrRecordNotFound
-	}
-	return nil
+	return dbutil.RequireAffected(db.WithContext(ctx).Unscoped().Delete(&model.SKU{}, id))
 }
 
 func (r *Repository) ListSKUs(ctx context.Context, db *gorm.DB, keyword string, page, size int) ([]*model.SKU, int64, error) {

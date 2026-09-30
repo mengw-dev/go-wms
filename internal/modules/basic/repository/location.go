@@ -45,23 +45,18 @@ func (r *Repository) CreateLocationBatch(ctx context.Context, db *gorm.DB, list 
 }
 
 func (r *Repository) UpdateLocation(ctx context.Context, db *gorm.DB, id int64, status int) error {
-	return db.WithContext(ctx).Model(&model.Location{}).Where("id = ?", id).Update("status", status).Error
+	res := db.WithContext(ctx).Model(&model.Location{}).Where("id = ?", id).Update("status", status)
+	return dbutil.RequireAffected(res)
 }
 
 // UpdateLocationStatusInTx 业务事务内更新库位状态。
 func (r *Repository) UpdateLocationStatusInTx(tx *gorm.DB, id int64, status int) error {
-	return tx.Model(&model.Location{}).Where("id = ?", id).Update("status", status).Error
+	res := tx.Model(&model.Location{}).Where("id = ?", id).Update("status", status)
+	return dbutil.RequireAffected(res)
 }
 
 func (r *Repository) DeleteLocation(ctx context.Context, db *gorm.DB, id int64) error {
-	res := db.WithContext(ctx).Unscoped().Delete(&model.Location{}, id)
-	if res.Error != nil {
-		return res.Error
-	}
-	if res.RowsAffected == 0 {
-		return gorm.ErrRecordNotFound
-	}
-	return nil
+	return dbutil.RequireAffected(db.WithContext(ctx).Unscoped().Delete(&model.Location{}, id))
 }
 
 func (r *Repository) ListLocations(ctx context.Context, db *gorm.DB, warehouseID int64, zone string, status *int, keyword string, page, size int) ([]*model.Location, int64, error) {

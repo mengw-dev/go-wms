@@ -231,3 +231,15 @@ func TestCreateUserConflictMapsToBusinessError(t *testing.T) {
 		t.Fatalf("user conflict: got %v, want %v", err, errcode.UserExist)
 	}
 }
+
+// 删除/重置不存在的用户必须返回“用户不存在”，而不是把 0 行影响当成成功。
+func TestDeleteMissingUserReturnsNotFound(t *testing.T) {
+	s, _, ctx := userFixture(t)
+
+	if err := s.DeleteUser(ctx, 999999); !errors.Is(err, errcode.UserIDInvalid) {
+		t.Fatalf("delete missing user: got %v, want %v", err, errcode.UserIDInvalid)
+	}
+	if err := s.ResetPassword(ctx, 999999, &dto.ResetPwdReq{Password: "reset" + "-pwd"}); !errors.Is(err, errcode.UserIDInvalid) {
+		t.Fatalf("reset missing user: got %v, want %v", err, errcode.UserIDInvalid)
+	}
+}

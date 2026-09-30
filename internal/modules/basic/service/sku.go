@@ -86,6 +86,9 @@ func (s *Service) UpdateSKU(ctx context.Context, id int64, req *dto.SKUReq) erro
 				return lookupErr
 			}
 		}
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return errcode.SKUNotFound
+		}
 		return err
 	}
 	// 名称、规格等也会缓存；即使条码不变，更新成功后也需要失效。

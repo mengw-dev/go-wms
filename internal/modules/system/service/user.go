@@ -77,7 +77,13 @@ func (s *Service) DeleteUser(ctx context.Context, id int64) error {
 	if builtin {
 		return errcode.ModifyAdminForbidden
 	}
-	return s.repo.DeleteUser(ctx, id)
+	if err := s.repo.DeleteUser(ctx, id); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return errcode.UserIDInvalid
+		}
+		return err
+	}
+	return nil
 }
 
 func (s *Service) ResetPassword(ctx context.Context, id int64, req *dto.ResetPwdReq) error {
@@ -95,7 +101,13 @@ func (s *Service) ResetPassword(ctx context.Context, id int64, req *dto.ResetPwd
 	if err != nil {
 		return err
 	}
-	return s.repo.UpdatePassword(ctx, id, hash)
+	if err := s.repo.UpdatePassword(ctx, id, hash); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return errcode.UserIDInvalid
+		}
+		return err
+	}
+	return nil
 }
 
 func (s *Service) isBuiltinAdmin(ctx context.Context, id int64) (bool, error) {

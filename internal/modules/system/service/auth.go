@@ -99,6 +99,9 @@ func (s *Service) ChangePassword(ctx context.Context, userID int64, req *dto.Cha
 		return err
 	}
 	if err := s.repo.UpdatePassword(ctx, userID, hash); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return errcode.UserIDInvalid
+		}
 		return err
 	}
 	s.invalidatePermCache()

@@ -32,8 +32,9 @@ func (r *Repository) CreateRole(ctx context.Context, role *model.SysRole) error 
 }
 
 func (r *Repository) UpdateRole(ctx context.Context, id int64, name, perms, remark string) error {
-	return r.db.WithContext(ctx).Model(&model.SysRole{}).Where("id = ?", id).
-		Updates(map[string]any{"name": name, "perms": perms, "remark": remark}).Error
+	res := r.db.WithContext(ctx).Model(&model.SysRole{}).Where("id = ?", id).
+		Updates(map[string]any{"name": name, "perms": perms, "remark": remark})
+	return dbutil.RequireAffected(res)
 }
 
 func (r *Repository) DeleteRole(ctx context.Context, id int64) error {

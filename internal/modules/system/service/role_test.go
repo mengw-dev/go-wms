@@ -150,3 +150,21 @@ func TestCreateRoleConflictMapsToBusinessError(t *testing.T) {
 		t.Fatalf("role conflict: got %v, want %v", err, errcode.RoleExist)
 	}
 }
+
+// 更新不存在的角色必须返回“角色不存在”，而不是把 0 行影响当成成功。
+func TestUpdateMissingRoleReturnsNotFound(t *testing.T) {
+	dsn := os.Getenv("WMS_TEST_DSN")
+	if dsn == "" {
+		dsn = "root:1234@tcp(127.0.0.1:3306)/gowms?parseTime=true&timeout=2s"
+	}
+	db := testutil.OpenIsolatedMySQL(t, dsn, &model.SysRole{}, &model.SysUser{}, &model.SysUserRole{})
+	if err := tenant.RegisterGORMCallbacks(db); err != nil {
+		t.Fatal(err)
+	}
+	s := New(repository.New(db), "unused", 1)
+	ctx := tenant.WithTenant(context.Background(), 11)
+
+	if err := s.UpdateRole(ctx, 999999, &dto.RoleUpdateReq{Name: "missing", Perms: "wms:basic"}); !errors.Is(err, errcode.RoleIDInvalid) {
+		t.Fatalf("update missing role: got %v, want %v", err, errcode.RoleIDInvalid)
+	}
+}

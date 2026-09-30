@@ -60,6 +60,9 @@ func (s *Service) UpdateRole(ctx context.Context, id int64, req *dto.RoleUpdateR
 				return lookupErr
 			}
 		}
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return errcode.RoleIDInvalid
+		}
 		return err
 	}
 	s.invalidatePermCache()

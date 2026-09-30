@@ -91,7 +91,7 @@ func (r *Repository) UpdateUser(ctx context.Context, id int64, nickname *string,
 // DeleteUser 删除用户并原子清理角色关联。系统模块的聚合例外由 Repository 自身开启短事务。
 func (r *Repository) DeleteUser(ctx context.Context, id int64) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Delete(&model.SysUser{}, id).Error; err != nil {
+		if err := dbutil.RequireAffected(tx.Delete(&model.SysUser{}, id)); err != nil {
 			return err
 		}
 		return tx.Where("user_id = ?", id).Delete(&model.SysUserRole{}).Error
@@ -99,11 +99,12 @@ func (r *Repository) DeleteUser(ctx context.Context, id int64) error {
 }
 
 func (r *Repository) UpdatePassword(ctx context.Context, id int64, hash string) error {
-	return r.db.WithContext(ctx).Model(&model.SysUser{}).Where("id = ?", id).
+	res := r.db.WithContext(ctx).Model(&model.SysUser{}).Where("id = ?", id).
 		Updates(map[string]any{
 			"password_hash": hash,
 			"token_version": gorm.Expr("token_version + 1"),
-		}).Error
+		})
+	return dbutil.RequireAffected(res)
 }
 
 func (r *Repository) ListUsers(ctx context.Context, keyword string, page, size int) ([]*model.SysUser, int64, error) {
