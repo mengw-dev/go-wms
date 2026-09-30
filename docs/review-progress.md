@@ -90,7 +90,9 @@
 
 已执行：强制隔离 MySQL 的 `go test ./... -count=1`，包括真实并发、事务回滚和全量迁移后 000006 回滚/重新应用；演示会话 Lua 测试连接本地 Redis 兼容服务；`go build ./...`、`go vet ./...`、gofmt 和 golangci-lint。每次 MySQL 测试通过测试辅助函数创建并清理独立 schema。Redis 测试通过 `WMS_TEST_REDIS_ADDR` 显式启用，CI 已配置 Redis 7 服务。
 
-尚未验证：本地 race（缺少 C 编译器）、Docker 构建与运行（daemon 不可用）、本轮改动后的完整浏览器端 E2E。CI 配置不能当作已经实际执行成功的证据。
+2026-09-30 审查分支补充验证：Docker Compose 全栈构建与启动（应用改用 wms_app 非 root 账户）、Playwright E2E 27 用例、k6 60 并发防超卖（40 成功/20 拒绝，无负库存）、迁移场景 A（全新库）与场景 B（旧版本库 6→8 升级：历史数据保留、新索引与 CHECK 约束生效；000008 遇脏数据 fail-fast 且 dirty，修复数据后 force+up 恢复；000007/000008 down→up 循环通过）。
+
+尚未验证：本地 race（缺少 C 编译器，CI 已覆盖）。
 
 发布前先停止旧版本及导入 worker，运行 000006 迁移，再启动新版本。旧 worker 不认识 run_token，不能混用两种执行方式。历史含残品收货可能已有错误任务进度；需要按原始记录核对，不能直接批量回写线上库存。
 
