@@ -507,6 +507,25 @@ make bootstrap-admin
 go run ./cmd/migrate bootstrap-admin
 ```
 
+### 升级已有部署（应用账户）
+
+应用运行时使用独立账户 `wms_app`，root 只用于迁移和管理员初始化。MySQL 官方镜像
+**只在首次初始化数据目录时**创建 `MYSQL_USER`，所以已有 `mysql_data` 数据卷的服务器升级时要：
+
+1. 在服务器 `.env` 补上两项（旧版本 `.env` 没有它们，Compose 会直接报缺失）：
+   `MYSQL_USER=wms_app`、`MYSQL_PASSWORD=<强口令>`；
+2. 正常发布即可：`migrate` 容器先执行结构迁移，再执行 `ensure-app-user` 幂等
+   创建/修复 `wms_app`（已存在则把密码修正为当前配置并重申 `gowms.*` 授权），
+   `wms` 容器随后用该账户连接。
+
+不要用 `docker compose down -v` 来升级：它会删除数据卷并重新初始化数据库。
+
+需要手动单独执行时（连接仍使用 root）：
+
+```bash
+./migrate ensure-app-user
+```
+
 回退一个版本：
 
 ```bash

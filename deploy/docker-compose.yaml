@@ -10,8 +10,8 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD is required, run scripts/windows/start.ps1 or set it in .env}
       MYSQL_DATABASE: ${MYSQL_DATABASE:-gowms}
-      # 应用专用账户：MySQL 官方镜像自动授予 MYSQL_DATABASE 的全部权限。
-      # root 仅用于迁移（DDL）和管理员初始化；应用运行时只用此账户。
+      # 应用专用账户：MySQL 官方镜像只在首次初始化数据目录时创建该账户并授权。
+      # 已存在的数据卷升级时不会重新初始化，改由 migrate 服务的 ensure-app-user 步骤补齐。
       MYSQL_USER: ${MYSQL_USER:-wms_app}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD is required, run scripts/windows/start.ps1 or set it in .env}
       TZ: Asia/Shanghai
@@ -41,16 +41,20 @@ services:
       context: ..
       dockerfile: Dockerfile
     restart: "no"
-    # 迁移容器复用应用镜像，但只执行一次性数据库结构迁移，不应继承 HTTP 健康检查。
+    # 迁移容器复用应用镜像，执行一次性结构迁移与应用账户补齐，不应继承 HTTP 健康检查。
     healthcheck:
       disable: true
     environment:
       WMS_SERVER_MODE: release
       WMS_MYSQL_DSN: root:${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD is required}@tcp(mysql:3306)/${MYSQL_DATABASE:-gowms}?charset=utf8mb4&parseTime=True&loc=Local
+      # 应用账户凭据：ensure-app-user 用它们幂等创建/修复 wms_app（旧数据卷升级的关键一步）。
+      MYSQL_USER: ${MYSQL_USER:-wms_app}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD is required, run scripts/windows/start.ps1 or set it in .env}
       WMS_JWT_SECRET: ${JWT_SECRET:-}
       WMS_INTEGRATION_API_KEY: ${WMS_INTEGRATION_API_KEY:-}
       WMS_INTEGRATION_TENANT_ID: ${WMS_INTEGRATION_TENANT_ID:-0}
-    entrypoint: ["./migrate", "up"]
+    # 先迁移结构，再补齐/修复应用账户：已有数据卷不会因镜像首次初始化而自动拥有该账户。
+    entrypoint: ["sh", "-c", "./migrate up && ./migrate ensure-app-user"]
     depends_on:
       mysql:
         condition: service_healthy

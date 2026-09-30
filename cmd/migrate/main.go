@@ -63,6 +63,16 @@ func run() error {
 		return fmt.Errorf("ping mysql: %w", err)
 	}
 
+	// ensure-app-user 只需要 root 连接，不依赖迁移状态，也不应触碰 schema_migrations，
+	// 因此在构建 migrator 之前单独处理。
+	if flag.Arg(0) == "ensure-app-user" {
+		if err := ensureAppUser(sqlDB, cfg.MySQL.DSN); err != nil {
+			return err
+		}
+		log.Println("application account ensured")
+		return nil
+	}
+
 	driver, err := migratemysql.WithInstance(sqlDB, &migratemysql.Config{})
 	if err != nil {
 		return fmt.Errorf("create migration driver: %w", err)
@@ -163,11 +173,12 @@ func withDB(cfg *config.Config, fn func(*gorm.DB) error) error {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: migrate [flags] <up|down|version|force|bootstrap-admin|seed-demo>")
+	fmt.Fprintln(os.Stderr, "usage: migrate [flags] <up|down|version|force|bootstrap-admin|seed-demo|ensure-app-user>")
 	fmt.Fprintln(os.Stderr, "examples:")
 	fmt.Fprintln(os.Stderr, "  migrate up                              # 只执行数据库结构迁移")
 	fmt.Fprintln(os.Stderr, "  migrate bootstrap-admin                 # 创建/修复平台管理员（release 需要 WMS_ADMIN_PASSWORD）")
 	fmt.Fprintln(os.Stderr, "  migrate seed-demo                       # 演示数据与体验账号（release 禁止）")
+	fmt.Fprintln(os.Stderr, "  migrate ensure-app-user                 # 幂等创建/修复应用账户（MYSQL_USER/MYSQL_PASSWORD）并授予库权限")
 	fmt.Fprintln(os.Stderr, "  migrate -steps 1 down")
 }
 
