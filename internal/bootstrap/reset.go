@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"context"
+	"fmt"
 
 	"gorm.io/gorm"
 
@@ -17,8 +18,11 @@ import (
 // ResetDemoData 硬删除指定租户的演示业务数据并重新写入默认演示数据。
 // 用户、角色、迁移记录和操作日志不会删除。
 // 租户 ID 经 ctx 传播：删除和种子都由 GORM 租户回调自动限定在该租户内，
-// 各演示账号互不影响；tenantID <= 0（默认租户/平台旁路）时保持全局重置的旧行为。
+// 各演示账号互不影响。tenantID <= 0 时拒绝执行，防止误用导致全表物理删除。
 func ResetDemoData(ctx context.Context, db *gorm.DB, tenantID int64) error {
+	if tenantID <= 0 {
+		return fmt.Errorf("ResetDemoData requires tenantID > 0, got %d", tenantID)
+	}
 	ctx = tenant.WithTenant(ctx, tenantID)
 	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		models := []any{
