@@ -67,6 +67,7 @@ jobs:
       - name: Validate Docker Compose
         env:
           MYSQL_ROOT_PASSWORD: ci-root-password
+          MYSQL_PASSWORD: ci-app-password
           JWT_SECRET: ci-jwt-secret-0123456789abcdef0123456789abcdef
         run: docker compose -f deploy/docker-compose.yaml config --quiet
 
