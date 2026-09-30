@@ -198,6 +198,18 @@ func (s *Service) GetSKU(ctx context.Context, id int64) (*model.SKU, error) {
 	return sku, nil
 }
 
+// GetSKUsByIDs 批量查询 SKU，返回 id → SKU 映射。用于创建单据时避免逐条查询。
+func (s *Service) GetSKUsByIDs(ctx context.Context, ids []int64) (map[int64]*model.SKU, error) {
+	m, err := s.repo.GetSKUsByIDs(ctx, s.tm.DB(), ids)
+	if err != nil {
+		return nil, err
+	}
+	if len(m) != len(ids) {
+		return nil, errcode.SKUNotFound
+	}
+	return m, nil
+}
+
 func (s *Service) GetSKUByCode(ctx context.Context, code string) (*model.SKU, error) {
 	sku, err := s.repo.GetSKUByCode(ctx, s.tm.DB(), code)
 	if err != nil {

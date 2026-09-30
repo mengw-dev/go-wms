@@ -36,6 +36,22 @@ func (r *Repository) GetSKU(ctx context.Context, db *gorm.DB, id int64) (*model.
 	return &s, nil
 }
 
+// GetSKUsByIDs 批量查询 SKU，返回 id → SKU 映射。避免在循环中逐条 GetSKU 产生 N+1 查询。
+func (r *Repository) GetSKUsByIDs(ctx context.Context, db *gorm.DB, ids []int64) (map[int64]*model.SKU, error) {
+	if len(ids) == 0 {
+		return map[int64]*model.SKU{}, nil
+	}
+	var list []*model.SKU
+	if err := db.WithContext(ctx).Where("id IN ?", ids).Find(&list).Error; err != nil {
+		return nil, err
+	}
+	m := make(map[int64]*model.SKU, len(list))
+	for _, s := range list {
+		m[s.ID] = s
+	}
+	return m, nil
+}
+
 // GetSKUForUpdate 在同一事务内锁定 SKU 行，串行化删除与库存创建。
 func (r *Repository) GetSKUForUpdate(ctx context.Context, db *gorm.DB, id int64) (*model.SKU, error) {
 	var s model.SKU

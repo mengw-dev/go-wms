@@ -289,18 +289,24 @@ func (s *Service) BatchCancel(ctx context.Context, ids []int64, operator string)
 }
 
 func (s *Service) buildDetails(ctx context.Context, items []dto.OrderDetailItem) ([]*model.ShipmentOrderDetail, int, error) {
-	details := make([]*model.ShipmentOrderDetail, 0, len(items))
-	expected := 0
 	seen := map[int64]struct{}{}
+	skuIDs := make([]int64, 0, len(items))
 	for _, it := range items {
 		if _, dup := seen[it.SKUID]; dup {
 			return nil, 0, errcode.ShipDetailDuplicateSKU
 		}
 		seen[it.SKUID] = struct{}{}
-		sku, err := s.basic.GetSKU(ctx, it.SKUID)
-		if err != nil {
-			return nil, 0, err
-		}
+		skuIDs = append(skuIDs, it.SKUID)
+	}
+	// 批量查询 SKU，避免循环内逐条查询产生 N+1。
+	skuMap, err := s.basic.GetSKUsByIDs(ctx, skuIDs)
+	if err != nil {
+		return nil, 0, err
+	}
+	details := make([]*model.ShipmentOrderDetail, 0, len(items))
+	expected := 0
+	for _, it := range items {
+		sku := skuMap[it.SKUID]
 		details = append(details, &model.ShipmentOrderDetail{
 			Base: modelbase.Base{ID: snowflake.Next()}, SKUID: sku.ID, SKUCode: sku.Code, SKUName: sku.Name,
 			ExpectedQty: it.ExpectedQty,

@@ -23,6 +23,7 @@ type BasicAPI interface {
 	ValidateLocationInWarehouse(ctx context.Context, warehouseID, id int64) error // 存在、非禁用且属于指定仓库
 	ValidateSKU(ctx context.Context, id int64) error                              // 存在且启用
 	GetSKU(ctx context.Context, id int64) (*model.SKU, error)
+	GetSKUsByIDs(ctx context.Context, ids []int64) (map[int64]*model.SKU, error)
 	GetLocation(ctx context.Context, id int64) (*model.Location, error)
 	GetWarehouseByCode(ctx context.Context, code string) (*model.Warehouse, error)
 	GetSKUByCode(ctx context.Context, code string) (*model.SKU, error)
