@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"testing"
+	"time"
 
 	"gorm.io/gorm"
 
@@ -93,5 +94,59 @@ func TestTenantRolePermissionBoundary(t *testing.T) {
 	platform := tenant.WithTenant(context.Background(), 0)
 	if err := s.CreateRole(platform, &dto.RoleCreateReq{Name: "platform-ops", Perms: "*"}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// 并发窗口内两个请求都可能通过前置检查：角色名唯一索引兜底必须回查并返回 RoleExist。
+func TestCreateRoleConflictMapsToBusinessError(t *testing.T) {
+	dsn := os.Getenv("WMS_TEST_DSN")
+	if dsn == "" {
+		dsn = "root:1234@tcp(127.0.0.1:3306)/gowms?parseTime=true&timeout=2s"
+	}
+	db := testutil.OpenIsolatedMySQL(t, dsn, &model.SysRole{}, &model.SysUser{}, &model.SysUserRole{})
+	if err := tenant.RegisterGORMCallbacks(db); err != nil {
+		t.Fatal(err)
+	}
+	s := New(repository.New(db), "unused", 1)
+	ctx := tenant.WithTenant(context.Background(), 11)
+
+	blocker := db.Begin()
+	if blocker.Error != nil {
+		t.Fatal(blocker.Error)
+	}
+	defer func() { _ = blocker.Rollback() }()
+	if err := blocker.WithContext(ctx).Create(&model.SysRole{
+		Base: model.Base{ID: 900}, Name: "race-role", Perms: "wms:basic",
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	creating := make(chan struct{}, 1)
+	if err := db.Callback().Create().Before("gorm:create").Register("test:role-create-watch", func(db *gorm.DB) {
+		if db.Statement.Table == "sys_role" {
+			select {
+			case creating <- struct{}{}:
+			default:
+			}
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Callback().Create().Remove("test:role-create-watch") })
+
+	done := make(chan error, 1)
+	go func() {
+		done <- s.CreateRole(ctx, &dto.RoleCreateReq{Name: "race-role", Perms: "wms:basic"})
+	}()
+	select {
+	case <-creating:
+	case <-time.After(5 * time.Second):
+		t.Fatal("create did not reach the insert")
+	}
+	if err := blocker.Commit().Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; !errors.Is(err, errcode.RoleExist) {
+		t.Fatalf("role conflict: got %v, want %v", err, errcode.RoleExist)
 	}
 }

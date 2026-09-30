@@ -32,9 +32,30 @@ func (s *Service) CreateSKU(ctx context.Context, req *dto.SKUReq) error {
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return err
 	}
-	return s.repo.CreateSKU(ctx, db, &model.SKU{
+	if _, err := s.repo.GetSKUByBarcode(ctx, db, req.Barcode); err == nil {
+		return errcode.BarcodeExist
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err
+	}
+	if err := s.repo.CreateSKU(ctx, db, &model.SKU{
 		Code: req.Code, Barcode: req.Barcode, Name: req.Name, Spec: req.Spec, Unit: req.Unit, Status: 1,
-	})
+	}); err != nil {
+		// 并发窗口内前置检查可能同时通过：唯一索引兜底，按冲突的业务键返回明确错误。
+		if pkgtx.IsDuplicateErr(err) {
+			if _, lookupErr := s.repo.GetSKUByCode(ctx, db, req.Code); lookupErr == nil {
+				return errcode.SKUExist
+			} else if !errors.Is(lookupErr, gorm.ErrRecordNotFound) {
+				return lookupErr
+			}
+			if _, lookupErr := s.repo.GetSKUByBarcode(ctx, db, req.Barcode); lookupErr == nil {
+				return errcode.BarcodeExist
+			} else if !errors.Is(lookupErr, gorm.ErrRecordNotFound) {
+				return lookupErr
+			}
+		}
+		return err
+	}
+	return nil
 }
 
 func (s *Service) UpdateSKU(ctx context.Context, id int64, req *dto.SKUReq) error {
@@ -48,6 +69,23 @@ func (s *Service) UpdateSKU(ctx context.Context, id int64, req *dto.SKUReq) erro
 	if err := s.repo.UpdateSKU(ctx, s.tm.DB(), &model.SKU{
 		Base: modelbase.Base{ID: id}, Code: req.Code, Barcode: req.Barcode, Name: req.Name, Spec: req.Spec, Unit: req.Unit,
 	}); err != nil {
+		// 更新 code/barcode 撞唯一索引时同样映射为业务错误（回查命中且不是自身）。
+		if pkgtx.IsDuplicateErr(err) {
+			if found, lookupErr := s.repo.GetSKUByCode(ctx, s.tm.DB(), req.Code); lookupErr == nil {
+				if found.ID != id {
+					return errcode.SKUExist
+				}
+			} else if !errors.Is(lookupErr, gorm.ErrRecordNotFound) {
+				return lookupErr
+			}
+			if found, lookupErr := s.repo.GetSKUByBarcode(ctx, s.tm.DB(), req.Barcode); lookupErr == nil {
+				if found.ID != id {
+					return errcode.BarcodeExist
+				}
+			} else if !errors.Is(lookupErr, gorm.ErrRecordNotFound) {
+				return lookupErr
+			}
+		}
 		return err
 	}
 	// 名称、规格等也会缓存；即使条码不变，更新成功后也需要失效。

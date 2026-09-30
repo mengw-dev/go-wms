@@ -10,6 +10,7 @@ import (
 	"gowms/internal/modules/system/model"
 	"gowms/internal/modules/system/repository"
 	"gowms/internal/pkg/errcode"
+	pkgtx "gowms/internal/pkg/tx"
 )
 
 // 用户管理。
@@ -30,7 +31,18 @@ func (s *Service) CreateUser(ctx context.Context, req *dto.UserCreateReq) error 
 	if errors.Is(err, repository.ErrInvalidRole) {
 		return errcode.RoleIDInvalid
 	}
-	return err
+	if err != nil {
+		// 并发窗口内前置检查可能同时通过：唯一索引兜底，回查后返回业务错误而不是内部错误。
+		if pkgtx.IsDuplicateErr(err) {
+			if _, lookupErr := s.repo.GetUserByUsername(ctx, req.Username); lookupErr == nil {
+				return errcode.UserExist
+			} else if !errors.Is(lookupErr, gorm.ErrRecordNotFound) {
+				return lookupErr
+			}
+		}
+		return err
+	}
+	return nil
 }
 
 func (s *Service) UpdateUser(ctx context.Context, id int64, req *dto.UserUpdateReq) error {

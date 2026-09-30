@@ -25,9 +25,20 @@ func (s *Service) CreateWarehouse(ctx context.Context, req *dto.WarehouseReq) er
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return err
 	}
-	return s.repo.CreateWarehouse(ctx, s.tm.DB(), &model.Warehouse{
+	if err := s.repo.CreateWarehouse(ctx, s.tm.DB(), &model.Warehouse{
 		Code: req.Code, Name: req.Name, Remark: req.Remark, Status: 1,
-	})
+	}); err != nil {
+		// 并发窗口内前置检查可能同时通过：唯一索引兜底，回查后返回业务错误而不是内部错误。
+		if pkgtx.IsDuplicateErr(err) {
+			if _, lookupErr := s.repo.GetWarehouseByCode(ctx, s.tm.DB(), req.Code); lookupErr == nil {
+				return errcode.WarehouseExist
+			} else if !errors.Is(lookupErr, gorm.ErrRecordNotFound) {
+				return lookupErr
+			}
+		}
+		return err
+	}
+	return nil
 }
 
 func (s *Service) UpdateWarehouse(ctx context.Context, id int64, req *dto.WarehouseReq) error {

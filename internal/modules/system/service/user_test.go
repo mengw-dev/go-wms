@@ -186,3 +186,48 @@ func TestRoleDeletionWaitsForConcurrentAssignment(t *testing.T) {
 		t.Fatalf("assigned role was deleted: %v", err)
 	}
 }
+
+// 并发窗口内两个请求都可能通过前置检查：用户名唯一索引兜底必须回查并返回 UserExist。
+func TestCreateUserConflictMapsToBusinessError(t *testing.T) {
+	s, db, ctx := userFixture(t)
+
+	blocker := db.Begin()
+	if blocker.Error != nil {
+		t.Fatal(blocker.Error)
+	}
+	defer func() { _ = blocker.Rollback() }()
+	if err := blocker.WithContext(ctx).Create(&model.SysUser{
+		Base: model.Base{ID: 500}, Username: "race-user", PasswordHash: "unused", Status: 1,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	creating := make(chan struct{}, 1)
+	if err := db.Callback().Create().Before("gorm:create").Register("test:user-create-watch", func(db *gorm.DB) {
+		if db.Statement.Table == "sys_user" {
+			select {
+			case creating <- struct{}{}:
+			default:
+			}
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Callback().Create().Remove("test:user-create-watch") })
+
+	done := make(chan error, 1)
+	go func() {
+		done <- s.CreateUser(ctx, &dto.UserCreateReq{Username: "race-user", Password: "user" + "-pwd"})
+	}()
+	select {
+	case <-creating:
+	case <-time.After(5 * time.Second):
+		t.Fatal("create did not reach the insert")
+	}
+	if err := blocker.Commit().Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; !errors.Is(err, errcode.UserExist) {
+		t.Fatalf("user conflict: got %v, want %v", err, errcode.UserExist)
+	}
+}

@@ -58,6 +58,10 @@ func (s *Service) BatchCreateLocations(ctx context.Context, req *dto.LocationBat
 			return err
 		}
 		if err := s.repo.CreateLocationBatch(ctx, txDB, list); err != nil {
+			// 正常路径已被仓库行锁串行化；唯一索引兜底，避免并发异常时暴露内部错误。
+			if pkgtx.IsDuplicateErr(err) {
+				return errcode.LocationExist
+			}
 			return err
 		}
 		created = len(list)

@@ -10,6 +10,7 @@ import (
 	"gowms/internal/modules/system/model"
 	"gowms/internal/modules/system/repository"
 	"gowms/internal/pkg/errcode"
+	pkgtx "gowms/internal/pkg/tx"
 )
 
 // 角色管理。
@@ -23,7 +24,18 @@ func (s *Service) CreateRole(ctx context.Context, req *dto.RoleCreateReq) error 
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return err
 	}
-	return s.repo.CreateRole(ctx, &model.SysRole{Name: req.Name, Perms: req.Perms, Remark: req.Remark})
+	if err := s.repo.CreateRole(ctx, &model.SysRole{Name: req.Name, Perms: req.Perms, Remark: req.Remark}); err != nil {
+		// 并发窗口内前置检查可能同时通过：唯一索引兜底，回查后返回业务错误而不是内部错误。
+		if pkgtx.IsDuplicateErr(err) {
+			if _, lookupErr := s.repo.GetRoleByName(ctx, req.Name); lookupErr == nil {
+				return errcode.RoleExist
+			} else if !errors.Is(lookupErr, gorm.ErrRecordNotFound) {
+				return lookupErr
+			}
+		}
+		return err
+	}
+	return nil
 }
 
 func (s *Service) UpdateRole(ctx context.Context, id int64, req *dto.RoleUpdateReq) error {
@@ -38,6 +50,16 @@ func (s *Service) UpdateRole(ctx context.Context, id int64, req *dto.RoleUpdateR
 		return errcode.ModifyBuiltinRoleForbidden
 	}
 	if err := s.repo.UpdateRole(ctx, id, req.Name, req.Perms, req.Remark); err != nil {
+		// 改名撞唯一索引时同样映射为业务错误（回查命中且不是自身）。
+		if pkgtx.IsDuplicateErr(err) {
+			if found, lookupErr := s.repo.GetRoleByName(ctx, req.Name); lookupErr == nil {
+				if found.ID != id {
+					return errcode.RoleExist
+				}
+			} else if !errors.Is(lookupErr, gorm.ErrRecordNotFound) {
+				return lookupErr
+			}
+		}
 		return err
 	}
 	s.invalidatePermCache()
