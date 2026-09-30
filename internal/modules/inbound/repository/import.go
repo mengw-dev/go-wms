@@ -98,3 +98,27 @@ func (r *Repository) ListImportTasks(ctx context.Context, db *gorm.DB, returnLim
 	err := q.Find(&list).Error
 	return list, err
 }
+
+// ListExpiredFailedImports 查询超过保留期、仍记录源文件的失败任务（后台清理专用，跨租户扫描）。
+func (r *Repository) ListExpiredFailedImports(ctx context.Context, db *gorm.DB, before time.Time, limit int) ([]*model.ImportTask, error) {
+	var tasks []*model.ImportTask
+	err := db.WithContext(ctx).
+		Where("status = ? AND file_path <> '' AND updated_at < ?", model.ImportFailed, before).
+		Order("updated_at, id").Limit(limit).Find(&tasks).Error
+	return tasks, err
+}
+
+// ClearImportFilePath 清理源文件后置空路径，避免下轮清理重复扫描。
+func (r *Repository) ClearImportFilePath(ctx context.Context, db *gorm.DB, taskID, filePath string) error {
+	return db.WithContext(ctx).Model(&model.ImportTask{}).
+		Where("task_id = ? AND file_path = ?", taskID, filePath).
+		Update("file_path", "").Error
+}
+
+// ListImportFilePaths 返回所有仍记录源文件路径的任务（孤儿文件清理用）。
+func (r *Repository) ListImportFilePaths(ctx context.Context, db *gorm.DB) ([]string, error) {
+	var paths []string
+	err := db.WithContext(ctx).Model(&model.ImportTask{}).
+		Where("file_path <> ''").Pluck("file_path", &paths).Error
+	return paths, err
+}

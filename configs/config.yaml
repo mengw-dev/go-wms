@@ -33,6 +33,7 @@ log:
 
 upload:
   dir: ./data/uploads
+  failed_file_retention_hours: 72  # 失败导入文件保留时长，到期由后台清理删除；成功文件在任务完成时立即删除
 
 metrics:
   enabled: false

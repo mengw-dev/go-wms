@@ -2,6 +2,8 @@
 package service
 
 import (
+	"time"
+
 	basicapi "gowms/internal/modules/basic/api"
 	"gowms/internal/modules/inbound/repository"
 	invapi "gowms/internal/modules/inventory/api"
@@ -19,12 +21,18 @@ type Service struct {
 	inv       invapi.InventoryAPI
 	taskAPI   taskapi.TaskAPI
 	uploadDir string
-	limits    config.LimitsConfig // 公开租户数据量配额（防止访客无限建单）
+
+	failedFileRetention time.Duration       // 失败导入文件保留期，到期由后台清理删除
+	limits              config.LimitsConfig // 公开租户数据量配额（防止访客无限建单）
 }
 
 func New(repo *repository.Repository, tm *tx.Manager, no *orderno.Generator,
-	basic basicapi.BasicAPI, inv invapi.InventoryAPI, taskAPI taskapi.TaskAPI, uploadDir string,
+	basic basicapi.BasicAPI, inv invapi.InventoryAPI, taskAPI taskapi.TaskAPI, upload config.UploadConfig,
 	limits config.LimitsConfig) *Service {
+	retention := time.Duration(upload.FailedFileRetentionHours) * time.Hour
+	if retention <= 0 {
+		retention = defaultFailedFileRetention
+	}
 	return &Service{repo: repo, tm: tm, no: no, basic: basic, inv: inv, taskAPI: taskAPI,
-		uploadDir: uploadDir, limits: limits}
+		uploadDir: upload.Dir, failedFileRetention: retention, limits: limits}
 }

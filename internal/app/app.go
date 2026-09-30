@@ -99,7 +99,7 @@ func New(cfg *config.Config, db *gorm.DB, rdb *redis.Client, metrics *observabil
 	taskSvc := taskservice.New(taskrepo.New(), db)
 
 	// inbound / outbound / stocktake：依赖 basic + inventory + task 接口
-	inboundSvc := inboundservice.New(inboundrepo.New(), tm, no, basicSvc, invSvc, taskSvc, cfg.Upload.Dir, cfg.Limits)
+	inboundSvc := inboundservice.New(inboundrepo.New(), tm, no, basicSvc, invSvc, taskSvc, cfg.Upload, cfg.Limits)
 	outSvc := outservice.New(outrepo.New(), tm, no, basicSvc, invSvc, taskSvc, cfg.Limits)
 	stocktakeSvc := stocktakeservice.New(stocktakerepo.New(), tm, no, invSvc, cfg.Limits)
 	aiSvc := aiservice.New(cfg.AI, db, rdb)

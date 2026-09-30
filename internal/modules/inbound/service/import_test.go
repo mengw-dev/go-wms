@@ -47,7 +47,8 @@ func importFixture(t *testing.T) (*Service, *gorm.DB, context.Context) {
 	}
 	tm := tx.New(db)
 	basic := basicservice.New(basicrepo.New(), tm, nil, nil, config.LimitsConfig{})
-	return New(repository.New(), tm, orderno.New(nil), basic, nil, nil, t.TempDir(), config.LimitsConfig{}), db, ctx
+	upload := config.UploadConfig{Dir: t.TempDir(), FailedFileRetentionHours: 72}
+	return New(repository.New(), tm, orderno.New(nil), basic, nil, nil, upload, config.LimitsConfig{}), db, ctx
 }
 
 func importWorkbook(t *testing.T, rows [][]any) []byte {

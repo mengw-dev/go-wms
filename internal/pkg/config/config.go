@@ -87,6 +87,9 @@ func Load(path string) (*Config, error) {
 	if cfg.Upload.Dir == "" {
 		cfg.Upload.Dir = "./data/uploads"
 	}
+	if cfg.Upload.FailedFileRetentionHours <= 0 {
+		cfg.Upload.FailedFileRetentionHours = 72
+	}
 	if cfg.Metrics.Port <= 0 || cfg.Metrics.Port > 65535 {
 		cfg.Metrics.Port = 9090
 	}

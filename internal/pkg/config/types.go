@@ -54,6 +54,9 @@ type LogConfig struct {
 
 type UploadConfig struct {
 	Dir string `mapstructure:"dir"`
+	// FailedFileRetentionHours 失败导入文件的保留小时数：到期由后台清理删除；
+	// 成功的导入文件在任务完成时立即删除。
+	FailedFileRetentionHours int `mapstructure:"failed_file_retention_hours"`
 }
 
 type MetricsConfig struct {

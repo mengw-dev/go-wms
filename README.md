@@ -285,6 +285,7 @@ make compose-down
 | `WMS_API_PORT` | API 宿主机映射端口 | `8080` |
 | `WMS_WEB_PORT` | Web 宿主机映射端口 | `80` |
 | `WMS_UPLOAD_DIR` | Excel 上传目录 | `./data/uploads` |
+| `WMS_UPLOAD_FAILED_FILE_RETENTION_HOURS` | 失败导入文件保留小时数（到期后台清理，成功文件立即删除） | `72` |
 | `WMS_METRICS_ENABLED` | 是否启用 Prometheus 指标端口 | `false` |
 | `WMS_METRICS_PORT` | 指标服务端口 | `9090` |
 | `WMS_PROMETHEUS_PORT` | Prometheus 宿主机映射端口 | `9090` |

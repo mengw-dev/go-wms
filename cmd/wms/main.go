@@ -92,6 +92,7 @@ func run() error {
 	workers.Go(func() { application.SystemService.RunOperLogs(backgroundCtx) })
 	workers.Go(func() { application.InboundService.RunCompensator(backgroundCtx) })
 	workers.Go(func() { application.InboundService.RunImports(backgroundCtx) })
+	workers.Go(func() { application.InboundService.RunImportFileCleanup(backgroundCtx) })
 	defer func() {
 		cancelBackground()
 		workers.Wait()
