@@ -128,7 +128,6 @@ const formRef = ref<FormInstance>()
 const form = reactive({ name: '', remark: '' })
 const selectedPerms = ref<string[]>([])
 const customPerms = ref('')
-const superAdmin = ref(false)
 
 const rules: FormRules = {
   name: [{ required: true, message: '请输入角色名称', trigger: 'blur' }],
@@ -137,7 +136,6 @@ const rules: FormRules = {
 function resetPermissionForm() {
   selectedPerms.value = []
   customPerms.value = ''
-  superAdmin.value = false
 }
 
 function openCreate() {
@@ -154,14 +152,12 @@ function openEdit(row: RoleItem) {
   form.name = row.name
   form.remark = row.remark
   const perms = splitPerms(row.perms)
-  superAdmin.value = perms.includes('*')
   selectedPerms.value = perms.filter((perm) => PERMISSION_LABELS.has(perm))
   customPerms.value = perms.filter((perm) => !PERMISSION_LABELS.has(perm) && perm !== '*').join(', ')
   dialog.visible = true
 }
 
 function buildPerms(): string {
-  if (superAdmin.value) return '*'
   return [...new Set([...selectedPerms.value, ...splitPerms(customPerms.value)])].join(',')
 }
 
@@ -298,16 +294,8 @@ async function onDelete(row: RoleItem) {
           <el-input v-model="form.name" maxlength="64" show-word-limit placeholder="例如：仓库管理员" />
         </el-form-item>
         <el-form-item label="权限配置">
-          <el-checkbox v-model="superAdmin">超级管理员权限（拥有系统全部权限）</el-checkbox>
-          <el-alert
-            v-if="superAdmin"
-            class="permission-alert"
-            type="warning"
-            :closable="false"
-            show-icon
-            title="超级管理员可访问全部功能，请仅在受信任的账号上分配。"
-          />
-          <div v-else class="permission-groups">
+          <!-- 租户角色不允许设置 * 权限，仅平台内置管理员可拥有全部权限 -->
+          <div class="permission-groups">
             <section v-for="group in PERMISSION_GROUPS" :key="group.label" class="permission-group">
               <div class="permission-group-title">{{ group.label }}</div>
               <el-checkbox-group v-model="selectedPerms" class="permission-grid">
@@ -321,7 +309,6 @@ async function onDelete(row: RoleItem) {
         <el-form-item label="自定义权限">
           <el-input
             v-model="customPerms"
-            :disabled="superAdmin"
             placeholder="可选，多个权限用英文逗号分隔，例如 wms:custom:action"
           />
           <div class="form-tip">用于兼容后续扩展权限；已勾选权限会自动合并并去重。</div>

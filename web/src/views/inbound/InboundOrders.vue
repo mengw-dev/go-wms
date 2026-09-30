@@ -287,7 +287,7 @@ useAutoRefresh(() => load(true), 0, () => selectedRows.value.length === 0)
     >
       <el-upload
         drag
-        accept=".xlsx,.xls"
+        accept=".xlsx"
         :auto-upload="false"
         :limit="1"
         :on-change="onFileChange"
@@ -297,7 +297,7 @@ useAutoRefresh(() => load(true), 0, () => selectedRows.value.length === 0)
         <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
         <div class="el-upload__text">拖拽文件到此处，或 <em>点击选择文件</em></div>
         <template #tip>
-          <div class="el-upload__tip">支持 .xlsx / .xls，上传后自动解析创建入库单，可在此查看导入进度。</div>
+          <div class="el-upload__tip">仅支持 .xlsx，上传后自动解析创建入库单，可在此查看导入进度。</div>
         </template>
       </el-upload>
 
