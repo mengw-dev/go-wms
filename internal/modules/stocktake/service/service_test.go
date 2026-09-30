@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -175,4 +176,119 @@ func TestStocktakeDifferenceUsesLockedCurrentStock(t *testing.T) {
 	if err := s.Cancel(ctx, o.ID); !errors.Is(err, errcode.StocktakeStatusWrong) {
 		t.Fatalf("completed order cancellation: %v", err)
 	}
+}
+
+// 未盘完的盘点单必须整单拒绝：不调整库存、不写流水、不推进单据状态；
+// 补齐全部实盘数量后可以正常完成审核。
+func TestStocktakeApproveRequiresFullyCountedDetails(t *testing.T) {
+	s, db, ctx, _ := stocktakeFixture(t)
+	// 补两条库存，让整仓快照生成 3 条盘点明细。
+	for i := int64(2); i <= 3; i++ {
+		if err := db.WithContext(ctx).Create(&basicmodel.SKU{
+			Base: sysmodel.Base{ID: i}, Code: fmt.Sprintf("SKU-%d", i),
+			Barcode: fmt.Sprintf("BAR-%d", i), Name: "Item",
+		}).Error; err != nil {
+			t.Fatal(err)
+		}
+		if err := db.WithContext(ctx).Create(&invmodel.Inventory{
+			Base: sysmodel.Base{ID: i}, WarehouseID: 1, LocationID: 1, SKUID: i,
+			BatchNo: "B1", StockQuantity: 10, AvailableQty: 10, StockInTime: time.Now(),
+		}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	o, err := s.Create(ctx, &dto.CreateOrderReq{WarehouseID: 1}, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	detail, err := s.Get(ctx, o.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(detail.Details) != 3 {
+		t.Fatalf("details=%d want 3", len(detail.Details))
+	}
+
+	// 只录入前两条实盘数，第三条保持未盘。
+	actualByInventory := make(map[int64]int, len(detail.Details))
+	for _, d := range detail.Details[:2] {
+		if err := s.RecordActual(ctx, o.ID, d.ID, 8); err != nil {
+			t.Fatal(err)
+		}
+		actualByInventory[d.InventoryID] = 8
+	}
+	actualByInventory[detail.Details[2].InventoryID] = 12
+
+	if err := s.Approve(ctx, o.ID, "test"); !errors.Is(err, errcode.StocktakeNotFullyCounted) {
+		t.Fatalf("approve with missing actual qty: %v", err)
+	}
+	// 拒绝后：单据仍是草稿，明细未被调整，库存三数量和流水完全不变。
+	result, err := s.Get(ctx, o.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Order.Status != model.OrderDraft {
+		t.Fatalf("status after rejected approval = %s", result.Order.Status)
+	}
+	for _, d := range result.Details {
+		if d.Adjusted || d.DiffQty != 0 {
+			t.Fatalf("detail changed by rejected approval: %+v", d)
+		}
+	}
+	var inventories []*invmodel.Inventory
+	if err := db.WithContext(ctx).Order("id").Find(&inventories).Error; err != nil {
+		t.Fatal(err)
+	}
+	for _, inv := range inventories {
+		if inv.StockQuantity != 10 || inv.AvailableQty != 10 || inv.AllocatedQty != 0 {
+			t.Fatalf("inventory changed by rejected approval: %+v", inv)
+		}
+	}
+	if n := countStocktakeAdjustTrans(ctx, t, db, o.OrderNo); n != 0 {
+		t.Fatalf("adjust trans after rejected approval = %d want 0", n)
+	}
+
+	// 补录第三条实盘数后审核成功：库存按实盘数调整，每条明细写入一条 ADJUST 流水。
+	if err := s.RecordActual(ctx, o.ID, detail.Details[2].ID, 12); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Approve(ctx, o.ID, "test"); err != nil {
+		t.Fatal(err)
+	}
+	result, err = s.Get(ctx, o.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Order.Status != model.OrderCompleted {
+		t.Fatalf("status after approval = %s", result.Order.Status)
+	}
+	for _, d := range result.Details {
+		if !d.Adjusted || d.ActualQty == nil || *d.ActualQty != d.BookQty+d.DiffQty {
+			t.Fatalf("detail not adjusted: %+v", d)
+		}
+	}
+	var afterApproval []*invmodel.Inventory
+	if err := db.WithContext(ctx).Order("id").Find(&afterApproval).Error; err != nil {
+		t.Fatal(err)
+	}
+	for _, inv := range afterApproval {
+		want := actualByInventory[inv.ID]
+		if inv.StockQuantity != want || inv.AvailableQty != want || inv.AllocatedQty != 0 {
+			t.Fatalf("inventory after approval: %+v want stock %d", inv, want)
+		}
+	}
+	if n := countStocktakeAdjustTrans(ctx, t, db, o.OrderNo); n != int64(len(result.Details)) {
+		t.Fatalf("adjust trans after approval = %d want %d", n, len(result.Details))
+	}
+}
+
+func countStocktakeAdjustTrans(ctx context.Context, t *testing.T, db *gorm.DB, orderNo string) int64 {
+	t.Helper()
+	var n int64
+	err := db.WithContext(ctx).Model(&invmodel.InventoryTrans{}).
+		Where("order_no = ? AND trans_type = ?", orderNo, invmodel.TransAdjust).Count(&n).Error
+	if err != nil {
+		t.Fatal(err)
+	}
+	return n
 }

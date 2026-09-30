@@ -175,11 +175,12 @@ var (
 
 // 盘点 60000+
 var (
-	StocktakeNotFound    = NewHTTP(60001, "盘点单不存在", 404)
-	StocktakeStatusWrong = New(60002, "盘点单状态不允许该操作")
-	StocktakeQtyInvalid  = New(60003, "实盘数量非法")
-	StocktakeNoDetail    = New(60004, "盘点单没有可盘点的库存明细")
-	StocktakeVersionBad  = New(60005, "盘点单已被其他人操作，请刷新重试")
+	StocktakeNotFound        = NewHTTP(60001, "盘点单不存在", 404)
+	StocktakeStatusWrong     = New(60002, "盘点单状态不允许该操作")
+	StocktakeQtyInvalid      = New(60003, "实盘数量非法")
+	StocktakeNoDetail        = New(60004, "盘点单没有可盘点的库存明细")
+	StocktakeVersionBad      = New(60005, "盘点单已被其他人操作，请刷新重试")
+	StocktakeNotFullyCounted = New(60006, "盘点单仍有未录入实盘数量的明细")
 )
 
 // 演示模式 70000+

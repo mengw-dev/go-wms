@@ -31,11 +31,18 @@ func (s *Service) Approve(ctx context.Context, orderID int64, operator string) e
 		if err != nil {
 			return err
 		}
+		// 审核前置校验：所有明细都必须录入实盘数量，任一条缺失即整单拒绝。
+		// 校验通过前不调整库存、不写流水、不推进单据状态，避免未盘完的盘点单被审核。
+		for _, d := range details {
+			if d.ActualQty == nil {
+				return errcode.StocktakeNotFullyCounted
+			}
+		}
 		// 盘点之间按库存 ID 统一加锁顺序；与其他业务仍可能竞争，死锁由整事务重试处理。
 		sort.Slice(details, func(i, j int) bool { return details[i].InventoryID < details[j].InventoryID })
 		anyCounted := false
 		for _, d := range details {
-			if d.ActualQty == nil || d.Adjusted {
+			if d.Adjusted {
 				continue
 			}
 			anyCounted = true
