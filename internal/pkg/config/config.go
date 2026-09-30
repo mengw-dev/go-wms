@@ -25,6 +25,15 @@ func Load(path string) (*Config, error) {
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, err
 	}
+	// demo.password / personal.password 与 admin.password 同理：key 不存在于 config.yaml 时，
+	// viper 的 AutomaticEnv 不会把 WMS_DEMO_PASSWORD / WMS_PERSONAL_PASSWORD 纳入 Unmarshal，
+	// 必须显式直读，否则 compose 注入的密码到不了 cfg，release 校验会误报缺失。
+	if pwd := strings.TrimSpace(os.Getenv("WMS_DEMO_PASSWORD")); pwd != "" {
+		cfg.Demo.Password = pwd
+	}
+	if pwd := strings.TrimSpace(os.Getenv("WMS_PERSONAL_PASSWORD")); pwd != "" {
+		cfg.Personal.Password = pwd
+	}
 	if cfg.Server.Port <= 0 || cfg.Server.Port > 65535 {
 		return nil, fmt.Errorf("server.port must be between 1 and 65535")
 	}

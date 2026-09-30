@@ -79,6 +79,43 @@ func TestLoadReadsEnvironmentOverrides(t *testing.T) {
 	}
 }
 
+func TestLoadReadsDemoPersonalPasswordFromEnv(t *testing.T) {
+	// 复现 compose 场景：release 下开启演示/持久账号，密码只来自环境变量。
+	// demo.password / personal.password 不在 config.yaml 中，viper AutomaticEnv
+	// 不会把它们纳入 Unmarshal，必须由 Load 显式直读（与 WMS_ADMIN_PASSWORD 同理）。
+	t.Setenv("WMS_SERVER_MODE", "release")
+	t.Setenv("WMS_JWT_SECRET", "0123456789abcdef0123456789abcdef")
+	t.Setenv("WMS_MYSQL_DSN", "produser:strongpass@tcp(127.0.0.1:3306)/gowms?charset=utf8mb4&parseTime=True&loc=Local")
+	t.Setenv("WMS_INTEGRATION_API_KEY", "real-integration-key-for-prod")
+	t.Setenv("WMS_DEMO_ENABLED", "true")
+	t.Setenv("WMS_DEMO_PASSWORD", "demo-pwd-from-env")
+	t.Setenv("WMS_PERSONAL_ENABLED", "true")
+	t.Setenv("WMS_PERSONAL_PASSWORD", "user-pwd-from-env")
+	cfg, err := Load(filepath.Join("..", "..", "..", "configs", "config.yaml"))
+	if err != nil {
+		t.Fatalf("release with demo/personal passwords from env should load: %v", err)
+	}
+	if cfg.Demo.Password != "demo-pwd-from-env" {
+		t.Fatalf("demo password=%q want env value", cfg.Demo.Password)
+	}
+	if cfg.Personal.Password != "user-pwd-from-env" {
+		t.Fatalf("personal password=%q want env value", cfg.Personal.Password)
+	}
+}
+
+func TestLoadRejectsReleaseDemoWithoutPassword(t *testing.T) {
+	t.Setenv("WMS_SERVER_MODE", "release")
+	t.Setenv("WMS_JWT_SECRET", "0123456789abcdef0123456789abcdef")
+	t.Setenv("WMS_MYSQL_DSN", "produser:strongpass@tcp(127.0.0.1:3306)/gowms?charset=utf8mb4&parseTime=True&loc=Local")
+	t.Setenv("WMS_INTEGRATION_API_KEY", "real-integration-key-for-prod")
+	t.Setenv("WMS_DEMO_ENABLED", "true")
+	t.Setenv("WMS_DEMO_PASSWORD", "")
+	t.Setenv("WMS_PERSONAL_ENABLED", "false")
+	if _, err := Load(filepath.Join("..", "..", "..", "configs", "config.yaml")); err == nil {
+		t.Fatal("release with demo enabled but empty WMS_DEMO_PASSWORD should be rejected")
+	}
+}
+
 func TestLoadValidConfig(t *testing.T) {
 	path := writeConfig(t, `server:
   port: 8080
