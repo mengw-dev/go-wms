@@ -15,6 +15,9 @@ import (
 // 角色管理。
 
 func (s *Service) CreateRole(ctx context.Context, req *dto.RoleCreateReq) error {
+	if err := ValidateRolePerms(ctx, req.Perms); err != nil {
+		return err
+	}
 	if _, err := s.repo.GetRoleByName(ctx, req.Name); err == nil {
 		return errcode.RoleExist
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -24,6 +27,9 @@ func (s *Service) CreateRole(ctx context.Context, req *dto.RoleCreateReq) error 
 }
 
 func (s *Service) UpdateRole(ctx context.Context, id int64, req *dto.RoleUpdateReq) error {
+	if err := ValidateRolePerms(ctx, req.Perms); err != nil {
+		return err
+	}
 	builtin, err := s.isBuiltinRole(ctx, id)
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		return err

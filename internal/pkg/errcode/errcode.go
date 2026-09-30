@@ -104,6 +104,7 @@ var (
 	ModifyBuiltinRoleForbidden = New(10013, "不允许修改或删除内置超级管理员角色")
 	IntegrationUnauthorized    = New(10014, "集成 API Key 无效")
 	IntegrationDisabled        = New(10015, "集成 API 未启用")
+	RolePermNotAllowed         = New(10016, "角色权限包含未注册或不允许的权限")
 )
 
 // 基础资料 20000+
