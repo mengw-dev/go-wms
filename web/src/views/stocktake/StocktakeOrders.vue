@@ -39,14 +39,18 @@ const query = reactive({
   keyword: '',
 })
 
+let requestSeq = 0
+
 async function load(silent = false) {
+  const seq = ++requestSeq
   if (!silent) loading.value = true
   try {
     const data = await listStocktakeOrders(cleanParams({ ...query }))
+    if (seq !== requestSeq) return
     list.value = data.list ?? []
     total.value = data.total ?? 0
   } finally {
-    if (!silent) loading.value = false
+    if (!silent && seq === requestSeq) loading.value = false
   }
 }
 

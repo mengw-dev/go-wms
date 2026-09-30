@@ -35,14 +35,18 @@ const detailQuery = reactive({
   in_stock_only: true,
 })
 
+let detailSeq = 0
+
 async function loadDetail(silent = false) {
+  const seq = ++detailSeq
   if (!silent) detailLoading.value = true
   try {
     const data = await listInventory(cleanParams({ ...detailQuery }))
+    if (seq !== detailSeq) return
     detailList.value = data.list ?? []
     detailTotal.value = data.total ?? 0
   } finally {
-    if (!silent) detailLoading.value = false
+    if (!silent && seq === detailSeq) detailLoading.value = false
   }
 }
 
@@ -61,14 +65,18 @@ const summaryQuery = reactive({
   warehouse_id: '' as EntityID | '',
 })
 
+let summarySeq = 0
+
 async function loadSummary(silent = false) {
+  const seq = ++summarySeq
   if (!silent) summaryLoading.value = true
   try {
     const data = await listInventorySummary(cleanParams({ ...summaryQuery }))
+    if (seq !== summarySeq) return
     summaryList.value = data.list ?? []
     summaryTotal.value = data.total ?? 0
   } finally {
-    if (!silent) summaryLoading.value = false
+    if (!silent && seq === summarySeq) summaryLoading.value = false
   }
 }
 
@@ -105,10 +113,14 @@ function openTrans(row: InventoryItem) {
   loadTrans()
 }
 
+let transSeq = 0
+
 async function loadTrans(silent = false) {
+  const seq = ++transSeq
   if (!silent) transLoading.value = true
   try {
     const data = await listInventoryTrans(cleanParams({ ...transQuery }))
+    if (seq !== transSeq) return
     transList.value = data.list ?? []
     transTotal.value = data.total ?? 0
     emitBusinessEvent(BUSINESS_EVENTS.INVENTORY_TRANS_LOADED, {
@@ -117,7 +129,7 @@ async function loadTrans(silent = false) {
       transTotal: transTotal.value,
     })
   } finally {
-    if (!silent) transLoading.value = false
+    if (!silent && seq === transSeq) transLoading.value = false
   }
 }
 
