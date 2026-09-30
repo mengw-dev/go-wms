@@ -42,10 +42,12 @@ func TestCreateSKUConcurrentDuplicateReturnsBusinessError(t *testing.T) {
 		switch {
 		case err == nil:
 			success++
-		case errors.Is(err, errcode.SKUExist):
+		// 请求的编码和条码都会与胜出行冲突：并发窗口内两次前置检查可能落在
+		// 胜出行提交前后的不同时间点，返回任一冲突业务错误都算正确。
+		case errors.Is(err, errcode.SKUExist), errors.Is(err, errcode.BarcodeExist):
 			duplicated++
 		default:
-			t.Fatalf("unexpected error (want nil or SKUExist): %v", err)
+			t.Fatalf("unexpected error (want nil or SKU conflict): %v", err)
 		}
 	}
 	if success != 1 || duplicated != workers-1 {
