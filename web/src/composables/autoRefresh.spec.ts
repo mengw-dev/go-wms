@@ -77,7 +77,7 @@ describe('useAutoRefresh 防重叠与生命周期', () => {
     testWindow.dispatchEvent(new Event(DATA_CHANGED_EVENT))
   }
 
-  it('上一次刷新未结束时，定时器与数据变更都不会触发并发刷新', async () => {
+  it('inFlight 时不立即刷新，当前请求完成后只补刷一次', async () => {
     const deferred = createDeferred<void>()
     const refresh = vi.fn(() => deferred.promise)
     const auto = useAutoRefresh(refresh, 1000)
@@ -87,19 +87,23 @@ describe('useAutoRefresh 防重叠与生命周期', () => {
     expect(refresh).toHaveBeenCalledTimes(1)
     expect(auto.running.value).toBe(true)
 
-    // 请求仍悬挂：持续推进 5 个间隔，并且额外触发一次数据变更
+    // 请求仍悬挂：推进 5 个间隔并额外触发一次数据变更
     await vi.advanceTimersByTimeAsync(5000)
     emitDataChanged()
     await flushMicrotasks()
+    // 期间不应并发刷新
     expect(refresh).toHaveBeenCalledTimes(1)
 
     deferred.resolve()
     await flushMicrotasks()
+    // 结束后应补刷一次，总共 2 次
+    expect(refresh).toHaveBeenCalledTimes(2)
     expect(auto.running.value).toBe(false)
     expect(auto.error.value).toBeNull()
     expect(auto.lastUpdatedAt.value).not.toBeNull()
 
-    // 上一次结束后，下一次定时触发才会真正发起请求
+    // 停止后不再自动刷新
+    auto.stop()
     await vi.advanceTimersByTimeAsync(1000)
     expect(refresh).toHaveBeenCalledTimes(2)
   })

@@ -23,7 +23,8 @@ const TIMER_DISABLED = 0
  * 页面自动刷新：定时轮询 + 数据变更（如演示流程完成）后立即刷新。
  *
  * 同一时刻最多只有一个 refresh 在执行：上一次未结束时，定时器与数据变更
- * 事件触发的刷新都会被直接跳过，避免请求重叠与响应乱序。
+ * 事件会记录 pending 标志，当前请求结束后补刷一次（trailing refresh），
+ * 避免请求重叠，同时不丢失刷新事件。
  */
 export function useAutoRefresh(
   refresh: () => void | Promise<void>,
@@ -37,9 +38,13 @@ export function useAutoRefresh(
   let timer: number | undefined
   let unsubscribe: (() => void) | undefined
   let inFlight = false
+  let pendingRefresh = false
 
   async function trigger() {
-    if (inFlight) return
+    if (inFlight) {
+      pendingRefresh = true
+      return
+    }
     if (!shouldRefresh()) return
     inFlight = true
     running.value = true
@@ -53,6 +58,11 @@ export function useAutoRefresh(
     } finally {
       inFlight = false
       running.value = false
+      // 请求期间有错过的刷新事件，补刷一次（trailing refresh）
+      if (pendingRefresh) {
+        pendingRefresh = false
+        void trigger()
+      }
     }
   }
 
