@@ -3,6 +3,7 @@ import { computed, ref, type CSSProperties } from 'vue'
 import { getDemoActivity } from '@/api/demo'
 import type { DemoActivitySnapshot } from '@/api/types'
 import { useGuideRunner } from '@/composables/demo/useGuideRunner'
+import type { GuideScenario } from '@/guide/types'
 import { GUIDE_SCENARIO_LABELS, useGuideStore } from '@/stores/guide'
 import { formatTime } from '@/utils'
 import { buildBusinessOperationRows, type DemoOperationRow } from '@/utils/demoOperations'
@@ -42,6 +43,19 @@ const completionSteps = computed(() => {
   }
   return guide.scenario ? [GUIDE_SCENARIO_LABELS[guide.scenario] + '单', '业务已完成'] : []
 })
+
+// 完成面板的单据/任务标签按场景区分。盘点场景没有物流任务，
+// 但同样不能沿用入库文案（避免盘点单显示成“入库单”）。
+const SCENARIO_COMPLETE_LABELS: Record<GuideScenario, { order: string; task: string }> = {
+  inbound: { order: '入库单', task: '上架任务' },
+  outbound: { order: '出库单', task: '拣货任务' },
+  stocktake: { order: '盘点单', task: '盘点任务' },
+}
+const completeLabels = computed(() =>
+  guide.scenario
+    ? SCENARIO_COMPLETE_LABELS[guide.scenario]
+    : { order: '业务单号', task: '业务任务' },
+)
 const businessOperations = computed<DemoOperationRow[]>(() => {
   return buildBusinessOperationRows(activity.value?.operations ?? []).slice(0, 20)
 })
@@ -173,8 +187,8 @@ async function openRecords(): Promise<void> {
         </div>
         <p>{{ guide.lastOutcome || '真实业务操作已完成，可以继续核对结果。' }}</p>
         <div class="guide-complete-facts">
-          <span v-if="guide.orderNo || guide.orderId">{{ guide.scenario === 'outbound' ? '出库单' : '入库单' }}：{{ guide.orderNo || guide.orderId }}</span>
-          <span v-if="guide.taskNo || guide.taskId">{{ guide.scenario === 'outbound' ? '拣货任务' : '上架任务' }}：{{ guide.taskNo || guide.taskId }}</span>
+          <span v-if="guide.orderNo || guide.orderId">{{ completeLabels.order }}：{{ guide.orderNo || guide.orderId }}</span>
+          <span v-if="guide.taskNo || guide.taskId">{{ completeLabels.task }}：{{ guide.taskNo || guide.taskId }}</span>
           <span v-for="fact in guide.facts" :key="fact.label">{{ fact.label }}：{{ fact.value }}</span>
         </div>
         <div class="guide-complete-actions">
