@@ -1,13 +1,19 @@
-.PHONY: run migrate-up migrate-down build test test-required test-race lint tidy compose-up compose-infra compose-monitoring compose-monitoring-stop compose-down
+.PHONY: run migrate-up migrate-down bootstrap-admin seed-demo build test test-required test-race lint tidy compose-up compose-infra compose-monitoring compose-monitoring-stop compose-down
 
 run:
 	go run ./cmd/wms
 
 migrate-up:
-	go run ./cmd/migrate -seed up
+	go run ./cmd/migrate up
 
 migrate-down:
 	go run ./cmd/migrate -steps 1 down
+
+bootstrap-admin:
+	go run ./cmd/migrate bootstrap-admin
+
+seed-demo:
+	go run ./cmd/migrate seed-demo
 
 build:
 	go build -o bin/wms.exe ./cmd/wms

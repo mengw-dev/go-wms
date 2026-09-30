@@ -54,6 +54,12 @@ try {
         $values["WMS_INTEGRATION_API_KEY"] = New-RandomHex -ByteCount 24
         $changed = $true
     }
+    # 平台管理员初始密码：release 首次部署必须显式提供（bootstrap-admin 容器缺省会失败）；
+    # 占位符、空值或过短时生成随机密码，已设置的有效密码保持不变。
+    if ((Test-PlaceholderSecret $values["WMS_ADMIN_PASSWORD"]) -or ([string]$values["WMS_ADMIN_PASSWORD"]).Length -lt 12) {
+        $values["WMS_ADMIN_PASSWORD"] = New-RandomHex -ByteCount 12
+        $changed = $true
+    }
     if (-not $values.Contains("WMS_SERVER_NODE") -or [string]::IsNullOrWhiteSpace($values["WMS_SERVER_NODE"])) {
         $values["WMS_SERVER_NODE"] = "1"
         $changed = $true
@@ -153,7 +159,7 @@ try {
     Write-Host "Web:  http://127.0.0.1:$webPort" -ForegroundColor Green
     Write-Host "API:  http://127.0.0.1:$apiPort" -ForegroundColor Green
     Write-Host "User: admin" -ForegroundColor Green
-    Write-Host "Pass: admin123" -ForegroundColor Green
+    Write-Host "Pass: $($values['WMS_ADMIN_PASSWORD'])" -ForegroundColor Green
     if ($values["WMS_DEMO_ENABLED"] -eq "true") {
         Write-Host "Demo: demo1..demo$($values['WMS_DEMO_INSTANCES']) / $($values['WMS_DEMO_PASSWORD']) (each account isolated by tenant)" -ForegroundColor Green
     }
@@ -161,7 +167,7 @@ try {
         Write-Host "Personal: user1..user$($values['WMS_PERSONAL_INSTANCES']) / $($values['WMS_PERSONAL_PASSWORD']) (persistent data, kept after logout)" -ForegroundColor Green
     }
     Write-Host "Integration API Key is stored in .env as WMS_INTEGRATION_API_KEY." -ForegroundColor Green
-    Write-Host "Change the default password immediately after first login." -ForegroundColor Yellow
+    Write-Host "Admin password is generated into .env (WMS_ADMIN_PASSWORD); keep the file private." -ForegroundColor Yellow
 
     if (-not $NoBrowser) {
         Start-Process "http://127.0.0.1:$webPort"

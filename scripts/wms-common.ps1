@@ -166,6 +166,7 @@ function Save-DotEnv {
         "MYSQL_DATABASE",
         "JWT_SECRET",
         "WMS_INTEGRATION_API_KEY",
+        "WMS_ADMIN_PASSWORD",
         "WMS_SERVER_NODE",
         "WMS_API_BIND",
         "WMS_API_PORT",

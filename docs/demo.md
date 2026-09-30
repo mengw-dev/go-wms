@@ -54,10 +54,10 @@ Windows：
 
 登录后右下角会出现“业务流程中心”按钮。
 
-初始化或修复演示账号：
+初始化或修复演示账号（仅开发/演示环境；release 部署由应用启动时按配置同步）：
 
 ```powershell
-go run ./cmd/migrate -seed up
+go run ./cmd/migrate seed-demo
 ```
 
 ## 体验者/面试官使用说明

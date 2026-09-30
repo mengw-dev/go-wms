@@ -94,20 +94,25 @@ wms/
 
 ```bash
 mysql -uroot -p -e "CREATE DATABASE IF NOT EXISTS gowms DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
-go run ./cmd/migrate -seed up
 go run ./cmd/wms
 ```
 
 > 数据库名沿用历史名称 `gowms`（仅内部标识符，与项目显示名 WMS 无关）。Docker 部署可通过 `.env` 的 `MYSQL_DATABASE` 修改；本地开发需同步修改 `configs/config.yaml` 中的 DSN。
 
-服务默认监听 `http://127.0.0.1:8080`。`debug` 模式首次启动会通过 AutoMigrate 建表并创建管理员；`release` 模式必须先执行版本化迁移：
+服务默认监听 `http://127.0.0.1:8080`。`debug` 模式首次启动会通过 AutoMigrate 建表并初始化管理员；`release` 模式必须先执行版本化初始化：
+
+```bash
+go run ./cmd/migrate up              # 只做数据库结构迁移
+go run ./cmd/migrate bootstrap-admin # 创建/修复平台管理员（release 必须提供 WMS_ADMIN_PASSWORD）
+go run ./cmd/migrate seed-demo       # 演示数据与体验账号（仅开发/演示环境，release 禁止）
+```
 
 ```text
 用户名：admin
-密码：admin123
+密码：debug 模式默认 admin123（可用 WMS_ADMIN_PASSWORD 覆盖）；release 模式取 WMS_ADMIN_PASSWORD，未设置会初始化失败
 ```
 
-首次登录后请立即修改默认密码。
+首次登录后请立即修改密码。
 
 ### 3. 启动前端
 
@@ -182,9 +187,9 @@ powershell -ExecutionPolicy Bypass -File .\scripts\windows\start.ps1
 - Web：`http://127.0.0.1:80`
 - API：`http://127.0.0.1:8080`
 - 用户名：`admin`
-- 密码：`admin123`
+- 密码：由 `start.ps1` 自动生成并写入 `.env` 的 `WMS_ADMIN_PASSWORD`（启动结束时也会打印到终端）
 
-首次登录后请立即修改默认密码。
+`.env` 保存全部密钥，请勿提交或外传；首次登录后请按需修改密码。
 
 如果 80 或 8080 端口被占用，可以先修改 `.env`：
 
@@ -237,7 +242,7 @@ make compose-down
 
 项目内置独立演示模式，适合把项目临时开放给体验者或面试官体验：
 
-- 多演示账号（默认 5 个：`demo1` ~ `demo5`，密码均为 `demo123456`），每个账号独占一个租户，**数据完全隔离、互不影响**
+- 多演示账号（默认 5 个：`demo1` ~ `demo5`，开发模式共用密码 `demo123456`；release 部署必须显式设置 `WMS_DEMO_PASSWORD`），每个账号独占一个租户，**数据完全隔离、互不影响**
 - 登录页“在线体验”按钮自动分配一个空闲演示账号；全部占用时提示稍后再试
 - 退出（或 5 分钟无操作）后，该账号的演示数据自动恢复初始状态，不影响其他演示账号
 - “演示中心”提供三种体验方式：一键自动跑完整闭环、分步执行（每执行一步都可打开真实页面核对）、聚光灯引导体验（在真实入库/出库页面逐步提示操作位置）
@@ -271,9 +276,10 @@ make compose-down
 | `WMS_REDIS_ADDR` | Redis 地址 | `127.0.0.1:6379` |
 | `WMS_JWT_SECRET` | JWT 密钥，生产环境至少 32 字符 | 开发配置 |
 | `WMS_INTEGRATION_API_KEY` | 外部 OMS/ERP API Key | 开发占位值 |
+| `WMS_ADMIN_PASSWORD` | 平台管理员初始密码（release 首次部署必须设置，缺失会导致初始化失败） | 开发默认 `admin123` |
 | `WMS_DEMO_ENABLED` | 演示模式总开关（账号 + `/demo` 接口，`false` 时路由完全不挂载） | `true` |
 | `WMS_DEMO_INSTANCES` | 演示账号数量（demo1~demoN，各自独立租户） | `5` |
-| `WMS_DEMO_PASSWORD` | 演示账号密码（所有演示账号共用） | `demo123456` |
+| `WMS_DEMO_PASSWORD` | 演示账号密码（所有演示账号共用；release 开启演示时必须显式设置） | 开发默认 `demo123456` |
 | `WMS_DEMO_SESSION_TTL_SECONDS` | 演示会话空闲超时秒数 | `300` |
 | `WMS_API_BIND` | API 端口绑定地址 | `127.0.0.1` |
 | `WMS_API_PORT` | API 宿主机映射端口 | `8080` |
@@ -287,7 +293,7 @@ make compose-down
 | `WMS_GRAFANA_ADMIN_USER` | Grafana 管理员用户名 | `admin` |
 | `WMS_GRAFANA_ADMIN_PASSWORD` | Grafana 管理员密码 | 随机生成 |
 
-生产模式 `WMS_SERVER_MODE=release` 会拒绝过短或仍包含示例占位内容的 JWT、MySQL 和集成 API Key。多实例部署时每个实例必须使用不同的 `WMS_SERVER_NODE`。
+生产模式 `WMS_SERVER_MODE=release` 会拒绝过短或仍包含示例占位内容的 JWT、MySQL 和集成 API Key；开启演示/体验账号时还要求显式提供 `WMS_DEMO_PASSWORD` / `WMS_PERSONAL_PASSWORD`。首次部署必须提供 `WMS_ADMIN_PASSWORD` 才能创建平台管理员（管理员已存在后重启不再要求）。多实例部署时每个实例必须使用不同的 `WMS_SERVER_NODE`。
 
 默认情况下 API 和 Prometheus 只绑定到宿主机 `127.0.0.1`，外部访问统一通过 Web 容器的 Nginx `/api/` 代理。云服务器安全组只需要开放 `80/443` 和受限的 SSH 端口，不要开放 MySQL、Redis、API 管理端口或 Prometheus。
 
@@ -489,7 +495,15 @@ Authorization: Bearer <token>
 ```bash
 make migrate-up
 # 或
-go run ./cmd/migrate -config configs/config.yaml -seed up
+go run ./cmd/migrate up
+```
+
+首次部署创建平台管理员（release 必须提供 `WMS_ADMIN_PASSWORD`，缺省会失败）：
+
+```bash
+make bootstrap-admin
+# 或
+go run ./cmd/migrate bootstrap-admin
 ```
 
 回退一个版本：

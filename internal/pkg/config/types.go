@@ -11,6 +11,7 @@ type Config struct {
 	Upload      UploadConfig      `mapstructure:"upload"`
 	Metrics     MetricsConfig     `mapstructure:"metrics"`
 	Integration IntegrationConfig `mapstructure:"integration"`
+	Admin       AdminConfig       `mapstructure:"admin"`
 	Demo        DemoConfig        `mapstructure:"demo"`
 	Personal    PersonalConfig    `mapstructure:"personal"`
 	Limits      LimitsConfig      `mapstructure:"limits"`
@@ -64,6 +65,13 @@ type MetricsConfig struct {
 type IntegrationConfig struct {
 	APIKey   string `mapstructure:"api_key"`
 	TenantID int64  `mapstructure:"tenant_id"` // API Key 只访问这个租户；0 也精确隔离。
+}
+
+// AdminConfig 内置平台管理员（tenant_id=0）的初始密码。
+// 只从环境变量 WMS_ADMIN_PASSWORD 读取（不写入 configs/config.yaml）；
+// release 模式首次创建管理员时必须显式提供，缺失会直接失败，避免公开部署出现默认口令。
+type AdminConfig struct {
+	Password string `mapstructure:"password"`
 }
 
 // DemoConfig 演示模块配置：多演示账号（demo1..demoN），每个账号独占一个租户，

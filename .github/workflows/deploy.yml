@@ -158,10 +158,10 @@ jobs:
             # 只拉自有镜像，避免浮动 tag（mysql:8.0 / redis:7-alpine）被顺带升级。
             # 镜像不存在或仓库未公开时这里会直接失败退出，不会退化成在服务器上编译。
             echo "==> 拉取镜像（tag=$IMAGE_TAG）"
-            docker compose --env-file .env -f deploy/docker-compose.yaml --profile tls pull migrate wms web caddy
+            docker compose --env-file .env -f deploy/docker-compose.yaml --profile tls pull migrate bootstrap-admin wms web caddy
 
             # --no-build：即使镜像缺失也绝不在服务器上构建，宁可报错暴露问题。
-            echo "==> 启动容器（migrate 容器会自动执行数据库迁移，--profile tls 会一并启动 Caddy）"
+            echo "==> 启动容器（migrate 执行结构迁移，bootstrap-admin 初始化管理员，--profile tls 会一并启动 Caddy）"
             docker compose --env-file .env -f deploy/docker-compose.yaml --profile tls up -d --no-build --remove-orphans
 
             echo "==> 清理悬空镜像"

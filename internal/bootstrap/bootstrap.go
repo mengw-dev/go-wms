@@ -7,16 +7,13 @@ import (
 	"gowms/internal/pkg/config"
 )
 
-// Migrate 仅供开发和测试使用：AutoMigrate + 种子数据。
+// Migrate 仅供开发和测试使用：AutoMigrate + 管理员初始化 + 演示数据与账号。
 func Migrate(db *gorm.DB, cfg *config.Config) error {
 	if err := AutoMigrate(db); err != nil {
 		return err
 	}
-	if err := Seed(db); err != nil {
+	if err := SeedAdmin(db, cfg); err != nil {
 		return err
 	}
-	if err := SeedDemoAccounts(db, cfg); err != nil {
-		return err
-	}
-	return SeedPersonalAccounts(db, cfg)
+	return SeedDemo(db, cfg)
 }

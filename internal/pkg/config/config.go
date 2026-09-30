@@ -76,6 +76,13 @@ func Load(path string) (*Config, error) {
 		if cfg.Integration.APIKey == "" || strings.Contains(strings.ToLower(cfg.Integration.APIKey), "change-this") {
 			return nil, fmt.Errorf("release mode requires WMS_INTEGRATION_API_KEY to override the dev default in config.yaml")
 		}
+		// 公开体验账号在 release 下必须显式设置密码，不能依赖开发默认值。
+		if cfg.Demo.Enabled && strings.TrimSpace(cfg.Demo.Password) == "" {
+			return nil, fmt.Errorf("release mode requires WMS_DEMO_PASSWORD when demo accounts are enabled")
+		}
+		if cfg.Personal.Enabled && strings.TrimSpace(cfg.Personal.Password) == "" {
+			return nil, fmt.Errorf("release mode requires WMS_PERSONAL_PASSWORD when personal accounts are enabled")
+		}
 	}
 	if cfg.Upload.Dir == "" {
 		cfg.Upload.Dir = "./data/uploads"
@@ -133,6 +140,10 @@ func Load(path string) (*Config, error) {
 	if cfg.Limits.MaxImportRows <= 0 {
 		cfg.Limits.MaxImportRows = 200
 	}
+	// 管理员初始密码只从环境变量 WMS_ADMIN_PASSWORD 读取：config.yaml 不提供默认值，
+	// release 首次创建管理员时必须显式设置（见 bootstrap.SeedAdmin）。
+	// 这里不依赖 viper 的 AutomaticEnv：key 不存在于配置文件时 Unmarshal 不会读取环境变量。
+	cfg.Admin.Password = strings.TrimSpace(os.Getenv("WMS_ADMIN_PASSWORD"))
 	// AI 段：密钥只走环境变量（ZHIPU_ 前缀与 viper 的 WMS_ 前缀不同，需单独读取）
 	cfg.AI.APIKey = strings.TrimSpace(os.Getenv("ZHIPU_API_KEY"))
 	if v := strings.TrimSpace(os.Getenv("ZHIPU_LLM_MODEL")); v != "" {

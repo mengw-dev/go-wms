@@ -1,4 +1,5 @@
-// Command migrate applies versioned database migrations and optional seed data.
+// Command migrate applies versioned database migrations and initializes
+// the built-in admin or development demo data as separate subcommands.
 package main
 
 import (
@@ -15,6 +16,7 @@ import (
 	"github.com/golang-migrate/migrate/v4"
 	migratemysql "github.com/golang-migrate/migrate/v4/database/mysql"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
+	"gorm.io/gorm"
 
 	"gowms/internal/bootstrap"
 	"gowms/internal/pkg/config"
@@ -35,9 +37,9 @@ func main() {
 
 func run() error {
 	configPath := flag.String("config", "configs/config.yaml", "path to config file")
-	seed := flag.Bool("seed", false, "seed initial admin after up")
 	steps := flag.Int("steps", 1, "number of migrations for down")
 	forceVersion := flag.Int("version", 0, "migration version for force")
+	flag.Usage = usage
 	flag.Parse()
 
 	if flag.NArg() != 1 {
@@ -79,11 +81,6 @@ func run() error {
 		if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
 			return fmt.Errorf("migrate up: %w", err)
 		}
-		if *seed {
-			if err := seedData(cfg); err != nil {
-				return err
-			}
-		}
 		log.Println("migration up completed")
 	case "down":
 		if *steps <= 0 {
@@ -107,42 +104,70 @@ func run() error {
 			return fmt.Errorf("migration version: %w", err)
 		}
 		fmt.Printf("version=%d dirty=%t\n", version, dirty)
+	case "bootstrap-admin":
+		if err := seedBootstrapAdmin(cfg); err != nil {
+			return err
+		}
+	case "seed-demo":
+		if err := seedDemo(cfg); err != nil {
+			return err
+		}
 	default:
 		return fmt.Errorf("unknown command %q: %w", flag.Arg(0), errUsage)
 	}
 	return nil
 }
 
-func seedData(cfg *config.Config) error {
-	db, err := bootstrap.InitDB(cfg)
-	if err != nil {
-		return fmt.Errorf("init seed database: %w", err)
+// seedBootstrapAdmin 首次创建/修复平台管理员：密码取 WMS_ADMIN_PASSWORD，
+// release 模式未配置时直接失败，管理员已存在时幂等跳过（不再要求密码）。
+func seedBootstrapAdmin(cfg *config.Config) error {
+	if err := withDB(cfg, func(db *gorm.DB) error {
+		return bootstrap.SeedAdmin(db, cfg)
+	}); err != nil {
+		return fmt.Errorf("bootstrap admin: %w", err)
 	}
-	sqlSeedDB, err := db.DB()
-	if err != nil {
-		return fmt.Errorf("get seed sql db: %w", err)
-	}
-	defer func() {
-		if err := sqlSeedDB.Close(); err != nil {
-			log.Printf("close seed database: %v", err)
-		}
-	}()
-	if err := bootstrap.Seed(db); err != nil {
-		return fmt.Errorf("seed: %w", err)
-	}
-	if err := bootstrap.SeedDemoAccounts(db, cfg); err != nil {
-		return fmt.Errorf("seed demo accounts: %w", err)
-	}
-	if err := bootstrap.SeedPersonalAccounts(db, cfg); err != nil {
-		return fmt.Errorf("seed personal accounts: %w", err)
-	}
+	log.Println("bootstrap admin completed")
 	return nil
 }
 
+// seedDemo 写入开发/演示数据与公开体验账号，仅允许开发/演示环境使用。
+func seedDemo(cfg *config.Config) error {
+	if cfg.Server.Mode == "release" {
+		return errors.New("seed-demo is only allowed in development/demo mode")
+	}
+	if err := withDB(cfg, func(db *gorm.DB) error {
+		return bootstrap.SeedDemo(db, cfg)
+	}); err != nil {
+		return fmt.Errorf("seed demo: %w", err)
+	}
+	log.Println("seed demo completed")
+	return nil
+}
+
+// withDB 按应用配置打开数据库，执行 fn 后关闭连接。
+func withDB(cfg *config.Config, fn func(*gorm.DB) error) error {
+	db, err := bootstrap.InitDB(cfg)
+	if err != nil {
+		return fmt.Errorf("init database: %w", err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		return fmt.Errorf("get sql database: %w", err)
+	}
+	defer func() {
+		if err := sqlDB.Close(); err != nil {
+			log.Printf("close database: %v", err)
+		}
+	}()
+	return fn(db)
+}
+
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: migrate [flags] <up|down|version|force>")
+	fmt.Fprintln(os.Stderr, "usage: migrate [flags] <up|down|version|force|bootstrap-admin|seed-demo>")
 	fmt.Fprintln(os.Stderr, "examples:")
-	fmt.Fprintln(os.Stderr, "  migrate -seed up")
+	fmt.Fprintln(os.Stderr, "  migrate up                              # 只执行数据库结构迁移")
+	fmt.Fprintln(os.Stderr, "  migrate bootstrap-admin                 # 创建/修复平台管理员（release 需要 WMS_ADMIN_PASSWORD）")
+	fmt.Fprintln(os.Stderr, "  migrate seed-demo                       # 演示数据与体验账号（release 禁止）")
 	fmt.Fprintln(os.Stderr, "  migrate -steps 1 down")
 }
 
