@@ -177,7 +177,7 @@ API Key 在服务端配置中绑定 `WMS_INTEGRATION_TENANT_ID`，请求体、�
 ```json
 // POST /api/v1/outbound/orders/1861.../approve
 // 200（HTTP 层正常，业务层失败）
-{ "code": 40012, "msg": "库存不足，无法完成分配", "data": null }
+{ "code": 30201, "msg": "可用库存不足", "data": null }
 ```
 
 ### 7.1 外部 OMS 推送出库单
