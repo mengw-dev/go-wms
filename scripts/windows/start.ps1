@@ -46,6 +46,15 @@ try {
         $values["MYSQL_DATABASE"] = "gowms"
         $changed = $true
     }
+    # 应用专用 MySQL 账户：运行时只通过此账户访问业务数据，root 仅用于迁移和管理员初始化。
+    if (-not $values.Contains("MYSQL_USER") -or [string]::IsNullOrWhiteSpace($values["MYSQL_USER"])) {
+        $values["MYSQL_USER"] = "wms_app"
+        $changed = $true
+    }
+    if (Test-PlaceholderSecret $values["MYSQL_PASSWORD"]) {
+        $values["MYSQL_PASSWORD"] = New-RandomHex -ByteCount 24
+        $changed = $true
+    }
     if (Test-PlaceholderSecret $values["JWT_SECRET"] -or $values["JWT_SECRET"].Length -lt 32) {
         $values["JWT_SECRET"] = New-RandomHex -ByteCount 48
         $changed = $true
