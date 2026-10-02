@@ -61,7 +61,7 @@ type tenantCounts struct {
 	outboundOrders int64
 }
 
-func tenantCountsOf(t *testing.T, db *gorm.DB, ctx context.Context) tenantCounts {
+func tenantCountsOf(ctx context.Context, t *testing.T, db *gorm.DB) tenantCounts {
 	t.Helper()
 	count := func(entity any) int64 {
 		var n int64
@@ -82,7 +82,7 @@ func tenantCountsOf(t *testing.T, db *gorm.DB, ctx context.Context) tenantCounts
 }
 
 // seedTenantSentinel 在指定租户写入一组可识别的业务数据（仓库/库位/货品/库存/流水/入库单）。
-func seedTenantSentinel(t *testing.T, db *gorm.DB, ctx context.Context, code string) int64 {
+func seedTenantSentinel(ctx context.Context, t *testing.T, db *gorm.DB, code string) int64 {
 	t.Helper()
 	warehouse := model.Warehouse{Code: code, Name: code + " 仓库", Status: 1}
 	if err := db.WithContext(ctx).Create(&warehouse).Error; err != nil {
@@ -133,12 +133,12 @@ func TestResetDemoDataOnlyAffectsTargetTenant(t *testing.T) {
 	ctxReset := tenant.WithTenant(context.Background(), resetTenantID)
 	ctxKeep := tenant.WithTenant(context.Background(), keepTenantID)
 
-	resetWarehouseID := seedTenantSentinel(t, db, ctxReset, "A-SENTINEL")
-	keepWarehouseID := seedTenantSentinel(t, db, ctxKeep, "B-SENTINEL")
+	resetWarehouseID := seedTenantSentinel(ctxReset, t, db, "A-SENTINEL")
+	keepWarehouseID := seedTenantSentinel(ctxKeep, t, db, "B-SENTINEL")
 	if resetWarehouseID == 0 || keepWarehouseID == 0 {
 		t.Fatal("sentinel warehouses should be created")
 	}
-	before := tenantCountsOf(t, db, ctxKeep)
+	before := tenantCountsOf(ctxKeep, t, db)
 
 	if err := ResetDemoData(context.Background(), db, resetTenantID); err != nil {
 		t.Fatalf("ResetDemoData: %v", err)
@@ -159,7 +159,7 @@ func TestResetDemoDataOnlyAffectsTargetTenant(t *testing.T) {
 	if demoWarehouses != 1 {
 		t.Fatalf("reset tenant should be re-seeded with demo data, WH01 count=%d", demoWarehouses)
 	}
-	if seeded := tenantCountsOf(t, db, ctxReset); seeded.skus != 5 || seeded.inventories != 4 {
+	if seeded := tenantCountsOf(ctxReset, t, db); seeded.skus != 5 || seeded.inventories != 4 {
 		t.Fatalf("reset tenant demo seed mismatch: skus=%d inventories=%d want 5/4", seeded.skus, seeded.inventories)
 	}
 
@@ -171,7 +171,7 @@ func TestResetDemoDataOnlyAffectsTargetTenant(t *testing.T) {
 	if keepWarehouse.Code != "B-SENTINEL" || keepWarehouse.Status != 1 {
 		t.Fatalf("unrelated tenant warehouse changed: %+v", keepWarehouse)
 	}
-	if after := tenantCountsOf(t, db, ctxKeep); after != before {
+	if after := tenantCountsOf(ctxKeep, t, db); after != before {
 		t.Fatalf("unrelated tenant changed: before=%+v after=%+v", before, after)
 	}
 }

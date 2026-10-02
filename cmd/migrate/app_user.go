@@ -52,6 +52,9 @@ func ensureAppUser(db *sql.DB, dsn string) error {
 		fmt.Sprintf("GRANT ALL PRIVILEGES ON `%s`.* TO %s@'%%'", database, quoteLiteral(user)),
 	}
 	for _, statement := range statements {
+		// 语句中的账户名限定 [A-Za-z0-9_.-]，密码与库名分别按 MySQL 字面量/标识符规则转义，
+		// 不存在可注入的外部输入；DDL 无法用占位符参数化，这里保留字符串拼接。
+		// #nosec G701 -- 见上：三处输入均已白名单校验或转义。
 		if _, err := db.Exec(statement); err != nil {
 			return fmt.Errorf("ensure app user: %w", err)
 		}
