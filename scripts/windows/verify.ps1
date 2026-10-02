@@ -50,10 +50,16 @@ if ($WithRace) {
                 $values[$matches[1].Trim()] = $matches[2].Trim()
             }
         }
-        $appPassword = $values["MYSQL_PASSWORD"]
+        $adminPassword = $values["MYSQL_ROOT_PASSWORD"]
+        # The full Go test suite creates/drops isolated schemas (gowms_test_*) and therefore
+        # needs an admin account with CREATE DATABASE. The app account (MYSQL_USER, default
+        # wms_app) only holds grants on the business database and fails with Error 1044.
+        # Admin username: MYSQL_ADMIN_USER from .env, default root (the account Compose uses
+        # for migrate/bootstrap-admin); password: MYSQL_ROOT_PASSWORD.
+        $adminUser = if ($values["MYSQL_ADMIN_USER"]) { $values["MYSQL_ADMIN_USER"] } else { "root" }
         $database = if ($values["MYSQL_DATABASE"]) { $values["MYSQL_DATABASE"] } else { "gowms" }
-        if (-not $appPassword) {
-            throw "MYSQL_PASSWORD is missing from .env"
+        if (-not $adminPassword) {
+            throw "MYSQL_ROOT_PASSWORD is missing from .env"
         }
         foreach ($container in @("deploy-mysql-1", "deploy-redis-1")) {
             $running = docker inspect --format '{{.State.Running}}' $container 2>$null
@@ -61,7 +67,7 @@ if ($WithRace) {
                 throw "$container is not running; start the Compose stack first."
             }
         }
-        $dsn = "wms_app:${appPassword}@tcp(mysql:3306)/${database}?charset=utf8mb4&parseTime=True&loc=Local"
+        $dsn = "${adminUser}:${adminPassword}@tcp(mysql:3306)/${database}?charset=utf8mb4&parseTime=True&loc=Local"
         docker run --rm --network deploy_default -v "$($root.Path):/src" -w /src `
             -e "WMS_TEST_DSN=$dsn" -e "WMS_MYSQL_DSN=$dsn" `
             -e WMS_TEST_REDIS_ADDR=redis:6379 -e WMS_TEST_REQUIRED=1 `

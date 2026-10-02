@@ -9,7 +9,8 @@ $violations = [System.Collections.Generic.List[string]]::new()
 Get-ChildItem -Path $internal -Recurse -Filter "*.go" -File |
     Where-Object { $_.Name -notlike "*_test.go" } |
     ForEach-Object {
-        $lines = Get-Content -LiteralPath $_.FullName
+        # Wrap in @() so single-line/empty files stay arrays (StrictMode rejects .Count on a bare String).
+        $lines = @(Get-Content -LiteralPath $_.FullName)
         for ($i = 0; $i -lt $lines.Count; $i++) {
             if ($lines[$i] -notmatch "\.(Table|Raw)\(") { continue }
             $end = [Math]::Min($i + 8, $lines.Count - 1)
