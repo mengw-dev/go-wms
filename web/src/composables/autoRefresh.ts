@@ -10,7 +10,7 @@ export interface AutoRefreshController {
   error: Ref<unknown>
   /** 启动定时轮询与数据变更订阅，重复调用无副作用 */
   start: () => void
-  /** 停止定时轮询与数据变更订阅 */
+  /** 停止定时轮询与数据变更订阅；已在飞行中的请求结束后不再补刷 */
   stop: () => void
   /** 立即刷新一次，仍受防重叠与 shouldRefresh 约束 */
   refreshNow: () => Promise<void>
@@ -24,7 +24,8 @@ const TIMER_DISABLED = 0
  *
  * 同一时刻最多只有一个 refresh 在执行：上一次未结束时，定时器与数据变更
  * 事件会记录 pending 标志，当前请求结束后补刷一次（trailing refresh），
- * 避免请求重叠，同时不丢失刷新事件。
+ * 避免请求重叠，同时不丢失刷新事件。stop() 是硬停止：丢弃 pending 标志，
+ * 悬挂请求结束、页面卸载后都不会再发起补刷。
  */
 export function useAutoRefresh(
   refresh: () => void | Promise<void>,
@@ -82,6 +83,8 @@ export function useAutoRefresh(
     }
     unsubscribe?.()
     unsubscribe = undefined
+    // stop 是硬停止：丢弃尚未补发的待刷新标志，悬挂请求结束后不得再发起补刷。
+    pendingRefresh = false
   }
 
   onMounted(start)

@@ -108,6 +108,38 @@ describe('useAutoRefresh 防重叠与生命周期', () => {
     expect(refresh).toHaveBeenCalledTimes(2)
   })
 
+  it('stop() 之后结束悬挂请求，不再补发 trailing refresh', async () => {
+    const deferred = createDeferred<void>()
+    const refresh = vi.fn(() => deferred.promise)
+    const auto = useAutoRefresh(refresh, 1000)
+    auto.start()
+
+    // 1) 首次刷新进入 in-flight
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(refresh).toHaveBeenCalledTimes(1)
+    expect(auto.running.value).toBe(true)
+
+    // 2) 请求期间产生待补刷事件（数据变更 + 定时器到时）
+    emitDataChanged()
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(refresh).toHaveBeenCalledTimes(1)
+
+    // 3) 请求结束前停止
+    auto.stop()
+
+    // 4) 原请求此时才结束：不得再发起补刷
+    deferred.resolve()
+    await flushMicrotasks()
+    expect(refresh).toHaveBeenCalledTimes(1)
+    expect(auto.running.value).toBe(false)
+
+    // 之后继续推进时间、广播事件也不应再触发
+    await vi.advanceTimersByTimeAsync(5000)
+    emitDataChanged()
+    await flushMicrotasks()
+    expect(refresh).toHaveBeenCalledTimes(1)
+  })
+
   it('intervalMs 为 0 时只有数据变更事件触发刷新，stop() 取消订阅', async () => {
     const refresh = vi.fn(() => Promise.resolve())
     const auto = useAutoRefresh(refresh, 0)
