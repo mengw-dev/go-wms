@@ -127,7 +127,9 @@ const dialog = reactive({ visible: false, loading: false, editingId: '' as Entit
 const formRef = ref<FormInstance>()
 const form = reactive({ name: '', remark: '' })
 const selectedPerms = ref<string[]>([])
-const customPerms = ref('')
+// 不在下方可选列表中的权限（历史数据或平台权限）。只做展示与保留，不允许手工新增，
+// 与后端 permission_registry.go 的白名单保持一致。
+const extraPerms = ref<string[]>([])
 
 const rules: FormRules = {
   name: [{ required: true, message: '请输入角色名称', trigger: 'blur' }],
@@ -135,7 +137,7 @@ const rules: FormRules = {
 
 function resetPermissionForm() {
   selectedPerms.value = []
-  customPerms.value = ''
+  extraPerms.value = []
 }
 
 function openCreate() {
@@ -153,12 +155,16 @@ function openEdit(row: RoleItem) {
   form.remark = row.remark
   const perms = splitPerms(row.perms)
   selectedPerms.value = perms.filter((perm) => PERMISSION_LABELS.has(perm))
-  customPerms.value = perms.filter((perm) => !PERMISSION_LABELS.has(perm) && perm !== '*').join(', ')
+  extraPerms.value = perms.filter((perm) => !PERMISSION_LABELS.has(perm) && perm !== '*')
   dialog.visible = true
 }
 
+function removeExtraPerm(perm: string) {
+  extraPerms.value = extraPerms.value.filter((item) => item !== perm)
+}
+
 function buildPerms(): string {
-  return [...new Set([...selectedPerms.value, ...splitPerms(customPerms.value)])].join(',')
+  return [...new Set([...selectedPerms.value, ...extraPerms.value])].join(',')
 }
 
 async function submit() {
@@ -306,12 +312,22 @@ async function onDelete(row: RoleItem) {
             </section>
           </div>
         </el-form-item>
-        <el-form-item label="自定义权限">
-          <el-input
-            v-model="customPerms"
-            placeholder="可选，多个权限用英文逗号分隔，例如 wms:custom:action"
-          />
-          <div class="form-tip">用于兼容后续扩展权限；已勾选权限会自动合并并去重。</div>
+        <el-form-item v-if="extraPerms.length" label="其他权限">
+          <!-- 不在可选列表中的权限只允许移除，不允许手工新增（后端白名单会拒绝未登记权限） -->
+          <div class="permission-tags">
+            <el-tag
+              v-for="perm in extraPerms"
+              :key="perm"
+              type="warning"
+              size="small"
+              effect="plain"
+              closable
+              @close="removeExtraPerm(perm)"
+            >
+              {{ perm }}
+            </el-tag>
+          </div>
+          <div class="form-tip">该角色包含不在可选列表中的权限（例如历史数据），可逐项移除；保存时会保留剩余项。</div>
         </el-form-item>
         <el-form-item label="备注">
           <el-input v-model="form.remark" type="textarea" :rows="2" maxlength="255" show-word-limit placeholder="说明角色职责" />
