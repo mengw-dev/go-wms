@@ -70,7 +70,7 @@ erDiagram
 - `CHECK chk_inv_allocated_non_negative (allocated_quantity >= 0)` —— 分配量非负兜底。
 - `CHECK chk_inv_quantity_balance (stock_quantity = available_quantity + allocated_quantity)` —— 三数量等式兜底。
 
-以上约束配合行锁 + 条件更新构成多层防护；约束由迁移 `000008` 添加。
+以上约束配合行锁 + 条件更新构成多层防护；`chk_inv_non_negative` 随建表迁移 `000001` 添加，`000008` 补充分配量非负与三数量等式两个约束。
 
 > 注意：MySQL 8.0.16 起 CHECK 约束才真正生效，低版本仅语法兼容不执行。
 
@@ -158,4 +158,4 @@ erDiagram
 
 `uk_loc_wh_code` 改为 `(tenant_id, warehouse_id, code)`，`uk_user_role` 改为 `(tenant_id, user_id, role_id)`。回滚脚本只恢复旧索引，不删除 `tenant_id` 字段或任何业务数据。
 
-迁移 `000008` 会添加 `stock = available + allocated` 的 MySQL CHECK 约束。历史数据若违反该等式或存在负数，迁移会直接失败；上线前必须先审计并修复数据，不能借助迁移静默改库存。
+迁移 `000008` 追加两个 CHECK 约束：`allocated_quantity >= 0` 与 `stock = available + allocated`（基础非负约束 `chk_inv_non_negative` 自 `000001` 建表即存在）。历史数据若违反这些约束或存在负数，迁移会直接失败；上线前必须先审计并修复数据，不能借助迁移静默改库存。

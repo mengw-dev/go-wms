@@ -176,7 +176,7 @@ API Key 在服务端配置中绑定 `WMS_INTEGRATION_TENANT_ID`，请求体、�
 
 ```json
 // POST /api/v1/outbound/orders/1861.../approve
-// 200（HTTP 层正常，业务层失败）
+// 400（HTTP 状态按业务错误码映射；30201 属普通业务错误 → 400，body.code 才是业务错误码）
 { "code": 30201, "msg": "可用库存不足", "data": null }
 ```
 

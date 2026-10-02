@@ -1125,15 +1125,15 @@
 ### bootstrap — `internal/bootstrap/bootstrap.go`
 - **核心符号**
   - 包注释：负责数据库与 Redis 初始化、开发环境迁移，以及演示数据的种子与重置。
-  - `func Migrate(db *gorm.DB, cfg *config.Config) error` — 仅供开发和测试：AutoMigrate + 种子数据。
-- **主要调用关系**：由 `cmd/wms/main.go` 调用。
+  - `func Migrate(db *gorm.DB, cfg *config.Config) error` — 仅供开发和测试：AutoMigrate + 管理员初始化 + 演示数据与账号。
+- **主要调用关系**：由 `cmd/wms/main.go` 在 debug 模式下调用。
 
 ### bootstrap — `internal/bootstrap/seed.go`
-- **核心符号**：`func Seed(db *gorm.DB) error` — 写入内置账号与演示基础数据（幂等：各类数据已存在时分别跳过）。
+- **核心符号**：`func SeedDemo(db *gorm.DB, cfg *config.Config) error` — 写入演示基础数据与体验账号（先 `seedDemoData`，再 `SeedDemoAccounts` / `SeedPersonalAccounts`；各自幂等）。
 - **涉及表/模型**：`sys_user` 等。
 
 ### bootstrap — `internal/bootstrap/seed_admin.go`
-- **核心符号**：`seedAdmin(db *gorm.DB) error` — 内置管理员与角色：admin / admin123（tenant_id=0）。
+- **核心符号**：`func SeedAdmin(db *gorm.DB, cfg *config.Config) error` — 创建/修复内置管理员与角色（tenant_id=0）：密码取 `WMS_ADMIN_PASSWORD`，debug 默认 `admin123`，release 缺失即失败；管理员已存在时幂等补齐、不再要求密码。
 - **涉及表/模型**：`sys_user`、`sys_role`、`sys_user_role`。
 
 ### bootstrap — `internal/bootstrap/seed_demo.go`
@@ -1150,7 +1150,7 @@
 - **涉及表/模型**：`sys_user`、`sys_role`、`sys_user_role`、业务数据表。
 
 ### bootstrap — `internal/bootstrap/reset.go`
-- **核心符号**：`ResetDemoData(ctx context.Context, db *gorm.DB, tenantID int64) error` — 硬删除指定租户演示业务数据并重写默认演示数据；用户/角色/迁移记录/操作日志不删除；`tenantID <= 0` 保持全局重置旧行为。
+- **核心符号**：`ResetDemoData(ctx context.Context, db *gorm.DB, tenantID int64) error` — 硬删除指定租户演示业务数据并重写默认演示数据；用户/角色/迁移记录/操作日志不删除；`tenantID <= 0` 时直接拒绝执行，防止误用导致全表物理删除。
 - **涉及表/模型**：各业务表（不含 `sys_user`/`sys_role`/`sys_oper_log`）。
 
 ### bootstrap — `internal/bootstrap/seed_test.go`
@@ -1192,7 +1192,7 @@
 ### cmd/wms — `cmd/wms/main.go`
 - **核心符号**
   - 包注释：启动 HTTP 服务并管理数据库、Redis 和后台任务的资源生命周期。
-  - `func main()`、`func run() error` — `run` 管理资源生命周期（loadDotEnv → config.Load → log.Init → snowflake.Init → InitDB → Migrate/Seed → InitRedis → app.New → serve；启动 `RunOperLogs` 等 worker），返回后 main 才退出，确保 defer 执行。
+  - `func main()`、`func run() error` — `run` 管理资源生命周期（loadDotEnv → config.Load → log.Init → snowflake.Init → InitDB →（debug）`bootstrap.Migrate` /（release）仅同步演示与持久体验账号 → InitRedis → app.New → serve；启动 `RunOperLogs`、`RunCompensator`、`RunImports`、`RunImportFileCleanup` 等 worker），返回后 main 才退出，确保 defer 执行。
 - **测试文件**：`server_test.go`、`dotenv_test.go`。
 
 ### cmd/wms — `cmd/wms/server.go`
@@ -1203,10 +1203,14 @@
 
 ### cmd/migrate — `cmd/migrate/main.go`
 - **核心符号**
-  - 包注释：应用版本化数据库迁移和可选种子数据。
-  - `var errUsage`、`func main()`、`func run() error`、`func seedData(cfg *config.Config) error`、`func usage()`、`func waitForMySQL(db *sql.DB, timeout time.Duration) error`、`func migrationDSN(dsn string) string`。
+  - 包注释：应用版本化数据库迁移，并把管理员初始化、演示数据、应用账户补齐拆成独立子命令。
+  - `var errUsage`、`func main()`、`func run() error`（子命令 `up` / `down` / `version` / `force` / `bootstrap-admin` / `seed-demo` / `ensure-app-user`）、`func seedBootstrapAdmin(cfg *config.Config) error`、`func seedDemo(cfg *config.Config) error`、`func withDB(cfg *config.Config, fn func(*gorm.DB) error) error`、`func usage()`、`func waitForMySQL(db *sql.DB, timeout time.Duration) error`、`func migrationDSN(dsn string) string`。
 - **主要调用关系**：使用 `migrations.FS`（iofs 源）+ golang-migrate MySQL driver。
 - **涉及表/模型**：`schema_migrations`（迁移记录表）。
+
+### cmd/migrate — `cmd/migrate/app_user.go`
+- **核心符号**：`func ensureAppUser(db *sql.DB, dsn string) error` — 用 root 连接幂等创建/修复应用账户（`MYSQL_USER` / `MYSQL_PASSWORD`）：`CREATE USER IF NOT EXISTS` + `ALTER USER`（密码对齐当前配置）+ `GRANT` 目标库全部权限；不触碰任何 schema，供已有数据卷升级补齐账户。
+- **涉及表/模型**：无（只操作 `mysql.user` 与授权）。
 
 ### cmd/wms — `cmd/wms/dotenv_test.go`
 - **核心符号**：`func TestLoadDotEnv(t *testing.T)`、`func TestLoadDotEnvReportsReadError(t *testing.T)`。
@@ -1526,9 +1530,9 @@
 
 ### 专题 3：数据库基础设施
 - **InitDB**：`internal/bootstrap/database.go` 的 `InitDB`（GORM MySQL + 注册多租户全局回调）；`InitRedis`、`AutoMigrate`（含 CHECK 约束）。
-- **Seed 系列**：`internal/bootstrap/seed.go:Seed`（内置账号与演示基础数据，幂等）、`seed_admin.go:seedAdmin`（admin/admin123）、`seed_demo.go:seedDemoData`（仓库/库位/SKU/库存/流水/演示单据，仅当无仓库时执行）、`demo_accounts.go:SeedDemoAccounts`（demo1..demoN）、`personal_accounts.go:SeedPersonalAccounts`（user1..userN，含 `seedPersonalData`）、`reset.go:ResetDemoData`（按租户硬删并重种）。
+- **Seed 系列**：`internal/bootstrap/seed.go:SeedDemo`（演示基础数据 + 体验账号，幂等）、`seed_admin.go:SeedAdmin`（内置管理员，密码取 `WMS_ADMIN_PASSWORD`，debug 默认 admin123）、`seed_demo.go:seedDemoData`（仓库/库位/SKU/库存/流水/演示单据，仅当无仓库时执行）、`demo_accounts.go:SeedDemoAccounts`（demo1..demoN）、`personal_accounts.go:SeedPersonalAccounts`（user1..userN，含 `seedPersonalData`）、`reset.go:ResetDemoData`（按租户硬删并重种，`tenantID <= 0` 拒绝执行）。
 - **迁移机制**：`migrations/embed.go` 的 `FS embed.FS`（`//go:embed versions/*.sql`）；`migrations/versions` 下 000001~000008 各版本 up/down（初始化建表 → 库存版本列 → 任务拣货位置 → 核心索引 → 多租户加列 → 导入 run_token → 租户索引对齐 → 库存 CHECK 不变量）。
-- **应用迁移入口**：`cmd/migrate/main.go`（golang-migrate + iofs 源 + MySQL driver，`run` / `seedData` / `waitForMySQL` / `migrationDSN`）。
+- **应用迁移入口**：`cmd/migrate/main.go`（golang-migrate + iofs 源 + MySQL driver，`run` / `seedBootstrapAdmin` / `seedDemo` / `withDB` / `waitForMySQL` / `migrationDSN`）+ `app_user.go:ensureAppUser`（幂等创建/修复应用账户，已有数据卷升级补齐）。
 - **测试**：`migrations/migrations_test.go` 的 `TestMigrationsAndImportTokenRollback`。
 
 ### 专题 4：Demo 演示模块
@@ -2313,7 +2317,7 @@
 
 ### 部署 — `deploy/docker-compose.yaml`
 
-- **职责**：主 Compose 定义，服务：`mysql:8.0`、`redis:7-alpine`、`migrate`（复用应用镜像，`entrypoint ./migrate -seed up`，关闭健康检查）、`wms`（应用镜像，含 MySQL/Redis/JWT/演示/个人/ZHIPU/Metrics 等环境变量，`stop_grace_period` 默认 45s，健康检查 `/healthz`）、`web`（前端 nginx 镜像）、`caddy`（`tls` profile，自动 HTTPS）、`prometheus`/`grafana`（`monitoring` profile）。自有镜像同时声明 `image`（GHCR）与 `build`：服务器 `pull`，本地/E2E 带 `--build`。
+- **职责**：主 Compose 定义，服务：`mysql:8.0`、`redis:7-alpine`、`migrate`（复用应用镜像，`entrypoint sh -c "./migrate up && ./migrate ensure-app-user"`：结构迁移 + 幂等补齐应用账户，关闭健康检查）、`bootstrap-admin`（一次性创建/修复平台管理员，依赖 `migrate` 成功）、`wms`（应用镜像，含 MySQL/Redis/JWT/演示/个人/ZHIPU/Metrics 等环境变量，`stop_grace_period` 默认 45s，健康检查 `/healthz`）、`web`（前端 nginx 镜像）、`caddy`（`tls` profile，自动 HTTPS）、`prometheus`/`grafana`（`monitoring` profile）。自有镜像同时声明 `image`（GHCR）与 `build`：服务器 `pull`，本地/E2E 带 `--build`。
 - **关键入口/命令**：`docker compose --env-file .env -f deploy/docker-compose.yaml up -d [--build]`；profile：`--profile tls`、`--profile monitoring`。
 - **关系**：被 `wms-common.ps1`/`start.ps1`/`e2e.ps1`、Makefile、CI、deploy.yml 引用；依赖 `deploy/Caddyfile`、`deploy/prometheus.yml`、`deploy/grafana/**`。
 
@@ -2357,7 +2361,7 @@
 
 ### CI — `.github/workflows/ci.yml`
 
-- **职责**：CI 流水线，含四个 job：`backend`（ubuntu + MySQL 8.0/Redis 7 service：gofmt 检查、golangci-lint v2.13.2、PowerShell 脚本语法校验、`docker compose config --quiet`、`go mod verify`、`cmd/migrate -seed up` + `version`、`go build ./...`、`govulncheck` 漏洞扫描（仅拦截可调用且已有修复版本的漏洞）、`go test -race ./... -v -count=1`）；`frontend`（node 22.14.0：`npm ci`、`npm audit --omit=dev`、lint、单测、类型检查+构建）；`containers`（构建后端与前端镜像，needs backend+frontend）；`e2e`（needs backend+frontend，起 MySQL/Redis service，迁移播种，后台起 Go 后端与 Vite，等待健康后 `npm run test:e2e`，始终上传 Playwright 报告，失败时收集服务日志）。
+- **职责**：CI 流水线，含四个 job：`backend`（ubuntu + MySQL 8.0/Redis 7 service：gofmt 检查、golangci-lint v2.13.2、PowerShell 脚本语法校验、`docker compose config --quiet`、`go mod verify`、`cmd/migrate up → bootstrap-admin → seed-demo → version`、`go build ./...`、`govulncheck` 漏洞扫描（仅拦截可调用且已有修复版本的漏洞）、`go test -race ./... -v -count=1`）；`frontend`（node 22.14.0：`npm ci`、`npm audit --omit=dev`、lint、单测、类型检查+构建）；`containers`（构建后端与前端镜像，needs backend+frontend）；`e2e`（needs backend+frontend，起 MySQL/Redis service，执行迁移/管理员初始化/演示数据，后台起 Go 后端与 Vite，等待健康后 `npm run test:e2e`，始终上传 Playwright 报告，失败时收集服务日志）。
 - **关键入口/命令**：`push`（任意分支）与 `pull_request`（main）触发。
 - **关系**：设置 `WMS_TEST_REQUIRED=1`、`E2E_BASE_URL` 等；被 `deploy.yml` 以 `workflow_run` 依赖。
 
@@ -2484,10 +2488,10 @@
 ### 4. CI（.github/workflows）执行步骤
 
 - **`ci.yml`**（push 任意分支 / PR to main）：
-  1. `backend`：gofmt 检查 → golangci-lint v2.13.2 → PowerShell 全脚本语法校验 → `docker compose config --quiet` → `go mod verify` → `go run ./cmd/migrate -seed up` + `version` → `go build ./...` → `govulncheck`（有可调用且已修复的漏洞即失败）→ `go test -race ./... -v -count=1`（MySQL/Redis service，`WMS_TEST_REQUIRED=1`）。
+  1. `backend`：gofmt 检查 → golangci-lint v2.13.2 → PowerShell 全脚本语法校验 → `docker compose config --quiet` → `go mod verify` → `go run ./cmd/migrate up` → `bootstrap-admin` → `seed-demo` → `version` → `go build ./...` → `govulncheck`（有可调用且已修复的漏洞即失败）→ `go test -race ./... -v -count=1`（MySQL/Redis service，`WMS_TEST_REQUIRED=1`）。
   2. `frontend`：`npm ci` → `npm audit --omit=dev` → `npm run lint` → `npm test` → `npm run build`。
   3. `containers`（needs backend+frontend）：`docker build` 后端与前端镜像。
-  4. `e2e`（needs backend+frontend）：安装依赖与 Playwright Chromium → 迁移播种 → 后台起 Go 后端与 Vite → 等 8080/5173 健康 → `npm run test:e2e` → 始终上传报告、失败收集日志。
+  4. `e2e`（needs backend+frontend）：安装依赖与 Playwright Chromium → 执行迁移/管理员初始化/演示数据 → 后台起 Go 后端与 Vite → 等 8080/5173 健康 → `npm run test:e2e` → 始终上传报告、失败收集日志。
 - **`deploy.yml`**（CI 在 main 成功后 `workflow_run` 或手动）：`build` job 构建并推送 GHCR 镜像（`latest` + `sha-xxxxxxx`）→ `deploy` job（未配 `DEPLOY_HOST` 则跳过）SSH 到服务器 `git reset --hard origin/main` → `docker compose --profile tls pull` → `up -d --no-build` → `image prune` → 健康检查。
 
 ## 五、跨模块业务链路（重点专题导航）
