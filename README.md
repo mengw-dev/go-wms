@@ -592,6 +592,10 @@ GET /healthz
 - 建议在反向代理或网关层增加 HTTPS、请求体大小限制和访问日志。
 - 多实例部署必须配置唯一的雪花节点号。
 
+## 已知限制
+
+- **请求级幂等尚未实现。** 出库单创建（`biz_order_no`）和 Excel 导入（`import_task_id + import_row`）已有业务键幂等；但收货、拣货是增量写入，单据处于 `RECEIVING` / `PICKING` 中间状态时，重复提交同一请求会被再次累加。现有状态机与乐观锁只防非法流转和丢失更新，不能替代请求级去重。计划通过 `Idempotency-Key` + 幂等表在同一事务内去重，详见 [requirements.md 第 6 章“范围外与已知边界”](./docs/requirements.md)。
+
 ## License
 
 本项目使用 [MIT License](LICENSE)。MIT 允许自由使用、复制、修改、合并、发布、分发、再许可和销售，只需保留版权和许可声明。
