@@ -70,6 +70,8 @@
 5. 完成其余 Go 文件、前端、配置、脚本和文档逐项核对，再输出最终全项目报告。
 6. 请求级幂等（待解决）：为收货、拣货、盘点审核增加 `Idempotency-Key` 与幂等表，插入与业务写操作放在同一事务，并同步前端与测试。
 
+以上是方向性的顺序，可直接照着执行的清单见第 8 节。
+
 ## 5. 学习时特别注意
 
 | 不推荐写法或理解 | 当前推荐做法 | 原因 |
@@ -134,3 +136,76 @@ Compose 的应用停止宽限期默认改为 45 秒（`WMS_STOP_GRACE_PERIOD` �
 | 09-23 | `4c0d1be` | 修正 race 验证数据库 DSN 的 PowerShell 变量边界 |
 
 以上 commit 均已推送 `main`，GitHub Actions CI 均为 Success。
+
+## 8. 迭代清单（按执行顺序）
+
+护栏类的改动不碰业务行为，风险最低，排在前面；真正改业务的放第二段；结构整理最后做，不影响当前正确性。
+
+### 8.1 护栏
+
+- 删除 `internal/pkg/concurrent`。全仓没有任何地方 import 它，`SafeGo` / `SafeGoNoCtx` 也没有调用方。`unused` 不检查导出符号，所以一直没被 lint 发现。
+- 删除 `internal/app/app.go` 里的 `BasicAPI`、`InventoryAPI` 字段，只有赋值、没有读取。
+- 给跨模块接口补编译期断言，放在实现包内部而不是集中到一个文件，例如新建 `basic/service/contracts.go` 写 `var _ basicapi.BasicAPI = (*Service)(nil)`。
+- `internal/bootstrap/database.go` 用 `strings.Contains(err, "duplicate")`、`"1061"` 判断约束是否已存在，改成 `errors.As` 取 `*mysql.MySQLError` 判 1061。
+- 修 `docs/architecture.md` 的盘点描述。它写着"未填写明细跳过"，实际 `stocktake/service/approve.go` 要求每条明细都填了实盘数才能审核。顺便把口径写清楚：创建时不冻结库存，审核时按锁读到的当前库存调整。
+- 在 `docs/code-index.md` 增加一节文件职责与依赖方向，把 8.5 的约定落成文字。
+- 依赖方向用 golangci-lint 自带的 depguard 配，不要自己去写 AST 脚本。CI 已经在跑 golangci-lint v2.13.2，加配置即可。要守住的方向：handler → service → repository → model；api 不依赖 service、repository、handler；pkg 不依赖 internal/modules；业务模块不依赖 demo，demo 可以调业务 service。
+- 事务归属写进规则并让 CI 拦住：事务只在 service 层开，repository 只能用传进来的 `*gorm.DB`。注意 `system/repository/role.go` 和 `user.go` 现在就自己开了 `Transaction`，这条规则定下来要连这两个文件一起改。
+- 原生 SQL 的租户要求限定为新增代码：新写的 Raw / Table / Exec / Scan 必须明确租户条件，或显式标注为系统级查询，并补租户测试。历史那批已经在 P0 修过，不要重翻。
+- 错误分类写成规则：只把 `gorm.ErrRecordNotFound` 转成业务"不存在"，其它数据库错误原样返回。现状基本符合，只有 database.go 那一处要改。
+- lint 分阶段启用：gocyclo、nestif 可以直接开，funlen 先放宽阈值，dupl 先只提示不阻断，lll 不加。用 `issues.new-from-rev` 让复杂度检查只作用于新增和改动的代码，避免历史文件一次性冒出几百条。
+- `internal/modules/inbound/service/import_worker.go` 当前有一处只删空行的改动，单独提交掉，不要和后面的重构混在一个 commit 里。
+
+### 8.2 业务正确性
+
+- 请求级幂等。收货、上架、拣货、盘点审核都是有副作用的命令，统一按 `Idempotency-Key` + `tenant_id` + `scope` + `request_hash` 处理，唯一键取 `(tenant_id, scope, idempotency_key)`。key 相同且指纹相同算重复成功；key 相同但指纹不同返回 409；业务失败时幂等记录随事务一起回滚；插入必须放在 `TxRetry` 的回调里。前端重试要复用同一个 key，不能重新生成。这几个接口目前返回空数据，暂时不需要缓存响应体，但要把这个限制写进文档。`Idempotency-Key` 还要加进 CORS 的 Allow-Headers，`middleware/cors.go` 现在只放了 Authorization、Content-Type、X-Request-ID、X-Demo-Session。
+- 外部出库单的同号不同内容问题。`outbound/service/integration.go` 只看 `biz_order_no` 就返回原单，OMS-001 先推 SKU A 两件、再推 SKU B 一百件，第二次会被当成重复成功。按规范化后的 `tenant_id + biz_order_no + warehouse_id + details + remark` 算指纹：指纹一致返回原单，不一致返回 409，不同租户允许同号。时间戳、随机数不要进指纹。
+- Web 健康检查。nginx 的 `/healthz` 是静态返回 200，后端挂了它照样通过，而部署脚本探的正好是这个地址。要么让它反代到后端健康接口，要么另开一个 `/api-healthz` 给部署探。
+- 补并发和回滚测试：`pick`、`putaway` 目前连测试文件都没有；再补盘点期间并发出入库，以及死锁重试和事务回滚。后两项属于正确性测试，和"指标有没有上报"分开。
+
+### 8.3 测试与可观测性
+
+- 导入相关测试补齐：文件缺失、失败文件清理、Worker 重启。
+- 补业务指标：死锁重试次数、事务冲突次数、行锁等待、导入任务耗时、FAILED 数量和 PENDING 积压。注意现有的 `wms_db_wait_*` 是连接池等待，不是 MySQL 行锁等待。这项优先级低于前面几项。
+- 索引和 N+1 查询审计，需要时留 EXPLAIN 记录。
+- API、前端类型和接口文档之间的字段同步检查。
+
+### 8.4 结构整理（不做主线）
+
+- demo 按外挂层处理，不补 repository / dto / api。写清楚：demo 可以编排业务 service、可以有自己的响应结构，业务模块不能依赖 demo，demo 也不作为领域分层的范例。
+- `OrderTaskResp` 先不合并。inbound 和 outbound 现在字段一样，但归属不同；确认它确实是稳定的公共任务协议之后，再挪到 task/dto。不要建 common/dto、common/response 这类包。
+- `batchOper` 在两处重复，先留着，等出现第三个真实调用方再抽。
+- 前端 `utils/events.ts` 里的 demo 事件，以及 `utils/demoEvidence.ts`、`utils/demoOperations.ts`、`utils/demoScenario.ts`，移入 `src/demo/`；`components/DemoConsole.vue` 移入 `components/demo/`。
+- 命名统一只从新增和改动的文件开始，不做全量重命名。
+
+### 8.5 文件职责与依赖约定
+
+| 目录 | 放什么 |
+| --- | --- |
+| `modules/*/model` | 数据库模型、状态枚举、持久化字段 |
+| `modules/*/dto` | HTTP 请求与响应结构，不放业务逻辑 |
+| `modules/*/api` | 跨模块的稳定合约，不放数据库实现 |
+| `modules/*/repository` | 查询、写入、锁读、持久化 |
+| `modules/*/service` | 用例编排、校验、事务边界 |
+| `modules/*/handler` | HTTP 绑定、鉴权、调用 service、返回响应 |
+| `internal/pkg` | 有多个真实使用方的技术基础能力 |
+| `modules/demo` | 明确标记的外挂编排层 |
+| `cmd`、`internal/bootstrap` | 启动与依赖注入，不放业务逻辑 |
+
+另外几条：
+
+- 接口只在有真实消费者时才定义。只有一个调用方就在调用方那边写个小接口；要跨模块稳定复用才放 api 包。不要给每个 service 都机械地配一个接口。
+- 一个导出的核心类型一个文件；强相关的私有结构体和方法可以放一起。按用例拆 `receiving.go`、`putaway.go`、`query.go` 是合理的，文件到三四百行或同时管几件事再拆。
+- 抽公共包要同时满足四个条件：有两三个真实调用方、概念稳定、错误和事务语义一致、抽完不会增加模块耦合。不要新增 common、utils、helper、base、shared 这类没有明确职责的包。
+
+### 8.6 暂不处理（登记）
+
+这些是当前的能力边界，不是缺陷，但文档和简历里不要写成"已支持"：
+
+单实例下的本地导入文件目录、多实例的权限缓存与登录限流、Worker 共享存储、Snowflake 跨重启、软配额、best effort 操作日志、API Key 轮换、JWT 存 localStorage、密码强度、AI 库存数据外发与 Redis 故障时限流放行、备份与 PITR、滚动发布与回滚、脚本治理。
+
+Snowflake 那条尤其注意，只能说"单实例加唯一节点号下可用"，不能写"跨重启绝对唯一"。
+
+### 8.7 新增功能的固定动作
+
+读 code-index 和相关测试 → 想清楚类型放哪、依赖往哪走 → 明确事务和租户边界 → 判断要不要幂等 → 补业务测试 → 同步 API 和架构文档 → 跑 gofmt、go vet、go test 和 lint。
