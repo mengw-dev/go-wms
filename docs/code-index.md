@@ -2307,6 +2307,12 @@
 - **关键入口/命令**：`k6 run -e WAREHOUSE_ID=.. -e SKU_ID=.. scripts/k6/allocation-proof.js`（可调 `VUS`/`ORDER_QTY`/`TARGET_STOCK`）。
 - **关系**：需干净测试环境（初始无分配量）。
 
+### k6 压测 — `scripts/k6/approve-concurrency.js`
+
+- **职责**：上一脚本的入门版，只覆盖“并发审核”这一步。setup 不备货，只读一次库存并预建 `VUS`（默认 10）张 `SUBMITTED` 出库单；随后 `VUS` 个 VU 同时对各自订单 `approve`；teardown 校验 4 条不变量：无负库存、每行 `stock=available+allocated`、库存总量前后不变、`available` 减少量=`allocated` 增加量、分配总量不超过原有可用库存。用 `Counter` 区分成功/业务拒绝/系统失败三类结果。
+- **关键入口/命令**：`k6 run -e WAREHOUSE_ID=.. -e SKU_ID=.. -e K6_USERNAME=user1 scripts/k6/approve-concurrency.js`（可调 `VUS`/`ORDER_QTY`；`ORDER_QTY` 调大到总需求超过库存即可看到部分拒绝）。
+- **关系**：依赖 `lib.js`；不自动备货，要求目标 SKU 已有可用库存。
+
 ### loadtest — `loadtest/01-hello.js`
 
 - **职责**：k6 入门示例脚本。1 个虚拟用户连续 7 秒访问 `http://127.0.0.1:8080/healthz`，断言 HTTP 200 与 `code=0`。
@@ -2482,6 +2488,7 @@
 - **`pick-stress.js`**：真实波次拣货压测（铺货+拣货+抢单）；`-Mode wave`。
 - **`read-stress.js`**：读路径压测（列表/详情/深分页/登录）；无对应 Mode，直接 `k6 run`。
 - **`allocation-proof.js`**：并发分配正确性证明（60 VU 抢 4000 件库存）；直接 `k6 run`。
+- **`approve-concurrency.js`**：并发审核入门版（10 VU 抢同一 SKU，自动备货流程省略）；直接 `k6 run`。
 - **通用入口**：`scripts/windows/run-k6.ps1 -Mode <check|flow|smoke|stress|wave>`（透传 `BASE_URL`/账号/仓库/SKU/`ORDER_QTY`）；`-RemoteWrite` 把指标写入本机 Prometheus 9090，配合 `start-monitoring.ps1` 的 Grafana 查看。
 - **`loadtest/01-hello.js`**：独立 k6 入门示例（健康检查 7s），不经 `run-k6.ps1`。
 
