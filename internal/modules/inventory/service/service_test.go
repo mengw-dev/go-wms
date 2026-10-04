@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	basicmodel "gowms/internal/modules/basic/model"
 	"gowms/internal/modules/inventory/api"
@@ -185,6 +186,129 @@ func TestAllocateFIFO(t *testing.T) {
 	}
 	if second.BatchNo != "SECOND" || second.Quantity != 70 {
 		t.Fatalf("FIFO row2 expect SECOND/70, got %s/%d", second.BatchNo, second.Quantity)
+	}
+}
+
+// TestAllocateOnlyLocksNeededRows 验证锁范围收敛：
+// 分配只需要一个批次时，其它未被使用的库存行不应被本次事务锁住。
+// 旧实现会锁住该 SKU 的全部可用行，本用例在那时会因第二个事务拿不到锁而失败。
+func TestAllocateOnlyLocksNeededRows(t *testing.T) {
+	svc, tm, db := newTestService(t)
+	ctx := context.Background()
+
+	locID := snowflake.Next()
+	if err := db.Create(&basicmodel.Location{
+		Base: sysmodel.Base{ID: locID}, WarehouseID: 1, Code: fmt.Sprintf("T-%d", locID), Status: 1,
+	}).Error; err != nil {
+		t.Fatalf("create location: %v", err)
+	}
+	skuID := snowflake.Next()
+	whID := setupStock(t, svc, tm, locID, skuID, "B01", 10)
+
+	// 第二批：直接落库，避免 Increase 的 1 秒等待；入库时间晚于第一批。
+	secondID := snowflake.Next()
+	if err := db.Create(&model.Inventory{
+		Base: sysmodel.Base{ID: secondID}, WarehouseID: whID, LocationID: locID, SKUID: skuID,
+		BatchNo: "B02", StockQuantity: 10, AvailableQty: 10,
+		StockInTime: time.Now().Add(time.Minute),
+	}).Error; err != nil {
+		t.Fatalf("seed second batch: %v", err)
+	}
+
+	started := make(chan struct{})
+	proceed := make(chan struct{})
+	allocDone := make(chan error, 1)
+	go func() {
+		allocDone <- tm.Tx(ctx, func(tx *gorm.DB) error {
+			if _, err := svc.Allocate(ctx, tx, &api.AllocateReq{
+				WarehouseID: whID, SKUID: skuID, Quantity: 5, OrderNo: "CK-LOCK", Operator: "test",
+			}); err != nil {
+				return err
+			}
+			close(started)
+			<-proceed // 保持事务打开，让另一个连接尝试加锁
+			return nil
+		})
+	}()
+	select {
+	case <-started:
+	case <-time.After(10 * time.Second):
+		close(proceed)
+		t.Fatal("allocate did not reach the holding point")
+	}
+
+	// 另一个连接尝试锁第二批：第一批就够本次分配，这里不应被阻塞。
+	lockCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	var other model.Inventory
+	lockErr := db.WithContext(lockCtx).Clauses(clause.Locking{Strength: "UPDATE"}).
+		Where("id = ?", secondID).First(&other).Error
+	cancel()
+	close(proceed)
+	if err := <-allocDone; err != nil {
+		t.Fatalf("allocate: %v", err)
+	}
+	if lockErr != nil {
+		t.Fatalf("本次分配未使用第二批，却把它的行锁住了（锁范围未收敛）: %v", lockErr)
+	}
+}
+
+// TestAllocateAcrossManyBatches 验证跨批次分配：
+// 60 个批次各 1 件，申请 5 件，应当按 FIFO 落在最早的 5 个批次上，其余批次保持不动。
+func TestAllocateAcrossManyBatches(t *testing.T) {
+	svc, tm, db := newTestService(t)
+	ctx := context.Background()
+
+	locID := snowflake.Next()
+	if err := db.Create(&basicmodel.Location{
+		Base: sysmodel.Base{ID: locID}, WarehouseID: 1, Code: fmt.Sprintf("T-%d", locID), Status: 1,
+	}).Error; err != nil {
+		t.Fatalf("create location: %v", err)
+	}
+	skuID := snowflake.Next()
+	whID := setupStock(t, svc, tm, locID, skuID, "B000", 1)
+
+	base := time.Now().Add(time.Minute) // 晚于 setupStock 写入的第一批
+	rest := make([]*model.Inventory, 0, 59)
+	for i := 1; i < 60; i++ {
+		rest = append(rest, &model.Inventory{
+			Base: sysmodel.Base{ID: snowflake.Next()}, WarehouseID: whID, LocationID: locID, SKUID: skuID,
+			BatchNo: fmt.Sprintf("B%03d", i), StockQuantity: 1, AvailableQty: 1,
+			StockInTime: base.Add(time.Duration(i) * time.Second),
+		})
+	}
+	if err := db.Create(&rest).Error; err != nil {
+		t.Fatalf("seed batches: %v", err)
+	}
+
+	var result *api.AllocateResult
+	if err := tm.Tx(ctx, func(tx *gorm.DB) error {
+		r, err := svc.Allocate(ctx, tx, &api.AllocateReq{
+			WarehouseID: whID, SKUID: skuID, Quantity: 5, OrderNo: "CK-MANY", Operator: "test",
+		})
+		result = r
+		return err
+	}); err != nil {
+		t.Fatalf("allocate: %v", err)
+	}
+	if len(result.Rows) != 5 {
+		t.Fatalf("expect 5 allocate rows, got %d", len(result.Rows))
+	}
+	for i, row := range result.Rows {
+		want := fmt.Sprintf("B%03d", i)
+		if row.BatchNo != want || row.Quantity != 1 {
+			t.Fatalf("row %d expect %s/1, got %s/%d", i, want, row.BatchNo, row.Quantity)
+		}
+	}
+
+	var sum struct {
+		Available int `gorm:"column:available"`
+	}
+	if err := db.Model(&model.Inventory{}).Where("warehouse_id = ? AND sku_id = ?", whID, skuID).
+		Select("COALESCE(SUM(available_quantity), 0) AS available").Scan(&sum).Error; err != nil {
+		t.Fatalf("sum available: %v", err)
+	}
+	if sum.Available != 55 {
+		t.Fatalf("expect 55 remaining available, got %d", sum.Available)
 	}
 }
 

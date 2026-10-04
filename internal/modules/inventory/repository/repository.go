@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"time"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -42,20 +43,91 @@ func (r *Repository) LockBasicReferences(tx *gorm.DB, warehouseID, locationID, s
 	return tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&sku, skuID).Error
 }
 
-// FindFIFOForUpdate 悲观行锁 + FIFO：锁定指定仓库/SKU 下所有可分配库存行，并联查库位编码。
-// 防超卖第一层：FOR UPDATE 行锁串行化同一库存行的并发分配。
-func (r *Repository) FindFIFOForUpdate(tx *gorm.DB, warehouseID, skuID int64) ([]*model.Inventory, error) {
-	var list []*model.Inventory
-	q := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-		Table("wms_inventory i").
-		Select("i.*, l.code AS location_code").
-		Joins("JOIN wms_location l ON l.id = i.location_id AND l.tenant_id = i.tenant_id AND l.deleted_at IS NULL").
+// FIFOCandidate 是候选库存行的轻量投影，只带排序和用量估算需要的列。
+type FIFOCandidate struct {
+	ID           int64     `gorm:"column:id"`
+	AvailableQty int       `gorm:"column:available_quantity"`
+	StockInTime  time.Time `gorm:"column:stock_in_time"`
+}
+
+// ListFIFOCandidates 按 FIFO 顺序取一批候选库存行，**不加行锁**。
+//
+// 这是缩小锁范围的第一步：昂贵的 FIFO 排序放在普通读里完成，只花 CPU 不产生行锁；
+// 加锁交给 LockInventoryByIDs，锁集合收敛到调用方选中的候选。
+//
+// afterStockInTime / afterID 是上一批的最后一个键，用于向后翻页，首批传零值。
+// 候选基于当前事务的一致性快照，可能已经过期（并发下更明显），
+// 因此调用方必须在拿到行锁后重新读取可用量再决定扣减。
+func (r *Repository) ListFIFOCandidates(tx *gorm.DB, warehouseID, skuID int64, limit int, afterStockInTime time.Time, afterID int64) ([]FIFOCandidate, error) {
+	var list []FIFOCandidate
+	q := tx.Table("wms_inventory i").
+		Select("i.id, i.available_quantity, i.stock_in_time").
 		Where("i.warehouse_id = ? AND i.sku_id = ? AND i.available_quantity > 0 AND i.deleted_at IS NULL", warehouseID, skuID)
 	if tenantID, scoped := tenant.Scope(tx.Statement.Context); scoped {
 		q = q.Where("i.tenant_id = ?", tenantID)
 	}
-	err := q.Order("i.stock_in_time ASC, i.id ASC").Scan(&list).Error
+	if afterID > 0 {
+		q = q.Where("(i.stock_in_time, i.id) > (?, ?)", afterStockInTime, afterID)
+	}
+	err := q.Order("i.stock_in_time ASC, i.id ASC").Limit(limit).Scan(&list).Error
 	return list, err
+}
+
+// LockInventoryByIDs 只锁指定主键的库存行（防超卖第一层：行锁串行化同一库存行的并发分配）。
+//
+// 不写 ORDER BY：InnoDB 按主键升序逐行加锁，所有事务加锁顺序一致，不会形成加锁顺序环；
+// FIFO 的取用顺序由调用方在锁内自行排序决定。
+func (r *Repository) LockInventoryByIDs(tx *gorm.DB, ids []int64) ([]*model.Inventory, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	var list []*model.Inventory
+	err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+		Where("id IN ?", ids).
+		Find(&list).Error
+	return list, err
+}
+
+// ListLocationCodes 查询库位编码，供分配结果回填。普通读，不参与加锁。
+// 锁读里不再 JOIN wms_location，避免把库位行一起锁住。
+func (r *Repository) ListLocationCodes(tx *gorm.DB, ids []int64) (map[int64]string, error) {
+	codes := make(map[int64]string, len(ids))
+	if len(ids) == 0 {
+		return codes, nil
+	}
+	var rows []struct {
+		ID   int64  `gorm:"column:id"`
+		Code string `gorm:"column:code"`
+	}
+	q := tx.Table("wms_location l").Select("l.id, l.code").Where("l.id IN ? AND l.deleted_at IS NULL", ids)
+	if tenantID, scoped := tenant.Scope(tx.Statement.Context); scoped {
+		q = q.Where("l.tenant_id = ?", tenantID)
+	}
+	if err := q.Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		codes[row.ID] = row.Code
+	}
+	return codes, nil
+}
+
+// SumAvailableQty 汇总某仓库/SKU 的可用量，只在分配失败时用于生成准确的错误提示。
+// 与候选查询同用事务快照：调用方在未观察到快照过期时才走这里，此时快照与真实值一致。
+func (r *Repository) SumAvailableQty(tx *gorm.DB, warehouseID, skuID int64) (int, error) {
+	var row struct {
+		Total int `gorm:"column:total"`
+	}
+	q := tx.Table("wms_inventory i").
+		Select("COALESCE(SUM(i.available_quantity), 0) AS total").
+		Where("i.warehouse_id = ? AND i.sku_id = ? AND i.deleted_at IS NULL", warehouseID, skuID)
+	if tenantID, scoped := tenant.Scope(tx.Statement.Context); scoped {
+		q = q.Where("i.tenant_id = ?", tenantID)
+	}
+	if err := q.Scan(&row).Error; err != nil {
+		return 0, err
+	}
+	return row.Total, nil
 }
 
 // GetForUpdate 按主键锁定库存行。

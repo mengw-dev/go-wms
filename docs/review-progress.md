@@ -218,7 +218,7 @@ Snowflake 那条尤其注意，只能说"单实例加唯一节点号下可用"�
 
 ### 9.1 已核实的问题
 
-- `FindFIFOForUpdate`（`inventory/repository/repository.go`）锁住该仓库该 SKU 下所有可用库存行，没有按本次需求收敛；查询里还 JOIN `wms_location` 取 `location_code`，把库位表牵连进锁定读。一个只要 2 件的订单也可能锁住几百行。
+- `FindFIFOForUpdate`（`inventory/repository/repository.go`）锁住该仓库该 SKU 下所有可用库存行，没有按本次需求收敛；查询里还 JOIN `wms_location` 取 `location_code`，把库位表牵连进锁定读。一个只要 2 件的订单也可能锁住几百行。**已修复**，见 9.2 第 8、9 条。
 - `Increase`（`inventory/service/stock.go`）每次入库先锁 warehouse → location → sku。同一仓库下不同库位、不同 SKU 的上架会竞争同一个 warehouse 行。这个锁是为了堵"基础资料删除与库存创建"的竞态，是刻意的，不要当缺陷删。
 - 审核按 SKU 排序加锁（`outbound/service/order.go`），盘点按 InventoryID 排序。两条链路对同一批库存的加锁顺序不同，目前靠 `TxRetry` 重试 1213 兜底。
 - `TxRetry`（`pkg/tx/tx.go`）只重试 1213 和业务冲突码，1205 锁等待超时不重试；重试耗尽后返回的是原始 MySQL 错误，到 HTTP 层变成 500。现场看到的是"系统内部错误"，不是可识别的冲突。
@@ -244,8 +244,8 @@ Snowflake 那条尤其注意，只能说"单实例加唯一节点号下可用"�
 再优化锁和指标：
 
 7. 给 Approve、Pick、Allocate 补耗时、重试次数、锁等待指标，先有数据再决定动不动锁。
-8. 把库位编码查询从 `FindFIFOForUpdate` 的锁定读里拆出去。
-9. FIFO 锁读改成逐批取候选、锁够本次数量即可，锁定后重算可用量，不足整体回滚。
+8. 把库位编码查询从锁定读里拆出去。**已完成**：`ListFIFOCandidates` 负责非锁定取候选、`LockInventoryByIDs` 只锁前缀，库位编码改由 `ListLocationCodes` 普通读补齐。
+9. FIFO 锁读改成逐批取候选、锁够本次数量即可，锁定后重算可用量，不足整体回滚。**已完成**：新增 `TestAllocateOnlyLocksNeededRows`（未使用的行不被锁）与 `TestAllocateAcrossManyBatches`（跨批次 FIFO）覆盖。
 10. 审核增加单据明细数和单次分配规模上限。
 11. 评估 `Increase` 是否每次都要锁 warehouse 和 SKU：已存在库存行时只锁库存行，首次创建再做基础资料竞争保护。改之前必须先有第 7 项的指标和第 5 项的测试，否则容易把已经解决的删除竞态重新打开。
 12. 是否取消拣货的整单锁，取决于"同一大单多 PDA 并发"是不是目标。这不是删一行锁，取消与拣货同时发生的竞态需要重新设计，靠任务和分配行的条件原子更新加订单状态 CAS 来兜。

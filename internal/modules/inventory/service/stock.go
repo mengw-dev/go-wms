@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"sort"
 	"strconv"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 
 	"gowms/internal/modules/inventory/api"
 	"gowms/internal/modules/inventory/model"
+	"gowms/internal/modules/inventory/repository"
 	"gowms/internal/pkg/errcode"
 	"gowms/internal/pkg/modelbase"
 	"gowms/internal/pkg/snowflake"
@@ -75,54 +77,139 @@ func (s *Service) Increase(ctx context.Context, tx *gorm.DB, req *api.IncreaseRe
 	return errcode.Conflict
 }
 
+// 分批分配参数：批大小决定单次候选查询的行数；
+// 尝试次数给事务长度设上界，用尽说明当前事务的一致性快照已经过期，
+// 交回外层 TxRetry 换新快照重试，比在旧快照上继续翻页更划算。
+const (
+	allocateBatchSize   = 20
+	maxAllocateAttempts = 5
+)
+
 func (s *Service) Allocate(ctx context.Context, tx *gorm.DB, req *api.AllocateReq) (*api.AllocateResult, error) {
 	if req.Quantity <= 0 {
 		return nil, errcode.ParamError
 	}
-	rows, err := s.repo.FindFIFOForUpdate(tx, req.WarehouseID, req.SKUID)
-	if err != nil {
-		return nil, err
+
+	allocation := &api.AllocateResult{Rows: make([]api.AllocateRow, 0, 4)}
+	remaining := req.Quantity
+	var pending []repository.FIFOCandidate // 当前批中尚未处理的候选
+	var afterStockInTime time.Time
+	var afterID int64
+	candidatesExhausted := false
+
+	for attempt := 0; attempt < maxAllocateAttempts && remaining > 0; attempt++ {
+		if len(pending) == 0 {
+			batch, err := s.repo.ListFIFOCandidates(tx, req.WarehouseID, req.SKUID, allocateBatchSize, afterStockInTime, afterID)
+			if err != nil {
+				return nil, err
+			}
+			if len(batch) == 0 {
+				candidatesExhausted = true
+				break
+			}
+			pending = batch
+			last := batch[len(batch)-1]
+			afterStockInTime, afterID = last.StockInTime, last.ID
+		}
+
+		// 只锁可能满足本次需求的前缀：快照可用量累加到覆盖剩余需求为止，
+		// 剩下的候选留在 pending，避免因为前缀不够而跳过后面的候选。
+		prefixLen := minRequiredPrefix(pending, remaining)
+		prefix := pending[:prefixLen]
+		pending = pending[prefixLen:]
+
+		ids := make([]int64, 0, len(prefix))
+		for _, c := range prefix {
+			ids = append(ids, c.ID)
+		}
+
+		rows, err := s.repo.LockInventoryByIDs(tx, ids)
+		if err != nil {
+			return nil, err
+		}
+		// 加锁顺序由主键决定；取用顺序在锁内按 FIFO 重排。
+		sort.Slice(rows, func(i, j int) bool {
+			if rows[i].StockInTime.Equal(rows[j].StockInTime) {
+				return rows[i].ID < rows[j].ID
+			}
+			return rows[i].StockInTime.Before(rows[j].StockInTime)
+		})
+
+		for _, inv := range rows {
+			// 行已加锁，这里的可用量是最新已提交值：快照里显示有货的行可能已被并发扣空。
+			if inv.AvailableQty <= 0 {
+				continue
+			}
+			take := min(remaining, inv.AvailableQty)
+			affected, err := s.repo.AllocateQty(tx, inv.ID, take)
+			if err != nil {
+				return nil, err
+			}
+			if affected == 0 { // 行已锁，理论上不会发生；命中则说明有未走行锁的写入，防御性回滚
+				return nil, errcode.Conflict
+			}
+			if err := s.repo.InsertTrans(tx, &model.InventoryTrans{
+				ID: snowflake.Next(), InventoryID: inv.ID, TransType: model.TransAllocate,
+				QuantityChange: 0, BeforeQuantity: inv.StockQuantity, AfterQuantity: inv.StockQuantity,
+				AvailableBefore: inv.AvailableQty, AvailableAfter: inv.AvailableQty - take,
+				OrderNo: req.OrderNo, Operator: req.Operator,
+			}); err != nil {
+				return nil, err
+			}
+			allocation.Rows = append(allocation.Rows, api.AllocateRow{
+				InventoryID: inv.ID, LocationID: inv.LocationID,
+				BatchNo: inv.BatchNo, Quantity: take,
+			})
+			remaining -= take
+			if remaining == 0 {
+				break
+			}
+		}
 	}
-	totalAvailable := 0
-	for _, inv := range rows {
-		totalAvailable += inv.AvailableQty
-	}
-	if totalAvailable < req.Quantity {
+
+	if remaining > 0 {
+		// 轮次用尽但候选还没取完：结论不确定（可能只是快照过旧导致白跑），
+		// 交给外层开新事务换一份新快照重试，不能在这里误报"库存不足"。
+		if !candidatesExhausted {
+			return nil, errcode.Conflict
+		}
+		// 候选确实取完了，这时快照与真实值一致，按它给出准确的可用量提示。
+		totalAvailable, err := s.repo.SumAvailableQty(tx, req.WarehouseID, req.SKUID)
+		if err != nil {
+			return nil, err
+		}
 		return nil, errcode.New(errcode.AvailableNotEnough.Code,
 			availableNotEnoughMsg(req.SKUID, req.Quantity, totalAvailable))
 	}
 
-	allocation := &api.AllocateResult{Rows: make([]api.AllocateRow, 0, 4)}
-	remaining := req.Quantity
-	for _, inv := range rows {
-		if remaining <= 0 {
-			break
-		}
-		take := min(remaining, inv.AvailableQty)
-		affected, err := s.repo.AllocateQty(tx, inv.ID, take)
-		if err != nil {
-			return nil, err
-		}
-		if affected == 0 { // 理论上行锁内不会发生；命中则说明有未走行锁的写入，防御性回滚
-			return nil, errcode.Conflict
-		}
-		if err := s.repo.InsertTrans(tx, &model.InventoryTrans{
-			ID: snowflake.Next(), InventoryID: inv.ID, TransType: model.TransAllocate,
-			QuantityChange: 0, BeforeQuantity: inv.StockQuantity, AfterQuantity: inv.StockQuantity,
-			AvailableBefore: inv.AvailableQty, AvailableAfter: inv.AvailableQty - take,
-			OrderNo: req.OrderNo, Operator: req.Operator,
-		}); err != nil {
-			return nil, err
-		}
-		allocation.Rows = append(allocation.Rows, api.AllocateRow{
-			InventoryID: inv.ID, LocationID: inv.LocationID,
-			LocationCode: inv.LocationCode,
-			BatchNo:      inv.BatchNo, Quantity: take,
-		})
-		remaining -= take
+	// 库位编码单独补：锁定读里不再 JOIN wms_location，避免把库位行一起锁住。
+	locationIDs := make([]int64, 0, len(allocation.Rows))
+	for _, row := range allocation.Rows {
+		locationIDs = append(locationIDs, row.LocationID)
 	}
+	codes, err := s.repo.ListLocationCodes(tx, locationIDs)
+	if err != nil {
+		return nil, err
+	}
+	for i := range allocation.Rows {
+		allocation.Rows[i].LocationCode = codes[allocation.Rows[i].LocationID]
+	}
+
 	allocation.Total = req.Quantity
 	return allocation, nil
+}
+
+// minRequiredPrefix 返回按 FIFO 累加刚好覆盖需求所需的候选前缀长度（至少 1 个）。
+// 只用于估算"该锁哪几行"，锁到手后仍以实际可用量为准。
+func minRequiredPrefix(candidates []repository.FIFOCandidate, required int) int {
+	sum := 0
+	for i, c := range candidates {
+		sum += c.AvailableQty
+		if sum >= required {
+			return i + 1
+		}
+	}
+	return len(candidates)
 }
 
 func (s *Service) Ship(ctx context.Context, tx *gorm.DB, req *api.ShipReq) error {

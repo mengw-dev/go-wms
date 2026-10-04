@@ -92,7 +92,7 @@ func TestSummaryCountsSKUsAndFIFOFiltersTenant(t *testing.T) {
 		t.Fatalf("summary=%v total=%d err=%v", list, total, err)
 	}
 	if err := db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		rows, err := r.FindFIFOForUpdate(tx, 1, 1)
+		rows, err := r.ListFIFOCandidates(tx, 1, 1, 100, time.Time{}, 0)
 		if err != nil {
 			return err
 		}
@@ -132,11 +132,11 @@ func TestRawInventoryQueriesRespectExactTenantZero(t *testing.T) {
 		t.Fatalf("exact tenant 0 summary total=%d err=%v", total, err)
 	}
 	if err := db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		rows, err := r.FindFIFOForUpdate(tx, 1, 1)
+		rows, err := r.ListFIFOCandidates(tx, 1, 1, 100, time.Time{}, 0)
 		if err != nil {
 			return err
 		}
-		if len(rows) != 1 || rows[0].TenantID != 0 {
+		if len(rows) != 1 || rows[0].ID != 1 {
 			t.Fatalf("exact tenant 0 FIFO rows=%+v", rows)
 		}
 		return nil

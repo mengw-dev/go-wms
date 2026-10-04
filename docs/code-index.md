@@ -421,7 +421,7 @@
 ### 库存 inventory — `internal/modules/inventory/service/stock.go`
 - **核心符号**
   - `func (s *Service) Increase(ctx, tx, req *api.IncreaseReq) error` — 上架入库：锁基础资料与四元组库存行，存在则累加，不存在则创建（唯一索引兜底并发）。
-  - `func (s *Service) Allocate(ctx, tx, req *api.AllocateReq) (*api.AllocateResult, error)` — FIFO 分配：`FindFIFOForUpdate` 锁读可用行→可用校验→逐行 `AllocateQty`（available↓ allocated↑）→写 ALLOCATE 流水。
+  - `func (s *Service) Allocate(ctx, tx, req *api.AllocateReq) (*api.AllocateResult, error)` — FIFO 分配：非锁定取候选 → 按剩余需求估最小前缀 → `LockInventoryByIDs` 锁读 → 锁内按 FIFO 重排并重算 → 逐行 `AllocateQty`（available↓ allocated↑）→ 写 ALLOCATE 流水。
   - `func (s *Service) Ship(ctx, tx, req *api.ShipReq) error` — 发货扣减：stock↓ allocated↓（`ShipQty` 双条件）。
   - `func (s *Service) Release(ctx, tx, req *api.ReleaseReq) error` — 取消分配：allocated↓ available↑。
   - `func (s *Service) Adjust(ctx, tx, req *api.AdjustReq) (int, error)` — 盘点调整：行锁内把账面数调整为 NewStock，调减不可吃掉已分配。
@@ -443,7 +443,7 @@
 - **核心符号**
   - `type SummaryRow struct{...}`、`type QueryFilter struct{...}`、`type Repository struct{}` / `func New()`。
   - `func (r *Repository) LockBasicReferences(tx, warehouseID, locationID, skuID)` — 按固定顺序锁仓库/库位/SKU。
-  - `func (r *Repository) FindFIFOForUpdate(tx, warehouseID, skuID)` — 行锁 + `ORDER BY stock_in_time ASC, id ASC` 的 FIFO 候选集（并联查库位编码）。
+  - `func (r *Repository) ListFIFOCandidates(tx, warehouseID, skuID, limit, afterStockInTime, afterID)` — **非锁定**候选集（`ORDER BY stock_in_time ASC, id ASC`，用 `(stock_in_time, id)` 翻页）；`func (r *Repository) LockInventoryByIDs(tx, ids)` — 只锁指定主键（按主键升序加锁，不写 ORDER BY）；`ListLocationCodes` 单独补库位编码；`SumAvailableQty` 供分配失败时生成提示。
   - `func (r *Repository) GetForUpdate / GetByTupleForUpdate / Create / IncreaseQty` — 库存行读写。
   - `func (r *Repository) AllocateQty / ShipQty / ReleaseQty / AdjustNegative / AdjustPositive` — 条件更新（防超卖/防负）。
   - `func (r *Repository) InsertTrans` — 同事务写流水。
@@ -488,7 +488,7 @@
 
 ### 库存 inventory — `internal/modules/inventory/repository/repository_test.go`
 - **核心符号**：`TestInventoryMutationsCannotCrossTenantOrTouchDeletedRows` / `TestSummaryCountsSKUsAndFIFOFiltersTenant` / `TestRawInventoryQueriesRespectExactTenantZero` / `TestListSKUKeywordFiltersTenant` — 租户隔离、汇总/FIFO 过滤、exact tenant=0 语义。
-- **主要调用关系**：测试 `repository` 的 `SummaryBySKU`/`FindFIFOForUpdate`/`List`/变更方法。
+- **主要调用关系**：测试 `repository` 的 `SummaryBySKU`/`ListFIFOCandidates`/`List`/变更方法。
 - **测试文件**：`repository_test.go`（本文件）。
 - **涉及表/模型**：`wms_inventory`、`wms_inventory_trans`、`wms_sku`。
 
@@ -608,13 +608,13 @@
 ### 本部分重点专题
 
 ### 1. 库存一致性与并发控制
-- **行锁（FOR UPDATE）**：`inventory/repository/repository.go` `FindFIFOForUpdate`、`GetForUpdate`、`GetByTupleForUpdate`、`LockBasicReferences`；`task/repository/repository.go` `GetForUpdate`、`GetByDetailForUpdate`；`inbound/repository/repository.go` `GetOrderForUpdate`、`GetDetailForUpdate`；`outbound/repository/repository.go` `GetOrderForUpdate`、`GetAllocationForUpdate`；`stocktake/repository/repository.go` `GetOrderForUpdate`。
+- **行锁（FOR UPDATE）**：`inventory/repository/repository.go` `LockInventoryByIDs`、`GetForUpdate`、`GetByTupleForUpdate`、`LockBasicReferences`；`task/repository/repository.go` `GetForUpdate`、`GetByDetailForUpdate`；`inbound/repository/repository.go` `GetOrderForUpdate`、`GetDetailForUpdate`；`outbound/repository/repository.go` `GetOrderForUpdate`、`GetAllocationForUpdate`；`stocktake/repository/repository.go` `GetOrderForUpdate`。
 - **数量条件更新（第二层防超卖）**：`inventory/repository/repository.go` `AllocateQty`（`WHERE available_quantity >= ?`）、`ShipQty`、`ReleaseQty`、`AdjustNegative`。
 - **乐观锁 version**：字段定义 `pkg/modelbase/model.go` `Versioned`；写入点 `task/repository` `UpdateProgress`、`outbound/repository` `UpdateOrderProgress`/`IncrOrderPicked`/`IncrAllocationPicked`、`inbound/repository` `IncrOrderReceive`、以及三者 `UpdateStatus`（status CAS + version+1）。
 - **事务边界与重试**：`pkg/tx` 的 `Manager.Tx`/`TxRetry` 与 `MaxTxRetry`；需要重试的入口为 `inbound/service/order.go` `transit`/`Update`/`createOrder`（`MaxOrderNoRetry`）、`inbound/service/receiving.go` `Receive`、`inbound/service/putaway.go` `Putaway`、`outbound/service/order.go` `Create`/`Approve`/`Cancel`、`outbound/service/pick.go` `Pick`、`stocktake/service/approve.go` `Approve`。`CreateExternal` 在建单前用 `tenant.WithExactTenant` 限定单租户。
 
 ### 2. 出库 FIFO 分配算法
-- **选批次函数**：`inventory/repository/repository.go` `FindFIFOForUpdate` — `WHERE warehouse_id=? AND sku_id=? AND available_quantity > 0` 且 `FOR UPDATE`，`ORDER BY i.stock_in_time ASC, i.id ASC`（`StockInTime` 为 FIFO 依据）。
+- **选批次函数**：`inventory/repository/repository.go` `ListFIFOCandidates` — `WHERE warehouse_id=? AND sku_id=? AND available_quantity > 0`，**不加锁**，`ORDER BY i.stock_in_time ASC, i.id ASC`（`StockInTime` 为 FIFO 依据）；加锁另由 `LockInventoryByIDs` 完成，锁集合收敛到按需求估算出的候选前缀。
 - **执行分配**：`inventory/service/stock.go` `Allocate` — 先汇总可用量不足即报错（`availableNotEnoughMsg`），再逐行 `keep = min(remaining, AvailableQty)`，调用 `AllocateQty` 做 `available_quantity -= take` / `allocated_quantity += take`（stock 不变），并写 `TransAllocate` 流水，返回 `AllocateResult.Rows`。
 - **调用方**：`outbound/service/order.go` `Approve` — 先按 `SKUID` 排序明细加锁，再逐明细调用 `s.inv.Allocate`，随后 `UpdateDetailAllocated` 并生成 `Allocation` 行（按 `LocationCode` 排序仅优化拣货路径）；分配量不足整体回滚。
 
@@ -633,7 +633,7 @@
 
 ### 5. 多租户在本范围的体现
 - **全局注入**：`pkg/tenant/gorm.go` `RegisterGORMCallbacks` — Create 前填充 `tenant_id`、Query/Row/Update/Delete 前注入 `WHERE tenant_id = ?`（`clause.CurrentTable` 限定主表）；ctx 传播 `pkg/tenant/tenant.go` `WithTenant`/`FromContext`/`Scope`/`WithExactTenant`。
-- **需要手工过滤的点（Table 别名联查无 Schema）**：`inventory/repository/repository.go` `FindFIFOForUpdate`、`SummaryBySKU`、`List`（SKU 关键字）用 `tenant.Scope`；`stocktake/repository/repository.go` `SnapshotInventory` 用 `tenant.Scope`。
+- **需要手工过滤的点（Table 别名联查无 Schema）**：`inventory/repository/repository.go` `ListFIFOCandidates`、`ListLocationCodes`、`SumAvailableQty`、`SummaryBySKU`、`List`（SKU 关键字）用 `tenant.Scope`；`stocktake/repository/repository.go` `SnapshotInventory` 用 `tenant.Scope`。
 - **执行上下文注入**：`inbound/service/import_worker.go` `processImport` 用 `tenant.WithTenant(parent, task.TenantID)` 为后台 worker 恢复租户上下文；`outbound/service/integration.go` `CreateExternal` 用 `tenant.WithExactTenant` 禁止 API Key 走平台旁路。
 - **模型层**：各 `model.go` 的 `TenantID` 均前置进联合唯一索引（如 `uk_receipt_no`、`uk_shipment_no`、`uk_task_no`、`uk_inv`、`uk_stocktake_no`）。
 
@@ -2510,20 +2510,20 @@
 - 注入与过滤：`internal/pkg/tenant/tenant.go`（`WithTenant` / `WithExactTenant`）与 `internal/pkg/tenant/gorm.go`（GORM 全局回调注入 `tenant_id`）。
 - 请求上下文：`internal/pkg/middleware/request_context.go` 的 `TenantIDOf`。
 - 平台旁路：`tenant_id = 0` 的平台账号不注入租户过滤条件；集成入口使用 `WithExactTenant` 固定租户。
-- 需手工处理租户一致性的位置：库存 `FindFIFOForUpdate` / 汇总查询、导入 worker 的 `tenant.WithTenant`（细节见第一、二部分专题）。
+- 需手工处理租户一致性的位置：库存 `ListFIFOCandidates` / `ListLocationCodes` / 汇总查询、导入 worker 的 `tenant.WithTenant`（细节见第一、二部分专题）。
 - 详细清单见：`## 一、…` 与 `## 二、…` 末尾“重点专题·多租户”。
 
 ### 5.2 库存一致性与并发控制
 
 - 数据：`wms_inventory`（含 `version` 列，见迁移 `000002`；CHECK 不变量见迁移 `000008`）。
-- 悲观锁：`internal/modules/inventory/repository/repository.go` 的 `FindFIFOForUpdate`（`FOR UPDATE`）。
+- 悲观锁：`internal/modules/inventory/repository/repository.go` 的 `LockInventoryByIDs`（`FOR UPDATE`，按主键升序逐行加锁）。
 - 条件更新（CAS）：同文件 `AllocateQty` / `ShipQty` / `ReleaseQty` / `AdjustNegative`。
 - 事务边界：`internal/pkg/tx`（`tx.Manager`）。
 - 细节见 `## 一、…` 末尾“重点专题·库存一致性与并发控制”。
 
 ### 5.3 出库 FIFO 分配
 
-链路：`internal/modules/outbound/service/order.go` 的 `Approve` → 库存 `Allocate`（`internal/modules/inventory/service/stock.go`）→ `FindFIFOForUpdate`（按 `stock_in_time ASC, id ASC` 选批）→ 写 `wms_allocation` → 生成拣货任务 → 出库单进入 `PICKING`。
+链路：`internal/modules/outbound/service/order.go` 的 `Approve` → 库存 `Allocate`（`internal/modules/inventory/service/stock.go`）→ `ListFIFOCandidates` 取候选（按 `stock_in_time ASC, id ASC`）→ `LockInventoryByIDs` 只锁最小前缀 → 写 `wms_allocation` → 生成拣货任务 → 出库单进入 `PICKING`。
 
 ### 5.4 拣货
 
@@ -2559,7 +2559,7 @@
 
 ## 六、自检与维护
 
-- 自检：本索引的文件路径、`struct` / `interface` / 函数名均取自源码；关键符号（`FindFIFOForUpdate`、`ClaimImport`、`RunImports`、`TenantIDOf`、`useAutoRefresh`、`emitBusinessEvent`、`installGuideBusinessBridge`、`classifyError` 等）已抽样核对真实存在；表名取自 `migrations/versions/000001_init.up.sql`。
+- 自检：本索引的文件路径、`struct` / `interface` / 函数名均取自源码；关键符号（`ListFIFOCandidates`、`LockInventoryByIDs`、`ClaimImport`、`RunImports`、`TenantIDOf`、`useAutoRefresh`、`emitBusinessEvent`、`installGuideBusinessBridge`、`classifyError` 等）已抽样核对真实存在；表名取自 `migrations/versions/000001_init.up.sql`。
 - 维护：修改代码后请同步更新对应小节；标为“待确认”的条目在确认结论后应更新为确定内容。
 - 导航说明：面向 AI / Codex 的项目导航另见根目录 `AGENTS.md`（该文件为本地文件，已被 `.gitignore` 忽略，不提交到远端）。
 
