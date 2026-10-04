@@ -58,6 +58,10 @@ type FIFOCandidate struct {
 // afterStockInTime / afterID 是上一批的最后一个键，用于向后翻页，首批传零值。
 // 候选基于当前事务的一致性快照，可能已经过期（并发下更明显），
 // 因此调用方必须在拿到行锁后重新读取可用量再决定扣减。
+//
+// 边界：普通读用的是事务快照，看不见本次事务开始后才入库的新行。
+// 极端情况下（审核事务开始后有人上架补货）可能报一次"可用不足"，
+// 下一次请求就能看到新库存；旧实现用 FOR UPDATE 读最新已提交数据，没有这个差异。
 func (r *Repository) ListFIFOCandidates(tx *gorm.DB, warehouseID, skuID int64, limit int, afterStockInTime time.Time, afterID int64) ([]FIFOCandidate, error) {
 	var list []FIFOCandidate
 	q := tx.Table("wms_inventory i").
