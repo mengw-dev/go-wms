@@ -407,7 +407,7 @@ func TestPDAClaimStrictPickAndIdempotency(t *testing.T) {
 		t.Fatalf("pick with bogus token: %v", err)
 	}
 	// 领取任务 → 返回凭证与租约
-	claim, err := stack.out.ClaimPickTask(stack.ctx, task.ID, "picker")
+	claim, err := stack.out.ClaimPickTask(stack.ctx, task.ID, "picker", "claim-key-1")
 	if err != nil {
 		t.Fatalf("claim: %v", err)
 	}
@@ -458,7 +458,7 @@ func TestPDAClaimStrictPickAndIdempotency(t *testing.T) {
 		t.Fatalf("inventory after replays: %+v", inv)
 	}
 	// 他人领取未过期租约 → 冲突
-	if _, err := stack.out.ClaimPickTask(stack.ctx, task.ID, "other"); errcode.From(err).Code != errcode.TaskClaimConflict.Code {
+	if _, err := stack.out.ClaimPickTask(stack.ctx, task.ID, "other", ""); errcode.From(err).Code != errcode.TaskClaimConflict.Code {
 		t.Fatalf("claim busy task: %v", err)
 	}
 	// 租约过期：旧凭证被拒绝；他人可接手并换发新凭证
@@ -469,12 +469,70 @@ func TestPDAClaimStrictPickAndIdempotency(t *testing.T) {
 	if _, err := stack.out.Pick(stack.ctx, task.ID, 1, "picker", scan, claim.ClaimToken, ""); errcode.From(err).Code != errcode.TaskLeaseExpired.Code {
 		t.Fatalf("expired lease pick: %v", err)
 	}
-	second, err := stack.out.ClaimPickTask(stack.ctx, task.ID, "other")
+	second, err := stack.out.ClaimPickTask(stack.ctx, task.ID, "other", "")
 	if err != nil || second.ClaimToken == claim.ClaimToken {
 		t.Fatalf("re-claim expired lease: result=%+v err=%v", second, err)
 	}
 	if _, err := stack.out.Pick(stack.ctx, task.ID, 1, "picker", scan, claim.ClaimToken, ""); errcode.From(err).Code != errcode.TaskClaimMismatch.Code {
 		t.Fatalf("stale token after re-claim: %v", err)
+	}
+}
+
+// TestClaimIdempotency 覆盖领取接口的请求级幂等：
+// 同一 key 重试回放首次的凭证与租约（不轮换 token）；同 key 不同操作人属误用返回 409。
+func TestClaimIdempotency(t *testing.T) {
+	stack := newPickRaceStack(t)
+	_, task := stack.newPickOrder(t, "CLAIM-IDEM-2", 1)
+
+	first, err := stack.out.ClaimPickTask(stack.ctx, task.ID, "picker1", "claim-idem-1")
+	if err != nil {
+		t.Fatalf("first claim: %v", err)
+	}
+	if first.ClaimToken == "" {
+		t.Fatal("first claim returned empty token")
+	}
+	replay, err := stack.out.ClaimPickTask(stack.ctx, task.ID, "picker1", "claim-idem-1")
+	if err != nil {
+		t.Fatalf("replay claim: %v", err)
+	}
+	if replay.ClaimToken != first.ClaimToken || !replay.LeaseExpireAt.Equal(first.LeaseExpireAt) {
+		t.Fatalf("replay changed claim: first=%+v replay=%+v", first, replay)
+	}
+	// 同一 key 换操作人 → 409（key 不得跨内容复用）
+	if _, err := stack.out.ClaimPickTask(stack.ctx, task.ID, "picker2", "claim-idem-1"); errcode.From(err).Code != errcode.IdempotencyKeyReused.Code {
+		t.Fatalf("reused claim key: %v", err)
+	}
+}
+
+// TestIdempotencyPurge 验证清理只删除超过保留期的记录，保留期内记录不受影响。
+func TestIdempotencyPurge(t *testing.T) {
+	stack := newPickRaceStack(t)
+	now := time.Now()
+	expired := &idempotency.Record{
+		ID: snowflake.Next(), TenantID: raceTenantID, Scope: "test.purge", IdempotencyKey: "expired",
+		RequestHash: "x", ResultJSON: "{}", CreatedAt: now.Add(-30 * 24 * time.Hour),
+	}
+	fresh := &idempotency.Record{
+		ID: snowflake.Next(), TenantID: raceTenantID, Scope: "test.purge", IdempotencyKey: "fresh",
+		RequestHash: "x", ResultJSON: "{}", CreatedAt: now,
+	}
+	if err := stack.db.WithContext(stack.ctx).Create(expired).Error; err != nil {
+		t.Fatalf("create expired record: %v", err)
+	}
+	if err := stack.db.WithContext(stack.ctx).Create(fresh).Error; err != nil {
+		t.Fatalf("create fresh record: %v", err)
+	}
+
+	rows, err := idempotency.Purge(stack.db, now.Add(-idempotency.RecordRetention))
+	if err != nil || rows != 1 {
+		t.Fatalf("purge rows=%d err=%v", rows, err)
+	}
+	var count int64
+	if err := stack.db.Model(&idempotency.Record{}).Where("scope = ?", "test.purge").Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("remaining records=%d want=1", count)
 	}
 }
 

@@ -15,6 +15,7 @@ import (
 	"gowms/internal/app"
 	"gowms/internal/bootstrap"
 	"gowms/internal/pkg/config"
+	"gowms/internal/pkg/idempotency"
 	"gowms/internal/pkg/log"
 	"gowms/internal/pkg/observability"
 	"gowms/internal/pkg/snowflake"
@@ -93,6 +94,9 @@ func run() error {
 	workers.Go(func() { application.InboundService.RunCompensator(backgroundCtx) })
 	workers.Go(func() { application.InboundService.RunImports(backgroundCtx) })
 	workers.Go(func() { application.InboundService.RunImportFileCleanup(backgroundCtx) })
+	workers.Go(func() {
+		idempotency.RunCleanup(backgroundCtx, db, idempotency.CleanupInterval, idempotency.RecordRetention)
+	})
 	defer func() {
 		cancelBackground()
 		workers.Wait()

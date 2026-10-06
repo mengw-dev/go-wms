@@ -125,8 +125,8 @@ API Key 在服务端配置中绑定 `WMS_INTEGRATION_TENANT_ID`，请求体、�
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/tasks` | 任务列表（task_type: RECEIVE/PUTAWAY/PICK、status、order_id 过滤） |
-| GET | `/tasks/:id` | 任务详情 |
+| GET | `/tasks` | 任务列表（task_type: RECEIVE/PUTAWAY/PICK、status、order_id 过滤）；已领取任务返回 `claimed_by` 与 `lease_expire_at` |
+| GET | `/tasks/:id` | 任务详情（含租约字段，未领取时省略） |
 
 ## 6. 入库管理
 
@@ -222,12 +222,12 @@ API Key 在服务端配置中绑定 `WMS_INTEGRATION_TENANT_ID`，请求体、�
 
 ### 7.2 PDA 拣货（领取租约 + 强制扫码）
 
-现场作业使用 PDA 专用入口：必须携带 `Idempotency-Key`（缺失返回 400），库位必填（任务有批次时批次必填），服务端强校验；
-领取任务后携带领取凭证提交，任务被他人接手后旧凭证自动失效。
+现场作业使用 PDA 专用入口：领取与拣货都必须携带 `Idempotency-Key`（缺失返回 400），库位必填（任务有批次时批次必填），服务端强校验；
+领取任务后携带领取凭证提交，任务被他人接手后旧凭证自动失效；同一 `Idempotency-Key` 重试领取会回放首次凭证，不轮换 token。
 
 | 方法 | 路径 | 权限 | 说明 |
 | --- | --- | --- | --- |
-| POST | `/pda/tasks/:id/claim` | `wms:outbound:pick` | 领取（或本人续领）任务租约：返回 `claim_token`、租约到期时间与任务快照；被他人持有且租约未过期返回 40017（HTTP 409） |
+| POST | `/pda/tasks/:id/claim` | `wms:outbound:pick` | 领取（或本人续领）任务租约：缺 `Idempotency-Key` 400；返回 `claim_token`、租约到期时间与任务快照；被他人持有且租约未过期返回 40017（HTTP 409） |
 | POST | `/pda/tasks/:id/pick` | `wms:outbound:pick` | 强制扫码拣货：缺 `Idempotency-Key` 400；缺库位 50010；任务有批次但未扫批次 50011；与任务不一致 50009/50008；凭证不符 40018（HTTP 409）；租约过期 40019（HTTP 409） |
 
 **领取响应示例**

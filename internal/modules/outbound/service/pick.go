@@ -37,6 +37,9 @@ type PickScan struct {
 // pickIdempotencyScope 拣货命令的幂等作用域（与收货/上架/盘点审核区分）。
 const pickIdempotencyScope = "outbound.pick"
 
+// claimIdempotencyScope 领取命令的幂等作用域：重试同一领取请求回放同一凭证，不轮换 token。
+const claimIdempotencyScope = "outbound.claim"
+
 // Pick 按分配行拣货，返回提交时刻（幂等命中时为首次成功）的任务快照。
 // scan 非空时校验扫描的库位/批次与任务一致，Strict 模式（PDA）下缺失也拒绝；
 // claimToken 非空时校验任务领取凭证与租约；idempotencyKey 非空时启用请求级幂等，
@@ -219,13 +222,44 @@ func (s *Service) Pick(ctx context.Context, taskID int64, qty int, operator stri
 }
 
 // ClaimPickTask 领取（或本人续领）拣货任务，返回领取凭证、租约到期时间与任务快照。
-func (s *Service) ClaimPickTask(ctx context.Context, taskID int64, operator string) (*dto.ClaimResult, error) {
+// idempotencyKey 非空时启用请求级幂等：同一 key + 同一内容（任务+操作人）回放首次领取的
+// 凭证与租约，不轮换 token；同 key 不同内容返回 409。PDA 入口强制携带（见 handler）。
+func (s *Service) ClaimPickTask(ctx context.Context, taskID int64, operator, idempotencyKey string) (*dto.ClaimResult, error) {
 	if operator == "" {
 		return nil, errcode.ParamError
 	}
-	token := strconv.FormatInt(snowflake.Next(), 10)
-	expireAt := time.Now().Add(pickLeaseTTL)
-	err := s.tm.Tx(ctx, func(tx *gorm.DB) error {
+	idempotencyKey = strings.TrimSpace(idempotencyKey)
+	if len(idempotencyKey) > 64 {
+		return nil, errcode.ParamError
+	}
+	tenantID := tenant.FromContext(ctx)
+	var requestHash string
+	if idempotencyKey != "" {
+		requestHash = idempotency.Fingerprint(strconv.FormatInt(taskID, 10), operator)
+	}
+	var result *dto.ClaimResult
+	err := s.tm.TxRetry(ctx, tx.MaxTxRetry, func(tx *gorm.DB) error {
+		result = nil
+		// 幂等快路径：重放同一领取请求，凭证与租约以首次成功为准
+		if idempotencyKey != "" {
+			record, err := idempotency.Find(tx, tenantID, claimIdempotencyScope, idempotencyKey)
+			if err != nil {
+				return err
+			}
+			if record != nil {
+				if record.RequestHash != requestHash {
+					return errcode.IdempotencyKeyReused
+				}
+				replayed, err := replayClaimResult(record.ResultJSON)
+				if err != nil {
+					return err
+				}
+				result = replayed
+				return nil
+			}
+		}
+		token := strconv.FormatInt(snowflake.Next(), 10)
+		expireAt := time.Now().Add(pickLeaseTTL)
 		n, err := s.taskAPI.Claim(ctx, tx, taskID, operator, token, expireAt)
 		if err != nil {
 			return err
@@ -233,16 +267,33 @@ func (s *Service) ClaimPickTask(ctx context.Context, taskID int64, operator stri
 		if n == 0 {
 			return s.claimFailure(ctx, taskID)
 		}
+		snapshot, err := s.pickSnapshot(ctx, taskID)
+		if err != nil {
+			return err
+		}
+		result = &dto.ClaimResult{ClaimToken: token, LeaseExpireAt: expireAt, PickResult: *snapshot}
+		// 幂等记录与领取写入同事务提交；失败随事务回滚，key 可复用
+		if idempotencyKey != "" {
+			payload, err := json.Marshal(result)
+			if err != nil {
+				return err
+			}
+			record := &idempotency.Record{
+				ID: snowflake.Next(), TenantID: tenantID,
+				Scope: claimIdempotencyScope, IdempotencyKey: idempotencyKey,
+				RequestHash: requestHash, ObjectID: taskID,
+				ResultJSON: string(payload),
+			}
+			if err := idempotency.Insert(tx, record); err != nil {
+				return err
+			}
+		}
 		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
-	snapshot, err := s.pickSnapshot(ctx, taskID)
-	if err != nil {
-		return nil, err
-	}
-	return &dto.ClaimResult{ClaimToken: token, LeaseExpireAt: expireAt, PickResult: *snapshot}, nil
+	return result, nil
 }
 
 // claimFailure 领取条件更新 0 行后定位原因：任务不存在/类型或状态不允许，
@@ -330,6 +381,19 @@ func pickRequestHash(taskID int64, qty int, scan *PickScan) string {
 		batch = strings.ToLower(strings.TrimSpace(scan.BatchNo))
 	}
 	return idempotency.Fingerprint(strconv.FormatInt(taskID, 10), strconv.Itoa(qty), location, batch, entry)
+}
+
+// replayClaimResult 反序列化幂等记录中的首次领取结果（凭证 + 租约 + 快照）；
+// 为空或损坏视为内部异常，避免把不可重放的记录伪装成成功回放。
+func replayClaimResult(raw string) (*dto.ClaimResult, error) {
+	if raw == "" {
+		return nil, errcode.Internal
+	}
+	var result dto.ClaimResult
+	if err := json.Unmarshal([]byte(raw), &result); err != nil {
+		return nil, errcode.Wrap(err, errcode.Internal)
+	}
+	return &result, nil
 }
 
 // replayPickResult 反序列化幂等记录中的首次成功快照；

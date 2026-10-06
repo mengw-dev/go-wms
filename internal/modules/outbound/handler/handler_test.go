@@ -41,3 +41,19 @@ func TestPDAPickRequiresIdempotencyKey(t *testing.T) {
 		})
 	}
 }
+
+// TestPDAClaimRequiresIdempotencyKey PDA 领取必须携带 Idempotency-Key：
+// 缺失时 handler 直接 400，不触达 service（svc 为 nil，穿透即 panic）。
+func TestPDAClaimRequiresIdempotencyKey(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	context, _ := gin.CreateTestContext(recorder)
+	context.Request = httptest.NewRequest(http.MethodPost, "/pda/tasks/1/claim", nil)
+	context.Params = gin.Params{{Key: "id", Value: "1"}}
+
+	New(nil).pdaClaim(context)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+}

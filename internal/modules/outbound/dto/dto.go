@@ -163,6 +163,9 @@ type OrderTaskResp struct {
 	TargetQty    int                  `json:"target_qty"`
 	DoneQty      int                  `json:"done_qty"`
 	Operator     string               `json:"operator"`
-	CreatedAt    time.Time            `json:"created_at"`
-	UpdatedAt    time.Time            `json:"updated_at"`
+	// 租约信息：当前领取人与租约到期时间（未领取时为空，不返回凭证本身）。
+	ClaimedBy     string     `json:"claimed_by,omitempty"`
+	LeaseExpireAt *time.Time `json:"lease_expire_at,omitempty"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
 }

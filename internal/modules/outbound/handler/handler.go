@@ -45,7 +45,8 @@ func (h *Handler) RegisterRoutes(auth *gin.RouterGroup, checker middleware.Perms
 }
 
 // RegisterPDARoutes 挂载 PDA 专用路由：现场作业走强制扫码入口
-// （库位必填，任务有批次时批次必填），后台接口保持宽松语义。
+// （库位必填，任务有批次时批次必填），领取与拣货都强制携带 Idempotency-Key，
+// 后台接口保持宽松语义。
 func (h *Handler) RegisterPDARoutes(auth *gin.RouterGroup, checker middleware.PermsChecker) {
 	perm := middleware.Permission(checker, "wms:outbound:pick")
 	auth.POST("/pda/tasks/:id/claim", perm, h.pdaClaim)
@@ -177,13 +178,18 @@ func (h *Handler) pick(c *gin.Context) { h.pickTask(c, false) }
 // pdaPick PDA 入口：强制携带 Idempotency-Key 并扫描库位（任务有批次时批次必填），服务端再次校验。
 func (h *Handler) pdaPick(c *gin.Context) { h.pickTask(c, true) }
 
-// pdaClaim 领取（续领）拣货任务：返回领取凭证与任务快照。
+// pdaClaim 领取（续领）拣货任务：强制携带 Idempotency-Key（重试回放同一凭证），返回领取凭证与任务快照。
 func (h *Handler) pdaClaim(c *gin.Context) {
+	idempotencyKey := c.GetHeader("Idempotency-Key")
+	if strings.TrimSpace(idempotencyKey) == "" {
+		response.Fail(c, errcode.ParamError)
+		return
+	}
 	taskID, ok := httpx.PathID(c)
 	if !ok {
 		return
 	}
-	result, err := h.svc.ClaimPickTask(c.Request.Context(), taskID, middleware.Username(c))
+	result, err := h.svc.ClaimPickTask(c.Request.Context(), taskID, middleware.Username(c), idempotencyKey)
 	if err != nil {
 		response.Fail(c, err)
 		return

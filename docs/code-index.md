@@ -257,16 +257,18 @@
 - **核心符号**
   - `type PickScan struct{ LocationCode, BatchNo string; Strict bool }` — 扫码核对输入；`Strict=true`（PDA 入口）时库位必填、任务有批次时批次必填。
   - `const pickLeaseTTL = 10 * time.Minute` — 拣货任务租约时长。
-  - `const pickIdempotencyScope = "outbound.pick"` — 请求级幂等作用域。
+  - `const pickIdempotencyScope = "outbound.pick"` — 拣货幂等作用域。
+  - `const claimIdempotencyScope = "outbound.claim"` — 领取幂等作用域。
   - `func (s *Service) Pick(ctx, taskID int64, qty int, operator string, scan *PickScan, claimToken, idempotencyKey string) (*dto.PickResult, error)` — 拣货：幂等快路径（同 key 且指纹一致时回放首次快照，指纹 = 任务 + 数量 + 规范化库位/批次 + 入口类型）→ 锁任务行 → 领取凭证校验 → 锁分配行 → 聚合关系校验 → 扫码校验 → 推进任务 → 原子累加分配行/主单/明细 → 分配行拣满发货扣库存 → 主单拣满转 SHIPPED → 续租 → 生成提交时刻快照并写幂等记录；业务拒绝时返回非锁读当前快照 + 错误。
-  - `func (s *Service) ClaimPickTask(ctx, taskID int64, operator string) (*dto.ClaimResult, error)` — 领取/续领任务租约（无租约/租约过期/本人持有可领），生成 `claim_token` 并返回租约与任务快照。
+  - `func (s *Service) ClaimPickTask(ctx, taskID int64, operator, idempotencyKey string) (*dto.ClaimResult, error)` — 领取/续领任务租约（无租约/租约过期/本人持有可领）；带 key 时同 key 重试回放首次凭证与租约（指纹 = 任务 + 操作人），同 key 不同内容 409，记录与领取写入同事务提交。
   - `func (s *Service) claimFailure(ctx, taskID) error` — 领取 0 行后定位原因（任务不存在/状态不允许 40007 / 被他人持有 40017）。
   - `func checkPickScan(scan *PickScan, t *taskmodel.Task) error` — 库位/批次核对；Strict 模式缺失返回 `PickLocationRequired`(50010)/`PickBatchRequired`(50011)。
   - `func checkPickClaim(claimToken string, t *taskmodel.Task) error` — 领取凭证与租约校验（凭证不符 40018、租约过期 40019；空凭证表示后台入口不校验）。
   - `func (s *Service) pickSnapshot(ctx, taskID) (*dto.PickResult, error)` — 非锁读任务与主单进度快照（业务拒绝时随错误返回）。
   - `func pickRequestHash(taskID int64, qty int, scan *PickScan) string` — 幂等指纹：任务 + 数量 + 规范化（去首尾空格、折叠大小写）库位/批次 + 入口类型（`pda`/`backend`）；`claim_token` 不参与（租约换手后重放仍回放首次结果）。
+  - `func replayClaimResult(raw string) (*dto.ClaimResult, error)` — 回放首次领取结果（凭证 + 租约 + 快照）；为空或解析失败返回 500。
   - `func replayPickResult(raw string) (*dto.PickResult, error)` — 回放幂等记录中的首次快照；为空或解析失败返回内部错误（500），不兜底当前进度。
-- **主要调用关系**：调用 `s.repo.GetOrder/GetAllocationForUpdate/IncrAllocationPicked/IncrOrderPicked/IncrDetailPicked/ShipIfFullyPicked`、`s.taskAPI.Get/GetForUpdate/AddProgress/Claim/RenewClaim`、`s.inv.Ship`、`idempotency.Find/Insert/Fingerprint`；被 `handler.pick/pdaPick/pdaClaim` 与 demo 场景调用。
+- **主要调用关系**：调用 `s.repo.GetOrder/GetAllocationForUpdate/IncrAllocationPicked/IncrOrderPicked/IncrDetailPicked/ShipIfFullyPicked`、`s.taskAPI.Get/GetForUpdate/AddProgress/Claim/RenewClaim`、`s.inv.Ship`、`idempotency.Find/Insert/Fingerprint`；被 `handler.pick/pdaPick/pdaClaim` 与 demo 场景调用（pdaClaim/pdaPick 均强制 `Idempotency-Key`）。
 - **测试文件**：`internal/app/pick_race_test.go`（竞态 + PDA 集成用例）。
 - **涉及表/模型**：`wms_shipment_order`、`wms_allocation`、`wms_task`、`wms_inventory`（经 `invapi`）、`wms_idempotency`。
 
@@ -406,9 +408,9 @@
 
 ### 任务 task — `internal/modules/task/dto/dto.go`
 - **核心符号**
-  - `type TaskResp struct{...}` — 任务查询稳定响应契约，不直接暴露 GORM Model。
+  - `type TaskResp struct{...}` — 任务查询稳定响应契约，不直接暴露 GORM Model；已领取任务带 `ClaimedBy`/`LeaseExpireAt`（未领取时 omitempty 省略，不返回凭证本身）。
 - **主要调用关系**：被 `task/service` 与 handler 引用。
-- **测试文件**：无。
+- **测试文件**：字段映射由同模块 `service/response_test.go` 覆盖。
 - **涉及表/模型**：无（传输对象）。
 
 ### 任务 task — `internal/modules/task/service/service_test.go`
@@ -418,7 +420,7 @@
 - **涉及表/模型**：`wms_task`。
 
 ### 任务 task — `internal/modules/task/service/response_test.go`
-- **核心符号**：`func TestTaskResponseKeepsPublicFieldsAndHidesInternalVersion(t *testing.T)` — 任务响应不泄露内部 version。
+- **核心符号**：`func TestTaskResponseKeepsPublicFieldsAndHidesInternalVersion` — 任务响应不泄露内部 version；`TestTaskResponseLeaseFields` — 未领取省略租约字段、已领取正确映射领取人与到期时间。
 - **主要调用关系**：测试 `taskResponse`/`taskResponses`。
 - **测试文件**：`response_test.go`（本文件）。
 - **涉及表/模型**：无。
@@ -1590,12 +1592,13 @@
 - **分布式锁**：`internal/pkg/lock/lock.go` 的 `Locker` / `New` / `Lock`（`SET NX EX` + Lua `unlockScript` 校验持有者释放）。
 - **事务**：`internal/pkg/tx/tx.go` 的 `Manager` / `New` / `DB` / `Tx` / `TxRetry`（死锁 1213 重试、`retryBackoff` 退避）、`IsRetryable`、`IsDuplicateErr`；配合 `internal/pkg/errcode/errcode.go` 的 `IsConflict` / `conflictCodes`。
 - **请求幂等**：`internal/pkg/idempotency/idempotency.go` 的 `Record`（表 `wms_idempotency`）、`Find`（显式租户查询）、`Insert`（唯一键冲突映射 `errcode.Conflict` 交 `TxRetry` 重试）、`Fingerprint`（调用方拼装业务语义字段，如拣货：任务 + 数量 + 规范化扫码内容 + 入口类型）；使用约定：Find → 业务写入 → 同事务 Insert，重试命中回放 `ResultJSON`。
+- **幂等清理**：`internal/pkg/idempotency/cleanup.go` 的 `Purge`（按 `created_at` 物理删除过期记录）/ `RunCleanup`（启动先跑一次，之后按 `CleanupInterval`=24h 循环，`RecordRetention`=7 天，ctx 取消退出），由 `cmd/wms/main.go` 与其他后台 Worker 一并启动。
 - **并发安全 goroutine**：`internal/pkg/concurrent/safego.go` 的 `SafeGo` / `SafeGoNoCtx`（panic 恢复）。
 
 ### 专题 6：配置与启动
 - **config.Load**：`internal/pkg/config/config.go` 的 `Load(path string)`（viper，`WMS_` 前缀环境变量覆盖）；结构体见 `internal/pkg/config/types.go` 的 `Config` 及各子配置。
 - **.env 加载**：`cmd/wms/dotenv.go` 的 `loadDotEnv(path string)`（已有环境变量优先，不输出密钥值）。
-- **启动与优雅关停**：`cmd/wms/main.go` 的 `main` / `run`（loadDotEnv → `config.Load` → `log.Init` → `snowflake.Init` → `InitDB` → `Migrate`/`Seed` → `InitRedis` → `app.New` → `serve`）；`cmd/wms/server.go` 的 `serve(ctx, shutdownTimeout, servers...)` 在收到退出信号或任一监听失败时优雅关闭全部 HTTP 服务；`internal/app/router.go` 的 `NewRouter` 组装中间件链、`healthz` 健康检查。
+- **启动与优雅关停**：`cmd/wms/main.go` 的 `main` / `run`（loadDotEnv → `config.Load` → `log.Init` → `snowflake.Init` → `InitDB` → `Migrate`/`Seed` → `InitRedis` → `app.New` → 后台 Worker（操作日志/补偿/导入/文件清理/幂等清理）→ `serve`）；`cmd/wms/server.go` 的 `serve(ctx, shutdownTimeout, servers...)` 在收到退出信号或任一监听失败时优雅关闭全部 HTTP 服务；`internal/app/router.go` 的 `NewRouter` 组装中间件链、`healthz` 健康检查。
 
 ## 三、前端
 
