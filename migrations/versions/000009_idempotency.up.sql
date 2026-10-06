@@ -3,6 +3,7 @@
 -- 后到者插入冲突 → 事务重试 → 命中已有记录，回放首次成功结果。
 -- 幂等记录与业务写入同事务提交，业务失败时随事务回滚，key 可复用。
 -- result_json 非空：首次成功快照是重试回放的唯一来源，缺失/损坏按内部错误处理，不用当前进度兜底。
+-- created_at 非空并建索引：清理 Worker 按 created_at < ? 删除，避免 NULL 记录永不被清理与全表扫描。
 
 CREATE TABLE IF NOT EXISTS wms_idempotency (
   id              BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -12,6 +13,7 @@ CREATE TABLE IF NOT EXISTS wms_idempotency (
   request_hash    VARCHAR(64) NOT NULL,
   object_id       BIGINT NOT NULL DEFAULT 0,
   result_json     TEXT NOT NULL,
-  created_at      DATETIME(3),
-  UNIQUE KEY uk_idem_tenant_scope_key (tenant_id, scope, idempotency_key)
+  created_at      DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  UNIQUE KEY uk_idem_tenant_scope_key (tenant_id, scope, idempotency_key),
+  KEY idx_idem_created_at (created_at)
 ) ENGINE=InnoDB;

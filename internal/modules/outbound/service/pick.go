@@ -267,7 +267,8 @@ func (s *Service) ClaimPickTask(ctx context.Context, taskID int64, operator, ide
 		if n == 0 {
 			return s.claimFailure(ctx, taskID)
 		}
-		snapshot, err := s.pickSnapshot(ctx, taskID)
+		// 快照与领取写入同事务读取：任务行已被本事务的领取 UPDATE 锁定，复用锁定读不引入新等待
+		snapshot, err := s.pickSnapshotTx(ctx, tx, taskID)
 		if err != nil {
 			return err
 		}
@@ -362,6 +363,25 @@ func (s *Service) pickSnapshot(ctx context.Context, taskID int64) (*dto.PickResu
 		RemainingQty: t.TargetQty - t.DoneQty,
 	}
 	if o, err := s.repo.GetOrder(ctx, s.tm.DB(), t.OrderID); err == nil {
+		result.OrderStatus = o.Status
+	}
+	return result, nil
+}
+
+// pickSnapshotTx 事务内读取任务与主单的当前进度（领取事务生成响应快照用）。
+// 任务行已被本事务的领取 UPDATE 锁定，复用锁定读不引入新的锁等待，
+// 同时保证快照与事务内写入一致，不读事务外的旧数据；回滚后的错误快照仍走非锁定读。
+func (s *Service) pickSnapshotTx(ctx context.Context, tx *gorm.DB, taskID int64) (*dto.PickResult, error) {
+	t, err := s.taskAPI.GetForUpdate(ctx, tx, taskID)
+	if err != nil {
+		return nil, err
+	}
+	result := &dto.PickResult{
+		TaskStatus:   t.Status,
+		DoneQty:      t.DoneQty,
+		RemainingQty: t.TargetQty - t.DoneQty,
+	}
+	if o, err := s.repo.GetOrder(ctx, tx, t.OrderID); err == nil {
 		result.OrderStatus = o.Status
 	}
 	return result, nil

@@ -314,6 +314,8 @@ PDA 能力，属于新功能不是缺陷：
 
 **已完成（P2，3 项）**：① 领取接口幂等——`ClaimPickTask` 增加 `idempotencyKey` 入参，scope `outbound.claim`，指纹 = 任务 + 操作人；同 key 重试回放首次凭证与租约（不轮换 token），同 key 不同内容 409，记录与领取写入同事务提交；PDA 领取入口与拣货一致强制 `Idempotency-Key`（缺失 400）。② TaskResp 租约字段——`task/dto.TaskResp` 与出库单详情 `OrderTaskResp` 增加 `claimed_by`/`lease_expire_at`（未领取 omitempty 省略，不返回凭证本身）。③ 幂等表清理 Worker——`idempotency.Purge`/`RunCleanup`（保留 7 天，24 小时一轮，启动先跑一次），由 `cmd/wms/main.go` 与现有 Worker 一并启动。回归测试：`TestClaimIdempotency`、`TestIdempotencyPurge`、`TestPDAClaimRequiresIdempotencyKey`、`TestTaskResponseLeaseFields`；原 `TestPDAClaimStrictPickAndIdempotency` 同步更新。已验证：`gofmt` / `go build` / `go vet` / 全量 `go test ./...` 全绿。
 
-**P2 保留项（待决策，未实现）**：PDA 设备绑定（需要明确设备标识来源与拣货是否校验设备，当前无真实 PDA 客户端契约）；分配快照改严格一致读（发现候选快照变化即使最终成功也回滚重读，严格 FIFO 与吞吐之间的取舍，需业务确认）。
+**已完成（评审复核补丁）**：④ `wms_idempotency.created_at` 改为 `NOT NULL DEFAULT CURRENT_TIMESTAMP(3)` 并新增 `idx_idem_created_at`（清理不再依赖全表扫描，NULL 记录不会被漏掉）；⑤ 领取事务新增 `pickSnapshotTx`，快照读取改用事务连接（回滚后的错误快照仍走非锁定读）；⑥ `api.md` 明确幂等保证仅覆盖 7 天保留窗口。已验证：`gofmt` / `go build` / `go vet` / 全量 `go test ./...` 全绿（2026-10-06 复验，含迁移索引断言）。
+
+**后续迭代（不在本批范围）**：收货/上架/盘点审核的请求级幂等接入；外部出库同业务单号的内容冲突校验（当前仅按 `biz_order_no` 判重，同号不同明细仍返回原单）；业务级监控指标（行锁等待、死锁、事务重试、任务耗时、FAILED/PENDING 积压）；前端 PDA（领取、扫码、幂等 key 复用、快照刷新展示）；PDA 设备绑定；分配快照严格一致读（严格 FIFO 与吞吐的取舍，待业务决策）。
 
 **语义变化（需知悉）**：并发抢空导致"锁到的行 < 快照"时，容量竞争下失败会返回可重试的 40900，而不是立即报"库存不足"——外层换新快照重试后仍不足（且期间无新变化）才会得到 30201。`TestConcurrentAllocateAntiOversell` 的判定已相应放宽（40900 属可重试拒绝），防超卖不变量断言不变。

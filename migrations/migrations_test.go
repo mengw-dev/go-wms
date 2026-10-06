@@ -104,6 +104,9 @@ func TestMigrationsAndImportTokenRollback(t *testing.T) {
 	}) {
 		t.Fatalf("idempotency unique index columns=%v", got)
 	}
+	if !db.Migrator().HasIndex("wms_idempotency", "idx_idem_created_at") {
+		t.Fatal("missing idempotency created_at index")
+	}
 	for _, column := range []string{"claimed_by", "claim_token", "lease_expire_at"} {
 		if !db.Migrator().HasColumn("wms_task", column) {
 			t.Fatalf("missing task lease column %s", column)

@@ -265,6 +265,7 @@
   - `func checkPickScan(scan *PickScan, t *taskmodel.Task) error` — 库位/批次核对；Strict 模式缺失返回 `PickLocationRequired`(50010)/`PickBatchRequired`(50011)。
   - `func checkPickClaim(claimToken string, t *taskmodel.Task) error` — 领取凭证与租约校验（凭证不符 40018、租约过期 40019；空凭证表示后台入口不校验）。
   - `func (s *Service) pickSnapshot(ctx, taskID) (*dto.PickResult, error)` — 非锁读任务与主单进度快照（业务拒绝时随错误返回）。
+  - `func (s *Service) pickSnapshotTx(ctx, tx, taskID) (*dto.PickResult, error)` — 事务内快照（领取事务生成响应）：锁定读任务行（已被本事务领取 UPDATE 锁定，无新锁等待），主单同事务读取。
   - `func pickRequestHash(taskID int64, qty int, scan *PickScan) string` — 幂等指纹：任务 + 数量 + 规范化（去首尾空格、折叠大小写）库位/批次 + 入口类型（`pda`/`backend`）；`claim_token` 不参与（租约换手后重放仍回放首次结果）。
   - `func replayClaimResult(raw string) (*dto.ClaimResult, error)` — 回放首次领取结果（凭证 + 租约 + 快照）；为空或解析失败返回 500。
   - `func replayPickResult(raw string) (*dto.PickResult, error)` — 回放幂等记录中的首次快照；为空或解析失败返回内部错误（500），不兜底当前进度。
@@ -1532,9 +1533,9 @@
 - **核心符号**：`ALTER TABLE wms_inventory DROP CHECK chk_inv_quantity_balance, DROP CHECK chk_inv_allocated_non_negative;`。
 
 ### migrations 000009 — `migrations/versions/000009_idempotency.up.sql`
-- **核心符号**：新建请求级幂等表 `wms_idempotency`（`tenant_id`/`scope`/`idempotency_key`/`request_hash`/`object_id`/`result_json`（非空）/`created_at`，唯一键 `uk_idem_tenant_scope_key`）。
+- **核心符号**：新建请求级幂等表 `wms_idempotency`（`tenant_id`/`scope`/`idempotency_key`/`request_hash`/`object_id`/`result_json`（非空）/`created_at`（非空，默认当前时间），唯一键 `uk_idem_tenant_scope_key`，清理索引 `idx_idem_created_at`）。
 - **涉及表/模型**：`wms_idempotency`。
-- **测试文件**：由 `migrations_test.go` 校验建表与唯一键列顺序。
+- **测试文件**：由 `migrations_test.go` 校验建表、唯一键列顺序与 `idx_idem_created_at` 索引。
 
 ### migrations 000009 — `migrations/versions/000009_idempotency.down.sql`
 - **核心符号**：`DROP TABLE IF EXISTS wms_idempotency;`。
