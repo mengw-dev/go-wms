@@ -175,11 +175,12 @@ func (s *Service) Approve(ctx context.Context, id int64, operator string) error 
 			return errcode.ShipOrderVersionBad
 		}
 
-		// 按分配行生成拣货任务
+		// 按分配行生成拣货任务（写入 DetailID，拣货时校验任务 ↔ 分配行的明细归属一致）
 		tasks := make([]*taskapi.CreateTask, 0, len(allocations))
 		for _, a := range allocations {
 			tasks = append(tasks, &taskapi.CreateTask{
 				TaskType: taskmodel.TaskPick, OrderID: o.ID, OrderNo: o.OrderNo,
+				DetailID:     a.DetailID,
 				AllocationID: a.ID, SKUID: a.SKUID, WarehouseID: o.WarehouseID, TargetQty: a.AllocatedQty,
 				LocationID: a.LocationID, LocationCode: a.LocationCode, BatchNo: a.BatchNo,
 			})

@@ -154,8 +154,29 @@ func TestMigrationsAndImportTokenRollback(t *testing.T) {
 	if db.Migrator().HasColumn("wms_import_task", "run_token") {
 		t.Fatal("rollback retained run_token")
 	}
-	if err := m.Steps(5); err != nil {
+	if err := m.Steps(5); err != nil { // 回到版本 10，单独验证 000011 的数据回填
 		t.Fatal(err)
+	}
+	// 构造一条历史拣货任务（detail_id 缺失）与对应分配行，验证 000011 回填
+	if err := db.Exec(`INSERT INTO wms_allocation
+		(id, tenant_id, order_id, detail_id, inventory_id, sku_id, location_id, allocated_qty, picked_qty, status, version)
+		VALUES (900001, 1, 900002, 900003, 900004, 900005, 900006, 2, 0, 'ALLOCATED', 1)`).Error; err != nil {
+		t.Fatalf("seed allocation: %v", err)
+	}
+	if err := db.Exec(`INSERT INTO wms_task
+		(id, tenant_id, task_no, task_type, status, order_id, allocation_id, sku_id, warehouse_id, target_qty, done_qty, version)
+		VALUES (900007, 1, 'PK-BACKFILL', 'PICK', 'CREATED', 900002, 900001, 900005, 900008, 2, 0, 1)`).Error; err != nil {
+		t.Fatalf("seed pick task: %v", err)
+	}
+	if err := m.Steps(1); err != nil { // 000011：回填 detail_id
+		t.Fatal(err)
+	}
+	var backfilled int64
+	if err := db.Raw(`SELECT detail_id FROM wms_task WHERE id = 900007`).Scan(&backfilled).Error; err != nil {
+		t.Fatal(err)
+	}
+	if backfilled != 900003 {
+		t.Fatalf("000011 backfill detail_id=%d want 900003", backfilled)
 	}
 	if !db.Migrator().HasColumn("wms_import_task", "run_token") {
 		t.Fatal("reapply missing run_token")

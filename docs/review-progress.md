@@ -226,7 +226,7 @@ Snowflake 那条尤其注意，只能说"单实例加唯一节点号下可用"�
 - 拣货先锁整张出库单（`outbound/service/pick.go`）。同一张单上的多个任务因此串行，一张 40 个任务的大单，40 个 PDA 也要排队；不同订单之间可以并行。**已修复**：改为锁任务行，主单状态由条件原子更新收口；同单多任务可并行，k6 对比见 9.5。
 - 拣货时同一个任务被锁两次：先 `taskAPI.GetForUpdate`，随后 `AddProgress` 内部再锁一次。多一次往返，不产生额外等待。**已修复**：`AddProgress` 复用调用方已持有的任务行锁。
 - `IncrAllocationPicked`（`outbound/repository/repository.go`）条件只有 id + version + status，没有 `picked_qty + delta <= allocated_qty`。正常路径靠任务剩余量挡住，缺数据库层兜底。**已修复**：分配行/明细/主单三处数量累加统一补 `picked_qty + delta <= allocated_qty` 与 `delta > 0` 条件（主单以聚合分配量为锚点），`IncrDetailPicked` 检查 RowsAffected；回归测试 `TestPickRejectsQuantityDrift`（分配行/明细被写成已满时继续拣货被拒且整体回滚）。
-- 拣货不重新校验聚合关系：没有校验 `allocation.order_id == order.id`、`allocation.sku_id == task.sku_id`、`allocation.allocated_qty == task.target_qty`，数据库也没有外键。**已修复**：锁内比较这三处整数关系，不一致返回 40016（明细/库存等边仍由各自锁读与条件更新约束）。
+- 拣货不重新校验聚合关系：没有校验 `allocation.order_id == order.id`、`allocation.sku_id == task.sku_id`、`allocation.allocated_qty == task.target_qty`，数据库也没有外键。**已修复**：锁内比较四处整数关系（`order_id`/`sku_id`/`allocated_qty`/`detail_id`），不一致返回 40016（明细/库存等边仍由各自锁读与条件更新约束）；拣货任务生成时写入 `DetailID`，迁移 000011 回填历史任务。
 - 单据详情固定取 `DetailTaskPageSize = 200`（`task/api/api.go`），超过 200 个任务的单据看不全。
 - `PickDialog.vue` 的作业库位是只读展示，只有批次能扫；后端 `checkPickScan` 对库位和批次都是"传了才校验"，客户端可以不传扫描信息直接提交。注意批次在任务有批次时前端是强制核对的，这里缺的只是库位。**后端已补**：新增 PDA 入口强制库位/批次（缺库位 50010、缺批次 50011）；前端 PDA 页面待做。
 - 拣货成功返回 `data: null`，失败只给错误码。第二个 PDA 拿到"数量超过任务剩余数量"时看不到最新进度，只能退出重进。**已修复**：成功与业务拒绝均返回任务快照（`task_status`/`done_qty`/`remaining_qty`/`order_status`），幂等重放回放首次快照。
@@ -305,5 +305,7 @@ PDA 能力，属于新功能不是缺陷：
 **已完成（P0-①）**：`inventory/service/stock.go` 删除 `maxAllocateAttempts`（批数不再设上限），改为 keyset 游标翻到底；锁到的行比候选快照少只标记 `staleDetected` 并继续翻页，候选读完仍不足时：有快照变化返回 `Conflict` 交外层 `TxRetry` 换新快照，无变化才报 `AvailableNotEnough`。回归测试 `TestAllocatePagesBeyondBatchWindow`（130 行×1 件、申请 110 件，旧实现必然失败）。已验证：`go test ./internal/modules/inventory/...`、`./internal/modules/outbound/...`、`./internal/app/...` 全绿。
 
 **已完成（P0-②③）**：`outbound/repository` 的 `IncrAllocationPicked`/`IncrOrderPicked`/`IncrDetailPicked` 统一补数量上限（`picked_qty + delta <= allocated_qty`，主单以聚合分配量为锚点）与 `delta > 0`；`IncrDetailPicked` 改为返回 RowsAffected，拣货在 0 行时按 40016 停止并整体回滚（分配行 0 行仍为可重试 50201）。回归测试 `TestPickRejectsQuantityDrift`（分配行/明细漂移两个场景，含事务整体回滚断言）。已验证：`go test ./...` 全量通过。
+
+**已完成（P0-④⑤）**：`outbound/service/order.go` `Approve` 生成拣货任务时写入 `DetailID = allocation.detail_id`；`pick.go` 聚合校验增加 `a.DetailID != t.DetailID`（不一致 40016）。配套迁移 `000011_backfill_pick_task_detail` 幂等回填历史 `detail_id=0` 的拣货任务（本地开发库已执行，回填 139 条；`migrations_test.go` 增加占位任务 + 断言回填结果）。回归测试 `TestPickRejectsQuantityDrift` 增加场景 3（任务 `detail_id` 被写歪 → 40016 且无写入），`newPickOrder` 统一断言新建拣货任务的 `detail_id` 非 0。已验证：全量 `go test ./...` 通过。
 
 **语义变化（需知悉）**：并发抢空导致"锁到的行 < 快照"时，容量竞争下失败会返回可重试的 40900，而不是立即报"库存不足"——外层换新快照重试后仍不足（且期间无新变化）才会得到 30201。`TestConcurrentAllocateAntiOversell` 的判定已相应放宽（40900 属可重试拒绝），防超卖不变量断言不变。

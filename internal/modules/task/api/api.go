@@ -15,7 +15,7 @@ type CreateTask struct {
 	TaskType     model.TaskType
 	OrderID      int64
 	OrderNo      string
-	DetailID     int64 // 收货/上架任务对应的明细
+	DetailID     int64 // 单据明细 id（收货/上架/拣货任务均写入）
 	AllocationID int64 // 拣货任务对应的分配行
 	SKUID        int64
 	WarehouseID  int64

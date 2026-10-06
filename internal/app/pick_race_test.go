@@ -137,6 +137,9 @@ func (s *pickRaceStack) newPickOrder(t *testing.T, bizNo string, qty int) (*outm
 	if err != nil || total != 1 {
 		t.Fatalf("list pick tasks: total=%d err=%v", total, err)
 	}
+	if list[0].DetailID == 0 {
+		t.Fatalf("pick task detail_id not populated: %+v", list[0])
+	}
 	return order, list[0]
 }
 
@@ -519,5 +522,21 @@ func TestPickRejectsQuantityDrift(t *testing.T) {
 	}
 	if gotAlloc := stack.reloadAllocation(t, task2.AllocationID); gotAlloc.PickedQty != 0 {
 		t.Fatalf("allocation picked=%d want 0", gotAlloc.PickedQty)
+	}
+
+	// 场景 3：任务 detail_id 与分配行不一致（模拟旁路写歪）→ 聚合校验拒绝 40016
+	order3, task3 := stack.newPickOrder(t, "DRIFT-DETAILID", 2)
+	if err := stack.db.WithContext(stack.ctx).Model(&taskmodel.Task{}).
+		Where("id = ?", task3.ID).Update("detail_id", task3.DetailID+999).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := stack.out.Pick(stack.ctx, task3.ID, 1, "picker", nil, "", ""); errcode.From(err).Code != errcode.TaskAllocationMismatch.Code {
+		t.Fatalf("task detail drift pick: %v", err)
+	}
+	if gotTask := stack.reloadTask(t, task3.ID); gotTask.DoneQty != 0 {
+		t.Fatalf("task done=%d want 0", gotTask.DoneQty)
+	}
+	if gotOrder := stack.reloadOrder(t, order3.ID); gotOrder.PickedQty != 0 {
+		t.Fatalf("order picked=%d want 0", gotOrder.PickedQty)
 	}
 }

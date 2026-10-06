@@ -114,7 +114,8 @@ func (s *Service) Pick(ctx context.Context, taskID int64, qty int, operator stri
 		if t.AllocationID != a.ID ||
 			a.OrderID != t.OrderID ||
 			a.SKUID != t.SKUID ||
-			a.AllocatedQty != t.TargetQty {
+			a.AllocatedQty != t.TargetQty ||
+			a.DetailID != t.DetailID {
 			return errcode.TaskAllocationMismatch
 		}
 		if err := checkPickScan(scan, t); err != nil {

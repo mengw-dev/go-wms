@@ -50,7 +50,7 @@
 - 出库：`wms_shipment_order`、`wms_shipment_order_detail`、`wms_allocation`
 - 盘点：`wms_stocktake_order`、`wms_stocktake_detail`
 
-后续迁移：`000002` 库存版本列、`000003` 任务拣货库位、`000004` 核心索引、`000005` 多租户加列、`000006` 导入 `run_token`、`000007` 租户前置索引、`000008` 库存 CHECK 不变量、`000009` 请求幂等表 `wms_idempotency`、`000010` 拣货任务租约列（详见第二部分 migrations 小节）。
+后续迁移：`000002` 库存版本列、`000003` 任务拣货库位、`000004` 核心索引、`000005` 多租户加列、`000006` 导入 `run_token`、`000007` 租户前置索引、`000008` 库存 CHECK 不变量、`000009` 请求幂等表 `wms_idempotency`、`000010` 拣货任务租约列、`000011` 回填拣货任务 `detail_id`（详见第二部分 migrations 小节）。
 
 ---
 
@@ -245,7 +245,7 @@
   - `func (s *Service) Create(ctx, req *dto.CreateOrderReq, operator string)` — 创建 DRAFT 出库单，`BizOrderNo` 幂等。
   - `func (s *Service) CreateResponse(...)` — 返回创建响应。
   - `func (s *Service) Delete / Submit` — 删除 DRAFT、DRAFT→SUBMITTED。
-  - `func (s *Service) Approve(ctx, id, operator)` — 审核：按 SKU 排序明细，逐明细调用 `s.inv.Allocate` 做 FIFO 分配，落分配行，推进状态到 PICKING 并按分配行生成拣货任务。
+  - `func (s *Service) Approve(ctx, id, operator)` — 审核：按 SKU 排序明细，逐明细调用 `s.inv.Allocate` 做 FIFO 分配，落分配行，推进状态到 PICKING 并按分配行生成拣货任务（写入 `DetailID`，供拣货校验明细归属）。
   - `func (s *Service) Cancel(ctx, id, operator)` — 作废：按状态释放已分配库存并取消分配行/任务。
   - `func (s *Service) batchOper/BatchDelete/BatchSubmit/BatchApprove/BatchCancel` — 批量操作。
   - `func (s *Service) buildDetails(...)` — 构建明细并校验重复 SKU。
@@ -634,8 +634,8 @@
 - **扫码校验**：`outbound/service/pick.go` `checkPickScan` — 对 `PickScan.LocationCode`/`BatchNo` 与任务 `LocationCode`/`BatchNo` 做忽略大小写比对，不一致返回 `PickLocationMismatch`/`PickBatchMismatch`；PDA 入口 `Strict=true` 时库位必填（50010）、任务有批次时批次必填（50011）。
 - **请求幂等**：`pkg/idempotency`（`Find`/`Insert`/`Fingerprint`，表 `wms_idempotency`，唯一键 `(tenant_id, scope, idempotency_key)`）；`outbound/service/pick.go` `Pick` 在事务首部走幂等快路径，命中回放 `ResultJSON` 首次快照并短路在凭证校验之前；记录与业务同事务提交。
 - **领取凭证与租约**：`outbound/service/pick.go` `ClaimPickTask`/`checkPickClaim`（`pickLeaseTTL=10m`，成功拣货续租）；`task/repository` `Claim`/`RenewClaim`；字段 `wms_task.claimed_by`/`claim_token`/`lease_expire_at`（迁移 000010）。
-- **拣货主流程**：`outbound/service/pick.go` `Pick` — 锁任务行→领取凭证校验→锁分配行→聚合关系校验（任务 ↔ 分配行 `order_id`/`sku_id`/`allocated_qty`，不一致 40016）→扫码校验→`AddProgress`→`IncrAllocationPicked`/`IncrOrderPicked`/`IncrDetailPicked`→返回任务快照；三处数量累加均带 `picked_qty + delta <= allocated_qty` 的 SQL 上限，分配行/明细 RowsAffected=0 分别返回 50201/40016 并整体回滚。
-- **扣减库存时机**：分配行**拣满**（`allocFullyPicked`，`a.PickedQty+qty == a.AllocatedQty`）时调用 `s.inv.Ship` 实扣库存；主单拣满由 `ShipIfFullyPicked` 的 SQL 条件（`picked_qty = allocated_qty`）推进 `SHIPPED`。任务生成在审核阶段（`outbound/service/order.go` `Approve` 按分配行建 `taskmodel.TaskPick`）。
+- **拣货主流程**：`outbound/service/pick.go` `Pick` — 锁任务行→领取凭证校验→锁分配行→聚合关系校验（任务 ↔ 分配行 `order_id`/`sku_id`/`allocated_qty`/`detail_id` 四处，不一致 40016）→扫码校验→`AddProgress`→`IncrAllocationPicked`/`IncrOrderPicked`/`IncrDetailPicked`→返回任务快照；三处数量累加均带 `picked_qty + delta <= allocated_qty` 的 SQL 上限，分配行/明细 RowsAffected=0 分别返回 50201/40016 并整体回滚。
+- **扣减库存时机**：分配行**拣满**（`allocFullyPicked`，`a.PickedQty+qty == a.AllocatedQty`）时调用 `s.inv.Ship` 实扣库存；主单拣满由 `ShipIfFullyPicked` 的 SQL 条件（`picked_qty = allocated_qty`）推进 `SHIPPED`。任务生成在审核阶段（`outbound/service/order.go` `Approve` 按分配行建 `taskmodel.TaskPick` 并写入 `DetailID`；迁移 000011 回填历史任务的 `detail_id`）。
 - **并发验证**：`internal/app/pick_race_test.go` 覆盖"取消先到/拣货先到/同时到"三条竞态（双方都先锁任务行，无交叉加锁顺序）。
 
 ### 4. Excel 异步导入（状态机 / 领取 / run token）
@@ -658,7 +658,7 @@
 
 ## 二、后端平台与基础设施
 
-覆盖目录：`internal/modules/system`、`basic`、`ai`、`demo`、`internal/bootstrap`、`internal/app`、`cmd`、`internal/pkg`、`internal/testutil`、`migrations`（共 153 个 .go 文件 + 20 个 .sql 迁移文件）。
+覆盖目录：`internal/modules/system`、`basic`、`ai`、`demo`、`internal/bootstrap`、`internal/app`、`cmd`、`internal/pkg`、`internal/testutil`、`migrations`（共 153 个 .go 文件 + 22 个 .sql 迁移文件）。
 
 说明：职责来自源码文档注释；无注释处依据实现摘要，均不臆造；无法确认处标注"待确认"。符号名逐字来自源码。
 
@@ -1202,7 +1202,7 @@
 - **测试文件**：`integration_test.go`（本文件）。**涉及表/模型**：业务单据表。
 
 ### app — `internal/app/pick_race_test.go`
-- **核心符号**：`pickRaceStack`（真实 MySQL 组装拣货链路）、`newPickRaceStack`、`(*pickRaceStack).newPickOrder`、`txGate`/`newTaskUpdateGate`（gorm 回调暂停事务构造交错）、`signalTaskRowLock`；用例 `TestPickCancelRaceCancelFirst`、`TestPickCancelRacePickFirst`、`TestPickCancelRaceSimultaneous`、`TestPDAClaimStrictPickAndIdempotency`。
+- **核心符号**：`pickRaceStack`（真实 MySQL 组装拣货链路）、`newPickRaceStack`、`(*pickRaceStack).newPickOrder`、`txGate`/`newTaskUpdateGate`（gorm 回调暂停事务构造交错）、`signalTaskRowLock`；用例 `TestPickCancelRaceCancelFirst`、`TestPickCancelRacePickFirst`、`TestPickCancelRaceSimultaneous`、`TestPDAClaimStrictPickAndIdempotency`、`TestPickRejectsQuantityDrift`。
 - **测试文件**：`pick_race_test.go`（本文件）。**涉及表/模型**：`wms_task`、`wms_allocation`、`wms_shipment_order*`、`wms_inventory`、`wms_idempotency`。
 
 ---
@@ -1543,6 +1543,14 @@
 ### migrations 000010 — `migrations/versions/000010_task_pick_lease.down.sql`
 - **核心符号**：`ALTER TABLE wms_task DROP COLUMN lease_expire_at, DROP COLUMN claim_token, DROP COLUMN claimed_by;`。
 
+### migrations 000011 — `migrations/versions/000011_backfill_pick_task_detail.up.sql`
+- **核心符号**：数据回填（无结构变化）——按 `allocation_id` JOIN `wms_allocation`，把 `task_type='PICK'` 且 `detail_id=0` 的历史任务补上明细归属，保证新的「任务 ↔ 分配行 detail_id 一致性」校验不误伤在途任务；幂等（只补 0 值行）。
+- **涉及表/模型**：`wms_task`、`wms_allocation`。
+- **测试文件**：由 `migrations_test.go` 校验（构造 detail_id=0 的拣货任务并断言回填结果）。
+
+### migrations 000011 — `migrations/versions/000011_backfill_pick_task_detail.down.sql`
+- **核心符号**：数据回填不可逆，`SELECT 1;`（不恢复 detail_id）。
+
 ---
 
 ### 本部分重点专题
@@ -1565,7 +1573,7 @@
 ### 专题 3：数据库基础设施
 - **InitDB**：`internal/bootstrap/database.go` 的 `InitDB`（GORM MySQL + 注册多租户全局回调）；`InitRedis`、`AutoMigrate`（含 CHECK 约束）。
 - **Seed 系列**：`internal/bootstrap/seed.go:SeedDemo`（演示基础数据 + 体验账号，幂等）、`seed_admin.go:SeedAdmin`（内置管理员，密码取 `WMS_ADMIN_PASSWORD`，debug 默认 admin123）、`seed_demo.go:seedDemoData`（仓库/库位/SKU/库存/流水/演示单据，仅当无仓库时执行）、`demo_accounts.go:SeedDemoAccounts`（demo1..demoN）、`personal_accounts.go:SeedPersonalAccounts`（user1..userN，含 `seedPersonalData`）、`reset.go:ResetDemoData`（按租户硬删并重种，`tenantID <= 0` 拒绝执行）。
-- **迁移机制**：`migrations/embed.go` 的 `FS embed.FS`（`//go:embed versions/*.sql`）；`migrations/versions` 下 000001~000010 各版本 up/down（初始化建表 → 库存版本列 → 任务拣货位置 → 核心索引 → 多租户加列 → 导入 run_token → 租户索引对齐 → 库存 CHECK 不变量 → 请求幂等表 → 拣货任务租约列）。
+- **迁移机制**：`migrations/embed.go` 的 `FS embed.FS`（`//go:embed versions/*.sql`）；`migrations/versions` 下 000001~000011 各版本 up/down（初始化建表 → 库存版本列 → 任务拣货位置 → 核心索引 → 多租户加列 → 导入 run_token → 租户索引对齐 → 库存 CHECK 不变量 → 请求幂等表 → 拣货任务租约列 → 回填拣货任务 detail_id）。
 - **应用迁移入口**：`cmd/migrate/main.go`（golang-migrate + iofs 源 + MySQL driver，`run` / `seedBootstrapAdmin` / `seedDemo` / `withDB` / `waitForMySQL` / `migrationDSN`）+ `app_user.go:ensureAppUser`（幂等创建/修复应用账户，已有数据卷升级补齐）。
 - **测试**：`migrations/migrations_test.go` 的 `TestMigrationsAndImportTokenRollback`。
 

@@ -53,7 +53,7 @@ type Task struct {
 	Status       TaskStatus `json:"status" gorm:"size:16;index;not null;default:'CREATED'"`
 	OrderID      int64      `json:"order_id,string" gorm:"index;not null"` // 来源单据 id（入库单/出库单）
 	OrderNo      string     `json:"order_no" gorm:"size:64;index"`
-	DetailID     int64      `json:"detail_id,string" gorm:"index"`     // 单据明细 id（收货/上架任务）
+	DetailID     int64      `json:"detail_id,string" gorm:"index"`     // 单据明细 id（收货/上架/拣货任务）
 	AllocationID int64      `json:"allocation_id,string" gorm:"index"` // 拣货任务对应的分配行
 	SKUID        int64      `json:"sku_id,string" gorm:"column:sku_id;index;not null"`
 	WarehouseID  int64      `json:"warehouse_id,string" gorm:"not null"`
