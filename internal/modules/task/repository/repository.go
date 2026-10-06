@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"time"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -59,6 +60,16 @@ func (r *Repository) CountUnfinished(tx *gorm.DB, orderID int64, taskType model.
 	return n, err
 }
 
+// ListByOrderForUpdate 按单据升序锁定全部任务行：取消前校验是否已有任务开工，
+// 并与拣货在同一把行锁上互斥（拣货与取消都先锁任务行）。
+func (r *Repository) ListByOrderForUpdate(tx *gorm.DB, orderID int64) ([]*model.Task, error) {
+	var list []*model.Task
+	err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+		Where("order_id = ?", orderID).Order("id").Find(&list).Error
+	return list, err
+}
+
+// CancelByOrder 取消单据下所有未完成任务。
 func (r *Repository) CancelByOrder(tx *gorm.DB, orderID int64) error {
 	return tx.Model(&model.Task{}).
 		Where("order_id = ? AND status IN ?", orderID, []model.TaskStatus{model.TaskCreated, model.TaskInProgress}).
@@ -66,6 +77,29 @@ func (r *Repository) CancelByOrder(tx *gorm.DB, orderID int64) error {
 			"status":  model.TaskCancelled,
 			"version": gorm.Expr("version + 1"),
 		}).Error
+}
+
+// Claim 条件领取/续领拣货任务的作业租约：任务可作业（CREATED/IN_PROGRESS），
+// 且无租约、租约已过期或本人持有时更新成功。
+// 返回 RowsAffected：0 表示被他人持有且未过期（或任务状态不允许）。
+func (r *Repository) Claim(tx *gorm.DB, taskID int64, operator, token string, expireAt time.Time) (int64, error) {
+	now := time.Now()
+	res := tx.Model(&model.Task{}).
+		Where("id = ? AND task_type = ?", taskID, model.TaskPick).
+		Where("status IN ?", []model.TaskStatus{model.TaskCreated, model.TaskInProgress}).
+		Where("(lease_expire_at IS NULL OR lease_expire_at < ? OR claimed_by = ?)", now, operator).
+		Updates(map[string]any{
+			"claimed_by": operator, "claim_token": token, "lease_expire_at": expireAt,
+		})
+	return res.RowsAffected, res.Error
+}
+
+// RenewClaim 续租：凭证一致时延长租约（调用方已持有任务行锁并校验过凭证）。
+// 返回 RowsAffected：0 表示新到期时间与旧值相同，属正常情况（变更未发生）。
+func (r *Repository) RenewClaim(tx *gorm.DB, taskID int64, token string, expireAt time.Time) (int64, error) {
+	res := tx.Model(&model.Task{}).Where("id = ? AND claim_token = ?", taskID, token).
+		Update("lease_expire_at", expireAt)
+	return res.RowsAffected, res.Error
 }
 
 func (r *Repository) Get(ctx context.Context, db *gorm.DB, id int64) (*model.Task, error) {

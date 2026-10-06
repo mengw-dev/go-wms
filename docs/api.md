@@ -170,7 +170,7 @@ API Key 在服务端配置中绑定 `WMS_INTEGRATION_TENANT_ID`，请求体、�
 | POST | `/outbound/orders/:id/submit` | `wms:outbound:submit` | 提交 |
 | POST | `/outbound/orders/:id/approve` | `wms:outbound:approve` | **审核即分配**：FIFO 锁库 + 分配明细 + 拣货任务；库存不足整体失败 |
 | POST | `/outbound/orders/:id/cancel` | `wms:outbound:cancel` | 取消并释放锁库（已拣货不可取消） |
-| POST | `/outbound/tasks/:id/pick` | `wms:outbound:pick` | 拣货 `{qty, batch_no?, location_code?}`，路径 `:id` 为 task_id，可分次；`batch_no/location_code` 为扫码核对值，与任务不一致返回 50008/50009；全部分配行拣完自动发货扣库存 |
+| POST | `/outbound/tasks/:id/pick` | `wms:outbound:pick` | 拣货 `{qty, batch_no?, location_code?, claim_token?}`，路径 `:id` 为 task_id，可分次；`batch_no/location_code` 为扫码核对值（可选，填了才校验，不一致返回 50008/50009）；请求头可带 `Idempotency-Key` 做请求级幂等（不同内容复用返回 40901）；成功与业务拒绝均返回任务快照；全部分配行拣完自动发货扣库存 |
 
 **库存不足导致审核失败的示例**
 
@@ -219,6 +219,54 @@ API Key 在服务端配置中绑定 `WMS_INTEGRATION_TENANT_ID`，请求体、�
 重复推送同一个 `biz_order_no` 时返回原订单，并设置 `idempotent: true`，不会重复建单。
 
 并发推送同一业务单号时，数据库唯一约束保证只创建一张单，另一个请求返回原订单并标记 `idempotent: true`。
+
+### 7.2 PDA 拣货（领取租约 + 强制扫码）
+
+现场作业使用 PDA 专用入口：库位必填（任务有批次时批次必填），服务端强校验；
+领取任务后携带领取凭证提交，任务被他人接手后旧凭证自动失效。
+
+| 方法 | 路径 | 权限 | 说明 |
+| --- | --- | --- | --- |
+| POST | `/pda/tasks/:id/claim` | `wms:outbound:pick` | 领取（或本人续领）任务租约：返回 `claim_token`、租约到期时间与任务快照；被他人持有且租约未过期返回 40017 |
+| POST | `/pda/tasks/:id/pick` | `wms:outbound:pick` | 强制扫码拣货：缺库位 50010；任务有批次但未扫批次 50011；与任务不一致 50009/50008；凭证不符 40018；租约过期 40019 |
+
+**领取响应示例**
+
+```json
+{
+  "code": 0,
+  "msg": "success",
+  "data": {
+    "claim_token": "365589593526898688",
+    "lease_expire_at": "2026-10-05T20:11:37+08:00",
+    "task_status": "IN_PROGRESS",
+    "done_qty": 1,
+    "remaining_qty": 1,
+    "order_status": "PICKING"
+  }
+}
+```
+
+**拣货请求示例**
+
+```json
+// POST /api/v1/pda/tasks/3655.../pick
+// Header: Idempotency-Key: 3f2c...（可选；重试必须复用同一 key）
+{
+  "qty": 1,
+  "location_code": "A01-02-03",
+  "batch_no": "B20261005",
+  "claim_token": "365589593526898688"
+}
+// data: { "task_status": "IN_PROGRESS", "done_qty": 1, "remaining_qty": 1, "order_status": "PICKING" }
+```
+
+**语义说明**
+
+- 幂等重放：同一 `Idempotency-Key` + 相同内容回放首次成功的响应快照（不重复扣减，也不受凭证过期影响）；同 key 不同内容返回 409 / 40901。
+- 业务拒绝（数量超限、任务被取消、被他人持有等）仍返回 400/409，`data` 带当前任务快照，PDA 可就地刷新进度，不必退出重进。
+- 租约 10 分钟，每次成功拣货自动续租；无租约 / 租约过期 / 本人持有时可领取或续领，被接手后旧设备凭证失效（40018）。
+- 后台 `/outbound/tasks/:id/pick` 保持宽松语义（扫码与凭证都可选），供人工处理。
 
 ## 8. 盘点管理
 

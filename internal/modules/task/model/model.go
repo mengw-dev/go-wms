@@ -2,6 +2,8 @@
 package model
 
 import (
+	"time"
+
 	"gowms/internal/pkg/modelbase"
 )
 
@@ -62,6 +64,11 @@ type Task struct {
 	TargetQty    int    `json:"target_qty" gorm:"not null"`
 	DoneQty      int    `json:"done_qty" gorm:"not null;default:0"`
 	Operator     string `json:"operator" gorm:"size:64"`
+	// 作业租约（拣货 PDA）：当前持有人、领取凭证与租约到期时间；
+	// 无租约 / 租约已过期 / 本人持有时可领取或续领，凭证不符的提交被拒绝。
+	ClaimedBy     string     `json:"claimed_by" gorm:"size:64;not null;default:''"`
+	ClaimToken    string     `json:"claim_token" gorm:"size:64;not null;default:''"`
+	LeaseExpireAt *time.Time `json:"lease_expire_at"`
 }
 
 func (Task) TableName() string { return "wms_task" }

@@ -117,7 +117,7 @@ func (s *Service) runOutboundDemo(ctx context.Context, refs *demoRefs) (*Scenari
 			if pickQty <= 0 {
 				continue
 			}
-			if err := s.outbound.Pick(ctx, task.ID, pickQty, operator, nil); err != nil {
+			if _, err := s.outbound.Pick(ctx, task.ID, pickQty, operator, nil, "", ""); err != nil {
 				return "", err
 			}
 			picked += pickQty

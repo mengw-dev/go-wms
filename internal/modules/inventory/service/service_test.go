@@ -81,6 +81,8 @@ func getInv(t *testing.T, db *gorm.DB, whID, skuID int64) *model.Inventory {
 // TestConcurrentAllocateAntiOversell 并发分配防超卖：
 // 100 个可用库存，200 个并发各分配 1，要求恰好成功 100 次、失败 100 次，
 // 且最终满足 stock = available + allocated，任何数量不允许为负。
+// 失败可能是"库存不足"（快照能确证不足），也可能是"数据并发冲突"——
+// 锁到的行比候选快照少时按快照新鲜度优先，交外层换新事务重试（生产入口 Approve 有 TxRetry）。
 func TestConcurrentAllocateAntiOversell(t *testing.T) {
 	svc, tm, db := newTestService(t)
 	ctx := context.Background()
@@ -114,6 +116,11 @@ func TestConcurrentAllocateAntiOversell(t *testing.T) {
 			case err == nil:
 				success.Add(1)
 			case errcode.From(err).Code == errcode.AvailableNotEnough.Code:
+				fail.Add(1)
+			case errcode.From(err).Code == errcode.Conflict.Code:
+				// 快照已过期（别人抢走了库存）→ 可重试的业务拒绝；
+				// 生产入口用 TxRetry 换新快照重试，重试后仍不足才会报库存不足。
+				// 这里直接调用 tm.Tx，40900 出现属预期，超卖仍由下方不变量断言兜底。
 				fail.Add(1)
 			default:
 				t.Errorf("allocate %d: unexpected error: %v", i, err)
@@ -309,6 +316,68 @@ func TestAllocateAcrossManyBatches(t *testing.T) {
 	}
 	if sum.Available != 55 {
 		t.Fatalf("expect 55 remaining available, got %d", sum.Available)
+	}
+}
+
+// TestAllocatePagesBeyondBatchWindow 回归：候选行数远超单批窗口（20 行/批）时，
+// 只要库存充足就必须继续翻页完成分配，不能因为"批数"上限被误判成并发冲突。
+// 场景：130 个批次各 1 件，申请 110 件（旧实现最多处理 5 批 = 100 行 → 必然失败）。
+func TestAllocatePagesBeyondBatchWindow(t *testing.T) {
+	svc, tm, db := newTestService(t)
+	ctx := context.Background()
+
+	locID := snowflake.Next()
+	if err := db.Create(&basicmodel.Location{
+		Base: sysmodel.Base{ID: locID}, WarehouseID: 1, Code: fmt.Sprintf("T-%d", locID), Status: 1,
+	}).Error; err != nil {
+		t.Fatalf("create location: %v", err)
+	}
+	skuID := snowflake.Next()
+	whID := setupStock(t, svc, tm, locID, skuID, "B000", 1)
+
+	base := time.Now().Add(time.Minute) // 晚于 setupStock 写入的第一批
+	rest := make([]*model.Inventory, 0, 129)
+	for i := 1; i < 130; i++ {
+		rest = append(rest, &model.Inventory{
+			Base: sysmodel.Base{ID: snowflake.Next()}, WarehouseID: whID, LocationID: locID, SKUID: skuID,
+			BatchNo: fmt.Sprintf("B%03d", i), StockQuantity: 1, AvailableQty: 1,
+			StockInTime: base.Add(time.Duration(i) * time.Second),
+		})
+	}
+	if err := db.Create(&rest).Error; err != nil {
+		t.Fatalf("seed batches: %v", err)
+	}
+
+	var result *api.AllocateResult
+	if err := tm.Tx(ctx, func(tx *gorm.DB) error {
+		r, err := svc.Allocate(ctx, tx, &api.AllocateReq{
+			WarehouseID: whID, SKUID: skuID, Quantity: 110, OrderNo: "CK-PAGE", Operator: "test",
+		})
+		result = r
+		return err
+	}); err != nil {
+		t.Fatalf("库存充足时不应因批次窗口误判失败: %v", err)
+	}
+	if len(result.Rows) != 110 || result.Total != 110 {
+		t.Fatalf("expect 110 rows/110 total, got %d/%d", len(result.Rows), result.Total)
+	}
+	// FIFO：最早的 110 个批次，按入库时间升序
+	for i, row := range result.Rows {
+		want := fmt.Sprintf("B%03d", i)
+		if row.BatchNo != want || row.Quantity != 1 {
+			t.Fatalf("row %d expect %s/1, got %s/%d", i, want, row.BatchNo, row.Quantity)
+		}
+	}
+
+	var sum struct {
+		Available int `gorm:"column:available"`
+	}
+	if err := db.Model(&model.Inventory{}).Where("warehouse_id = ? AND sku_id = ?", whID, skuID).
+		Select("COALESCE(SUM(available_quantity), 0) AS available").Scan(&sum).Error; err != nil {
+		t.Fatalf("sum available: %v", err)
+	}
+	if sum.Available != 20 {
+		t.Fatalf("expect 20 remaining available, got %d", sum.Available)
 	}
 }
 

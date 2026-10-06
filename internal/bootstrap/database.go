@@ -21,6 +21,7 @@ import (
 	sysmodel "gowms/internal/modules/system/model"
 	taskmodel "gowms/internal/modules/task/model"
 	"gowms/internal/pkg/config"
+	"gowms/internal/pkg/idempotency"
 	"gowms/internal/pkg/log"
 	"gowms/internal/pkg/tenant"
 )
@@ -79,6 +80,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&inboundmodel.ReceiptOrder{}, &inboundmodel.ReceiptOrderDetail{}, &inboundmodel.ImportTask{},
 		&outboundmodel.ShipmentOrder{}, &outboundmodel.ShipmentOrderDetail{}, &outboundmodel.Allocation{},
 		&stocktakemodel.StocktakeOrder{}, &stocktakemodel.StocktakeDetail{},
+		&idempotency.Record{},
 	); err != nil {
 		return err
 	}

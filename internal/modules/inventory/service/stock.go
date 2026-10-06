@@ -77,13 +77,11 @@ func (s *Service) Increase(ctx context.Context, tx *gorm.DB, req *api.IncreaseRe
 	return errcode.Conflict
 }
 
-// 分批分配参数：批大小决定单次候选查询的行数；
-// 尝试次数给事务长度设上界，用尽说明当前事务的一致性快照已经过期，
-// 交回外层 TxRetry 换新快照重试，比在旧快照上继续翻页更划算。
-const (
-	allocateBatchSize   = 20
-	maxAllocateAttempts = 5
-)
+// 分批分配参数：批大小决定单次候选查询的行数。
+// 翻页不设次数上限——游标按 (stock_in_time, id) 前进，候选读完自然结束；
+// 只有"锁到的行比候选快照少"（快照过期）才交回外层 TxRetry 换新快照重试，
+// 避免候选远多于单批窗口的大订单被误判成并发冲突。
+const allocateBatchSize = 20
 
 func (s *Service) Allocate(ctx context.Context, tx *gorm.DB, req *api.AllocateReq) (*api.AllocateResult, error) {
 	if req.Quantity <= 0 {
@@ -95,17 +93,16 @@ func (s *Service) Allocate(ctx context.Context, tx *gorm.DB, req *api.AllocateRe
 	var pending []repository.FIFOCandidate // 当前批中尚未处理的候选
 	var afterStockInTime time.Time
 	var afterID int64
-	candidatesExhausted := false
+	staleDetected := false
 
-	for attempt := 0; attempt < maxAllocateAttempts && remaining > 0; attempt++ {
+	for remaining > 0 {
 		if len(pending) == 0 {
 			batch, err := s.repo.ListFIFOCandidates(tx, req.WarehouseID, req.SKUID, allocateBatchSize, afterStockInTime, afterID)
 			if err != nil {
 				return nil, err
 			}
 			if len(batch) == 0 {
-				candidatesExhausted = true
-				break
+				break // 候选读完，剩余量交给循环外统一判定
 			}
 			pending = batch
 			last := batch[len(batch)-1]
@@ -118,8 +115,11 @@ func (s *Service) Allocate(ctx context.Context, tx *gorm.DB, req *api.AllocateRe
 		prefix := pending[:prefixLen]
 		pending = pending[prefixLen:]
 
+		// 记录候选快照的可用量，锁到手后与真实值比较，判断这份快照是否过期
+		snapshotQty := make(map[int64]int, len(prefix))
 		ids := make([]int64, 0, len(prefix))
 		for _, c := range prefix {
+			snapshotQty[c.ID] = c.AvailableQty
 			ids = append(ids, c.ID)
 		}
 
@@ -136,7 +136,12 @@ func (s *Service) Allocate(ctx context.Context, tx *gorm.DB, req *api.AllocateRe
 		})
 
 		for _, inv := range rows {
-			// 行已加锁，这里的可用量是最新已提交值：快照里显示有货的行可能已被并发扣空。
+			// 行已加锁，这里的可用量是最新已提交值：比候选快照少说明快照已过期
+			// （并发分配/发货扣了货）。只标记、不在这里失败，继续翻后面的候选，
+			// 结论等候选读完之后再下。
+			if inv.AvailableQty < snapshotQty[inv.ID] {
+				staleDetected = true
+			}
 			if inv.AvailableQty <= 0 {
 				continue
 			}
@@ -168,12 +173,13 @@ func (s *Service) Allocate(ctx context.Context, tx *gorm.DB, req *api.AllocateRe
 	}
 
 	if remaining > 0 {
-		// 轮次用尽但候选还没取完：结论不确定（可能只是快照过旧导致白跑），
-		// 交给外层开新事务换一份新快照重试，不能在这里误报"库存不足"。
-		if !candidatesExhausted {
+		// 候选已读完（循环只能因取完候选而带着剩余量退出）。
+		// 观察到锁到的行比快照少：这份快照过期了（并发分配/发货改了库存，
+		// 期间还可能有人上架补货），交回外层换新快照重试，不误报库存不足；
+		// 没有观察到快照变化：快照与真实值一致，给出准确的可用量提示。
+		if staleDetected {
 			return nil, errcode.Conflict
 		}
-		// 候选确实取完了，这时快照与真实值一致，按它给出准确的可用量提示。
 		totalAvailable, err := s.repo.SumAvailableQty(tx, req.WarehouseID, req.SKUID)
 		if err != nil {
 			return nil, err

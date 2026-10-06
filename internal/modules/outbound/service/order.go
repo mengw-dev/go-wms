@@ -190,7 +190,9 @@ func (s *Service) Approve(ctx context.Context, id int64, operator string) error 
 
 func (s *Service) Cancel(ctx context.Context, id int64, operator string) error {
 	return s.tm.TxRetry(ctx, tx.MaxTxRetry, func(tx *gorm.DB) error {
-		o, err := s.repo.GetOrderForUpdate(tx, id)
+		// 非锁读：只用于判断分支；权威校验与状态推进交给条件更新（CAS），
+		// 并发变化会让 CAS 影响行数为 0，由 TxRetry 重新读取后走正确的路径。
+		o, err := s.repo.GetOrder(ctx, tx, id)
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return errcode.ShipOrderNotFound
@@ -217,10 +219,31 @@ func (s *Service) Cancel(ctx context.Context, id int64, operator string) error {
 			return errcode.ShipOrderStatusWrong
 		}
 
-		// 释放已锁定库存
+		// 任务行先行（与拣货同一把锁、同一加锁顺序）：
+		// 在途拣货会先完成并被这里看到，新拣货会在任务行上排队；
+		// 确认没有任务开工后，整单才允许取消。
+		tasks, err := s.taskAPI.ListByOrderForUpdate(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+		for _, task := range tasks {
+			if task.DoneQty > 0 {
+				return errcode.ShipShippedForbidden
+			}
+		}
+		if err := s.taskAPI.CancelByOrder(ctx, tx, id); err != nil {
+			return err
+		}
+
+		// 释放已分配库存：分配行 → 库存行，与拣货保持同一加锁顺序
 		allocations, err := s.repo.ListAllocations(tx, id)
 		if err != nil {
 			return err
+		}
+		if n, err := s.repo.CancelAllocationsByOrder(tx, id); err != nil {
+			return err
+		} else if n == 0 && len(allocations) > 0 {
+			return errcode.AllocConflict
 		}
 		for _, a := range allocations {
 			if a.Status != model.AllocAllocated {
@@ -233,17 +256,13 @@ func (s *Service) Cancel(ctx context.Context, id int64, operator string) error {
 				return err
 			}
 		}
-		if n, err := s.repo.CancelAllocationsByOrder(tx, id); err != nil {
-			return err
-		} else if n == 0 && len(allocations) > 0 {
-			return errcode.AllocConflict
-		}
-		if n, err := s.repo.UpdateStatus(tx, id, o.Status, model.OrderCancelled); err != nil {
+		// 主单收口：状态 CAS + picked_qty = 0 双重条件，防止取消已产生拣货量的单据
+		if n, err := s.repo.CancelIfUnpicked(tx, id, o.Status); err != nil {
 			return err
 		} else if n == 0 {
 			return errcode.ShipOrderVersionBad
 		}
-		return s.taskAPI.CancelByOrder(ctx, tx, id)
+		return nil
 	})
 }
 

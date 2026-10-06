@@ -109,13 +109,34 @@ func (r *Repository) UpdateOrderProgress(tx *gorm.DB, o *model.ShipmentOrder) (i
 }
 
 // IncrOrderPicked 原子累加主单拣货量（picked_qty = picked_qty + delta，version +1）。
-// 拣货并发时不再依赖内存读-改-写；返回 RowsAffected，0 表示版本冲突需重试。
-func (r *Repository) IncrOrderPicked(tx *gorm.DB, id int64, version int, delta int) (int64, error) {
-	res := tx.Model(&model.ShipmentOrder{}).Where("id = ? AND version = ?", id, version).
+// 纯相对更新由 SQL 自身保证不丢更新，不再依赖锁读出的旧版本；
+// 状态条件防止把已取消/已发货的主单继续累加。
+// 返回 RowsAffected：0 表示主单已不是 PICKING，调用方应拒绝本次拣货。
+func (r *Repository) IncrOrderPicked(tx *gorm.DB, id int64, delta int) (int64, error) {
+	res := tx.Model(&model.ShipmentOrder{}).
+		Where("id = ? AND status = ?", id, model.OrderPicking).
 		Updates(map[string]any{
 			"picked_qty": gorm.Expr("picked_qty + ?", delta),
 			"version":    gorm.Expr("version + 1"),
 		})
+	return res.RowsAffected, res.Error
+}
+
+// ShipIfFullyPicked 全部拣完（picked_qty = allocated_qty）时把主单从 PICKING 推进为 SHIPPED。
+// 完成判定下沉到 SQL，避免依赖锁读；返回 0 表示本次拣货没有完成整单，属正常情况。
+func (r *Repository) ShipIfFullyPicked(tx *gorm.DB, id int64) (int64, error) {
+	res := tx.Model(&model.ShipmentOrder{}).
+		Where("id = ? AND status = ? AND picked_qty = allocated_qty", id, model.OrderPicking).
+		Updates(map[string]any{"status": model.OrderShipped, "version": gorm.Expr("version + 1")})
+	return res.RowsAffected, res.Error
+}
+
+// CancelIfUnpicked 取消主单：状态 CAS + picked_qty = 0 双重条件，防止取消已产生拣货量的单据。
+// 返回 0 表示状态已被并发修改（需整事务重试）或已有拣货量（拒绝）。
+func (r *Repository) CancelIfUnpicked(tx *gorm.DB, id int64, from model.OrderStatus) (int64, error) {
+	res := tx.Model(&model.ShipmentOrder{}).
+		Where("id = ? AND status = ? AND picked_qty = 0", id, from).
+		Updates(map[string]any{"status": model.OrderCancelled, "version": gorm.Expr("version + 1")})
 	return res.RowsAffected, res.Error
 }
 

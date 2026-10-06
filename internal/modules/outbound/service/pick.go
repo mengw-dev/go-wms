@@ -2,50 +2,91 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"strconv"
 	"strings"
+	"time"
 
 	"gorm.io/gorm"
 
 	invapi "gowms/internal/modules/inventory/api"
+	"gowms/internal/modules/outbound/dto"
 	"gowms/internal/modules/outbound/model"
 	taskmodel "gowms/internal/modules/task/model"
 	"gowms/internal/pkg/errcode"
+	"gowms/internal/pkg/idempotency"
+	"gowms/internal/pkg/snowflake"
+	"gowms/internal/pkg/tenant"
 	"gowms/internal/pkg/tx"
 )
 
 // 拣货和发货扣减。
 
+// pickLeaseTTL 拣货任务租约时长：领取后超过该时长未操作，其他 PDA 可以接手。
+const pickLeaseTTL = 10 * time.Minute
+
 // PickScan 拣货前的扫码核对信息，为空字段表示该维度不校验。
+// Strict 为 true 时用于 PDA 入口：库位必填且必须一致，任务有批次时批次必填且必须一致。
 type PickScan struct {
 	LocationCode string
 	BatchNo      string
+	Strict       bool
 }
 
-// Pick 按分配行拣货。scan 非空时校验扫描的库位/批次与任务一致，
-// 避免同一库位下不同批次被拣错。
-func (s *Service) Pick(ctx context.Context, taskID int64, qty int, operator string, scan *PickScan) error {
+// pickIdempotencyScope 拣货命令的幂等作用域（与收货/上架/盘点审核区分）。
+const pickIdempotencyScope = "outbound.pick"
+
+// Pick 按分配行拣货，返回提交时刻（幂等命中时为首次成功）的任务快照。
+// scan 非空时校验扫描的库位/批次与任务一致，Strict 模式（PDA）下缺失也拒绝；
+// claimToken 非空时校验任务领取凭证与租约；idempotencyKey 非空时启用请求级幂等，
+// 重试命中优先回放首次成功的结果快照（在凭证校验之前短路）。
+//
+// 业务拒绝（数量超限/状态不允许/关系不一致等）时事务已回滚，
+// 返回非锁定读取的当前快照与错误，供 PDA 就地刷新进度。
+//
+// 锁协议（与取消统一）：任务行 → 分配行 → 库存行 → 主单行。
+// 不再先锁整张出库单：同一张单的不同任务可以并行拣货；
+// 与取消的互斥落在任务行上——取消会先锁定全部任务行并校验是否已有任务开工。
+func (s *Service) Pick(ctx context.Context, taskID int64, qty int, operator string, scan *PickScan, claimToken, idempotencyKey string) (*dto.PickResult, error) {
 	// 事务外只读不可变路由信息（OrderID/AllocationID/TaskType/TaskNo 建后不变）
 	routing, err := s.taskAPI.Get(ctx, taskID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if routing.TaskType != taskmodel.TaskPick {
-		return errcode.TaskStatusWrong
+		return nil, errcode.TaskStatusWrong
 	}
-	return s.tm.TxRetry(ctx, tx.MaxTxRetry, func(tx *gorm.DB) error {
-		// 先锁主单，与 Cancel 串行处理同一张单据，再锁任务和分配行。
-		o, err := s.repo.GetOrderForUpdate(tx, routing.OrderID)
-		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return errcode.ShipOrderNotFound
+	idempotencyKey = strings.TrimSpace(idempotencyKey)
+	if len(idempotencyKey) > 64 {
+		return nil, errcode.ParamError
+	}
+	tenantID := tenant.FromContext(ctx)
+	var requestHash string
+	if idempotencyKey != "" {
+		requestHash = idempotency.Fingerprint(strconv.FormatInt(taskID, 10), strconv.Itoa(qty))
+	}
+	var result *dto.PickResult
+	err = s.tm.TxRetry(ctx, tx.MaxTxRetry, func(tx *gorm.DB) error {
+		// 每轮重试重新计算结果快照，避免失败轮次的内存状态残留
+		result = nil
+		// 幂等快路径：同 key + 同内容回放首次成功的快照；
+		// 同 key + 不同内容属于客户端误用，不可重试。
+		if idempotencyKey != "" {
+			record, err := idempotency.Find(tx, tenantID, pickIdempotencyScope, idempotencyKey)
+			if err != nil {
+				return err
 			}
-			return err
+			if record != nil {
+				if record.RequestHash != requestHash {
+					return errcode.IdempotencyKeyReused
+				}
+				result = replayPickResult(record.ResultJSON)
+				return nil
+			}
 		}
-		if o.Status != model.OrderPicking {
-			return errcode.ShipOrderStatusWrong
-		}
-		// 事务内行锁读取任务：权威校验任务未被并发取消（AddProgress 内部也会锁读复核）
+		// 第一把锁：任务行。全链路最细的互斥点——取消同单任务、推进任务进度
+		// 都必须先拿到它；任务已被取消则在这里直接拒绝，不再依赖主单锁。
 		t, err := s.taskAPI.GetForUpdate(ctx, tx, taskID)
 		if err != nil {
 			return err
@@ -53,6 +94,11 @@ func (s *Service) Pick(ctx context.Context, taskID int64, qty int, operator stri
 		if t.Status != taskmodel.TaskCreated && t.Status != taskmodel.TaskInProgress {
 			return errcode.TaskStatusWrong
 		}
+		// 领取凭证校验：PDA 提交必须持有效凭证；后台入口不传凭证则保持宽松
+		if err := checkPickClaim(claimToken, t); err != nil {
+			return err
+		}
+		// 第二把锁：分配行
 		a, err := s.repo.GetAllocationForUpdate(tx, routing.AllocationID)
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -63,11 +109,19 @@ func (s *Service) Pick(ctx context.Context, taskID int64, qty int, operator stri
 		if a.Status != model.AllocAllocated {
 			return errcode.TaskStatusWrong
 		}
+		// 聚合关系校验（分层）：拣货内只校验任务 ↔ 分配行这几条边；
+		// 明细、库存等其他边的正确性由各自的锁读与条件更新继续约束。
+		if t.AllocationID != a.ID ||
+			a.OrderID != t.OrderID ||
+			a.SKUID != t.SKUID ||
+			a.AllocatedQty != t.TargetQty {
+			return errcode.TaskAllocationMismatch
+		}
 		if err := checkPickScan(scan, t); err != nil {
 			return err
 		}
-		// 推进拣货任务（内部行锁 + 校验数量不超剩余 + 任务状态机）
-		if err := s.taskAPI.AddProgress(ctx, tx, taskID, qty, operator); err != nil {
+		// 推进拣货任务（复用已锁定的任务行；校验数量不超剩余 + 任务状态机）
+		if err := s.taskAPI.AddProgress(ctx, tx, t, qty, operator); err != nil {
 			return err
 		}
 		// 分配行原子累加；拣满置 PICKED（行已锁，base+delta 即更新后值，用于决策）
@@ -82,52 +136,184 @@ func (s *Service) Pick(ctx context.Context, taskID int64, qty int, operator stri
 		} else if n == 0 {
 			return errcode.AllocConflict
 		}
-		// 主单原子累加拣货量（不依赖内存对象回写）
-		if n, err := s.repo.IncrOrderPicked(tx, o.ID, o.Version, qty); err != nil {
+		// 分配行拣满 → 发货扣减库存（先库存后主单，保持全局加锁顺序）
+		if allocFullyPicked {
+			if err := s.inv.Ship(ctx, tx, &invapi.ShipReq{
+				InventoryID: a.InventoryID, Quantity: a.AllocatedQty,
+				OrderNo: t.OrderNo, TaskNo: t.TaskNo, Operator: operator,
+			}); err != nil {
+				return err
+			}
+		}
+		// 主单原子累加：纯相对更新，不再依赖锁读出的旧版本；
+		// 状态条件防止把已取消/已发货的主单继续累加。
+		if n, err := s.repo.IncrOrderPicked(tx, t.OrderID, qty); err != nil {
 			return err
 		} else if n == 0 {
-			return errcode.ShipOrderVersionBad
+			return errcode.ShipOrderStatusWrong
 		}
 		// 明细原子累加
 		if err := s.repo.IncrDetailPicked(tx, a.DetailID, qty); err != nil {
 			return err
 		}
 
-		// 分配行拣满 → 发货扣减库存
-		if allocFullyPicked {
-			if err := s.inv.Ship(ctx, tx, &invapi.ShipReq{
-				InventoryID: a.InventoryID, Quantity: a.AllocatedQty,
-				OrderNo: o.OrderNo, TaskNo: t.TaskNo, Operator: operator,
-			}); err != nil {
+		// 全部拣完 → SHIPPED：完成判定下沉到 SQL（picked_qty = allocated_qty），
+		// 返回 0 表示本次拣货没有完成整单，属正常情况，不报错。
+		orderStatus := model.OrderPicking
+		if n, err := s.repo.ShipIfFullyPicked(tx, t.OrderID); err != nil {
+			return err
+		} else if n > 0 {
+			orderStatus = model.OrderShipped
+		}
+		// 持有人续租：拣货成功后延长租约，避免作业中途被他人接手
+		if claimToken != "" {
+			if _, err := s.taskAPI.RenewClaim(ctx, tx, taskID, claimToken, time.Now().Add(pickLeaseTTL)); err != nil {
 				return err
 			}
 		}
-		// 主单全部拣完 → SHIPPED（行锁内 base+delta 决策，状态机校验 + CAS 兜底）
-		newOrderPicked := o.PickedQty + qty
-		if o.AllocatedQty-newOrderPicked == 0 {
-			if !model.CanTransit(o.Status, model.OrderShipped) {
-				return errcode.ShipOrderStatusWrong
-			}
-			if n, err := s.repo.UpdateStatus(tx, o.ID, model.OrderPicking, model.OrderShipped); err != nil {
+		// 提交时刻快照：AddProgress 已在内存中推进任务状态与完成量
+		result = &dto.PickResult{
+			TaskStatus:   t.Status,
+			DoneQty:      t.DoneQty,
+			RemainingQty: t.TargetQty - t.DoneQty,
+			OrderStatus:  orderStatus,
+		}
+		// 幂等记录与业务写入同事务提交；业务失败时随事务回滚，key 可复用。
+		if idempotencyKey != "" {
+			payload, err := json.Marshal(result)
+			if err != nil {
 				return err
-			} else if n == 0 {
-				return errcode.ShipOrderVersionBad
+			}
+			record := &idempotency.Record{
+				ID: snowflake.Next(), TenantID: tenantID,
+				Scope: pickIdempotencyScope, IdempotencyKey: idempotencyKey,
+				RequestHash: requestHash, ObjectID: taskID,
+				ResultJSON: string(payload),
+			}
+			if err := idempotency.Insert(tx, record); err != nil {
+				return err
 			}
 		}
 		return nil
 	})
+	if err != nil {
+		// 业务拒绝：事务已回滚，补一次非锁定读取返回当前进度（读取失败时快照为 nil）
+		snapshot, _ := s.pickSnapshot(ctx, taskID)
+		return snapshot, err
+	}
+	if result == nil {
+		// 幂等命中但历史记录没有快照时兜底读一次当前进度
+		result, _ = s.pickSnapshot(ctx, taskID)
+	}
+	return result, nil
+}
+
+// ClaimPickTask 领取（或本人续领）拣货任务，返回领取凭证、租约到期时间与任务快照。
+func (s *Service) ClaimPickTask(ctx context.Context, taskID int64, operator string) (*dto.ClaimResult, error) {
+	if operator == "" {
+		return nil, errcode.ParamError
+	}
+	token := strconv.FormatInt(snowflake.Next(), 10)
+	expireAt := time.Now().Add(pickLeaseTTL)
+	err := s.tm.Tx(ctx, func(tx *gorm.DB) error {
+		n, err := s.taskAPI.Claim(ctx, tx, taskID, operator, token, expireAt)
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			return s.claimFailure(ctx, taskID)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	snapshot, err := s.pickSnapshot(ctx, taskID)
+	if err != nil {
+		return nil, err
+	}
+	return &dto.ClaimResult{ClaimToken: token, LeaseExpireAt: expireAt, PickResult: *snapshot}, nil
+}
+
+// claimFailure 领取条件更新 0 行后定位原因：任务不存在/类型或状态不允许，
+// 否则为已被他人领取且租约未过期。
+func (s *Service) claimFailure(ctx context.Context, taskID int64) error {
+	t, err := s.taskAPI.Get(ctx, taskID)
+	if err != nil {
+		return err
+	}
+	if t.TaskType != taskmodel.TaskPick ||
+		(t.Status != taskmodel.TaskCreated && t.Status != taskmodel.TaskInProgress) {
+		return errcode.TaskStatusWrong
+	}
+	return errcode.TaskClaimConflict
 }
 
 // checkPickScan 核对拣货员扫描的库位和批次是否与任务要求一致（忽略大小写和首尾空格）。
+// Strict 模式（PDA）下缺失也拒绝：库位必须扫描；任务有批次时批次必须扫描。
 func checkPickScan(scan *PickScan, t *taskmodel.Task) error {
 	if scan == nil {
 		return nil
 	}
-	if code := strings.TrimSpace(scan.LocationCode); code != "" && !strings.EqualFold(code, t.LocationCode) {
+	code := strings.TrimSpace(scan.LocationCode)
+	if code == "" {
+		if scan.Strict {
+			return errcode.PickLocationRequired
+		}
+	} else if !strings.EqualFold(code, t.LocationCode) {
 		return errcode.PickLocationMismatch
 	}
-	if batch := strings.TrimSpace(scan.BatchNo); batch != "" && !strings.EqualFold(batch, t.BatchNo) {
+	batch := strings.TrimSpace(scan.BatchNo)
+	if batch == "" {
+		if scan.Strict && t.BatchNo != "" {
+			return errcode.PickBatchRequired
+		}
+	} else if !strings.EqualFold(batch, t.BatchNo) {
 		return errcode.PickBatchMismatch
 	}
 	return nil
+}
+
+// checkPickClaim 校验 PDA 领取凭证：凭证不符拒绝；租约已过期拒绝（需重新领取）。
+// claimToken 为空（后台入口）时不校验，保持后台宽松语义。
+func checkPickClaim(claimToken string, t *taskmodel.Task) error {
+	if claimToken == "" {
+		return nil
+	}
+	if t.ClaimToken == "" || t.ClaimToken != claimToken {
+		return errcode.TaskClaimMismatch
+	}
+	if t.LeaseExpireAt != nil && t.LeaseExpireAt.Before(time.Now()) {
+		return errcode.TaskLeaseExpired
+	}
+	return nil
+}
+
+// pickSnapshot 非锁定读取任务与主单的当前进度。
+func (s *Service) pickSnapshot(ctx context.Context, taskID int64) (*dto.PickResult, error) {
+	t, err := s.taskAPI.Get(ctx, taskID)
+	if err != nil {
+		return nil, err
+	}
+	result := &dto.PickResult{
+		TaskStatus:   t.Status,
+		DoneQty:      t.DoneQty,
+		RemainingQty: t.TargetQty - t.DoneQty,
+	}
+	if o, err := s.repo.GetOrder(ctx, s.tm.DB(), t.OrderID); err == nil {
+		result.OrderStatus = o.Status
+	}
+	return result, nil
+}
+
+// replayPickResult 反序列化幂等记录中的首次成功快照；无快照或内容损坏时返回 nil。
+func replayPickResult(raw string) *dto.PickResult {
+	if raw == "" {
+		return nil
+	}
+	var result dto.PickResult
+	if err := json.Unmarshal([]byte(raw), &result); err != nil {
+		return nil
+	}
+	return &result
 }

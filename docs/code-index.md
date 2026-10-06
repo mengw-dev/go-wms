@@ -50,13 +50,13 @@
 - 出库：`wms_shipment_order`、`wms_shipment_order_detail`、`wms_allocation`
 - 盘点：`wms_stocktake_order`、`wms_stocktake_detail`
 
-后续迁移：`000002` 库存版本列、`000003` 任务拣货库位、`000004` 核心索引、`000005` 多租户加列、`000006` 导入 `run_token`、`000007` 租户前置索引、`000008` 库存 CHECK 不变量（详见第二部分 migrations 小节）。
+后续迁移：`000002` 库存版本列、`000003` 任务拣货库位、`000004` 核心索引、`000005` 多租户加列、`000006` 导入 `run_token`、`000007` 租户前置索引、`000008` 库存 CHECK 不变量、`000009` 请求幂等表 `wms_idempotency`、`000010` 拣货任务租约列（详见第二部分 migrations 小节）。
 
 ---
 
 ## 一、后端核心业务模块
 
-覆盖目录：`internal/modules/inbound`、`outbound`、`task`、`inventory`、`stocktake`（共 66 个 .go 文件）。
+覆盖目录：`internal/modules/inbound`、`outbound`、`task`、`inventory`、`stocktake`（共 68 个 .go 文件）。
 
 模块组装入口：`internal/app/app.go` 的 `App.New` 按 `basic → inventory`、`inbound/outbound → basic + inventory + task` 顺序注入；后台 worker 由 `cmd/wms/main.go` 启动（`InboundService.RunCompensator` / `RunImports`）。
 
@@ -255,12 +255,18 @@
 
 ### 出库 outbound — `internal/modules/outbound/service/pick.go`
 - **核心符号**
-  - `type PickScan struct{...}` — 扫码核对输入（库位/批次，空表示不校验）。
-  - `func (s *Service) Pick(ctx, taskID int64, qty int, operator string, scan *PickScan) error` — 拣货：锁主单→锁任务→锁分配行→扫码校验→推进任务→原子累加分配行/主单/明细，分配行拣满则发货扣减库存，主单拣满转 SHIPPED。
-  - `func checkPickScan(scan *PickScan, t *taskmodel.Task) error` — 库位/批次一致性核对。
-- **主要调用关系**：调用 `s.repo.GetOrderForUpdate/GetAllocationForUpdate/IncrAllocationPicked/IncrOrderPicked/IncrDetailPicked/UpdateStatus`、`s.taskAPI.Get/GetForUpdate/AddProgress`、`s.inv.Ship`；被 `handler.pick` 调用。
-- **测试文件**：无。
-- **涉及表/模型**：`wms_shipment_order`、`wms_allocation`、`wms_task`、`wms_inventory`（经 `invapi`）。
+  - `type PickScan struct{ LocationCode, BatchNo string; Strict bool }` — 扫码核对输入；`Strict=true`（PDA 入口）时库位必填、任务有批次时批次必填。
+  - `const pickLeaseTTL = 10 * time.Minute` — 拣货任务租约时长。
+  - `const pickIdempotencyScope = "outbound.pick"` — 请求级幂等作用域。
+  - `func (s *Service) Pick(ctx, taskID int64, qty int, operator string, scan *PickScan, claimToken, idempotencyKey string) (*dto.PickResult, error)` — 拣货：幂等快路径 → 锁任务行 → 领取凭证校验 → 锁分配行 → 聚合关系校验 → 扫码校验 → 推进任务 → 原子累加分配行/主单/明细 → 分配行拣满发货扣库存 → 主单拣满转 SHIPPED → 续租 → 生成提交时刻快照并写幂等记录；业务拒绝时返回非锁读当前快照 + 错误。
+  - `func (s *Service) ClaimPickTask(ctx, taskID int64, operator string) (*dto.ClaimResult, error)` — 领取/续领任务租约（无租约/租约过期/本人持有可领），生成 `claim_token` 并返回租约与任务快照。
+  - `func (s *Service) claimFailure(ctx, taskID) error` — 领取 0 行后定位原因（任务不存在/状态不允许 40007 / 被他人持有 40017）。
+  - `func checkPickScan(scan *PickScan, t *taskmodel.Task) error` — 库位/批次核对；Strict 模式缺失返回 `PickLocationRequired`(50010)/`PickBatchRequired`(50011)。
+  - `func checkPickClaim(claimToken string, t *taskmodel.Task) error` — 领取凭证与租约校验（凭证不符 40018、租约过期 40019；空凭证表示后台入口不校验）。
+  - `func (s *Service) pickSnapshot(ctx, taskID) (*dto.PickResult, error)` / `replayPickResult(raw string) *dto.PickResult` — 非锁读快照 / 幂等记录回放。
+- **主要调用关系**：调用 `s.repo.GetOrder/GetAllocationForUpdate/IncrAllocationPicked/IncrOrderPicked/IncrDetailPicked/ShipIfFullyPicked`、`s.taskAPI.Get/GetForUpdate/AddProgress/Claim/RenewClaim`、`s.inv.Ship`、`idempotency.Find/Insert/Fingerprint`；被 `handler.pick/pdaPick/pdaClaim` 与 demo 场景调用。
+- **测试文件**：`internal/app/pick_race_test.go`（竞态 + PDA 集成用例）。
+- **涉及表/模型**：`wms_shipment_order`、`wms_allocation`、`wms_task`、`wms_inventory`（经 `invapi`）、`wms_idempotency`。
 
 ### 出库 outbound — `internal/modules/outbound/service/integration.go`
 - **核心符号**
@@ -303,8 +309,9 @@
 - **核心符号**
   - `type Handler struct{...}` / `func New(svc *service.Service) *Handler`。
   - `func (h *Handler) RegisterRoutes(auth *gin.RouterGroup, checker middleware.PermsChecker)` — 注册 `/outbound` 路由与 `wms:outbound:*` 权限。
-  - 私有方法 `list/get/create/delete/submit/approve/cancel/batch*/pick`。
-- **主要调用关系**：调用 `service.Service`；被 router 挂载。
+  - `func (h *Handler) RegisterPDARoutes(auth, checker)` — 注册 PDA 专用路由：`POST /pda/tasks/:id/claim`、`POST /pda/tasks/:id/pick`（权限 `wms:outbound:pick`）。
+  - 私有方法 `list/get/create/delete/submit/approve/cancel/batch*/pick/pdaPick/pdaClaim/pickTask`；`pickTask` 为两个拣货入口共用（`strict` 区分严格/宽松），成功返回任务快照、业务拒绝以 `FailWithData` 带回快照。
+- **主要调用关系**：调用 `service.Service`；被 `app.NewRouter` 挂载（含 `RegisterPDARoutes`）。
 - **测试文件**：无。
 - **涉及表/模型**：无（HTTP 层）。
 
@@ -318,8 +325,9 @@
 
 ### 出库 outbound — `internal/modules/outbound/dto/dto.go`
 - **核心符号**
-  - `CreateOrderReq / OrderDetailItem / OrderQuery / PickReq / ExternalCreateOrderReq / ExternalOrderDetailItem / ExternalCreateOrderResp / BatchOperReq / BatchOperResp / BatchItemError` — 请求结构。
+  - `CreateOrderReq / OrderDetailItem / OrderQuery / PickReq / ExternalCreateOrderReq / ExternalOrderDetailItem / ExternalCreateOrderResp / BatchOperReq / BatchOperResp / BatchItemError` — 请求结构（`PickReq` 含可选 `claim_token`）。
   - `OrderResp / OrderDetailResp / OrderDetailRowResp / AllocationResp / OrderTaskResp` — 稳定响应契约。
+  - `PickResult` — 拣货任务快照（`task_status`/`done_qty`/`remaining_qty`/`order_status`）；`ClaimResult` — 领取结果（内嵌 `PickResult` + `claim_token`/`lease_expire_at`）。
 - **主要调用关系**：被 handler、service、测试引用。
 - **测试文件**：无。
 - **涉及表/模型**：无（传输对象）。
@@ -350,6 +358,7 @@
   - `func (s *Service) AddProgress(...)` / `AddProgressByDetail(...)` — 锁读任务并推进完成量。
   - `func (s *Service) progress(tx, t, qty, operator) error` — 状态机推进核心（CREATED→IN_PROGRESS→COMPLETED，数量/状态校验）。
   - `func (s *Service) CancelByOrder / CountUnfinished / GetForUpdate` — 取消、未完成统计、锁读。
+  - `func (s *Service) Claim / RenewClaim(ctx, tx, taskID, ...)` — 任务作业租约领取/续租（透传 repository 条件更新）。
   - `func (s *Service) List / Get / ListResponses / GetResponse` — 查询与响应。
 - **主要调用关系**：被 inbound（收货/上架）、outbound（拣货）经 `task/api.TaskAPI` 接口调用；调用 `s.repo.*`。
 - **测试文件**：`service_test.go`、`response_test.go`。
@@ -358,7 +367,7 @@
 ### 任务 task — `internal/modules/task/api/api.go`
 - **核心符号**
   - `type CreateTask struct{...}` — 建任务入参；`const DetailTaskPageSize = 200`。
-  - `type TaskAPI interface{ Create / AddProgress / AddProgressByDetail / CountUnfinished / CancelByOrder / GetForUpdate / List / Get }` — 对外契约，要求传入调用方事务。
+  - `type TaskAPI interface{ Create / AddProgress / AddProgressByDetail / CountUnfinished / ListByOrderForUpdate / CancelByOrder / GetForUpdate / Claim / RenewClaim / List / Get }` — 对外契约，要求传入调用方事务。
 - **主要调用关系**：由 `task.Service` 实现；被 inbound/outbound service 依赖。
 - **测试文件**：无。
 - **涉及表/模型**：无（接口定义）。
@@ -367,7 +376,7 @@
 - **核心符号**
   - `type TaskType string` + consts（RECEIVE/PUTAWAY/PICK）、`type TaskStatus string` + consts。
   - `var StatusTransitions` / `func CanTransit(from, to TaskStatus) bool` — 任务状态机。
-  - `type Task struct{...}` — 统一任务表模型。
+  - `type Task struct{...}` — 统一任务表模型；含作业租约字段 `ClaimedBy`/`ClaimToken`/`LeaseExpireAt`（拣货 PDA 领取凭证，迁移 000010）。
 - **主要调用关系**：被 service/repository 与 inbound/outbound 引用。
 - **测试文件**：无。
 - **涉及表/模型**：`wms_task`。
@@ -378,6 +387,8 @@
   - `func (r *Repository) CreateBatch / GetForUpdate / GetByDetailForUpdate` — 创建与行锁读取。
   - `func (r *Repository) UpdateProgress(tx, t) (int64, error)` — version 乐观锁推进状态/完成量。
   - `func (r *Repository) CountUnfinished / CancelByOrder / Get / List`。
+  - `func (r *Repository) Claim(tx, taskID, operator, token, expireAt) (int64, error)` — 条件领取/续领：`task_type=PICK` 且 `status IN (CREATED,IN_PROGRESS)` 且（无租约 / 租约过期 / 本人持有）。
+  - `func (r *Repository) RenewClaim(tx, taskID, token, expireAt)` — 凭证一致时延长租约（调用方持行锁）。
 - **主要调用关系**：被 `task/service` 调用。
 - **测试文件**：无。
 - **涉及表/模型**：`wms_task`。
@@ -421,13 +432,13 @@
 ### 库存 inventory — `internal/modules/inventory/service/stock.go`
 - **核心符号**
   - `func (s *Service) Increase(ctx, tx, req *api.IncreaseReq) error` — 上架入库：锁基础资料与四元组库存行，存在则累加，不存在则创建（唯一索引兜底并发）。
-  - `func (s *Service) Allocate(ctx, tx, req *api.AllocateReq) (*api.AllocateResult, error)` — FIFO 分配：非锁定取候选 → 按剩余需求估最小前缀 → `LockInventoryByIDs` 锁读 → 锁内按 FIFO 重排并重算 → 逐行 `AllocateQty`（available↓ allocated↑）→ 写 ALLOCATE 流水。
+  - `func (s *Service) Allocate(ctx, tx, req *api.AllocateReq) (*api.AllocateResult, error)` — FIFO 分配：非锁定取候选（每批 `allocateBatchSize=20`，keyset 游标翻页，**不设批数上限**）→ 按剩余需求估最小前缀 → `LockInventoryByIDs` 锁读 → 锁内按 FIFO 重排并重算 → 逐行 `AllocateQty`（available↓ allocated↑）→ 写 ALLOCATE 流水；锁到的行比候选快照少（快照过期）只标记不失败，候选读完仍不足时：有快照变化返回 `Conflict` 交外层 `TxRetry` 换新快照，无变化才报 `AvailableNotEnough`。
   - `func (s *Service) Ship(ctx, tx, req *api.ShipReq) error` — 发货扣减：stock↓ allocated↓（`ShipQty` 双条件）。
   - `func (s *Service) Release(ctx, tx, req *api.ReleaseReq) error` — 取消分配：allocated↓ available↑。
   - `func (s *Service) Adjust(ctx, tx, req *api.AdjustReq) (int, error)` — 盘点调整：行锁内把账面数调整为 NewStock，调减不可吃掉已分配。
   - `func availableNotEnoughMsg(skuID int64, need, actual int) string` — 可用不足错误文案。
 - **主要调用关系**：被 `invapi.InventoryAPI` 三处业务调用（inbound `putaway.Putaway`、outbound `Approve/Cancel/Pick`、stocktake `Approve`）；调用 `s.repo` 各方法。
-- **测试文件**：`service_test.go`（含 `TestAllocateFIFO`）、`concurrency_test.go`。
+- **测试文件**：`service_test.go`（含 `TestAllocateFIFO`、`TestAllocatePagesBeyondBatchWindow` 等）、`concurrency_test.go`。
 - **涉及表/模型**：`wms_inventory`、`wms_inventory_trans`、`wms_location`（联查）。
 
 ### 库存 inventory — `internal/modules/inventory/service/query.go`
@@ -615,14 +626,17 @@
 
 ### 2. 出库 FIFO 分配算法
 - **选批次函数**：`inventory/repository/repository.go` `ListFIFOCandidates` — `WHERE warehouse_id=? AND sku_id=? AND available_quantity > 0`，**不加锁**，`ORDER BY i.stock_in_time ASC, i.id ASC`（`StockInTime` 为 FIFO 依据）；加锁另由 `LockInventoryByIDs` 完成，锁集合收敛到按需求估算出的候选前缀。
-- **执行分配**：`inventory/service/stock.go` `Allocate` — 先汇总可用量不足即报错（`availableNotEnoughMsg`），再逐行 `keep = min(remaining, AvailableQty)`，调用 `AllocateQty` 做 `available_quantity -= take` / `allocated_quantity += take`（stock 不变），并写 `TransAllocate` 流水，返回 `AllocateResult.Rows`。
+- **执行分配**：`inventory/service/stock.go` `Allocate` — 分批取 FIFO 候选（批大小 20，keyset 翻页到底，批数不设上限）→ 锁最小前缀 → 锁内按 FIFO 重排，逐行 `take = min(remaining, AvailableQty)` 并调用 `AllocateQty`（`available_quantity -= take` / `allocated_quantity += take`，stock 不变），写 `TransAllocate` 流水，返回 `AllocateResult.Rows`；锁到的行比候选快照少说明快照过期，继续翻后面的候选，候选读完仍不足时：观察到快照变化返回 `Conflict`（外层换新快照重试），无变化才返回 `AvailableNotEnough`。
 - **调用方**：`outbound/service/order.go` `Approve` — 先按 `SKUID` 排序明细加锁，再逐明细调用 `s.inv.Allocate`，随后 `UpdateDetailAllocated` 并生成 `Allocation` 行（按 `LocationCode` 排序仅优化拣货路径）；分配量不足整体回滚。
 
-### 3. 拣货（任务状态机 / 扫码校验 / 扣减时机）
+### 3. 拣货（任务状态机 / 扫码校验 / 领取租约 / 扣减时机）
 - **任务状态机**：`task/model/model.go` `TaskStatus`、`StatusTransitions`、`CanTransit`；推进逻辑 `task/service/service.go` `AddProgress`/`AddProgressByDetail` → `progress`（`CREATED→IN_PROGRESS→COMPLETED`，超量返回 `TaskQtyOver`，version 冲突返回 `Conflict`）。
-- **扫码校验**：`outbound/service/pick.go` `checkPickScan` — 对 `PickScan.LocationCode`/`BatchNo` 与任务 `LocationCode`/`BatchNo` 做忽略大小写比对，不一致返回 `PickLocationMismatch`/`PickBatchMismatch`。
-- **拣货主流程**：`outbound/service/pick.go` `Pick` — 锁主单→锁任务→锁分配行→扫码校验→`AddProgress`→`IncrAllocationPicked`/`IncrOrderPicked`/`IncrDetailPicked`。
-- **扣减库存时机**：分配行**拣满**（`allocFullyPicked`，`a.PickedQty+qty == a.AllocatedQty`）时调用 `s.inv.Ship` 实扣库存；主单拣满（`o.AllocatedQty-newOrderPicked == 0`）时置 `OrderShipped`。任务生成在审核阶段（`outbound/service/order.go` `Approve` 按分配行建 `taskmodel.TaskPick`）。
+- **扫码校验**：`outbound/service/pick.go` `checkPickScan` — 对 `PickScan.LocationCode`/`BatchNo` 与任务 `LocationCode`/`BatchNo` 做忽略大小写比对，不一致返回 `PickLocationMismatch`/`PickBatchMismatch`；PDA 入口 `Strict=true` 时库位必填（50010）、任务有批次时批次必填（50011）。
+- **请求幂等**：`pkg/idempotency`（`Find`/`Insert`/`Fingerprint`，表 `wms_idempotency`，唯一键 `(tenant_id, scope, idempotency_key)`）；`outbound/service/pick.go` `Pick` 在事务首部走幂等快路径，命中回放 `ResultJSON` 首次快照并短路在凭证校验之前；记录与业务同事务提交。
+- **领取凭证与租约**：`outbound/service/pick.go` `ClaimPickTask`/`checkPickClaim`（`pickLeaseTTL=10m`，成功拣货续租）；`task/repository` `Claim`/`RenewClaim`；字段 `wms_task.claimed_by`/`claim_token`/`lease_expire_at`（迁移 000010）。
+- **拣货主流程**：`outbound/service/pick.go` `Pick` — 锁任务行→领取凭证校验→锁分配行→聚合关系校验（任务 ↔ 分配行 `order_id`/`sku_id`/`allocated_qty`，不一致 40016）→扫码校验→`AddProgress`→`IncrAllocationPicked`/`IncrOrderPicked`/`IncrDetailPicked`→返回任务快照。
+- **扣减库存时机**：分配行**拣满**（`allocFullyPicked`，`a.PickedQty+qty == a.AllocatedQty`）时调用 `s.inv.Ship` 实扣库存；主单拣满由 `ShipIfFullyPicked` 的 SQL 条件（`picked_qty = allocated_qty`）推进 `SHIPPED`。任务生成在审核阶段（`outbound/service/order.go` `Approve` 按分配行建 `taskmodel.TaskPick`）。
+- **并发验证**：`internal/app/pick_race_test.go` 覆盖"取消先到/拣货先到/同时到"三条竞态（双方都先锁任务行，无交叉加锁顺序）。
 
 ### 4. Excel 异步导入（状态机 / 领取 / run token）
 - **状态机取值**：`inbound/model/model.go` `ImportTaskStatus` = `PENDING`/`PROCESSING`/`COMPLETED`/`FAILED`；结果→状态由 `inbound/service/import_parse.go` `importResult.status()` 决定。
@@ -644,7 +658,7 @@
 
 ## 二、后端平台与基础设施
 
-覆盖目录：`internal/modules/system`、`basic`、`ai`、`demo`、`internal/bootstrap`、`internal/app`、`cmd`、`internal/pkg`、`internal/testutil`、`migrations`（共 146 个 .go 文件 + 16 个 .sql 迁移文件）。
+覆盖目录：`internal/modules/system`、`basic`、`ai`、`demo`、`internal/bootstrap`、`internal/app`、`cmd`、`internal/pkg`、`internal/testutil`、`migrations`（共 153 个 .go 文件 + 20 个 .sql 迁移文件）。
 
 说明：职责来自源码文档注释；无注释处依据实现摘要，均不臆造；无法确认处标注"待确认"。符号名逐字来自源码。
 
@@ -1187,6 +1201,10 @@
 - **核心符号**：`func TestExternalAPIKeyIsolatesCodesAndBusinessNumbers(t *testing.T)`、`func TestExternalConcurrentDuplicateReturnsExistingOrder(t *testing.T)`。
 - **测试文件**：`integration_test.go`（本文件）。**涉及表/模型**：业务单据表。
 
+### app — `internal/app/pick_race_test.go`
+- **核心符号**：`pickRaceStack`（真实 MySQL 组装拣货链路）、`newPickRaceStack`、`(*pickRaceStack).newPickOrder`、`txGate`/`newTaskUpdateGate`（gorm 回调暂停事务构造交错）、`signalTaskRowLock`；用例 `TestPickCancelRaceCancelFirst`、`TestPickCancelRacePickFirst`、`TestPickCancelRaceSimultaneous`、`TestPDAClaimStrictPickAndIdempotency`。
+- **测试文件**：`pick_race_test.go`（本文件）。**涉及表/模型**：`wms_task`、`wms_allocation`、`wms_shipment_order*`、`wms_inventory`、`wms_idempotency`。
+
 ---
 
 ### cmd/wms — `cmd/wms/main.go`
@@ -1509,6 +1527,22 @@
 ### migrations 000008 — `migrations/versions/000008_inventory_invariants.down.sql`
 - **核心符号**：`ALTER TABLE wms_inventory DROP CHECK chk_inv_quantity_balance, DROP CHECK chk_inv_allocated_non_negative;`。
 
+### migrations 000009 — `migrations/versions/000009_idempotency.up.sql`
+- **核心符号**：新建请求级幂等表 `wms_idempotency`（`tenant_id`/`scope`/`idempotency_key`/`request_hash`/`object_id`/`result_json`/`created_at`，唯一键 `uk_idem_tenant_scope_key`）。
+- **涉及表/模型**：`wms_idempotency`。
+- **测试文件**：由 `migrations_test.go` 校验建表与唯一键列顺序。
+
+### migrations 000009 — `migrations/versions/000009_idempotency.down.sql`
+- **核心符号**：`DROP TABLE IF EXISTS wms_idempotency;`。
+
+### migrations 000010 — `migrations/versions/000010_task_pick_lease.up.sql`
+- **核心符号**：`wms_task` 增加拣货作业租约列 `claimed_by`（持有人）、`claim_token`（领取凭证）、`lease_expire_at`（DATETIME(3) NULL，惰性过期）。
+- **涉及表/模型**：`wms_task`。
+- **测试文件**：由 `migrations_test.go` 校验列存在与 down/up 往返。
+
+### migrations 000010 — `migrations/versions/000010_task_pick_lease.down.sql`
+- **核心符号**：`ALTER TABLE wms_task DROP COLUMN lease_expire_at, DROP COLUMN claim_token, DROP COLUMN claimed_by;`。
+
 ---
 
 ### 本部分重点专题
@@ -1531,7 +1565,7 @@
 ### 专题 3：数据库基础设施
 - **InitDB**：`internal/bootstrap/database.go` 的 `InitDB`（GORM MySQL + 注册多租户全局回调）；`InitRedis`、`AutoMigrate`（含 CHECK 约束）。
 - **Seed 系列**：`internal/bootstrap/seed.go:SeedDemo`（演示基础数据 + 体验账号，幂等）、`seed_admin.go:SeedAdmin`（内置管理员，密码取 `WMS_ADMIN_PASSWORD`，debug 默认 admin123）、`seed_demo.go:seedDemoData`（仓库/库位/SKU/库存/流水/演示单据，仅当无仓库时执行）、`demo_accounts.go:SeedDemoAccounts`（demo1..demoN）、`personal_accounts.go:SeedPersonalAccounts`（user1..userN，含 `seedPersonalData`）、`reset.go:ResetDemoData`（按租户硬删并重种，`tenantID <= 0` 拒绝执行）。
-- **迁移机制**：`migrations/embed.go` 的 `FS embed.FS`（`//go:embed versions/*.sql`）；`migrations/versions` 下 000001~000008 各版本 up/down（初始化建表 → 库存版本列 → 任务拣货位置 → 核心索引 → 多租户加列 → 导入 run_token → 租户索引对齐 → 库存 CHECK 不变量）。
+- **迁移机制**：`migrations/embed.go` 的 `FS embed.FS`（`//go:embed versions/*.sql`）；`migrations/versions` 下 000001~000010 各版本 up/down（初始化建表 → 库存版本列 → 任务拣货位置 → 核心索引 → 多租户加列 → 导入 run_token → 租户索引对齐 → 库存 CHECK 不变量 → 请求幂等表 → 拣货任务租约列）。
 - **应用迁移入口**：`cmd/migrate/main.go`（golang-migrate + iofs 源 + MySQL driver，`run` / `seedBootstrapAdmin` / `seedDemo` / `withDB` / `waitForMySQL` / `migrationDSN`）+ `app_user.go:ensureAppUser`（幂等创建/修复应用账户，已有数据卷升级补齐）。
 - **测试**：`migrations/migrations_test.go` 的 `TestMigrationsAndImportTokenRollback`。
 
@@ -1545,6 +1579,7 @@
 ### 专题 5：分布式锁与事务
 - **分布式锁**：`internal/pkg/lock/lock.go` 的 `Locker` / `New` / `Lock`（`SET NX EX` + Lua `unlockScript` 校验持有者释放）。
 - **事务**：`internal/pkg/tx/tx.go` 的 `Manager` / `New` / `DB` / `Tx` / `TxRetry`（死锁 1213 重试、`retryBackoff` 退避）、`IsRetryable`、`IsDuplicateErr`；配合 `internal/pkg/errcode/errcode.go` 的 `IsConflict` / `conflictCodes`。
+- **请求幂等**：`internal/pkg/idempotency/idempotency.go` 的 `Record`（表 `wms_idempotency`）、`Find`（显式租户查询）、`Insert`（唯一键冲突映射 `errcode.Conflict` 交 `TxRetry` 重试）、`Fingerprint`；使用约定：Find → 业务写入 → 同事务 Insert，重试命中回放 `ResultJSON`。
 - **并发安全 goroutine**：`internal/pkg/concurrent/safego.go` 的 `SafeGo` / `SafeGoNoCtx`（panic 恢复）。
 
 ### 专题 6：配置与启动

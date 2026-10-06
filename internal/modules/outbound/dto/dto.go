@@ -32,9 +32,27 @@ type OrderQuery struct {
 
 type PickReq struct {
 	Qty int `json:"qty" binding:"required,min=1"`
-	// 扫码核对字段（可选）：填写时后端校验必须与任务要求的库位/批次一致。
+	// 扫码核对字段：后台接口可选（填写时校验）；PDA 入口强制要求库位与必需批次。
 	LocationCode string `json:"location_code"`
 	BatchNo      string `json:"batch_no"`
+	// 领取凭证（PDA）：任务被领取后提交拣货必须携带，租约到期或凭证不符会被拒绝。
+	ClaimToken string `json:"claim_token"`
+}
+
+// PickResult 拣货返回的任务快照：PDA 现场无需退出重进即可刷新进度，
+// 业务拒绝时也随错误一起返回当前快照；幂等重试回放首次成功时的快照。
+type PickResult struct {
+	TaskStatus   taskmodel.TaskStatus `json:"task_status"`
+	DoneQty      int                  `json:"done_qty"`
+	RemainingQty int                  `json:"remaining_qty"`
+	OrderStatus  model.OrderStatus    `json:"order_status"`
+}
+
+// ClaimResult 领取拣货任务的结果：领取凭证 + 租约到期时间 + 任务快照。
+type ClaimResult struct {
+	ClaimToken    string    `json:"claim_token"`
+	LeaseExpireAt time.Time `json:"lease_expire_at"`
+	PickResult
 }
 
 type ExternalOrderDetailItem struct {

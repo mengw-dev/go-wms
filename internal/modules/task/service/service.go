@@ -71,15 +71,9 @@ func (s *Service) Create(ctx context.Context, tx *gorm.DB, creates []*api.Create
 }
 
 // AddProgress 累加任务完成量并推进状态机（须在业务事务内调用）。
-func (s *Service) AddProgress(ctx context.Context, tx *gorm.DB, taskID int64, qty int, operator string) error {
-	t, err := s.repo.GetForUpdate(tx, taskID)
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return errcode.TaskNotFound
-		}
-		return err
-	}
-	return s.progress(tx, t, qty, operator)
+// 任务行锁由调用方在同一事务内通过 GetForUpdate 建立，本方法不再重复锁读。
+func (s *Service) AddProgress(ctx context.Context, tx *gorm.DB, task *model.Task, qty int, operator string) error {
+	return s.progress(tx, task, qty, operator)
 }
 
 // AddProgressByDetail 按单据明细定位任务并累加完成量（须在业务事务内调用）。
@@ -97,6 +91,11 @@ func (s *Service) AddProgressByDetail(ctx context.Context, tx *gorm.DB, orderID,
 // CancelByOrder 取消单据下所有未完成任务。
 func (s *Service) CancelByOrder(ctx context.Context, tx *gorm.DB, orderID int64) error {
 	return s.repo.CancelByOrder(tx, orderID)
+}
+
+// ListByOrderForUpdate 按单据升序锁定全部任务行（取消流程的已开工校验与互斥）。
+func (s *Service) ListByOrderForUpdate(ctx context.Context, tx *gorm.DB, orderID int64) ([]*model.Task, error) {
+	return s.repo.ListByOrderForUpdate(tx, orderID)
 }
 
 // CountUnfinished 统计单据下未完成任务数。
@@ -152,6 +151,16 @@ func (s *Service) GetForUpdate(ctx context.Context, tx *gorm.DB, taskID int64) (
 		return nil, err
 	}
 	return t, nil
+}
+
+// Claim 条件领取/续领任务作业租约（须在业务事务内调用），返回受影响行数。
+func (s *Service) Claim(ctx context.Context, tx *gorm.DB, taskID int64, operator, token string, expireAt time.Time) (int64, error) {
+	return s.repo.Claim(tx, taskID, operator, token, expireAt)
+}
+
+// RenewClaim 延长本人持有的任务租约（须在业务事务内调用，调用方已校验凭证）。
+func (s *Service) RenewClaim(ctx context.Context, tx *gorm.DB, taskID int64, token string, expireAt time.Time) (int64, error) {
+	return s.repo.RenewClaim(tx, taskID, token, expireAt)
 }
 
 func (s *Service) List(ctx context.Context, orderID int64, taskType, status, keyword string, page, size int) ([]*model.Task, int64, error) {

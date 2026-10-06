@@ -223,23 +223,23 @@ Snowflake 那条尤其注意，只能说"单实例加唯一节点号下可用"�
 - `Increase`（`inventory/service/stock.go`）每次入库先锁 warehouse → location → sku。同一仓库下不同库位、不同 SKU 的上架会竞争同一个 warehouse 行。这个锁是为了堵"基础资料删除与库存创建"的竞态，是刻意的，不要当缺陷删。
 - 审核按 SKU 排序加锁（`outbound/service/order.go`），盘点按 InventoryID 排序。两条链路对同一批库存的加锁顺序不同，目前靠 `TxRetry` 重试 1213 兜底。
 - `TxRetry`（`pkg/tx/tx.go`）只重试 1213 和业务冲突码，1205 锁等待超时不重试；重试耗尽后返回的是原始 MySQL 错误，到 HTTP 层变成 500。现场看到的是"系统内部错误"，不是可识别的冲突。
-- 拣货先锁整张出库单（`outbound/service/pick.go`）。同一张单上的多个任务因此串行，一张 40 个任务的大单，40 个 PDA 也要排队；不同订单之间可以并行。
-- 拣货时同一个任务被锁两次：先 `taskAPI.GetForUpdate`，随后 `AddProgress` 内部再锁一次。多一次往返，不产生额外等待。
+- 拣货先锁整张出库单（`outbound/service/pick.go`）。同一张单上的多个任务因此串行，一张 40 个任务的大单，40 个 PDA 也要排队；不同订单之间可以并行。**已修复**：改为锁任务行，主单状态由条件原子更新收口；同单多任务可并行，k6 对比见 9.5。
+- 拣货时同一个任务被锁两次：先 `taskAPI.GetForUpdate`，随后 `AddProgress` 内部再锁一次。多一次往返，不产生额外等待。**已修复**：`AddProgress` 复用调用方已持有的任务行锁。
 - `IncrAllocationPicked`（`outbound/repository/repository.go`）条件只有 id + version + status，没有 `picked_qty + delta <= allocated_qty`。正常路径靠任务剩余量挡住，缺数据库层兜底。
-- 拣货不重新校验聚合关系：没有校验 `allocation.order_id == order.id`、`allocation.sku_id == task.sku_id`、`allocation.allocated_qty == task.target_qty`，数据库也没有外键。
+- 拣货不重新校验聚合关系：没有校验 `allocation.order_id == order.id`、`allocation.sku_id == task.sku_id`、`allocation.allocated_qty == task.target_qty`，数据库也没有外键。**已修复**：锁内比较这三处整数关系，不一致返回 40016（明细/库存等边仍由各自锁读与条件更新约束）。
 - 单据详情固定取 `DetailTaskPageSize = 200`（`task/api/api.go`），超过 200 个任务的单据看不全。
-- `PickDialog.vue` 的作业库位是只读展示，只有批次能扫；后端 `checkPickScan` 对库位和批次都是"传了才校验"，客户端可以不传扫描信息直接提交。注意批次在任务有批次时前端是强制核对的，这里缺的只是库位。
-- 拣货成功返回 `data: null`，失败只给错误码。第二个 PDA 拿到"数量超过任务剩余数量"时看不到最新进度，只能退出重进。
+- `PickDialog.vue` 的作业库位是只读展示，只有批次能扫；后端 `checkPickScan` 对库位和批次都是"传了才校验"，客户端可以不传扫描信息直接提交。注意批次在任务有批次时前端是强制核对的，这里缺的只是库位。**后端已补**：新增 PDA 入口强制库位/批次（缺库位 50010、缺批次 50011）；前端 PDA 页面待做。
+- 拣货成功返回 `data: null`，失败只给错误码。第二个 PDA 拿到"数量超过任务剩余数量"时看不到最新进度，只能退出重进。**已修复**：成功与业务拒绝均返回任务快照（`task_status`/`done_qty`/`remaining_qty`/`order_status`），幂等重放回放首次快照。
 
 ### 9.2 待完善项
 
 先补正确性和兜底：
 
-1. 拣货请求幂等，与 8.2 是同一件事，不要开两条线。
-2. PDA 入口强制库位扫描，服务端校验库位、SKU、批次一致；后台管理入口保留较宽松的人工语义。
-3. 拣货时补 allocation / order / task 三者的 id、sku、数量对应关系校验。
+1. 拣货请求幂等，与 8.2 是同一件事，不要开两条线。**已完成**：`wms_idempotency` 表 + `Idempotency-Key`（CORS 已放行请求头），重放回放首次成功的结果快照；同 key 不同内容 409。
+2. PDA 入口强制库位扫描，服务端校验库位、SKU、批次一致；后台管理入口保留较宽松的人工语义。**已完成**：`POST /pda/tasks/:id/pick` 强制库位（任务有批次时强制批次），后台入口保持"传了才校验"。
+3. 拣货时补 allocation / order / task 三者的 id、sku、数量对应关系校验。**已完成**：锁内比较任务 ↔ 分配行的 `order_id`/`sku_id`/`allocated_qty`，不一致返回 40016。
 4. 给 task、allocation、shipment_order 补数量 CHECK：`done_qty <= target_qty`、`picked_qty <= allocated_qty`。库存表在 000008 已有同类约束，这三张表还没有。
-5. 补拣货的并发、重复请求、取消竞态、事务回滚测试。
+5. 补拣货的并发、重复请求、取消竞态、事务回滚测试。**已完成**：`internal/app/pick_race_test.go` 覆盖取消先到/拣货先到/同时到三条竞态与 PDA 领取/幂等用例。
 6. 死锁重试耗尽和 1205 转成明确的 409/503，不要落到 500；退避加少量随机抖动。
 
 再优化锁和指标：
@@ -254,8 +254,8 @@ Snowflake 那条尤其注意，只能说"单实例加唯一节点号下可用"�
 PDA 能力，属于新功能不是缺陷：
 
 13. 独立的 PDA 任务列表和"下一个任务"接口，按库区、路线排序。
-14. 拣货接口返回最新状态：`task_status`、`done_qty`、`remaining_qty`、`order_status`。
-15. 任务领取/租约、设备绑定、`claimed_at`、`lease_expire_at`。
+14. 拣货接口返回最新状态：`task_status`、`done_qty`、`remaining_qty`、`order_status`。**已完成**：成功/业务拒绝/幂等重放三条路径都返回任务快照。
+15. 任务领取/租约、设备绑定、`claimed_at`、`lease_expire_at`。**已完成（部分）**：`claimed_by`/`claim_token`/`lease_expire_at` + `POST /pda/tasks/:id/claim`（无租约/过期/本人可领，成功拣货自动续租）；设备绑定与 `claimed_at` 未做。
 16. 短拣、缺货、破损等异常原因与重新分配流程。
 
 ### 9.3 现在不要做
@@ -264,3 +264,44 @@ PDA 能力，属于新功能不是缺陷：
 - 不要盲目删行锁或改整单锁。先补第 7 项的指标和第 5 项的测试，用数据决定。
 - 不要现在引入波次分配或异步分配。那属于大波次的设计，普通审核先做规模限制就够。
 - 和企业 WMS 的差距（任务租约、波次与区域路线、短拣异常、扫描事件审计、锁等待与死锁监控、大订单异步分配、更细的批属性和箱码托盘码）属于现场复杂度，不是当前实现的错误，登记即可。
+
+### 9.4 当前状态与登记项的设计结论（2026-10-05）
+
+- 状态：①（拣货整单锁）与 ⑤（双锁合并）已实现并通过数据库验证（竞态测试 + k6 对比，见 9.5）；②③④（幂等、关系校验、PDA 强制扫描、任务快照、领取租约）也已实现并验证。**仍未提交**。
+- **幂等 × 任务快照**：拣货返回任务快照后，幂等重放返回**首次执行时缓存的响应**（不读库），保证"同一请求同一响应"；正常成功返回提交时刻快照；业务拒绝返回当前最新快照（供 PDA 刷新）。幂等命中需短路在领取凭证校验之前，避免重试因凭证过期被误拒。代价：幂等表多存一份响应副本（很小）。
+- **租约与领取凭证**：重新领取条件 = `status IN (CREATED, IN_PROGRESS)` 且租约已过期（拣到一半断线可被接手）；过期用惰性判断，不做后台回收。凭证不用 version 顶（version 每次拣货都会变，设备需要追着更新，且会重新暴露已隐藏的内部字段）：租约迁移时新增 `claim_token`，领取时生成、换手才变；提交时校验，被接手后旧设备自动失去提交资格（fencing token）。
+- **聚合关系校验分层**：拣货内只校验任务 ↔ 分配行（`order_id`、`sku_id`、`allocated_qty` 三处整数比较，零额外查询）；明细、库存等其他边的正确性由各自的锁读与条件更新继续约束，不做一次全验。
+- 实施顺序（2026-10-05 更新）：①⑤ 验证（MySQL + 竞态测试）→ 幂等表 + Idempotency-Key → 任务↔分配行关系校验 → PDA 强制库位/批次扫描 → 成功/失败返回任务快照 → 任务领取 + 租约。**以上已全部落地**。
+
+### 9.5 验证记录（2026-10-05，本地 MySQL 8.0 + Memurai/Redis）
+
+- 全量后端测试（`WMS_TEST_REQUIRED=1`、`WMS_TEST_REDIS_ADDR=127.0.0.1:6379`）：`go test ./...` 全绿，含迁移往返（000010 上/下/重放，`wms_task` 租约列与 `wms_idempotency` 表断言）。
+- 新增竞态测试 `internal/app/pick_race_test.go`（真实事务 + gorm 回调控制交错）：
+  - 取消先到：取消持任务行锁未提交时拣货排队，取消提交后拣货被拒（40007），订单/任务/分配行/库存均无拣货写入；
+  - 拣货先到：拣货持锁未提交时取消排队，拣货提交后取消看到已开工被拒（50006），订单保持 PICKING、picked_qty=1；
+  - 同时到：并发 3 轮恰好一方成功，终态一致（stock = available + allocated，无负库存），无死锁/超时；
+  - PDA 集成用例：领取凭证、强制扫码（50010/50011/50009）、幂等重放不重复扣减、同 key 不同内容 409、租约过期可被接手与旧凭证失效（40017/40018/40019）。
+- HTTP 端到端（本机后端 + curl）：领取 → 缺库位 400/50010 → 凭证错误 400/40018 → 严格拣货 200 + 任务快照 → 同 key 重放回放同一快照（picked_qty 不重复累加）→ 同 key 不同内容 409/40901。
+- k6 波次拣货对比（`scripts/k6/pick-stress.js`，user2 / 仓库92 / SKU433，40 库位 × 50 件 = 2000 件、40 拣货员、CHAOS=0、SCAN_INTERVAL=0；两轮均生成 40 个任务、终态 SHIPPED、无负库存）：
+
+| 指标 | 旧代码（HEAD，整单锁） | 新代码（工作区） | 变化 |
+| --- | --- | --- | --- |
+| 单次拣货 avg | 207.45ms | 113.59ms | -45% |
+| 单次拣货 P95 | 246.86ms | 139.48ms | -44% |
+| 单工人迭代耗时（50 次拣货） | 11.84s | 6.46s | -45% |
+| 拣货吞吐（pick_ok/s） | 144 | 239 | +66% |
+| HTTP 失败率 | 0% | 0% | — |
+
+（对照方式：`git worktree` 检出 HEAD 构建旧后端，与新后端串行运行同一脚本与参数，仅比较 wave 阶段。）
+
+### 9.6 评审修复计划与进展（2026-10-06）
+
+外部评审（用户逐行核对）确认了五项结论并排定优先级，修复按 P0 → P1 → P2 推进：
+
+- P0：① 库存分配翻页与事务冲突重试解耦 ② 分配行/明细/主单补数量上限条件 ③ `IncrDetailPicked` 检查 RowsAffected ④ 审核生成拣货任务时补 `DetailID` ⑤ 拣货补 `t.DetailID == a.DetailID` 校验 ⑥ PDA 强制 `Idempotency-Key` ⑦ 幂等指纹纳入库位/批次/入口类型 ⑧ 幂等结果解析失败返回错误 ⑨ 幂等表 `result_json` 置为非空。
+- P1：`LockInventoryByIDs` 前对 ID 排序并加 `ORDER BY id`、收紧"不会死锁"注释；40017/40018/40019 映射 HTTP 409；库位编码缺失 fail fast；补 >5 批库存、同 key 不同扫描、幂等结果损坏等回归测试。
+- P2：领取接口幂等、TaskResp 租约字段、设备绑定、快照严格一致读、幂等表清理 Worker、启动 MySQL 后全量重跑。
+
+**已完成（P0-①）**：`inventory/service/stock.go` 删除 `maxAllocateAttempts`（批数不再设上限），改为 keyset 游标翻到底；锁到的行比候选快照少只标记 `staleDetected` 并继续翻页，候选读完仍不足时：有快照变化返回 `Conflict` 交外层 `TxRetry` 换新快照，无变化才报 `AvailableNotEnough`。回归测试 `TestAllocatePagesBeyondBatchWindow`（130 行×1 件、申请 110 件，旧实现必然失败）。已验证：`go test ./internal/modules/inventory/...`、`./internal/modules/outbound/...`、`./internal/app/...` 全绿。
+
+**语义变化（需知悉）**：并发抢空导致"锁到的行 < 快照"时，容量竞争下失败会返回可重试的 40900，而不是立即报"库存不足"——外层换新快照重试后仍不足（且期间无新变化）才会得到 30201。`TestConcurrentAllocateAntiOversell` 的判定已相应放宽（40900 属可重试拒绝），防超卖不变量断言不变。

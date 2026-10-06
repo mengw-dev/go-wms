@@ -96,6 +96,19 @@ func TestMigrationsAndImportTokenRollback(t *testing.T) {
 	}) {
 		t.Fatalf("location unique index columns=%v", got)
 	}
+	if !db.Migrator().HasTable("wms_idempotency") {
+		t.Fatal("missing idempotency table")
+	}
+	if got := indexColumns(t, db, "wms_idempotency", "uk_idem_tenant_scope_key"); !slices.Equal(got, []string{
+		"tenant_id", "scope", "idempotency_key",
+	}) {
+		t.Fatalf("idempotency unique index columns=%v", got)
+	}
+	for _, column := range []string{"claimed_by", "claim_token", "lease_expire_at"} {
+		if !db.Migrator().HasColumn("wms_task", column) {
+			t.Fatalf("missing task lease column %s", column)
+		}
+	}
 	for _, constraint := range []string{"chk_inv_allocated_non_negative", "chk_inv_quantity_balance"} {
 		if !hasCheckConstraint(t, db, "wms_inventory", constraint) {
 			t.Fatalf("missing inventory check constraint %s", constraint)
@@ -103,6 +116,9 @@ func TestMigrationsAndImportTokenRollback(t *testing.T) {
 	}
 	if err := m.Migrate(7); err != nil {
 		t.Fatal(err)
+	}
+	if db.Migrator().HasColumn("wms_task", "claim_token") {
+		t.Fatal("lease migration rollback retained claim_token")
 	}
 	for _, constraint := range []string{"chk_inv_allocated_non_negative", "chk_inv_quantity_balance"} {
 		if hasCheckConstraint(t, db, "wms_inventory", constraint) {
@@ -138,11 +154,17 @@ func TestMigrationsAndImportTokenRollback(t *testing.T) {
 	if db.Migrator().HasColumn("wms_import_task", "run_token") {
 		t.Fatal("rollback retained run_token")
 	}
-	if err := m.Steps(3); err != nil {
+	if err := m.Steps(5); err != nil {
 		t.Fatal(err)
 	}
 	if !db.Migrator().HasColumn("wms_import_task", "run_token") {
 		t.Fatal("reapply missing run_token")
+	}
+	if !db.Migrator().HasTable("wms_idempotency") {
+		t.Fatal("reapply missing idempotency table")
+	}
+	if !db.Migrator().HasColumn("wms_task", "claim_token") {
+		t.Fatal("reapply missing task lease column")
 	}
 	if !db.Migrator().HasIndex("wms_inventory", "idx_inv_tenant_fifo") {
 		t.Fatal("reapply missing tenant-aware FIFO index")

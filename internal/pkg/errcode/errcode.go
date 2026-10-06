@@ -87,6 +87,11 @@ var (
 	Conflict        = New(40900, "数据并发冲突，请重试")
 )
 
+// 请求级幂等 41000+（跨模块共用：同一请求编号被复用于不同内容属于客户端误用，不可重试）
+var (
+	IdempotencyKeyReused = NewHTTP(40901, "相同请求编号被用于不同内容，请更换请求编号", 409)
+)
+
 // 系统/认证 10000+
 var (
 	UserExist                  = New(10001, "用户名已存在")
@@ -142,21 +147,25 @@ var (
 
 // 入库 40000+
 var (
-	OrderNotFound        = NewHTTP(40001, "入库单不存在", 404)
-	OrderStatusWrong     = New(40002, "入库单状态不允许该操作")
-	OrderVersionBad      = New(40003, "入库单已被其他人操作，请刷新重试")
-	ReceiveQtyOver       = New(40004, "收货数量超过剩余应收数量")
-	PutawayQtyOver       = New(40005, "上架数量超过任务剩余数量")
-	TaskNotFound         = New(40006, "任务不存在")
-	TaskStatusWrong      = New(40007, "任务状态不允许该操作")
-	BatchNoRequired      = New(40008, "缺少批次号")
-	OrderNoDuplicate     = New(40009, "单号重复，请重试")
-	ImportTaskNotFound   = NewHTTP(40010, "导入任务不存在", 404)
-	ImportFileInvalid    = New(40011, "导入文件无效")
-	ImportTemplateHeader = New(40012, "导入文件表头不符合模板")
-	TaskQtyOver          = New(40013, "数量超过任务剩余数量")
-	BatchNoInconsistent  = New(40014, "同一明细的批次号必须与首次收货一致")
-	DetailDuplicateSKU   = New(40015, "同一货品请合并为一行明细")
+	OrderNotFound          = NewHTTP(40001, "入库单不存在", 404)
+	OrderStatusWrong       = New(40002, "入库单状态不允许该操作")
+	OrderVersionBad        = New(40003, "入库单已被其他人操作，请刷新重试")
+	ReceiveQtyOver         = New(40004, "收货数量超过剩余应收数量")
+	PutawayQtyOver         = New(40005, "上架数量超过任务剩余数量")
+	TaskNotFound           = New(40006, "任务不存在")
+	TaskStatusWrong        = New(40007, "任务状态不允许该操作")
+	BatchNoRequired        = New(40008, "缺少批次号")
+	OrderNoDuplicate       = New(40009, "单号重复，请重试")
+	ImportTaskNotFound     = NewHTTP(40010, "导入任务不存在", 404)
+	ImportFileInvalid      = New(40011, "导入文件无效")
+	ImportTemplateHeader   = New(40012, "导入文件表头不符合模板")
+	TaskQtyOver            = New(40013, "数量超过任务剩余数量")
+	BatchNoInconsistent    = New(40014, "同一明细的批次号必须与首次收货一致")
+	DetailDuplicateSKU     = New(40015, "同一货品请合并为一行明细")
+	TaskAllocationMismatch = New(40016, "任务与分配行关系不一致，拣货已停止")
+	TaskClaimConflict      = New(40017, "任务已被他人领取，请稍后重试")
+	TaskClaimMismatch      = New(40018, "领取凭证不匹配，请重新领取任务")
+	TaskLeaseExpired       = New(40019, "任务租约已过期，请重新领取任务")
 )
 
 // 出库 50000+
@@ -172,6 +181,8 @@ var (
 	ShipDetailDuplicateSKU = New(50007, "同一货品请合并为一行明细")
 	PickBatchMismatch      = New(50008, "扫描的批次与任务不一致，请核对后再拣货")
 	PickLocationMismatch   = New(50009, "扫描的库位与任务不一致，请核对后再拣货")
+	PickLocationRequired   = New(50010, "PDA 拣货必须扫描库位")
+	PickBatchRequired      = New(50011, "该任务有批次要求，必须扫描批次")
 )
 
 // 盘点 60000+

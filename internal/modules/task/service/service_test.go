@@ -87,7 +87,13 @@ func TestTaskConcurrentProgressDoesNotOverComplete(t *testing.T) {
 		t.Fatal(err)
 	}
 	progress := func(qty int) error {
-		return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error { return s.AddProgress(ctx, tx, task.ID, qty, "test") })
+		return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			t, err := s.GetForUpdate(ctx, tx, task.ID)
+			if err != nil {
+				return err
+			}
+			return s.AddProgress(ctx, tx, t, qty, "test")
+		})
 	}
 	if err := progress(1); err != nil {
 		t.Fatal(err)

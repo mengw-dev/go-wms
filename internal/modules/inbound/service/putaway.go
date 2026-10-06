@@ -74,8 +74,8 @@ func (s *Service) Putaway(ctx context.Context, taskID, locationID int64, qty int
 		if err := s.basic.UpdateLocationStatusInTx(ctx, tx, locationID, basicmodel.LocationStatusOccupied); err != nil {
 			return err
 		}
-		// 推进任务（含状态机与数量校验）
-		if err := s.taskAPI.AddProgress(ctx, tx, taskID, qty, operator); err != nil {
+		// 推进任务（复用已锁定的任务行，含状态机与数量校验）
+		if err := s.taskAPI.AddProgress(ctx, tx, t, qty, operator); err != nil {
 			return err
 		}
 		// 全部上架任务完成 → 单据 COMPLETED
