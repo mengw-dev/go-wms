@@ -133,6 +133,9 @@ test('outbound UI flow allocates FIFO stock and ships it', async ({ page, reques
 
   await row.getByRole('button', { name: '拣货' }).click()
   const pickDialog = dialog(page, '拣货')
+  // PDA 契约：先领取任务（获得作业凭证），未领取时拣货按钮不可用
+  await pickDialog.getByRole('button', { name: '领取任务' }).click()
+  await expect(pickDialog.getByText('已领取')).toBeVisible()
   // 弹窗透出作业库位与应拣批次，拣货员据此直达库位
   await expect(
     pickDialog.locator('.el-form-item').filter({ hasText: '作业库位' }).locator('input'),
