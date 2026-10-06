@@ -37,7 +37,9 @@ type Record struct {
 	// ResultJSON 首次成功时的响应快照，非空；重试命中时原样回放（不重新读库），
 	// 缺失或损坏按内部错误处理，不用当前进度兜底。
 	ResultJSON string `gorm:"type:text;not null"`
-	CreatedAt  time.Time
+	// CreatedAt 建索引：清理 Worker 按 created_at 删除，避免全表扫描。
+	// AutoMigrate 与迁移 000009 保持一致（idx_idem_created_at）。
+	CreatedAt time.Time `gorm:"index:idx_idem_created_at"`
 }
 
 func (Record) TableName() string { return "wms_idempotency" }

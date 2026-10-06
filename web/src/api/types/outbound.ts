@@ -68,4 +68,20 @@ export interface PickParams {
   /** 扫码核对字段（可选）：填写时后端校验必须与任务要求的库位/批次一致 */
   location_code?: string
   batch_no?: string
+  /** PDA 领取凭证：领取后提交拣货必须携带，租约过期或凭证不符会被拒绝 */
+  claim_token?: string
+}
+
+/** 拣货结果快照（PDA 现场就地刷新进度，成功与业务拒绝都会返回）。 */
+export interface PickResult {
+  task_status: string
+  done_qty: number
+  remaining_qty: number
+  order_status: string
+}
+
+/** 领取（续领）拣货任务的结果：领取凭证 + 租约到期时间 + 任务快照。 */
+export interface ClaimResult extends PickResult {
+  claim_token: string
+  lease_expire_at: string
 }
