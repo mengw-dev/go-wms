@@ -170,7 +170,7 @@ API Key 在服务端配置中绑定 `WMS_INTEGRATION_TENANT_ID`，请求体、�
 | POST | `/outbound/orders/:id/submit` | `wms:outbound:submit` | 提交 |
 | POST | `/outbound/orders/:id/approve` | `wms:outbound:approve` | **审核即分配**：FIFO 锁库 + 分配明细 + 拣货任务；库存不足整体失败 |
 | POST | `/outbound/orders/:id/cancel` | `wms:outbound:cancel` | 取消并释放锁库（已拣货不可取消） |
-| POST | `/outbound/tasks/:id/pick` | `wms:outbound:pick` | 拣货 `{qty, batch_no?, location_code?, claim_token?}`，路径 `:id` 为 task_id，可分次；`batch_no/location_code` 为扫码核对值（可选，填了才校验，不一致返回 50008/50009）；请求头可带 `Idempotency-Key` 做请求级幂等（不同内容复用返回 40901）；成功与业务拒绝均返回任务快照；全部分配行拣完自动发货扣库存 |
+| POST | `/outbound/tasks/:id/pick` | `wms:outbound:pick` | 拣货 `{qty, batch_no?, location_code?, claim_token?}`，路径 `:id` 为 task_id，可分次；`batch_no/location_code` 为扫码核对值（可选，填了才校验，不一致返回 50008/50009）；请求头可带 `Idempotency-Key` 做请求级幂等（指纹含任务、数量、规范化后的库位/批次与入口类型，不同内容复用返回 40901）；成功与业务拒绝均返回任务快照；全部分配行拣完自动发货扣库存 |
 
 **库存不足导致审核失败的示例**
 
@@ -222,13 +222,13 @@ API Key 在服务端配置中绑定 `WMS_INTEGRATION_TENANT_ID`，请求体、�
 
 ### 7.2 PDA 拣货（领取租约 + 强制扫码）
 
-现场作业使用 PDA 专用入口：库位必填（任务有批次时批次必填），服务端强校验；
+现场作业使用 PDA 专用入口：必须携带 `Idempotency-Key`（缺失返回 400），库位必填（任务有批次时批次必填），服务端强校验；
 领取任务后携带领取凭证提交，任务被他人接手后旧凭证自动失效。
 
 | 方法 | 路径 | 权限 | 说明 |
 | --- | --- | --- | --- |
 | POST | `/pda/tasks/:id/claim` | `wms:outbound:pick` | 领取（或本人续领）任务租约：返回 `claim_token`、租约到期时间与任务快照；被他人持有且租约未过期返回 40017 |
-| POST | `/pda/tasks/:id/pick` | `wms:outbound:pick` | 强制扫码拣货：缺库位 50010；任务有批次但未扫批次 50011；与任务不一致 50009/50008；凭证不符 40018；租约过期 40019 |
+| POST | `/pda/tasks/:id/pick` | `wms:outbound:pick` | 强制扫码拣货：缺 `Idempotency-Key` 400；缺库位 50010；任务有批次但未扫批次 50011；与任务不一致 50009/50008；凭证不符 40018；租约过期 40019 |
 
 **领取响应示例**
 
@@ -251,7 +251,7 @@ API Key 在服务端配置中绑定 `WMS_INTEGRATION_TENANT_ID`，请求体、�
 
 ```json
 // POST /api/v1/pda/tasks/3655.../pick
-// Header: Idempotency-Key: 3f2c...（可选；重试必须复用同一 key）
+// Header: Idempotency-Key: 3f2c...（PDA 入口必填，缺失 400；重试必须复用同一 key）
 {
   "qty": 1,
   "location_code": "A01-02-03",
@@ -263,10 +263,10 @@ API Key 在服务端配置中绑定 `WMS_INTEGRATION_TENANT_ID`，请求体、�
 
 **语义说明**
 
-- 幂等重放：同一 `Idempotency-Key` + 相同内容回放首次成功的响应快照（不重复扣减，也不受凭证过期影响）；同 key 不同内容返回 409 / 40901。
+- 幂等重放：同一 `Idempotency-Key` + 相同内容（比较前对库位/批次去空格并折叠大小写；指纹含任务、数量、入口类型）回放首次成功的响应快照（不重复扣减，也不受凭证过期影响）；同 key 不同内容返回 409 / 40901；快照缺失或损坏返回 500，不用当前进度兜底。
 - 业务拒绝（数量超限、任务被取消、被他人持有等）仍返回 400/409，`data` 带当前任务快照，PDA 可就地刷新进度，不必退出重进。
 - 租约 10 分钟，每次成功拣货自动续租；无租约 / 租约过期 / 本人持有时可领取或续领，被接手后旧设备凭证失效（40018）。
-- 后台 `/outbound/tasks/:id/pick` 保持宽松语义（扫码与凭证都可选），供人工处理。
+- 后台 `/outbound/tasks/:id/pick` 保持宽松语义（扫码、凭证与 `Idempotency-Key` 均可选），供人工处理。
 
 ## 8. 盘点管理
 

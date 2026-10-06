@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"strings"
+
 	"github.com/gin-gonic/gin"
 
 	"gowms/internal/modules/outbound/dto"
@@ -172,7 +174,7 @@ func (h *Handler) batchCancel(c *gin.Context) {
 
 func (h *Handler) pick(c *gin.Context) { h.pickTask(c, false) }
 
-// pdaPick PDA 入口：强制扫描库位（任务有批次时批次必填），服务端再次校验。
+// pdaPick PDA 入口：强制携带 Idempotency-Key 并扫描库位（任务有批次时批次必填），服务端再次校验。
 func (h *Handler) pdaPick(c *gin.Context) { h.pickTask(c, true) }
 
 // pdaClaim 领取（续领）拣货任务：返回领取凭证与任务快照。
@@ -192,6 +194,13 @@ func (h *Handler) pdaClaim(c *gin.Context) {
 // pickTask 两个拣货入口共用的处理：绑定 → 调用服务 → 成功返回任务快照，
 // 业务拒绝时随错误带回最新快照（PDA 就地刷新，不必退出重进）。
 func (h *Handler) pickTask(c *gin.Context, strict bool) {
+	// PDA 入口强制请求级幂等：现场重放必须携带 Idempotency-Key，缺失直接拒绝；
+	// 后台入口保持可选（兼容脚本/联调调用）。
+	idempotencyKey := c.GetHeader("Idempotency-Key")
+	if strict && strings.TrimSpace(idempotencyKey) == "" {
+		response.Fail(c, errcode.ParamError)
+		return
+	}
 	var req dto.PickReq
 	if !httpx.BindJSON(c, &req) {
 		return
@@ -201,7 +210,6 @@ func (h *Handler) pickTask(c *gin.Context, strict bool) {
 		return
 	}
 	scan := &service.PickScan{LocationCode: req.LocationCode, BatchNo: req.BatchNo, Strict: strict}
-	idempotencyKey := c.GetHeader("Idempotency-Key")
 	result, err := h.svc.Pick(c.Request.Context(), taskID, req.Qty, middleware.Username(c), scan, req.ClaimToken, idempotencyKey)
 	if err != nil {
 		if result != nil {

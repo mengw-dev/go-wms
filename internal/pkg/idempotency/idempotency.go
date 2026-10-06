@@ -34,8 +34,9 @@ type Record struct {
 	RequestHash    string `gorm:"size:64;not null"`
 	// ObjectID 关联的业务对象（如拣货任务 id），仅用于排查。
 	ObjectID int64 `gorm:"not null;default:0"`
-	// ResultJSON 首次成功时的响应快照；重试命中时原样回放（不重新读库）。
-	ResultJSON string `gorm:"type:text"`
+	// ResultJSON 首次成功时的响应快照，非空；重试命中时原样回放（不重新读库），
+	// 缺失或损坏按内部错误处理，不用当前进度兜底。
+	ResultJSON string `gorm:"type:text;not null"`
 	CreatedAt  time.Time
 }
 

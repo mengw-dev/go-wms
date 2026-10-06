@@ -59,7 +59,7 @@
 - 库存 version 递增不代表使用乐观锁；FIFO 依据首次上架时间，同一库存四元组后续收货会合并。
 - 权限缓存仍有有效 TTL，多实例没有统一失效广播。本轮只移除了过期后无限回退旧权限的行为。
 - 平台 tenant_id=0 仍有跨租户旁路语义；这项兼容性目前保留，不能把"有回调"当成所有 SQL 都隔离的证明。
-- 请求级幂等尚未实现：出库建单（`biz_order_no`）与导入建单（`import_task_id + import_row`）已有业务键幂等，但收货、拣货是增量写且没有客户端请求标识，单据处于 RECEIVING/PICKING 时重复提交同一请求会再次累加。状态机与 version 只防非法流转和丢失更新，不能替代请求幂等；影响范围、触发路径与规划方案见 `docs/requirements.md` 第 6 章。
+- 请求级幂等：拣货已实现（`outbound.pick` scope + `wms_idempotency`，见 9.4/9.6）；收货仍是增量写且没有客户端请求标识，单据处于 RECEIVING 时重复提交同一请求会再次累加。状态机与 version 只防非法流转和丢失更新，不能替代请求幂等；影响范围、触发路径与规划方案见 `docs/requirements.md` 第 6 章。
 - 库存分配的候选查询（`ListFIFOCandidates`）是普通读，用的是事务快照，看不见本次事务开始后才入库的新行。极端情况下（审核事务开始后有人上架补货）可能报一次"可用不足"，下一次请求就能看到新库存。旧实现用 `FOR UPDATE` 读最新已提交数据，没有这个差异——这是为缩小锁范围付出的代价。
 
 ## 4. 下一阶段的明确顺序
@@ -69,7 +69,7 @@
 3. 业务完整性：任务并发推进已补回归；继续补出库审核与取消、基础数据删除和库存增加并发、盘点作业时间边界的完整链路测试。
 4. 文件和部署：导入文件清理、孤立文件、共享存储、应用数据库最小权限、容器启动及关停验证。
 5. 完成其余 Go 文件、前端、配置、脚本和文档逐项核对，再输出最终全项目报告。
-6. 请求级幂等（待解决）：为收货、拣货、盘点审核增加 `Idempotency-Key` 与幂等表，插入与业务写操作放在同一事务，并同步前端与测试。
+6. 请求级幂等（部分完成）：拣货已落地（`Idempotency-Key` + `wms_idempotency`，见 9.6）；收货、盘点审核待接入同一套实现（插入与业务写操作放在同一事务，并同步前端与测试）。
 
 以上是方向性的顺序，可直接照着执行的清单见第 8 节。
 
@@ -299,7 +299,7 @@ PDA 能力，属于新功能不是缺陷：
 外部评审（用户逐行核对）确认了五项结论并排定优先级，修复按 P0 → P1 → P2 推进：
 
 - P0：① 库存分配翻页与事务冲突重试解耦 ② 分配行/明细/主单补数量上限条件 ③ `IncrDetailPicked` 检查 RowsAffected ④ 审核生成拣货任务时补 `DetailID` ⑤ 拣货补 `t.DetailID == a.DetailID` 校验 ⑥ PDA 强制 `Idempotency-Key` ⑦ 幂等指纹纳入库位/批次/入口类型 ⑧ 幂等结果解析失败返回错误 ⑨ 幂等表 `result_json` 置为非空。
-- P1：`LockInventoryByIDs` 前对 ID 排序并加 `ORDER BY id`、收紧"不会死锁"注释；40017/40018/40019 映射 HTTP 409；库位编码缺失 fail fast；补 >5 批库存、同 key 不同扫描、幂等结果损坏等回归测试。
+- P1：`LockInventoryByIDs` 前对 ID 排序并加 `ORDER BY id`、收紧"不会死锁"注释；40017/40018/40019 映射 HTTP 409；库位编码缺失 fail fast。（>5 批库存测试已随 P0-① 落地；同 key 不同扫描、幂等结果损坏测试已随 P0-⑦⑧ 落地。）
 - P2：领取接口幂等、TaskResp 租约字段、设备绑定、快照严格一致读、幂等表清理 Worker、启动 MySQL 后全量重跑。
 
 **已完成（P0-①）**：`inventory/service/stock.go` 删除 `maxAllocateAttempts`（批数不再设上限），改为 keyset 游标翻到底；锁到的行比候选快照少只标记 `staleDetected` 并继续翻页，候选读完仍不足时：有快照变化返回 `Conflict` 交外层 `TxRetry` 换新快照，无变化才报 `AvailableNotEnough`。回归测试 `TestAllocatePagesBeyondBatchWindow`（130 行×1 件、申请 110 件，旧实现必然失败）。已验证：`go test ./internal/modules/inventory/...`、`./internal/modules/outbound/...`、`./internal/app/...` 全绿。
@@ -307,5 +307,7 @@ PDA 能力，属于新功能不是缺陷：
 **已完成（P0-②③）**：`outbound/repository` 的 `IncrAllocationPicked`/`IncrOrderPicked`/`IncrDetailPicked` 统一补数量上限（`picked_qty + delta <= allocated_qty`，主单以聚合分配量为锚点）与 `delta > 0`；`IncrDetailPicked` 改为返回 RowsAffected，拣货在 0 行时按 40016 停止并整体回滚（分配行 0 行仍为可重试 50201）。回归测试 `TestPickRejectsQuantityDrift`（分配行/明细漂移两个场景，含事务整体回滚断言）。已验证：`go test ./...` 全量通过。
 
 **已完成（P0-④⑤）**：`outbound/service/order.go` `Approve` 生成拣货任务时写入 `DetailID = allocation.detail_id`；`pick.go` 聚合校验增加 `a.DetailID != t.DetailID`（不一致 40016）。配套迁移 `000011_backfill_pick_task_detail` 幂等回填历史 `detail_id=0` 的拣货任务（本地开发库已执行，回填 139 条；`migrations_test.go` 增加占位任务 + 断言回填结果）。回归测试 `TestPickRejectsQuantityDrift` 增加场景 3（任务 `detail_id` 被写歪 → 40016 且无写入），`newPickOrder` 统一断言新建拣货任务的 `detail_id` 非 0。已验证：全量 `go test ./...` 通过。
+
+**已完成（P0-⑥⑦⑧⑨）**：PDA 入口 `POST /pda/tasks/:id/pick` 强制携带 `Idempotency-Key`，缺失或纯空白在 handler 直接 400（后台入口保持可选）；`pickRequestHash` 指纹改为 任务 + 数量 + 规范化（去首尾空格、折叠大小写）库位/批次 + 入口类型（`pda`/`backend`），`claim_token` 不参与（租约换手后重放仍回放首次结果）；`replayPickResult` 在快照为空或损坏时返回内部错误（500），不再兜底读取当前进度；`wms_idempotency.result_json` 迁移与模型同步改为 `NOT NULL`（000009 未发布，直接修改原文件）。回归测试：`outbound/handler/handler_test.go`（缺 key 400）与 `pick_race_test.go` `TestPickIdempotencyFingerprint`（大小写/空白差异回放成功、库位/批次/入口不同 409、损坏与空快照 500、全程仅一次真实扣减）。已验证：`gofmt` / `go build` / `go vet` / 全量 `go test ./...` 全绿。
 
 **语义变化（需知悉）**：并发抢空导致"锁到的行 < 快照"时，容量竞争下失败会返回可重试的 40900，而不是立即报"库存不足"——外层换新快照重试后仍不足（且期间无新变化）才会得到 30201。`TestConcurrentAllocateAntiOversell` 的判定已相应放宽（40900 属可重试拒绝），防超卖不变量断言不变。

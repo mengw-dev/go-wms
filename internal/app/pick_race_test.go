@@ -11,6 +11,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -474,6 +475,66 @@ func TestPDAClaimStrictPickAndIdempotency(t *testing.T) {
 	}
 	if _, err := stack.out.Pick(stack.ctx, task.ID, 1, "picker", scan, claim.ClaimToken, ""); errcode.From(err).Code != errcode.TaskClaimMismatch.Code {
 		t.Fatalf("stale token after re-claim: %v", err)
+	}
+}
+
+// TestPickIdempotencyFingerprint 覆盖幂等指纹与回放边界：
+// 同 key 同内容（仅大小写/空白差异）必须回放成功；库位、批次、入口类型任一不同都属 409 误用；
+// 快照缺失或损坏返回内部错误，不再兜底当前进度；全程只有一次真实拣货。
+func TestPickIdempotencyFingerprint(t *testing.T) {
+	stack := newPickRaceStack(t)
+	_, task := stack.newPickOrder(t, "IDEM-FP-1", 2)
+
+	scan := &outservice.PickScan{Strict: true, LocationCode: task.LocationCode, BatchNo: task.BatchNo}
+	first, err := stack.out.Pick(stack.ctx, task.ID, 1, "picker", scan, "", "fp-key-1")
+	if err != nil || first.DoneQty != 1 {
+		t.Fatalf("first pick: result=%+v err=%v", first, err)
+	}
+	// 同 key 同内容，仅大小写与首尾空白不同 → 规范化后指纹一致，回放首次快照
+	noisy := &outservice.PickScan{
+		Strict:       true,
+		LocationCode: " " + strings.ToLower(task.LocationCode) + " ",
+		BatchNo:      strings.ToLower(task.BatchNo),
+	}
+	replay, err := stack.out.Pick(stack.ctx, task.ID, 1, "picker", noisy, "", "fp-key-1")
+	if err != nil || replay.DoneQty != first.DoneQty {
+		t.Fatalf("normalized replay: result=%+v err=%v", replay, err)
+	}
+	// 相同 key 被用于不同内容：库位 / 批次 / 入口类型任一不同 → 409
+	for _, tc := range []struct {
+		name string
+		scan *outservice.PickScan
+	}{
+		{"different location", &outservice.PickScan{Strict: true, LocationCode: "OTHER-LOC", BatchNo: task.BatchNo}},
+		{"different batch", &outservice.PickScan{Strict: true, LocationCode: task.LocationCode, BatchNo: "OTHER-BATCH"}},
+		{"different entry", &outservice.PickScan{Strict: false, LocationCode: task.LocationCode, BatchNo: task.BatchNo}},
+	} {
+		if _, err := stack.out.Pick(stack.ctx, task.ID, 1, "picker", tc.scan, "", "fp-key-1"); errcode.From(err).Code != errcode.IdempotencyKeyReused.Code {
+			t.Fatalf("%s: %v", tc.name, err)
+		}
+	}
+	// 快照损坏 → 内部错误（500），不得用当前进度伪装成功
+	if err := stack.db.WithContext(stack.ctx).Model(&idempotency.Record{}).
+		Where("idempotency_key = ?", "fp-key-1").Update("result_json", "{broken").Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := stack.out.Pick(stack.ctx, task.ID, 1, "picker", scan, "", "fp-key-1"); errcode.From(err).Code != errcode.Internal.Code {
+		t.Fatalf("corrupted snapshot: %v", err)
+	}
+	// 快照为空 → 同样内部错误
+	if err := stack.db.WithContext(stack.ctx).Model(&idempotency.Record{}).
+		Where("idempotency_key = ?", "fp-key-1").Update("result_json", "").Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := stack.out.Pick(stack.ctx, task.ID, 1, "picker", scan, "", "fp-key-1"); errcode.From(err).Code != errcode.Internal.Code {
+		t.Fatalf("empty snapshot: %v", err)
+	}
+	// 全部重放/误用/异常都不产生第二次真实拣货
+	if gotTask := stack.reloadTask(t, task.ID); gotTask.DoneQty != 1 {
+		t.Fatalf("task done=%d want=1", gotTask.DoneQty)
+	}
+	if gotAlloc := stack.reloadAllocation(t, task.AllocationID); gotAlloc.PickedQty != 1 {
+		t.Fatalf("allocation picked=%d want=1", gotAlloc.PickedQty)
 	}
 }
 

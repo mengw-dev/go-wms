@@ -258,12 +258,14 @@
   - `type PickScan struct{ LocationCode, BatchNo string; Strict bool }` — 扫码核对输入；`Strict=true`（PDA 入口）时库位必填、任务有批次时批次必填。
   - `const pickLeaseTTL = 10 * time.Minute` — 拣货任务租约时长。
   - `const pickIdempotencyScope = "outbound.pick"` — 请求级幂等作用域。
-  - `func (s *Service) Pick(ctx, taskID int64, qty int, operator string, scan *PickScan, claimToken, idempotencyKey string) (*dto.PickResult, error)` — 拣货：幂等快路径 → 锁任务行 → 领取凭证校验 → 锁分配行 → 聚合关系校验 → 扫码校验 → 推进任务 → 原子累加分配行/主单/明细 → 分配行拣满发货扣库存 → 主单拣满转 SHIPPED → 续租 → 生成提交时刻快照并写幂等记录；业务拒绝时返回非锁读当前快照 + 错误。
+  - `func (s *Service) Pick(ctx, taskID int64, qty int, operator string, scan *PickScan, claimToken, idempotencyKey string) (*dto.PickResult, error)` — 拣货：幂等快路径（同 key 且指纹一致时回放首次快照，指纹 = 任务 + 数量 + 规范化库位/批次 + 入口类型）→ 锁任务行 → 领取凭证校验 → 锁分配行 → 聚合关系校验 → 扫码校验 → 推进任务 → 原子累加分配行/主单/明细 → 分配行拣满发货扣库存 → 主单拣满转 SHIPPED → 续租 → 生成提交时刻快照并写幂等记录；业务拒绝时返回非锁读当前快照 + 错误。
   - `func (s *Service) ClaimPickTask(ctx, taskID int64, operator string) (*dto.ClaimResult, error)` — 领取/续领任务租约（无租约/租约过期/本人持有可领），生成 `claim_token` 并返回租约与任务快照。
   - `func (s *Service) claimFailure(ctx, taskID) error` — 领取 0 行后定位原因（任务不存在/状态不允许 40007 / 被他人持有 40017）。
   - `func checkPickScan(scan *PickScan, t *taskmodel.Task) error` — 库位/批次核对；Strict 模式缺失返回 `PickLocationRequired`(50010)/`PickBatchRequired`(50011)。
   - `func checkPickClaim(claimToken string, t *taskmodel.Task) error` — 领取凭证与租约校验（凭证不符 40018、租约过期 40019；空凭证表示后台入口不校验）。
-  - `func (s *Service) pickSnapshot(ctx, taskID) (*dto.PickResult, error)` / `replayPickResult(raw string) *dto.PickResult` — 非锁读快照 / 幂等记录回放。
+  - `func (s *Service) pickSnapshot(ctx, taskID) (*dto.PickResult, error)` — 非锁读任务与主单进度快照（业务拒绝时随错误返回）。
+  - `func pickRequestHash(taskID int64, qty int, scan *PickScan) string` — 幂等指纹：任务 + 数量 + 规范化（去首尾空格、折叠大小写）库位/批次 + 入口类型（`pda`/`backend`）；`claim_token` 不参与（租约换手后重放仍回放首次结果）。
+  - `func replayPickResult(raw string) (*dto.PickResult, error)` — 回放幂等记录中的首次快照；为空或解析失败返回内部错误（500），不兜底当前进度。
 - **主要调用关系**：调用 `s.repo.GetOrder/GetAllocationForUpdate/IncrAllocationPicked/IncrOrderPicked/IncrDetailPicked/ShipIfFullyPicked`、`s.taskAPI.Get/GetForUpdate/AddProgress/Claim/RenewClaim`、`s.inv.Ship`、`idempotency.Find/Insert/Fingerprint`；被 `handler.pick/pdaPick/pdaClaim` 与 demo 场景调用。
 - **测试文件**：`internal/app/pick_race_test.go`（竞态 + PDA 集成用例）。
 - **涉及表/模型**：`wms_shipment_order`、`wms_allocation`、`wms_task`、`wms_inventory`（经 `invapi`）、`wms_idempotency`。
@@ -310,9 +312,9 @@
   - `type Handler struct{...}` / `func New(svc *service.Service) *Handler`。
   - `func (h *Handler) RegisterRoutes(auth *gin.RouterGroup, checker middleware.PermsChecker)` — 注册 `/outbound` 路由与 `wms:outbound:*` 权限。
   - `func (h *Handler) RegisterPDARoutes(auth, checker)` — 注册 PDA 专用路由：`POST /pda/tasks/:id/claim`、`POST /pda/tasks/:id/pick`（权限 `wms:outbound:pick`）。
-  - 私有方法 `list/get/create/delete/submit/approve/cancel/batch*/pick/pdaPick/pdaClaim/pickTask`；`pickTask` 为两个拣货入口共用（`strict` 区分严格/宽松），成功返回任务快照、业务拒绝以 `FailWithData` 带回快照。
+  - 私有方法 `list/get/create/delete/submit/approve/cancel/batch*/pick/pdaPick/pdaClaim/pickTask`；`pickTask` 为两个拣货入口共用（`strict` 区分严格/宽松）；严格入口强制 `Idempotency-Key`（缺失/空白直接 400），成功返回任务快照、业务拒绝以 `FailWithData` 带回快照。
 - **主要调用关系**：调用 `service.Service`；被 `app.NewRouter` 挂载（含 `RegisterPDARoutes`）。
-- **测试文件**：无。
+- **测试文件**：`handler_test.go`（PDA 入口缺 `Idempotency-Key` → 400，不触达 service）。
 - **涉及表/模型**：无（HTTP 层）。
 
 ### 出库 outbound — `internal/modules/outbound/handler/integration.go`
@@ -632,7 +634,7 @@
 ### 3. 拣货（任务状态机 / 扫码校验 / 领取租约 / 扣减时机）
 - **任务状态机**：`task/model/model.go` `TaskStatus`、`StatusTransitions`、`CanTransit`；推进逻辑 `task/service/service.go` `AddProgress`/`AddProgressByDetail` → `progress`（`CREATED→IN_PROGRESS→COMPLETED`，超量返回 `TaskQtyOver`，version 冲突返回 `Conflict`）。
 - **扫码校验**：`outbound/service/pick.go` `checkPickScan` — 对 `PickScan.LocationCode`/`BatchNo` 与任务 `LocationCode`/`BatchNo` 做忽略大小写比对，不一致返回 `PickLocationMismatch`/`PickBatchMismatch`；PDA 入口 `Strict=true` 时库位必填（50010）、任务有批次时批次必填（50011）。
-- **请求幂等**：`pkg/idempotency`（`Find`/`Insert`/`Fingerprint`，表 `wms_idempotency`，唯一键 `(tenant_id, scope, idempotency_key)`）；`outbound/service/pick.go` `Pick` 在事务首部走幂等快路径，命中回放 `ResultJSON` 首次快照并短路在凭证校验之前；记录与业务同事务提交。
+- **请求幂等**：`pkg/idempotency`（`Find`/`Insert`/`Fingerprint`，表 `wms_idempotency`，唯一键 `(tenant_id, scope, idempotency_key)`，`result_json` 非空）；`outbound/service/pick.go` `Pick` 在事务首部走幂等快路径，同 key 同指纹（任务 + 数量 + 规范化库位/批次 + 入口类型）回放 `ResultJSON` 首次快照并短路在凭证校验之前，同 key 不同指纹返回 40901，快照缺失/损坏返回 500；记录与业务同事务提交。PDA 入口 `/pda/tasks/:id/pick` 强制携带 `Idempotency-Key`（缺失 400），后台入口保持可选。
 - **领取凭证与租约**：`outbound/service/pick.go` `ClaimPickTask`/`checkPickClaim`（`pickLeaseTTL=10m`，成功拣货续租）；`task/repository` `Claim`/`RenewClaim`；字段 `wms_task.claimed_by`/`claim_token`/`lease_expire_at`（迁移 000010）。
 - **拣货主流程**：`outbound/service/pick.go` `Pick` — 锁任务行→领取凭证校验→锁分配行→聚合关系校验（任务 ↔ 分配行 `order_id`/`sku_id`/`allocated_qty`/`detail_id` 四处，不一致 40016）→扫码校验→`AddProgress`→`IncrAllocationPicked`/`IncrOrderPicked`/`IncrDetailPicked`→返回任务快照；三处数量累加均带 `picked_qty + delta <= allocated_qty` 的 SQL 上限，分配行/明细 RowsAffected=0 分别返回 50201/40016 并整体回滚。
 - **扣减库存时机**：分配行**拣满**（`allocFullyPicked`，`a.PickedQty+qty == a.AllocatedQty`）时调用 `s.inv.Ship` 实扣库存；主单拣满由 `ShipIfFullyPicked` 的 SQL 条件（`picked_qty = allocated_qty`）推进 `SHIPPED`。任务生成在审核阶段（`outbound/service/order.go` `Approve` 按分配行建 `taskmodel.TaskPick` 并写入 `DetailID`；迁移 000011 回填历史任务的 `detail_id`）。
@@ -1202,7 +1204,7 @@
 - **测试文件**：`integration_test.go`（本文件）。**涉及表/模型**：业务单据表。
 
 ### app — `internal/app/pick_race_test.go`
-- **核心符号**：`pickRaceStack`（真实 MySQL 组装拣货链路）、`newPickRaceStack`、`(*pickRaceStack).newPickOrder`、`txGate`/`newTaskUpdateGate`（gorm 回调暂停事务构造交错）、`signalTaskRowLock`；用例 `TestPickCancelRaceCancelFirst`、`TestPickCancelRacePickFirst`、`TestPickCancelRaceSimultaneous`、`TestPDAClaimStrictPickAndIdempotency`、`TestPickRejectsQuantityDrift`。
+- **核心符号**：`pickRaceStack`（真实 MySQL 组装拣货链路）、`newPickRaceStack`、`(*pickRaceStack).newPickOrder`、`txGate`/`newTaskUpdateGate`（gorm 回调暂停事务构造交错）、`signalTaskRowLock`；用例 `TestPickCancelRaceCancelFirst`、`TestPickCancelRacePickFirst`、`TestPickCancelRaceSimultaneous`、`TestPDAClaimStrictPickAndIdempotency`、`TestPickIdempotencyFingerprint`（指纹规范化回放、库位/批次/入口不同 409、损坏与空快照 500）、`TestPickRejectsQuantityDrift`。
 - **测试文件**：`pick_race_test.go`（本文件）。**涉及表/模型**：`wms_task`、`wms_allocation`、`wms_shipment_order*`、`wms_inventory`、`wms_idempotency`。
 
 ---
@@ -1528,7 +1530,7 @@
 - **核心符号**：`ALTER TABLE wms_inventory DROP CHECK chk_inv_quantity_balance, DROP CHECK chk_inv_allocated_non_negative;`。
 
 ### migrations 000009 — `migrations/versions/000009_idempotency.up.sql`
-- **核心符号**：新建请求级幂等表 `wms_idempotency`（`tenant_id`/`scope`/`idempotency_key`/`request_hash`/`object_id`/`result_json`/`created_at`，唯一键 `uk_idem_tenant_scope_key`）。
+- **核心符号**：新建请求级幂等表 `wms_idempotency`（`tenant_id`/`scope`/`idempotency_key`/`request_hash`/`object_id`/`result_json`（非空）/`created_at`，唯一键 `uk_idem_tenant_scope_key`）。
 - **涉及表/模型**：`wms_idempotency`。
 - **测试文件**：由 `migrations_test.go` 校验建表与唯一键列顺序。
 
@@ -1587,7 +1589,7 @@
 ### 专题 5：分布式锁与事务
 - **分布式锁**：`internal/pkg/lock/lock.go` 的 `Locker` / `New` / `Lock`（`SET NX EX` + Lua `unlockScript` 校验持有者释放）。
 - **事务**：`internal/pkg/tx/tx.go` 的 `Manager` / `New` / `DB` / `Tx` / `TxRetry`（死锁 1213 重试、`retryBackoff` 退避）、`IsRetryable`、`IsDuplicateErr`；配合 `internal/pkg/errcode/errcode.go` 的 `IsConflict` / `conflictCodes`。
-- **请求幂等**：`internal/pkg/idempotency/idempotency.go` 的 `Record`（表 `wms_idempotency`）、`Find`（显式租户查询）、`Insert`（唯一键冲突映射 `errcode.Conflict` 交 `TxRetry` 重试）、`Fingerprint`；使用约定：Find → 业务写入 → 同事务 Insert，重试命中回放 `ResultJSON`。
+- **请求幂等**：`internal/pkg/idempotency/idempotency.go` 的 `Record`（表 `wms_idempotency`）、`Find`（显式租户查询）、`Insert`（唯一键冲突映射 `errcode.Conflict` 交 `TxRetry` 重试）、`Fingerprint`（调用方拼装业务语义字段，如拣货：任务 + 数量 + 规范化扫码内容 + 入口类型）；使用约定：Find → 业务写入 → 同事务 Insert，重试命中回放 `ResultJSON`。
 - **并发安全 goroutine**：`internal/pkg/concurrent/safego.go` 的 `SafeGo` / `SafeGoNoCtx`（panic 恢复）。
 
 ### 专题 6：配置与启动

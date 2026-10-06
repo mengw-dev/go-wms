@@ -40,7 +40,8 @@ const pickIdempotencyScope = "outbound.pick"
 // Pick 按分配行拣货，返回提交时刻（幂等命中时为首次成功）的任务快照。
 // scan 非空时校验扫描的库位/批次与任务一致，Strict 模式（PDA）下缺失也拒绝；
 // claimToken 非空时校验任务领取凭证与租约；idempotencyKey 非空时启用请求级幂等，
-// 重试命中优先回放首次成功的结果快照（在凭证校验之前短路）。
+// 重试命中优先回放首次成功的结果快照（在凭证校验之前短路）；
+// 指纹由任务、数量、规范化后的扫码内容与入口类型（PDA/后台）共同决定。
 //
 // 业务拒绝（数量超限/状态不允许/关系不一致等）时事务已回滚，
 // 返回非锁定读取的当前快照与错误，供 PDA 就地刷新进度。
@@ -64,7 +65,7 @@ func (s *Service) Pick(ctx context.Context, taskID int64, qty int, operator stri
 	tenantID := tenant.FromContext(ctx)
 	var requestHash string
 	if idempotencyKey != "" {
-		requestHash = idempotency.Fingerprint(strconv.FormatInt(taskID, 10), strconv.Itoa(qty))
+		requestHash = pickRequestHash(taskID, qty, scan)
 	}
 	var result *dto.PickResult
 	err = s.tm.TxRetry(ctx, tx.MaxTxRetry, func(tx *gorm.DB) error {
@@ -81,7 +82,12 @@ func (s *Service) Pick(ctx context.Context, taskID int64, qty int, operator stri
 				if record.RequestHash != requestHash {
 					return errcode.IdempotencyKeyReused
 				}
-				result = replayPickResult(record.ResultJSON)
+				// 回放首次成功快照；快照缺失或损坏按内部错误处理，不用当前进度兜底
+				replayed, err := replayPickResult(record.ResultJSON)
+				if err != nil {
+					return err
+				}
+				result = replayed
 				return nil
 			}
 		}
@@ -206,8 +212,8 @@ func (s *Service) Pick(ctx context.Context, taskID int64, qty int, operator stri
 		return snapshot, err
 	}
 	if result == nil {
-		// 幂等命中但历史记录没有快照时兜底读一次当前进度
-		result, _ = s.pickSnapshot(ctx, taskID)
+		// 理论不可达：业务成功与幂等回放两条路径都会产出快照，防御性返回内部错误
+		return nil, errcode.Internal
 	}
 	return result, nil
 }
@@ -310,14 +316,32 @@ func (s *Service) pickSnapshot(ctx context.Context, taskID int64) (*dto.PickResu
 	return result, nil
 }
 
-// replayPickResult 反序列化幂等记录中的首次成功快照；无快照或内容损坏时返回 nil。
-func replayPickResult(raw string) *dto.PickResult {
+// pickRequestHash 计算拣货请求指纹：任务、数量、扫码内容与入口类型。
+// 扫码内容按实际校验口径规范化（去首尾空格 + 大小写折叠），同一次扫描不因大小写差异被误判为新请求；
+// 入口类型区分 PDA 严格入口与后台宽松入口；claim_token 不参与指纹——
+// 租约过期换人接手后重放同一请求，仍应回放首次成功结果。
+func pickRequestHash(taskID int64, qty int, scan *PickScan) string {
+	entry, location, batch := "backend", "", ""
+	if scan != nil {
+		if scan.Strict {
+			entry = "pda"
+		}
+		location = strings.ToLower(strings.TrimSpace(scan.LocationCode))
+		batch = strings.ToLower(strings.TrimSpace(scan.BatchNo))
+	}
+	return idempotency.Fingerprint(strconv.FormatInt(taskID, 10), strconv.Itoa(qty), location, batch, entry)
+}
+
+// replayPickResult 反序列化幂等记录中的首次成功快照；
+// 快照缺失或损坏视为内部异常直接报错，不回退读取当前进度，
+// 避免把不可重放的记录伪装成成功回放。
+func replayPickResult(raw string) (*dto.PickResult, error) {
 	if raw == "" {
-		return nil
+		return nil, errcode.Internal
 	}
 	var result dto.PickResult
 	if err := json.Unmarshal([]byte(raw), &result); err != nil {
-		return nil
+		return nil, errcode.Wrap(err, errcode.Internal)
 	}
-	return &result
+	return &result, nil
 }
