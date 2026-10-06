@@ -152,9 +152,12 @@ func (s *Service) Pick(ctx context.Context, taskID int64, qty int, operator stri
 		} else if n == 0 {
 			return errcode.ShipOrderStatusWrong
 		}
-		// 明细原子累加
-		if err := s.repo.IncrDetailPicked(tx, a.DetailID, qty); err != nil {
+		// 明细原子累加（SQL 带 picked_qty + qty <= allocated_qty 上限）；
+		// 0 行说明明细不存在或数量关系已错乱，停止拣货并整体回滚。
+		if n, err := s.repo.IncrDetailPicked(tx, a.DetailID, qty); err != nil {
 			return err
+		} else if n == 0 {
+			return errcode.TaskAllocationMismatch
 		}
 
 		// 全部拣完 → SHIPPED：完成判定下沉到 SQL（picked_qty = allocated_qty），

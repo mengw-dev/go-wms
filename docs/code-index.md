@@ -298,9 +298,9 @@
   - `type Repository struct{}` / `func New()`。
   - `func (r *Repository) CreateOrder / GetOrder / GetOrderForUpdate / GetOrderByBizNo / DeleteOrder` — 单据读写。
   - `func (r *Repository) UpdateStatus(tx, id, from, to)` — status CAS + version 递增。
-  - `func (r *Repository) ListDetails / GetDetailForUpdate / UpdateDetailAllocated / IncrDetailPicked` — 明细维护。
-  - `func (r *Repository) UpdateOrderProgress / IncrOrderPicked / ListOrders` — 主单进度（乐观锁）与查询。
-  - `func (r *Repository) CreateAllocations / ListAllocations / GetAllocationForUpdate / IncrAllocationPicked / CancelAllocationsByOrder` — 分配行读写。
+  - `func (r *Repository) ListDetails / GetDetailForUpdate / UpdateDetailAllocated / IncrDetailPicked` — 明细维护；`IncrDetailPicked` 带 `picked_qty + delta <= allocated_qty` 上限并返回 RowsAffected。
+  - `func (r *Repository) UpdateOrderProgress / IncrOrderPicked / ListOrders` — 主单进度（乐观锁）与查询；`IncrOrderPicked` 状态条件 + 数量上限（`<= allocated_qty`）。
+  - `func (r *Repository) CreateAllocations / ListAllocations / GetAllocationForUpdate / IncrAllocationPicked / CancelAllocationsByOrder` — 分配行读写；`IncrAllocationPicked` version/status 条件 + 数量上限。
 - **主要调用关系**：被 `outbound/service` 调用。
 - **测试文件**：无。
 - **涉及表/模型**：`wms_shipment_order`、`wms_shipment_order_detail`、`wms_allocation`。
@@ -634,7 +634,7 @@
 - **扫码校验**：`outbound/service/pick.go` `checkPickScan` — 对 `PickScan.LocationCode`/`BatchNo` 与任务 `LocationCode`/`BatchNo` 做忽略大小写比对，不一致返回 `PickLocationMismatch`/`PickBatchMismatch`；PDA 入口 `Strict=true` 时库位必填（50010）、任务有批次时批次必填（50011）。
 - **请求幂等**：`pkg/idempotency`（`Find`/`Insert`/`Fingerprint`，表 `wms_idempotency`，唯一键 `(tenant_id, scope, idempotency_key)`）；`outbound/service/pick.go` `Pick` 在事务首部走幂等快路径，命中回放 `ResultJSON` 首次快照并短路在凭证校验之前；记录与业务同事务提交。
 - **领取凭证与租约**：`outbound/service/pick.go` `ClaimPickTask`/`checkPickClaim`（`pickLeaseTTL=10m`，成功拣货续租）；`task/repository` `Claim`/`RenewClaim`；字段 `wms_task.claimed_by`/`claim_token`/`lease_expire_at`（迁移 000010）。
-- **拣货主流程**：`outbound/service/pick.go` `Pick` — 锁任务行→领取凭证校验→锁分配行→聚合关系校验（任务 ↔ 分配行 `order_id`/`sku_id`/`allocated_qty`，不一致 40016）→扫码校验→`AddProgress`→`IncrAllocationPicked`/`IncrOrderPicked`/`IncrDetailPicked`→返回任务快照。
+- **拣货主流程**：`outbound/service/pick.go` `Pick` — 锁任务行→领取凭证校验→锁分配行→聚合关系校验（任务 ↔ 分配行 `order_id`/`sku_id`/`allocated_qty`，不一致 40016）→扫码校验→`AddProgress`→`IncrAllocationPicked`/`IncrOrderPicked`/`IncrDetailPicked`→返回任务快照；三处数量累加均带 `picked_qty + delta <= allocated_qty` 的 SQL 上限，分配行/明细 RowsAffected=0 分别返回 50201/40016 并整体回滚。
 - **扣减库存时机**：分配行**拣满**（`allocFullyPicked`，`a.PickedQty+qty == a.AllocatedQty`）时调用 `s.inv.Ship` 实扣库存；主单拣满由 `ShipIfFullyPicked` 的 SQL 条件（`picked_qty = allocated_qty`）推进 `SHIPPED`。任务生成在审核阶段（`outbound/service/order.go` `Approve` 按分配行建 `taskmodel.TaskPick`）。
 - **并发验证**：`internal/app/pick_race_test.go` 覆盖"取消先到/拣货先到/同时到"三条竞态（双方都先锁任务行，无交叉加锁顺序）。
 

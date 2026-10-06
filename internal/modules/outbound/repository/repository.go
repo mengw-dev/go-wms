@@ -93,9 +93,13 @@ func (r *Repository) UpdateDetailAllocated(tx *gorm.DB, d *model.ShipmentOrderDe
 }
 
 // IncrDetailPicked 原子累加明细拣货量（picked_qty = picked_qty + delta）。
-func (r *Repository) IncrDetailPicked(tx *gorm.DB, detailID int64, delta int) error {
-	return tx.Model(&model.ShipmentOrderDetail{}).Where("id = ?", detailID).
-		Update("picked_qty", gorm.Expr("picked_qty + ?", delta)).Error
+// 附加数量上限条件（picked_qty + delta <= allocated_qty），防止明细被越界累加。
+// 返回 RowsAffected：0 表示明细不存在或本次累加会超出分配量，调用方应停止拣货并整体回滚。
+func (r *Repository) IncrDetailPicked(tx *gorm.DB, detailID int64, delta int) (int64, error) {
+	res := tx.Model(&model.ShipmentOrderDetail{}).
+		Where("id = ? AND picked_qty + ? <= allocated_qty AND ? > 0", detailID, delta, delta).
+		Update("picked_qty", gorm.Expr("picked_qty + ?", delta))
+	return res.RowsAffected, res.Error
 }
 
 // UpdateOrderProgress 审核分配后一次性写入主单分配量并推进状态（version 乐观锁）。
@@ -110,11 +114,13 @@ func (r *Repository) UpdateOrderProgress(tx *gorm.DB, o *model.ShipmentOrder) (i
 
 // IncrOrderPicked 原子累加主单拣货量（picked_qty = picked_qty + delta，version +1）。
 // 纯相对更新由 SQL 自身保证不丢更新，不再依赖锁读出的旧版本；
-// 状态条件防止把已取消/已发货的主单继续累加。
-// 返回 RowsAffected：0 表示主单已不是 PICKING，调用方应拒绝本次拣货。
+// 状态条件防止把已取消/已发货的主单继续累加；
+// 数量上限条件（picked_qty + delta <= allocated_qty）作为 Service 层校验之外的数据库层兜底。
+// 返回 RowsAffected：0 表示主单已不是 PICKING，或本次累加会超出分配量，调用方应拒绝本次拣货。
 func (r *Repository) IncrOrderPicked(tx *gorm.DB, id int64, delta int) (int64, error) {
 	res := tx.Model(&model.ShipmentOrder{}).
 		Where("id = ? AND status = ?", id, model.OrderPicking).
+		Where("picked_qty + ? <= allocated_qty AND ? > 0", delta, delta).
 		Updates(map[string]any{
 			"picked_qty": gorm.Expr("picked_qty + ?", delta),
 			"version":    gorm.Expr("version + 1"),
@@ -189,10 +195,13 @@ func (r *Repository) GetAllocationForUpdate(tx *gorm.DB, id int64) (*model.Alloc
 
 // IncrAllocationPicked 原子累加分配行拣货量，拣满时置为 PICKED（version 乐观锁 + status 条件）。
 // delta 为本次拣货数，toStatus 传入拣满后的 AllocPicked 或未拣满时的 AllocAllocated。
-// 返回 RowsAffected：0 表示分配行已被并发改动（状态非 ALLOCATED 或版本冲突），需重试。
+// 数量上限条件（picked_qty + delta <= allocated_qty）兜底防超拣。
+// 返回 RowsAffected：0 表示分配行已被并发改动（状态非 ALLOCATED 或版本冲突），
+// 或本次累加会超出分配量，调用方应停止并回滚。
 func (r *Repository) IncrAllocationPicked(tx *gorm.DB, a *model.Allocation, delta int, toStatus model.AllocationStatus) (int64, error) {
 	res := tx.Model(&model.Allocation{}).
 		Where("id = ? AND version = ? AND status = ?", a.ID, a.Version, model.AllocAllocated).
+		Where("picked_qty + ? <= allocated_qty AND ? > 0", delta, delta).
 		Updates(map[string]any{
 			"picked_qty": gorm.Expr("picked_qty + ?", delta),
 			"status":     toStatus,

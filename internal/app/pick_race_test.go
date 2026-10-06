@@ -473,3 +473,51 @@ func TestPDAClaimStrictPickAndIdempotency(t *testing.T) {
 		t.Fatalf("stale token after re-claim: %v", err)
 	}
 }
+
+// TestPickRejectsQuantityDrift 验证数据库层数量上限（Service 校验之外的第二道防线）：
+// 分配行/明细被旁路写成"已满"后，继续拣货必须被 SQL 条件拒绝并整体回滚，
+// 不能因为入口校验通过就把脏数据继续放大。
+func TestPickRejectsQuantityDrift(t *testing.T) {
+	stack := newPickRaceStack(t)
+
+	// 场景 1：分配行 picked_qty 被写成已满（2/2），继续拣 1 件 → 50201 且整体回滚
+	order1, task1 := stack.newPickOrder(t, "DRIFT-ALLOC", 2)
+	if err := stack.db.WithContext(stack.ctx).Model(&outmodel.Allocation{}).
+		Where("id = ?", task1.AllocationID).Update("picked_qty", 2).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := stack.out.Pick(stack.ctx, task1.ID, 1, "picker", nil, "", ""); errcode.From(err).Code != errcode.AllocConflict.Code {
+		t.Fatalf("allocation drift pick: %v", err)
+	}
+	if gotTask := stack.reloadTask(t, task1.ID); gotTask.Status != taskmodel.TaskCreated || gotTask.DoneQty != 0 {
+		t.Fatalf("task changed after rejected pick: status=%s done=%d", gotTask.Status, gotTask.DoneQty)
+	}
+	if gotOrder := stack.reloadOrder(t, order1.ID); gotOrder.PickedQty != 0 {
+		t.Fatalf("order picked=%d want 0", gotOrder.PickedQty)
+	}
+	if gotAlloc := stack.reloadAllocation(t, task1.AllocationID); gotAlloc.Status != outmodel.AllocAllocated || gotAlloc.PickedQty != 2 {
+		t.Fatalf("allocation changed after rejected pick: status=%s picked=%d", gotAlloc.Status, gotAlloc.PickedQty)
+	}
+	if inv := stack.inventory(t); inv.StockQuantity != raceSeedQty || inv.AvailableQty != raceSeedQty-2 || inv.AllocatedQty != 2 {
+		t.Fatalf("inventory changed after rejected pick: %+v", inv)
+	}
+
+	// 场景 2：明细 picked_qty 被写成已满，拣货在明细累加处被拒（40016）并整体回滚
+	order2, task2 := stack.newPickOrder(t, "DRIFT-DETAIL", 2)
+	if err := stack.db.WithContext(stack.ctx).Model(&outmodel.ShipmentOrderDetail{}).
+		Where("order_id = ?", order2.ID).Update("picked_qty", 2).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := stack.out.Pick(stack.ctx, task2.ID, 1, "picker", nil, "", ""); errcode.From(err).Code != errcode.TaskAllocationMismatch.Code {
+		t.Fatalf("detail drift pick: %v", err)
+	}
+	if gotTask := stack.reloadTask(t, task2.ID); gotTask.Status != taskmodel.TaskCreated || gotTask.DoneQty != 0 {
+		t.Fatalf("task changed after rejected pick: status=%s done=%d", gotTask.Status, gotTask.DoneQty)
+	}
+	if gotOrder := stack.reloadOrder(t, order2.ID); gotOrder.PickedQty != 0 {
+		t.Fatalf("order picked=%d want 0", gotOrder.PickedQty)
+	}
+	if gotAlloc := stack.reloadAllocation(t, task2.AllocationID); gotAlloc.PickedQty != 0 {
+		t.Fatalf("allocation picked=%d want 0", gotAlloc.PickedQty)
+	}
+}
