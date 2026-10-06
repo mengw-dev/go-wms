@@ -163,9 +163,9 @@ var (
 	BatchNoInconsistent    = New(40014, "同一明细的批次号必须与首次收货一致")
 	DetailDuplicateSKU     = New(40015, "同一货品请合并为一行明细")
 	TaskAllocationMismatch = New(40016, "任务与分配行关系不一致，拣货已停止")
-	TaskClaimConflict      = New(40017, "任务已被他人领取，请稍后重试")
-	TaskClaimMismatch      = New(40018, "领取凭证不匹配，请重新领取任务")
-	TaskLeaseExpired       = New(40019, "任务租约已过期，请重新领取任务")
+	TaskClaimConflict      = NewHTTP(40017, "任务已被他人领取，请稍后重试", 409)
+	TaskClaimMismatch      = NewHTTP(40018, "领取凭证不匹配，请重新领取任务", 409)
+	TaskLeaseExpired       = NewHTTP(40019, "任务租约已过期，请重新领取任务", 409)
 )
 
 // 出库 50000+

@@ -434,13 +434,13 @@
 ### 库存 inventory — `internal/modules/inventory/service/stock.go`
 - **核心符号**
   - `func (s *Service) Increase(ctx, tx, req *api.IncreaseReq) error` — 上架入库：锁基础资料与四元组库存行，存在则累加，不存在则创建（唯一索引兜底并发）。
-  - `func (s *Service) Allocate(ctx, tx, req *api.AllocateReq) (*api.AllocateResult, error)` — FIFO 分配：非锁定取候选（每批 `allocateBatchSize=20`，keyset 游标翻页，**不设批数上限**）→ 按剩余需求估最小前缀 → `LockInventoryByIDs` 锁读 → 锁内按 FIFO 重排并重算 → 逐行 `AllocateQty`（available↓ allocated↑）→ 写 ALLOCATE 流水；锁到的行比候选快照少（快照过期）只标记不失败，候选读完仍不足时：有快照变化返回 `Conflict` 交外层 `TxRetry` 换新快照，无变化才报 `AvailableNotEnough`。
+  - `func (s *Service) Allocate(ctx, tx, req *api.AllocateReq) (*api.AllocateResult, error)` — FIFO 分配：非锁定取候选（每批 `allocateBatchSize=20`，keyset 游标翻页，**不设批数上限**）→ 按剩余需求估最小前缀 → `LockInventoryByIDs` 锁读 → 锁内按 FIFO 重排并重算 → 逐行 `AllocateQty`（available↓ allocated↑）→ 写 ALLOCATE 流水；锁到的行比候选快照少（快照过期）只标记不失败，候选读完仍不足时：有快照变化返回 `Conflict` 交外层 `TxRetry` 换新快照，无变化才报 `AvailableNotEnough`；最后 `ListLocationCodes` 补齐库位编码，编码缺失（库位被删/挪出租户）返回 20005 并整体回滚，不允许空编码进入分配结果与拣货任务。
   - `func (s *Service) Ship(ctx, tx, req *api.ShipReq) error` — 发货扣减：stock↓ allocated↓（`ShipQty` 双条件）。
   - `func (s *Service) Release(ctx, tx, req *api.ReleaseReq) error` — 取消分配：allocated↓ available↑。
   - `func (s *Service) Adjust(ctx, tx, req *api.AdjustReq) (int, error)` — 盘点调整：行锁内把账面数调整为 NewStock，调减不可吃掉已分配。
   - `func availableNotEnoughMsg(skuID int64, need, actual int) string` — 可用不足错误文案。
 - **主要调用关系**：被 `invapi.InventoryAPI` 三处业务调用（inbound `putaway.Putaway`、outbound `Approve/Cancel/Pick`、stocktake `Approve`）；调用 `s.repo` 各方法。
-- **测试文件**：`service_test.go`（含 `TestAllocateFIFO`、`TestAllocatePagesBeyondBatchWindow` 等）、`concurrency_test.go`。
+- **测试文件**：`service_test.go`（含 `TestAllocateFIFO`、`TestAllocatePagesBeyondBatchWindow`、`TestAllocateRejectsMissingLocationCode` 等）、`concurrency_test.go`。
 - **涉及表/模型**：`wms_inventory`、`wms_inventory_trans`、`wms_location`（联查）。
 
 ### 库存 inventory — `internal/modules/inventory/service/query.go`
@@ -456,7 +456,7 @@
 - **核心符号**
   - `type SummaryRow struct{...}`、`type QueryFilter struct{...}`、`type Repository struct{}` / `func New()`。
   - `func (r *Repository) LockBasicReferences(tx, warehouseID, locationID, skuID)` — 按固定顺序锁仓库/库位/SKU。
-  - `func (r *Repository) ListFIFOCandidates(tx, warehouseID, skuID, limit, afterStockInTime, afterID)` — **非锁定**候选集（`ORDER BY stock_in_time ASC, id ASC`，用 `(stock_in_time, id)` 翻页）；`func (r *Repository) LockInventoryByIDs(tx, ids)` — 只锁指定主键（按主键升序加锁，不写 ORDER BY）；`ListLocationCodes` 单独补库位编码；`SumAvailableQty` 供分配失败时生成提示。
+  - `func (r *Repository) ListFIFOCandidates(tx, warehouseID, skuID, limit, afterStockInTime, afterID)` — **非锁定**候选集（`ORDER BY stock_in_time ASC, id ASC`，用 `(stock_in_time, id)` 翻页）；`func (r *Repository) LockInventoryByIDs(tx, ids)` — 只锁指定主键（入参主键升序排序 + `ORDER BY id`，统一加锁顺序；死锁仍由 `TxRetry` 兜底）；`ListLocationCodes` 单独补库位编码；`SumAvailableQty` 供分配失败时生成提示。
   - `func (r *Repository) GetForUpdate / GetByTupleForUpdate / Create / IncreaseQty` — 库存行读写。
   - `func (r *Repository) AllocateQty / ShipQty / ReleaseQty / AdjustNegative / AdjustPositive` — 条件更新（防超卖/防负）。
   - `func (r *Repository) InsertTrans` — 同事务写流水。
@@ -2561,7 +2561,7 @@
 ### 5.2 库存一致性与并发控制
 
 - 数据：`wms_inventory`（含 `version` 列，见迁移 `000002`；CHECK 不变量见迁移 `000008`）。
-- 悲观锁：`internal/modules/inventory/repository/repository.go` 的 `LockInventoryByIDs`（`FOR UPDATE`，按主键升序逐行加锁）。
+- 悲观锁：`internal/modules/inventory/repository/repository.go` 的 `LockInventoryByIDs`（`FOR UPDATE`，入参排序 + `ORDER BY id`，按主键升序逐行加锁）。
 - 条件更新（CAS）：同文件 `AllocateQty` / `ShipQty` / `ReleaseQty` / `AdjustNegative`。
 - 事务边界：`internal/pkg/tx`（`tx.Manager`）。
 - 细节见 `## 一、…` 末尾“重点专题·库存一致性与并发控制”。

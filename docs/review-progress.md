@@ -299,7 +299,7 @@ PDA 能力，属于新功能不是缺陷：
 外部评审（用户逐行核对）确认了五项结论并排定优先级，修复按 P0 → P1 → P2 推进：
 
 - P0：① 库存分配翻页与事务冲突重试解耦 ② 分配行/明细/主单补数量上限条件 ③ `IncrDetailPicked` 检查 RowsAffected ④ 审核生成拣货任务时补 `DetailID` ⑤ 拣货补 `t.DetailID == a.DetailID` 校验 ⑥ PDA 强制 `Idempotency-Key` ⑦ 幂等指纹纳入库位/批次/入口类型 ⑧ 幂等结果解析失败返回错误 ⑨ 幂等表 `result_json` 置为非空。
-- P1：`LockInventoryByIDs` 前对 ID 排序并加 `ORDER BY id`、收紧"不会死锁"注释；40017/40018/40019 映射 HTTP 409；库位编码缺失 fail fast。（>5 批库存测试已随 P0-① 落地；同 key 不同扫描、幂等结果损坏测试已随 P0-⑦⑧ 落地。）
+- P1（已完成，见下）：`LockInventoryByIDs` 前对 ID 排序并加 `ORDER BY id`、收紧"不会死锁"注释；40017/40018/40019 映射 HTTP 409；库位编码缺失 fail fast。（>5 批库存测试已随 P0-① 落地；同 key 不同扫描、幂等结果损坏测试已随 P0-⑦⑧ 落地。）
 - P2：领取接口幂等、TaskResp 租约字段、设备绑定、快照严格一致读、幂等表清理 Worker、启动 MySQL 后全量重跑。
 
 **已完成（P0-①）**：`inventory/service/stock.go` 删除 `maxAllocateAttempts`（批数不再设上限），改为 keyset 游标翻到底；锁到的行比候选快照少只标记 `staleDetected` 并继续翻页，候选读完仍不足时：有快照变化返回 `Conflict` 交外层 `TxRetry` 换新快照，无变化才报 `AvailableNotEnough`。回归测试 `TestAllocatePagesBeyondBatchWindow`（130 行×1 件、申请 110 件，旧实现必然失败）。已验证：`go test ./internal/modules/inventory/...`、`./internal/modules/outbound/...`、`./internal/app/...` 全绿。
@@ -309,5 +309,7 @@ PDA 能力，属于新功能不是缺陷：
 **已完成（P0-④⑤）**：`outbound/service/order.go` `Approve` 生成拣货任务时写入 `DetailID = allocation.detail_id`；`pick.go` 聚合校验增加 `a.DetailID != t.DetailID`（不一致 40016）。配套迁移 `000011_backfill_pick_task_detail` 幂等回填历史 `detail_id=0` 的拣货任务（本地开发库已执行，回填 139 条；`migrations_test.go` 增加占位任务 + 断言回填结果）。回归测试 `TestPickRejectsQuantityDrift` 增加场景 3（任务 `detail_id` 被写歪 → 40016 且无写入），`newPickOrder` 统一断言新建拣货任务的 `detail_id` 非 0。已验证：全量 `go test ./...` 通过。
 
 **已完成（P0-⑥⑦⑧⑨）**：PDA 入口 `POST /pda/tasks/:id/pick` 强制携带 `Idempotency-Key`，缺失或纯空白在 handler 直接 400（后台入口保持可选）；`pickRequestHash` 指纹改为 任务 + 数量 + 规范化（去首尾空格、折叠大小写）库位/批次 + 入口类型（`pda`/`backend`），`claim_token` 不参与（租约换手后重放仍回放首次结果）；`replayPickResult` 在快照为空或损坏时返回内部错误（500），不再兜底读取当前进度；`wms_idempotency.result_json` 迁移与模型同步改为 `NOT NULL`（000009 未发布，直接修改原文件）。回归测试：`outbound/handler/handler_test.go`（缺 key 400）与 `pick_race_test.go` `TestPickIdempotencyFingerprint`（大小写/空白差异回放成功、库位/批次/入口不同 409、损坏与空快照 500、全程仅一次真实扣减）。已验证：`gofmt` / `go build` / `go vet` / 全量 `go test ./...` 全绿。
+
+**已完成（P1）**：`LockInventoryByIDs` 入参先按主键升序排序、查询显式 `ORDER BY id`（候选按 FIFO 排，主键顺序与 IN 列表顺序并不一致），注释收紧为"加锁顺序一致只降低交叉等待概率，死锁仍由 `TxRetry` 整事务重试兜底"；40017/40018/40019 改为 `NewHTTP(..., 409)`（`response_test.go` 补映射样例）；`inventory/service/stock.go` `Allocate` 在库位编码缺失（库位被删/挪出租户）时返回 20005 并整体回滚，不再把空字符串写进分配结果与拣货任务。回归测试 `TestAllocateRejectsMissingLocationCode`（旁路软删库位 → 20005 + 可用量与流水回滚）。已验证：`gofmt` / `go build` / `go vet` / 全量 `go test ./...` 全绿。剩余为 P2 清单。
 
 **语义变化（需知悉）**：并发抢空导致"锁到的行 < 快照"时，容量竞争下失败会返回可重试的 40900，而不是立即报"库存不足"——外层换新快照重试后仍不足（且期间无新变化）才会得到 30201。`TestConcurrentAllocateAntiOversell` 的判定已相应放宽（40900 属可重试拒绝），防超卖不变量断言不变。

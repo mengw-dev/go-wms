@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"slices"
 	"time"
 
 	"gorm.io/gorm"
@@ -79,15 +80,21 @@ func (r *Repository) ListFIFOCandidates(tx *gorm.DB, warehouseID, skuID int64, l
 
 // LockInventoryByIDs 只锁指定主键的库存行（防超卖第一层：行锁串行化同一库存行的并发分配）。
 //
-// 不写 ORDER BY：InnoDB 按主键升序逐行加锁，所有事务加锁顺序一致，不会形成加锁顺序环；
+// 入参先按主键升序排序，查询再显式 `ORDER BY id`，保证所有事务以同一顺序加锁
+// （调用方传来的候选按 FIFO 排，主键顺序与 IN 列表顺序并不一致）。
+// 加锁顺序一致只降低交叉等待的概率，不是"不会死锁"的保证：与上架、取消等
+// 其他路径交错时仍可能死锁，由外层 TxRetry 整事务重试兜底。
 // FIFO 的取用顺序由调用方在锁内自行排序决定。
 func (r *Repository) LockInventoryByIDs(tx *gorm.DB, ids []int64) ([]*model.Inventory, error) {
 	if len(ids) == 0 {
 		return nil, nil
 	}
+	sorted := slices.Clone(ids)
+	slices.Sort(sorted)
 	var list []*model.Inventory
 	err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-		Where("id IN ?", ids).
+		Where("id IN ?", sorted).
+		Order("id ASC").
 		Find(&list).Error
 	return list, err
 }

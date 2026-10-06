@@ -127,7 +127,7 @@ func (s *Service) Allocate(ctx context.Context, tx *gorm.DB, req *api.AllocateRe
 		if err != nil {
 			return nil, err
 		}
-		// 加锁顺序由主键决定；取用顺序在锁内按 FIFO 重排。
+		// 加锁按主键升序（仓库已排序 + ORDER BY id）；取用顺序在锁内按 FIFO 重排。
 		sort.Slice(rows, func(i, j int) bool {
 			if rows[i].StockInTime.Equal(rows[j].StockInTime) {
 				return rows[i].ID < rows[j].ID
@@ -188,7 +188,8 @@ func (s *Service) Allocate(ctx context.Context, tx *gorm.DB, req *api.AllocateRe
 			availableNotEnoughMsg(req.SKUID, req.Quantity, totalAvailable))
 	}
 
-	// 库位编码单独补：锁定读里不再 JOIN wms_location，避免把库位行一起锁住。
+	// 库位编码单独补：锁定读里不再 JOIN wms_location，避免把库位行一起锁住；
+	// 编码查不到（库位被删除/挪出租户）时直接回滚，不允许空字符串进入分配结果与拣货任务。
 	locationIDs := make([]int64, 0, len(allocation.Rows))
 	for _, row := range allocation.Rows {
 		locationIDs = append(locationIDs, row.LocationID)
@@ -198,7 +199,11 @@ func (s *Service) Allocate(ctx context.Context, tx *gorm.DB, req *api.AllocateRe
 		return nil, err
 	}
 	for i := range allocation.Rows {
-		allocation.Rows[i].LocationCode = codes[allocation.Rows[i].LocationID]
+		code := codes[allocation.Rows[i].LocationID]
+		if code == "" {
+			return nil, errcode.LocationNotFound
+		}
+		allocation.Rows[i].LocationCode = code
 	}
 
 	allocation.Total = req.Quantity

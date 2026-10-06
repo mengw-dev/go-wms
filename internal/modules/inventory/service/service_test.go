@@ -196,6 +196,50 @@ func TestAllocateFIFO(t *testing.T) {
 	}
 }
 
+// TestAllocateRejectsMissingLocationCode 验证库位编码缺失时直接回滚：
+// 库存行引用的库位被旁路删除后，分配不能把空编码写进分配结果（进而生成空库位任务），
+// 而是 fail-fast 返回错误，已经完成的扣减与流水随事务一并回滚。
+func TestAllocateRejectsMissingLocationCode(t *testing.T) {
+	svc, tm, db := newTestService(t)
+	ctx := context.Background()
+
+	locID := snowflake.Next()
+	if err := db.Create(&basicmodel.Location{
+		Base: sysmodel.Base{ID: locID}, WarehouseID: 1, Code: fmt.Sprintf("T-%d", locID), Status: 1,
+	}).Error; err != nil {
+		t.Fatalf("create location: %v", err)
+	}
+	skuID := snowflake.Next()
+	whID := setupStock(t, svc, tm, locID, skuID, "B1", 10)
+
+	// 旁路软删库位：库存行仍引用它，但编码已经查不到
+	if err := db.Delete(&basicmodel.Location{Base: sysmodel.Base{ID: locID}}).Error; err != nil {
+		t.Fatalf("delete location: %v", err)
+	}
+
+	err := tm.Tx(ctx, func(tx *gorm.DB) error {
+		_, err := svc.Allocate(ctx, tx, &api.AllocateReq{
+			WarehouseID: whID, SKUID: skuID, Quantity: 5, OrderNo: "CK-NOLOC", Operator: "test",
+		})
+		return err
+	})
+	if errcode.From(err).Code != errcode.LocationNotFound.Code {
+		t.Fatalf("allocate with missing location: %v", err)
+	}
+	// 事务回滚：可用量未变，且只留下入库流水，没有分配流水
+	inv := getInv(t, db, whID, skuID)
+	if inv.AvailableQty != 10 || inv.AllocatedQty != 0 {
+		t.Fatalf("inventory changed after rollback: available=%d allocated=%d", inv.AvailableQty, inv.AllocatedQty)
+	}
+	var transCount int64
+	if err := db.Model(&model.InventoryTrans{}).Where("inventory_id = ?", inv.ID).Count(&transCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if transCount != 1 {
+		t.Fatalf("trans count=%d want=1 (allocate trans must roll back)", transCount)
+	}
+}
+
 // TestAllocateOnlyLocksNeededRows 验证锁范围收敛：
 // 分配只需要一个批次时，其它未被使用的库存行不应被本次事务锁住。
 // 旧实现会锁住该 SKU 的全部可用行，本用例在那时会因第二个事务拿不到锁而失败。
