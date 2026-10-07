@@ -44,6 +44,9 @@ export const options = {
     http_req_failed: ['rate<0.01'],
     // 性能指标，不是防超卖正确性指标。
     http_req_duration: ['p(95)<1000'],
+    // teardown 的 9 条业务不变量必须全部通过，k6 才算成功（退出码 0）。
+    // check 默认不影响退出码，必须显式加这个阈值，否则不变量红了 CI 仍会绿。
+    checks: ['rate==1.0'],
   },
 };
 
