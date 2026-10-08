@@ -6,7 +6,7 @@
 
 ## 0. 使用说明
 
-- 路径约定：第一、二、四部分的路径相对仓库根目录 `d:\wms-go\wms1\wms`；**第三部分（前端）的路径相对 `web/src/`**。
+- 路径约定：第一、二、四部分的路径相对仓库根目录；**第三部分（前端）的路径相对 `web/src/`**。
 - 阅读顺序建议：先读本总览与“五、跨模块业务链路”，再按需下钻到对应模块小节。
 - 每文件小节字段：核心符号（真实职责）、主要调用关系、测试文件、涉及表/模型。
 - 标注为“待确认”的条目表示当前无法从代码中明确证实，请以实际代码为准。
@@ -1185,7 +1185,7 @@
 ### app — `internal/app/app.go`
 - **核心符号**
   - 包注释：负责应用依赖组装、路由注册和模块连接。
-  - `type App struct{...}` — 通过构造函数组装模块依赖，提供路由注册所需处理器。
+  - `type App struct{...}` — 通过构造函数组装模块依赖，提供路由注册所需处理器；只保留路由与中间件实际使用的 `SystemAPI` 字段，业务接口直接注入消费者。
   - `func New(cfg *config.Config, db *gorm.DB, rdb *redis.Client, metrics *observability.Metrics) *App` — 按依赖顺序组装（basic→inventory，inbound/outbound→basic+inventory+task）。
   - `type redisAdapter struct{ rdb *redis.Client }`、`newRedisAdapter`、`Get/Set/Del` — 将 go-redis 适配为 basic 的 `redisClient` 接口（依赖倒置）。
 - **主要调用关系**：由 `cmd/wms/main.go` 构造。
@@ -1378,9 +1378,6 @@
 
 ### pkg/log — `internal/pkg/log/log.go`
 - **核心符号**：`type ctxKey string`、`const (...)`；`var logger`；`Init(level string)`、`L() *slog.Logger`、`WithContext(ctx) *slog.Logger`（提取 request_id/user_id）、`WithRequestID`、`WithUserID`。
-
-### pkg/concurrent — `internal/pkg/concurrent/safego.go`
-- **核心符号**：`SafeGo(ctx context.Context, fn func())`、`SafeGoNoCtx(fn func())` — 包装 `defer recover()` + 日志，避免后台任务 panic 拖垮服务。
 
 ### pkg/typex — `internal/pkg/typex/idlist.go`
 - **核心符号**：`type Int64List []int64` — JSON 用字符串数组表示 int64 ID 防 JS 精度丢失；`MarshalJSON`、`UnmarshalJSON`（兼容字符串/数字数组）。
@@ -1594,7 +1591,6 @@
 - **事务**：`internal/pkg/tx/tx.go` 的 `Manager` / `New` / `DB` / `Tx` / `TxRetry`（死锁 1213 重试、`retryBackoff` 退避）、`IsRetryable`、`IsDuplicateErr`；配合 `internal/pkg/errcode/errcode.go` 的 `IsConflict` / `conflictCodes`。
 - **请求幂等**：`internal/pkg/idempotency/idempotency.go` 的 `Record`（表 `wms_idempotency`）、`Find`（显式租户查询）、`Insert`（唯一键冲突映射 `errcode.Conflict` 交 `TxRetry` 重试）、`Fingerprint`（调用方拼装业务语义字段，如拣货：任务 + 数量 + 规范化扫码内容 + 入口类型）；使用约定：Find → 业务写入 → 同事务 Insert，重试命中回放 `ResultJSON`。
 - **幂等清理**：`internal/pkg/idempotency/cleanup.go` 的 `Purge`（按 `created_at` 物理删除过期记录）/ `RunCleanup`（启动先跑一次，之后按 `CleanupInterval`=24h 循环，`RecordRetention`=7 天，ctx 取消退出），由 `cmd/wms/main.go` 与其他后台 Worker 一并启动。
-- **并发安全 goroutine**：`internal/pkg/concurrent/safego.go` 的 `SafeGo` / `SafeGoNoCtx`（panic 恢复）。
 
 ### 专题 6：配置与启动
 - **config.Load**：`internal/pkg/config/config.go` 的 `Load(path string)`（viper，`WMS_` 前缀环境变量覆盖）；结构体见 `internal/pkg/config/types.go` 的 `Config` 及各子配置。
@@ -2454,20 +2450,19 @@
 
 ---
 
-### 文档 — `docs/context-handoff.md`
+### 文档导航与使用指南
 
-- **职责**：上下文压缩交接摘要。记录项目目标、最高优先级约束（禁止破坏性 git 操作等）、已完成任务组、验证基线、工作区状态、剩余任务与最终验收清单。
-- **关系**：`AGENTS.md`/`.trae/rules` 要求每次开工先读；本地被 `.gitignore` 忽略。
+- `docs/README.md`：使用、设计、验证与历史记录的分类入口。
+- `docs/development.md`：本机开发、测试、打包和维护约定。
+- `docs/deployment.md`：Docker / Windows 启动、升级、账户与部署边界。
+- `docs/configuration.md`：常用应用环境变量与 Compose 配置。
+- `docs/database-design.md`：引用完整性策略，补充数据库表结构说明。
+- `docs/production-readiness.md`：现有运行能力与尚未完成的运维事项。
 
 ### 文档 — `docs/go-style.md`
 
 - **职责**：Go 代码约定与阅读路线。覆盖目录/依赖、命名格式、DTO 与转换、可选字段与共享状态、错误与事务、Context 与后台任务、多租户与缓存、验证学习顺序及当前维护范围。
-- **关系**：配合 `docs/review-progress.md`；已纳入 git 跟踪。
-
-### 文档 — `docs/review-progress.md`
-
-- **职责**：持续审查与优化记录（阶段记录，非验收报告）。含当前判断表、已修复关键问题（P0/P1/P2 列表）、必须保留的边界、下一阶段顺序、学习要点、本地验证与发布注意、迭代清单（护栏、业务正确性、测试与可观测性、结构整理、文件职责约定），以及多轮夜间 heartbeat 记录。
-- **关系**：与 `docs/context-handoff.md` 相互印证；已纳入 git 跟踪。
+- **关系**：配合 `docs/architecture.md` 与 `docs/requirements.md` 阅读。
 
 ### 文档 — `docs/requirements.md`
 
@@ -2481,7 +2476,7 @@
 
 ### 文档 — `docs/database.md`
 
-- **职责**：数据库设计。18 张表总览、ER 关系、核心表结构、全局设计约定、与 AutoMigrate 的关系、迁移 000006（导入执行标识）与 000007（多租户索引对齐）。
+- **职责**：数据库设计。19 张业务与系统表总览、ER 关系、核心表结构、全局设计约定、与 AutoMigrate 的关系、迁移 000006（导入执行标识）、000007（多租户索引对齐）、000008（库存约束）、000009（请求幂等）、000010（任务租约）与 000011（历史任务回填）。
 - **关系**：对应 `migrations/versions/**`。
 
 ### 文档 — `docs/api.md`
@@ -2611,4 +2606,3 @@
 - 自检：本索引的文件路径、`struct` / `interface` / 函数名均取自源码；关键符号（`ListFIFOCandidates`、`LockInventoryByIDs`、`ClaimImport`、`RunImports`、`TenantIDOf`、`useAutoRefresh`、`emitBusinessEvent`、`installGuideBusinessBridge`、`classifyError` 等）已抽样核对真实存在；表名取自 `migrations/versions/000001_init.up.sql`。
 - 维护：修改代码后请同步更新对应小节；标为“待确认”的条目在确认结论后应更新为确定内容。
 - 导航说明：面向 AI / Codex 的项目导航另见根目录 `AGENTS.md`（该文件为本地文件，已被 `.gitignore` 忽略，不提交到远端）。
-

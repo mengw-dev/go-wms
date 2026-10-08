@@ -6,7 +6,7 @@
 
 ### 1.1 认证
 
-`POST /login`、`GET /version` 公开；启用相应体验功能时，`GET /demo/account`、`GET /personal/accounts`、`POST /personal/login` 也公开。根路径 `/healthz` 和 `/version` 用于探针与版本查询。`/integration/*` 使用 API Key，其余业务接口需要请求头：
+`POST /login`、`GET /version` 公开；启用相应体验功能时，`POST /demo/account`、`GET /personal/accounts`、`POST /personal/login` 也公开。根路径 `/healthz` 和 `/version` 用于探针与版本查询。`/integration/*` 使用 API Key，其余业务接口需要请求头：
 
 ```text
 Authorization: Bearer <token>     # 登录接口返回，HS256 JWT
@@ -345,4 +345,42 @@ curl -s -X POST localhost:8080/api/v1/login \
 # 2. 携带 token 调业务接口
 curl -s localhost:8080/api/v1/inventory?page=1&page_size=10 \
   -H 'Authorization: Bearer <token>'
+```
+
+## 12. ID 与接口契约
+
+数据库内部主键仍使用 `BIGINT`，Go 代码内部仍使用 `int64`。所有对外的 `id`、`*_id` 字段在 JSON 中使用字符串传输，避免 JavaScript 超过 `Number.MAX_SAFE_INTEGER` 后发生精度丢失。
+
+示例：
+
+```json
+{
+  "id": "357813313721077761",
+  "warehouse_id": "2",
+  "sku_id": "30"
+}
+```
+
+客户端请求也应发送字符串 ID。角色 ID 数组兼容接收字符串和数字，但服务端始终输出字符串。
+
+## 13. 权限说明
+
+管理员角色使用 `*` 拥有全部权限，其他角色可按模块配置：
+
+| 权限 | 用途 |
+| --- | --- |
+| `wms:system:user` | 用户管理 |
+| `wms:system:role` | 角色管理 |
+| `wms:system:log` | 操作日志 |
+| `wms:basic` | 仓库、库位、货品读取与维护 |
+| `wms:inventory` | 库存、汇总、流水 |
+| `wms:task` | 任务中心 |
+| `wms:inbound:view/create/submit/approve/cancel/receive/putaway` | 入库各阶段 |
+| `wms:outbound:view/create/submit/approve/cancel/pick` | 出库各阶段 |
+| `wms:stocktake:view/create/stocktake/approve/cancel` | 盘点各阶段 |
+
+多个权限使用英文逗号分隔，例如：
+
+```text
+wms:basic,wms:inventory,wms:task,wms:inbound:view,wms:inbound:receive
 ```

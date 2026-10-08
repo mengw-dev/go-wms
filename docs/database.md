@@ -3,7 +3,7 @@
 > MySQL 8.0.16+（依赖 CHECK 约束强制执行）｜ 全表 InnoDB / utf8mb4
 > 生产结构以 `migrations/versions` 中的版本化迁移为准；开发 debug 模式可使用 AutoMigrate。
 
-## 1. 表清单总览（18 张）
+## 1. 表清单总览（19 张业务与系统表，不含 schema_migrations）
 
 | 分组 | 表 | 说明 |
 | --- | --- | --- |
@@ -25,6 +25,7 @@
 | | **`wms_allocation`** | **分配明细（锁库行，FIFO 拆批次）** |
 | 盘点 | `wms_stocktake_order` | 盘点单 |
 | | `wms_stocktake_detail` | 盘点明细（快照/实盘/差异） |
+| 请求去重 | `wms_idempotency` | 拣货与任务领取的首次成功结果（迁移 000009） |
 
 ## 2. ER 关系
 
@@ -98,7 +99,8 @@ erDiagram
 | order_id / order_no / detail_id / allocation_id | 来源追溯（拣货任务携带分配行） |
 | location_id / location_code / batch_no | 拣货任务的作业位置（来自分配行），拣货员直达库位并按批次核对 |
 | target_qty / done_qty | 目标/完成量，支持分次作业 |
-| version | 乐观锁，防重复完成 |
+| version | 版本条件更新，检测进度冲突；不替代请求幂等 |
+| claimed_by / claim_token / lease_expire_at | PDA 作业持有人、领取凭证与租约到期时间（迁移 000010） |
 
 ### 3.4 wms_allocation（出库分配明细）
 
@@ -159,3 +161,24 @@ erDiagram
 `uk_loc_wh_code` 改为 `(tenant_id, warehouse_id, code)`，`uk_user_role` 改为 `(tenant_id, user_id, role_id)`。回滚脚本只恢复旧索引，不删除 `tenant_id` 字段或任何业务数据。
 
 迁移 `000008` 追加两个 CHECK 约束：`allocated_quantity >= 0` 与 `stock = available + allocated`（基础非负约束 `chk_inv_non_negative` 自 `000001` 建表即存在）。历史数据若违反这些约束或存在负数，迁移会直接失败；上线前必须先审计并修复数据，不能借助迁移静默改库存。
+
+## 8. 请求级幂等（迁移 000009）
+
+`wms_idempotency` 保存首次成功结果，当前接入范围是拣货与任务领取；表存在不代表收货、上架、盘点审核已接入。
+
+| 字段 / 索引 | 说明 |
+| --- | --- |
+| tenant_id / scope / idempotency_key | 租户、操作域、客户端操作键；组成唯一索引 `uk_idem_tenant_scope_key` |
+| request_hash | 请求指纹；同键不同内容拒绝 |
+| object_id | 关联业务对象，用于排查 |
+| result_json | 非空的首次成功响应快照，重试回放此快照 |
+| created_at | 非空创建时间，索引 `idx_idem_created_at` 支撑清理 |
+
+业务变更与记录写入同一事务，失败一起回滚。后台清理启动时运行一次，此后每 24 小时删除创建时间早于 7 天的记录；幂等保证只覆盖保留窗口，不能据此承诺无限期去重。接口契约见 [API 文档](api.md)。
+
+## 9. PDA 租约与历史任务（迁移 000010–000011）
+
+- `000010` 为 `wms_task` 增加 `claimed_by`、`claim_token`、`lease_expire_at`，用于领取、续领、过期接手与提交凭证校验。
+- `000011` 按关联分配行回填历史 PICK 任务中为 0 的 `detail_id`，配合拣货时的任务与分配关系校验。此迁移修改历史字段，升级前应备份并评估在途任务。
+
+完整升级流程见 [部署指南](deployment.md)，回归入口为 `migrations/migrations_test.go`。引用完整性策略另见 [database-design.md](database-design.md)。

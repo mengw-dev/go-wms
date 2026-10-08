@@ -10,7 +10,6 @@ import (
 
 	aihandler "gowms/internal/modules/ai/handler"
 	aiservice "gowms/internal/modules/ai/service"
-	basicapi "gowms/internal/modules/basic/api"
 	basichandler "gowms/internal/modules/basic/handler"
 	basicrepo "gowms/internal/modules/basic/repository"
 	basicservice "gowms/internal/modules/basic/service"
@@ -19,7 +18,6 @@ import (
 	inboundhandler "gowms/internal/modules/inbound/handler"
 	inboundrepo "gowms/internal/modules/inbound/repository"
 	inboundservice "gowms/internal/modules/inbound/service"
-	invapi "gowms/internal/modules/inventory/api"
 	invhandler "gowms/internal/modules/inventory/handler"
 	invrepo "gowms/internal/modules/inventory/repository"
 	invsrvc "gowms/internal/modules/inventory/service"
@@ -50,9 +48,7 @@ type App struct {
 	Metrics *observability.Metrics
 
 	// 路由与中间件使用的模块接口。
-	SystemAPI    sysapi.SystemAPI
-	BasicAPI     basicapi.BasicAPI
-	InventoryAPI invapi.InventoryAPI
+	SystemAPI sysapi.SystemAPI
 
 	// Handler 层（供 router 注册路由）
 	SysHandler       *syshandler.Handler
@@ -111,9 +107,7 @@ func New(cfg *config.Config, db *gorm.DB, rdb *redis.Client, metrics *observabil
 		Redis:   rdb,
 		Metrics: metrics,
 
-		SystemAPI:    sysSvc,
-		BasicAPI:     basicSvc,
-		InventoryAPI: invSvc,
+		SystemAPI: sysSvc,
 
 		SysHandler:       syshandler.New(sysSvc),
 		BasicHandler:     basichandler.New(basicSvc),

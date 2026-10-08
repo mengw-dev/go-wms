@@ -1,6 +1,6 @@
 # 生产就绪评估
 
-这份文档诚实列出当前项目已具备和尚未具备的生产级能力，不夸大个人项目的成熟度。适合在面试和代码审查时作为"我知道还缺什么"的参考。
+这份文档诚实列出当前项目已具备和尚未具备的生产级能力，不夸大个人项目的成熟度。部署前用于核对运行条件；历史验证记录不能替代目标环境验收。
 
 ## 已完成
 
@@ -8,7 +8,7 @@
 | --- | --- |
 | CI | `.github/workflows/ci.yml`：Go 测试（含 race）、前端 lint/test/build、迁移验证 |
 | E2E | `scripts/e2e.ps1` 启动独立 Compose 项目运行 Playwright，覆盖登录/权限/库存全生命周期/外部集成 |
-| 健康检查 | `internal/app/server.go` 的 `/healthz` 端点，Docker Compose healthcheck |
+| 健康检查 | `internal/app/router.go` 的 `/healthz` 端点，Docker Compose healthcheck |
 | 结构化日志 | `internal/pkg/log`：JSON 格式，含 request_id、user_id、租户等字段 |
 | 指标 | `internal/pkg/observability`：Prometheus `/metrics`，Grafana 仪表盘（monitoring profile） |
 | Docker 部署 | `deploy/docker-compose.yaml`：多阶段构建、非 root 用户、持久化卷、健康检查 |
