@@ -103,10 +103,11 @@ useAutoRefresh(() => load(true), 0, () => selectedRows.value.length === 0)
           <el-option v-for="s in INBOUND_STATUS_OPTIONS" :key="s" :label="statusText(s)" :value="s" />
         </el-select>
       </el-form-item>
-      <el-form-item label="创建时间">
+      <el-form-item label="创建时间" class="range-filter">
         <el-date-picker
           v-model="dateRange"
           type="daterange"
+          popper-class="order-date-picker"
           value-format="YYYY-MM-DD HH:mm:ss"
           :default-time="dateRangeDefaultTime"
           start-placeholder="开始日期"
@@ -116,7 +117,7 @@ useAutoRefresh(() => load(true), 0, () => selectedRows.value.length === 0)
           @change="onDateRangeChange"
         />
       </el-form-item>
-      <el-form-item label="批次号">
+      <el-form-item label="批次号" class="batch-filter">
         <el-select v-model="query.import_task_id" placeholder="全部" clearable filterable style="width: 320px" @change="search">
           <el-option
             v-for="b in importBatchOptions"
@@ -138,12 +139,13 @@ useAutoRefresh(() => load(true), 0, () => selectedRows.value.length === 0)
     <div class="app-table-region">
       <div class="app-toolbar">
         <div class="app-toolbar__actions">
+          <span class="table-summary">入库单列表 · 共 <strong>{{ total }}</strong> 条</span>
           <el-button v-permission="'wms:inbound:create'" type="success" plain @click="openImport">Excel 导入</el-button>
         </div>
         <div class="app-toolbar__actions">
           <span class="selected-hint" :class="{ 'is-hidden': selectedRows.length === 0 }">已选 {{ selectedRows.length }} 项</span>
-          <el-dropdown trigger="click" @command="onBatchCommand">
-            <el-button plain>
+          <el-dropdown trigger="click" :disabled="selectedRows.length === 0" @command="onBatchCommand">
+            <el-button plain :disabled="selectedRows.length === 0">
               批量操作
               <el-icon class="el-icon--right"><ArrowDown /></el-icon>
             </el-button>
@@ -161,6 +163,7 @@ useAutoRefresh(() => load(true), 0, () => selectedRows.value.length === 0)
         </div>
       </div>
 
+    <p class="table-scroll-hint">左右滑动表格可查看完整字段与操作</p>
     <el-table ref="tableRef" v-loading="loading" :data="list" border stripe @selection-change="onSelectionChange">
       <el-table-column type="selection" width="42" />
       <el-table-column prop="order_no" label="入库单号" min-width="170">
@@ -185,7 +188,7 @@ useAutoRefresh(() => load(true), 0, () => selectedRows.value.length === 0)
           <span v-else>手动</span>
         </template>
       </el-table-column>
-      <el-table-column label="数量" width="130" align="right">
+      <el-table-column label="已收 / 应收" width="130" align="right">
         <template #default="{ row }"><span class="quantity-main">{{ row.received_qty }} / {{ row.expected_qty }}</span><small v-if="row.defective_qty" class="quantity-note">不良 {{ row.defective_qty }}</small></template>
       </el-table-column>
       <el-table-column label="创建时间" width="170">
@@ -221,6 +224,7 @@ useAutoRefresh(() => load(true), 0, () => selectedRows.value.length === 0)
       v-model:page-size="query.page_size"
       class="pagination"
       layout="total, sizes, prev, pager, next, jumper"
+      :pager-count="5"
       :total="total"
       :page-sizes="[10, 20, 50]"
       @current-change="load"
@@ -255,7 +259,7 @@ useAutoRefresh(() => load(true), 0, () => selectedRows.value.length === 0)
                 <el-option v-for="s in skuOptions" :key="s.id" :label="s.label" :value="s.id" />
               </el-select>
               <el-input-number v-model="item.expected_qty" :min="1" controls-position="right" style="width: 140px" />
-              <el-button type="danger" plain circle size="small" @click="removeDetail(index)">
+              <el-button type="danger" plain circle size="small" :aria-label="`删除第 ${index + 1} 行明细`" @click="removeDetail(index)">
                 <el-icon><Delete /></el-icon>
               </el-button>
             </div>

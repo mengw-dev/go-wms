@@ -1793,9 +1793,20 @@
 
 ### 布局 — layouts/Layout.vue
 
-- **核心职责**：主框架（侧边菜单按 `auth.hasPerm` 显隐、演示中心子菜单仅 `auth.isDemo` 可见；顶栏含主题切换、用户下拉修改密码/退出登录；`onMounted` 拉 `getProfile` 刷新 profile；退出时 `isDemo` 先 `releaseDemoSession`）。
-- **依赖/调用关系**：`stores/auth`、`stores/theme`、`api/auth`、`api/demo`；挂载 `DemoConsole`、`ManualGuide`。
-- **测试文件**：无。
+- **核心职责**：主框架；桌面侧栏可收起，900px 及以下使用可关闭的导航抽屉；监听视口与路由变化关闭移动菜单；顶栏含主题切换、用户下拉修改密码/退出登录；加载 profile，演示退出先释放会话。
+- **依赖/调用关系**：复用 `layouts/WmsNavigation.vue`；依赖 `stores/auth`、`stores/theme`、`api/auth`、`api/demo`；挂载 DemoConsole、ManualGuide。
+- **测试文件**：`web/tests/e2e/ui-layout.spec.ts`（双主题、导航开关/焦点恢复、权限、窄屏与弹窗）。
+
+### 布局 — layouts/WmsNavigation.vue
+
+- **核心职责**：桌面与移动端共用的权限菜单、品牌标识、当前路由高亮；选择菜单发出 `navigate` 事件。保留详情页 `meta.activeMenu` 与 Demo 权限边界。
+- **依赖/调用关系**：被 Layout 消费；读取 auth 与 route。
+- **测试文件**：`web/tests/e2e/ui-layout.spec.ts`。
+
+### 公共视觉 — style.css
+
+- **核心职责**：深浅色语义令牌、公共卡片与表格、筛选网格、状态文字、焦点与减少动效；移动端分页/弹窗/日期范围面板适配。入出库操作列在窄屏随表格横向滚动。
+- **测试文件**：`web/tests/e2e/ui-layout.spec.ts`（模拟 API，无业务数据库写入）。
 
 ### 指令 — directives/permission.ts
 

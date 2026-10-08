@@ -6,9 +6,20 @@
    =========================================================== */
 
 :root {
+  color-scheme: light;
+  --el-fill-color-blank: var(--el-bg-color);
+  --gowms-status-success: #247440;
+  --gowms-status-warning: #8b550e;
+  --gowms-status-danger: #bd3043;
+  --gowms-status-info: #5c687a;
+  --gowms-primary-button-text: #ffffff;
+  --gowms-metric-inbound: #5754cf;
+  --gowms-metric-outbound: #087da8;
+  --gowms-metric-warning: #a65f0a;
+  --gowms-metric-danger: #ce3548;
   /* ---- 品牌主色：靛紫 ---- */
-  --el-color-primary: #6366f1;
-  --el-color-primary-light-3: #8585f4;
+  --el-color-primary: #585be0;
+  --el-color-primary-light-3: #6264d6;
   --el-color-primary-light-5: #b1b2f8;
   --el-color-primary-light-7: #d8d8fb;
   --el-color-primary-light-8: #ebebfd;
@@ -57,12 +68,23 @@
 
 /* ============ 深色驾驶舱（风格 A） ============ */
 html.dark {
+  color-scheme: dark;
+  --el-fill-color-blank: var(--el-bg-color);
+  --gowms-status-success: #94d575;
+  --gowms-status-warning: #f1c274;
+  --gowms-status-danger: #fa9ca3;
+  --gowms-status-info: #b4c0d0;
+  --gowms-primary-button-text: #071f18;
+  --gowms-metric-inbound: #a5a4ff;
+  --gowms-metric-outbound: #57c9ed;
+  --gowms-metric-warning: #f4bf62;
+  --gowms-metric-danger: #fb8d99;
   /* ---- 品牌主色：翡翠绿 ---- */
   --el-color-primary: #10b981;
-  --el-color-primary-light-3: #38c39a;
-  --el-color-primary-light-5: #66d2b4;
-  --el-color-primary-light-7: #94e1c8;
-  --el-color-primary-light-8: #afe8d5;
+  --el-color-primary-light-3: #159775;
+  --el-color-primary-light-5: #19735e;
+  --el-color-primary-light-7: #185143;
+  --el-color-primary-light-8: #163f35;
   --el-color-primary-light-9: #12312a;
   --el-color-primary-dark-2: #0da874;
 
@@ -73,7 +95,7 @@ html.dark {
   --el-text-color-primary: #e6edf7;
   --el-text-color-regular: #cdd8e6;
   --el-text-color-secondary: #8ca0b8;
-  --el-text-color-placeholder: #566a80;
+  --el-text-color-placeholder: #91a2b9;
   --el-text-color-disabled: #46586d;
   --el-border-color: #2a3a58;
   --el-border-color-light: #233149;
@@ -134,6 +156,7 @@ body {
    通用页面结构（所有列表页自动继承）
    =========================================================== */
 .page-card {
+  min-width: 0;
   background: var(--el-bg-color);
   border: 1px solid var(--el-border-color-light);
   border-radius: var(--gowms-radius-card);
@@ -144,14 +167,20 @@ body {
 .query-form {
   display: flex;
   flex-wrap: wrap;
-  margin-bottom: 4px;
+  gap: 12px 16px;
+  padding: 0 0 16px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--el-border-color-light);
 }
 
 .query-form .el-form-item {
-  margin-bottom: 12px;
+  margin: 0;
+  min-width: 0;
 }
 
 .toolbar {
+  flex-wrap: wrap;
+  gap: 12px;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -167,6 +196,10 @@ body {
 }
 
 .pagination {
+  padding-top: 14px;
+  border-top: 1px solid var(--el-border-color-light);
+  flex-wrap: wrap;
+  gap: 8px;
   display: flex;
   justify-content: flex-end;
   margin-top: 14px;
@@ -176,7 +209,7 @@ body {
    Element Plus 细节统一（组件级变量，双主题自动生效）
    =========================================================== */
 /* 表格：表头底色 + 主色 hover + 竖线弱化（统一为斑马纹视觉，去掉栅格感） */
-.el-table {
+html .el-table {
   --el-table-header-bg-color: var(--el-fill-color-light);
   --el-table-header-text-color: var(--el-text-color-secondary);
   --el-table-row-hover-bg-color: var(--el-color-primary-light-9);
@@ -188,16 +221,16 @@ body {
   font-weight: 600;
 }
 
-.el-table--border .el-table__cell {
+html .el-table--border .el-table__cell {
   border-right: none;
 }
 
-.el-table--border::after,
-.el-table--border::before {
+html .el-table--border::after,
+html .el-table--border::before {
   display: none;
 }
 
-.el-table--border {
+html .el-table--border {
   border: none;
 }
 
@@ -357,10 +390,11 @@ html.dark .el-button--primary:not(.is-link):not(.is-text) {
    页面标题、内容卡片、筛选区、状态与弹窗统一由这里约束。
    =========================================================== */
 .app-page {
+  min-width: 0;
   min-height: 100%;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 20px;
 }
 
 .page-header {
@@ -433,17 +467,20 @@ html.dark .el-button--primary:not(.is-link):not(.is-text) {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
-  gap: 10px;
-  padding: 14px 16px;
+  gap: 16px;
+  padding: 20px;
+  margin-bottom: 0;
+  background: var(--el-fill-color-extra-light);
   border-bottom: 1px solid var(--el-border-color-lighter);
 }
 
 .app-table-region {
   min-width: 0;
-  padding: 14px 16px 16px;
+  padding: 16px 20px 20px;
 }
 
 .app-toolbar {
+  flex-wrap: wrap;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -476,7 +513,7 @@ html.dark .el-button--primary:not(.is-link):not(.is-text) {
   white-space: nowrap;
 }
 
-.el-table {
+html .el-table {
   border-radius: 10px;
 }
 
@@ -563,3 +600,55 @@ html.dark .el-button--primary:not(.is-link):not(.is-text) {
     padding-right: 14px;
   }
 }
+/* 工作台交互：明确焦点、筛选层级与移动端表格边界。 */
+:where(button, a, [tabindex]):focus-visible {
+  outline: 2px solid var(--el-color-primary);
+  outline-offset: 3px;
+}
+.el-button--primary:not(.is-plain):not(.is-text):not(.is-link) {
+  --el-button-text-color: var(--gowms-primary-button-text);
+  --el-button-hover-text-color: var(--gowms-primary-button-text);
+  --el-button-active-text-color: var(--gowms-primary-button-text);
+}
+.table-oper .el-button + .el-button,
+.app-toolbar__actions .el-button + .el-button { margin-left: 0; }
+.order-filters { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.order-filters .range-filter, .order-filters .batch-filter { grid-column: span 2; }
+.order-filters .el-input, .order-filters .el-select, .order-filters .el-date-editor { width: 100% !important; min-width: 0; }
+.order-filters .el-form-item { align-self: end; display: flex; flex-direction: column; align-items: stretch; }
+.order-filters .el-form-item__label { justify-content: flex-start; height: auto; line-height: 20px; padding: 0 0 6px; font-size: 12px; color: var(--el-text-color-secondary); }
+.order-filters .el-form-item__content { margin-left: 0 !important; }
+.table-summary { color: var(--el-text-color-secondary); font-size: 13px; }
+.table-summary strong { color: var(--el-text-color-primary); font-variant-numeric: tabular-nums; }
+.table-scroll-hint { display: none; }
+.navigation-drawer .el-drawer__body { padding: 0; background: var(--gowms-sidebar-bg); }
+@media (max-width: 900px) {
+  .order-page .el-table .el-table-fixed-column--right { position: static !important; }
+  .order-page .el-table .el-table-fixed-column--right::before { display: none; }
+  .table-scroll-hint { display: block; margin: 0 0 12px; color: var(--el-text-color-secondary); font-size: 12px; }
+}
+@media (max-width: 768px) {
+  .page-header__title { font-size: 20px; }
+  .app-filter-bar { padding: 14px; }
+  .order-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .query-form .el-form-item__content { min-width: 0; }
+  .query-form .el-date-editor { width: 100% !important; min-width: 0; }
+  .el-pagination { --el-pagination-button-width: 28px; --el-pagination-button-height: 28px; }
+  .pagination .el-pagination__jump { display: none; }
+  .order-date-picker .el-date-range-picker { width: calc(100vw - 32px); max-height: 65vh; overflow-y: auto; }
+  .order-date-picker .el-picker-panel__body { min-width: 0; }
+  .order-date-picker .el-date-range-picker__content { display: block; width: 100%; border-right: 0; }
+  .el-drawer.rtl { max-width: 100vw; width: 100% !important; }
+  .el-dialog .el-form-item__content { min-width: 0; }
+  .el-dialog .el-input, .el-dialog .el-select { max-width: 100%; }
+  .detail-row { flex-wrap: wrap; }
+  .detail-row > .el-select { width: 100% !important; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}
+
+.el-tag.el-tag--success.el-tag--light { --el-tag-text-color: var(--gowms-status-success); }
+.el-tag.el-tag--warning.el-tag--light { --el-tag-text-color: var(--gowms-status-warning); }
+.el-tag.el-tag--danger.el-tag--light { --el-tag-text-color: var(--gowms-status-danger); }
+.el-tag.el-tag--info.el-tag--light { --el-tag-text-color: var(--gowms-status-info); }

@@ -28,7 +28,6 @@ interface StatCard {
   label: string
   icon: typeof Download
   color: string
-  accent: string
   queryPromise: Promise<number>
   path: string
   /** 路径附加 query 用于点击跳转带筛选 */
@@ -42,37 +41,37 @@ async function buildStatCards(silentError: boolean) {
   const cards: StatCard[] = []
   if (auth.hasPerm('wms:inbound:view')) {
     cards.push({
-      key: 'todayInbound', label: '今日入库单', icon: Download, color: '#6366f1',
-      accent: '#818cf8', path: '/inbound/orders',
+      key: 'todayInbound', label: '今日入库单', icon: Download, color: 'var(--gowms-metric-inbound)',
+      path: '/inbound/orders',
       queryPromise: listInboundOrders({ page: 1, page_size: 1, created_at_from: today.from, created_at_to: today.to }, options).then(r => r.total ?? 0),
     })
     cards.push({
-      key: 'abnormalInbound', label: '异常入库', icon: Warning, color: '#ef4444',
-      accent: '#f87171', path: '/inbound/orders', pathQuery: '?status=CANCELLED',
+      key: 'abnormalInbound', label: '今日取消入库单', icon: Warning, color: 'var(--gowms-metric-danger)',
+      path: '/inbound/orders', pathQuery: '?status=CANCELLED',
       queryPromise: listInboundOrders({ page: 1, page_size: 1, status: 'CANCELLED', created_at_from: today.from, created_at_to: today.to }, options).then(r => r.total ?? 0),
     })
   }
   if (auth.hasPerm('wms:outbound:view')) {
     cards.push({
-      key: 'todayOutbound', label: '今日出库单', icon: Upload, color: '#0ea5e9',
-      accent: '#38bdf8', path: '/outbound/orders',
+      key: 'todayOutbound', label: '今日出库单', icon: Upload, color: 'var(--gowms-metric-outbound)',
+      path: '/outbound/orders',
       queryPromise: listOutboundOrders({ page: 1, page_size: 1, created_at_from: today.from, created_at_to: today.to }, options).then(r => r.total ?? 0),
     })
     cards.push({
-      key: 'abnormalOutbound', label: '异常出库', icon: Warning, color: '#ef4444',
-      accent: '#f87171', path: '/outbound/orders', pathQuery: '?status=CANCELLED',
+      key: 'abnormalOutbound', label: '今日取消出库单', icon: Warning, color: 'var(--gowms-metric-danger)',
+      path: '/outbound/orders', pathQuery: '?status=CANCELLED',
       queryPromise: listOutboundOrders({ page: 1, page_size: 1, status: 'CANCELLED', created_at_from: today.from, created_at_to: today.to }, options).then(r => r.total ?? 0),
     })
   }
   if (auth.hasPerm('wms:task')) {
     cards.push({
-      key: 'runningTasks', label: '进行中任务', icon: Clock, color: '#f59e0b',
-      accent: '#fbbf24', path: '/tasks', pathQuery: '?status=IN_PROGRESS',
+      key: 'runningTasks', label: '进行中任务', icon: Clock, color: 'var(--gowms-metric-warning)',
+      path: '/tasks', pathQuery: '?status=IN_PROGRESS',
       queryPromise: listTasks({ page: 1, page_size: 1, status: 'IN_PROGRESS' }, options).then(r => r.total ?? 0),
     })
     cards.push({
-      key: 'pendingTasks', label: '待办任务', icon: Clock, color: '#f97316',
-      accent: '#fb923c', path: '/tasks', pathQuery: '?status=CREATED',
+      key: 'pendingTasks', label: '待办任务', icon: Clock, color: 'var(--gowms-metric-warning)',
+      path: '/tasks', pathQuery: '?status=CREATED',
       queryPromise: listTasks({ page: 1, page_size: 1, status: 'CREATED' }, options).then(r => r.total ?? 0),
     })
   }
@@ -197,8 +196,9 @@ const todayDate = new Date().toLocaleDateString('zh-CN', { year: 'numeric', mont
     <!-- 欢迎区 -->
     <div class="welcome">
       <div>
-        <h2>欢迎回来，{{ auth.displayName }}</h2>
-        <p>{{ todayDate }} · 祝你工作顺利</p>
+        <span class="dashboard-eyebrow">仓储工作台</span>
+        <h1>欢迎回来，{{ auth.displayName }}</h1>
+        <p>{{ todayDate }} · 掌握单据进度，安排今日作业</p>
       </div>
       <div v-if="auth.hasPerm('wms:task')" class="welcome-right">
         <el-button type="primary" @click="router.push('/tasks')">
@@ -210,6 +210,7 @@ const todayDate = new Date().toLocaleDateString('zh-CN', { year: 'numeric', mont
     </div>
 
     <!-- 统计卡：今日口径 -->
+    <p class="stats-caption">入出库按今日创建时间统计；任务展示当前待办与进行中数量。</p>
     <div class="stats">
       <div
         v-for="card in cards"
@@ -220,8 +221,9 @@ const todayDate = new Date().toLocaleDateString('zh-CN', { year: 'numeric', mont
         tabindex="0"
         @click="go(card)"
         @keyup.enter="go(card)"
+        @keydown.space.prevent="go(card)"
       >
-        <div class="stat-icon" :style="{ background: card.color + '1f', color: card.color }">
+        <div class="stat-icon" :style="{ color: card.color }">
           <el-icon :size="20"><component :is="card.icon" /></el-icon>
         </div>
         <div class="stat-body">
@@ -234,7 +236,7 @@ const todayDate = new Date().toLocaleDateString('zh-CN', { year: 'numeric', mont
     <!-- 下区：左待办 / 中最近入库 / 右最近出库 -->
     <div class="grid-3">
       <!-- 待办任务 -->
-      <div class="card">
+      <div v-if="auth.hasPerm('wms:task')" class="card">
         <div class="card-head">
           <b>待办任务</b>
           <el-button v-if="auth.hasPerm('wms:task')" link type="primary" @click="goTaskList('CREATED')">全部 →</el-button>
@@ -250,6 +252,8 @@ const todayDate = new Date().toLocaleDateString('zh-CN', { year: 'numeric', mont
                 v-for="t in list"
                 :key="t.id"
                 class="task-row"
+                role="link" tabindex="0"
+                @keydown.enter="router.push('/tasks')"
                 @click="router.push('/tasks')"
               >
                 <span class="task-no">{{ t.task_no }}</span>
@@ -263,7 +267,7 @@ const todayDate = new Date().toLocaleDateString('zh-CN', { year: 'numeric', mont
       </div>
 
       <!-- 最近入库单 -->
-      <div class="card">
+      <div v-if="auth.hasPerm('wms:inbound:view')" class="card">
         <div class="card-head">
           <b>最近入库单</b>
           <el-button v-if="auth.hasPerm('wms:inbound:view')" link type="primary" @click="router.push('/inbound/orders')">全部 →</el-button>
@@ -274,6 +278,8 @@ const todayDate = new Date().toLocaleDateString('zh-CN', { year: 'numeric', mont
               v-for="o in recentInbound"
               :key="o.id"
               class="list-row"
+              role="link" tabindex="0"
+              @keydown.enter="router.push('/inbound/orders/' + o.id)"
               @click="router.push('/inbound/orders/' + o.id)"
             >
               <span class="row-no">{{ o.order_no }}</span>
@@ -286,7 +292,7 @@ const todayDate = new Date().toLocaleDateString('zh-CN', { year: 'numeric', mont
       </div>
 
       <!-- 最近出库单 -->
-      <div class="card">
+      <div v-if="auth.hasPerm('wms:outbound:view')" class="card">
         <div class="card-head">
           <b>最近出库单</b>
           <el-button v-if="auth.hasPerm('wms:outbound:view')" link type="primary" @click="router.push('/outbound/orders')">全部 →</el-button>
@@ -297,6 +303,8 @@ const todayDate = new Date().toLocaleDateString('zh-CN', { year: 'numeric', mont
               v-for="o in recentOutbound"
               :key="o.id"
               class="list-row"
+              role="link" tabindex="0"
+              @keydown.enter="router.push('/outbound/orders/' + o.id)"
               @click="router.push('/outbound/orders/' + o.id)"
             >
               <span class="row-no">{{ o.order_no }}</span>
@@ -319,6 +327,8 @@ const todayDate = new Date().toLocaleDateString('zh-CN', { year: 'numeric', mont
           class="shortcut"
           role="button"
           tabindex="0"
+          @keyup.enter="router.push(s.path)"
+          @keydown.space.prevent="router.push(s.path)"
           @click="router.push(s.path)"
         >
           <el-icon :size="22"><component :is="s.icon" /></el-icon>
@@ -350,9 +360,9 @@ const shortcuts = [
   margin-bottom: 16px;
 }
 
-.welcome h2 {
+.welcome h1 {
   margin: 0 0 4px;
-  font-size: 20px;
+  font-size: 24px;
   color: var(--el-text-color-primary);
 }
 
@@ -372,7 +382,7 @@ const shortcuts = [
 /* ---------- 统计卡 ---------- */
 .stats {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
   margin-bottom: 16px;
 }
@@ -395,6 +405,7 @@ const shortcuts = [
 }
 
 .stat-icon {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
   width: 44px;
   height: 44px;
   border-radius: 12px;
@@ -417,13 +428,13 @@ const shortcuts = [
 /* ---------- 3 列网格 ---------- */
 .grid-3 {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
   margin-bottom: 16px;
 }
 
 @media (max-width: 1100px) {
-  .grid-3 { grid-template-columns: repeat(2, 1fr); }
+  .grid-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 700px) {
@@ -437,6 +448,7 @@ const shortcuts = [
   border-radius: var(--gowms-radius-card);
   box-shadow: var(--el-box-shadow-light);
   min-height: 240px;
+  min-width: 0;
   display: flex;
   flex-direction: column;
 }
@@ -577,5 +589,22 @@ const shortcuts = [
 .shortcut span {
   font-size: 11px;
   color: var(--el-text-color-secondary);
+}
+.stats-caption { margin: 0 0 12px; color: var(--el-text-color-secondary); font-size: 12px; line-height: 1.6; }
+.dashboard-eyebrow { display: block; margin-bottom: 8px; color: var(--el-color-primary); font-size: 12px; font-weight: 700; letter-spacing: 0.08em; }
+.welcome { padding: 4px 0 8px; gap: 16px; }
+.stat .num { margin-top: 6px; font-size: 30px; }
+.list-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 10px; padding-top: 12px; padding-bottom: 12px; }
+.row-time { grid-column: 1 / -1; }
+.task-no { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.task-order { min-width: 0; }
+@media (min-width: 1500px) { .stats { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+@media (max-width: 640px) {
+  .welcome { align-items: flex-start; flex-direction: column; }
+  .welcome h1 { font-size: 21px; }
+  .welcome p { line-height: 1.7; }
+  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .stat { padding: 14px; gap: 10px; flex-direction: column; }
+  .stat-icon { width: 32px; height: 32px; border-radius: 8px; }
 }
 </style>

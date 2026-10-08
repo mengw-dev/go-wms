@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PageHeader from '@/components/common/PageHeader.vue'
 import { onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAutoRefresh } from '@/composables/autoRefresh'
@@ -172,7 +173,10 @@ useAutoRefresh(refreshActiveTab, 0)
 </script>
 
 <template>
-  <div class="page-card">
+  <div class="app-page inventory-page">
+    <PageHeader title="库存查询" description="按仓库、货品与批次查看库存，追溯每一笔库存变动。" />
+    <section class="page-card">
+    <p class="inventory-note">现存量 = 可用量 + 分配量；分配量为已被出库单占用、尚未扣减的库存。</p>
     <el-tabs v-model="activeTab" @tab-change="onTabChange">
       <el-tab-pane label="库存明细" name="detail">
         <el-form inline class="query-form" @submit.prevent="searchDetail">
@@ -223,6 +227,7 @@ useAutoRefresh(refreshActiveTab, 0)
           v-model:page-size="detailQuery.page_size"
           class="pagination"
           layout="total, sizes, prev, pager, next, jumper"
+          :pager-count="5"
           :total="detailTotal"
           :page-sizes="[10, 20, 50]"
           @current-change="loadDetail"
@@ -258,6 +263,7 @@ useAutoRefresh(refreshActiveTab, 0)
           v-model:page-size="summaryQuery.page_size"
           class="pagination"
           layout="total, sizes, prev, pager, next, jumper"
+          :pager-count="5"
           :total="summaryTotal"
           :page-sizes="[10, 20, 50]"
           @current-change="loadSummary"
@@ -265,6 +271,7 @@ useAutoRefresh(refreshActiveTab, 0)
         />
       </el-tab-pane>
     </el-tabs>
+    </section>
 
     <el-drawer v-model="drawerVisible" title="库存流水" size="60%">
       <div data-tour="inventory-evidence">
@@ -273,7 +280,7 @@ useAutoRefresh(refreshActiveTab, 0)
         ，货品：{{ skuLabel(transInventory.sku_id) }}
         ，批次：{{ transInventory.batch_no || '-' }}
       </div>
-      <el-form inline @submit.prevent="searchTrans">
+      <el-form inline class="query-form" @submit.prevent="searchTrans">
         <el-form-item label="单据号">
           <el-input v-model="transQuery.order_no" placeholder="单据号" clearable style="width: 180px" @keyup.enter="searchTrans" @clear="searchTrans" />
         </el-form-item>
@@ -334,6 +341,7 @@ useAutoRefresh(refreshActiveTab, 0)
 </template>
 
 <style scoped>
+.inventory-note { margin: 0 0 16px; padding: 12px 14px; border-radius: 8px; background: var(--el-color-primary-light-9); color: var(--el-text-color-regular); font-size: 13px; line-height: 1.7; }
 .trans-summary {
   color: var(--el-text-color-regular);
   margin-bottom: 12px;
