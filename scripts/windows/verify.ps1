@@ -71,7 +71,7 @@ if ($WithRace) {
         docker run --rm --network deploy_default -v "$($root.Path):/src" -w /src `
             -e "WMS_TEST_DSN=$dsn" -e "WMS_MYSQL_DSN=$dsn" `
             -e WMS_TEST_REDIS_ADDR=redis:6379 -e WMS_TEST_REQUIRED=1 `
-            golang:1.26-alpine sh -c "apk add --no-cache gcc musl-dev >/dev/null && CGO_ENABLED=1 go test -race ./... -count=1"
+            golang:1.26.9-alpine sh -c "apk add --no-cache gcc musl-dev >/dev/null && CGO_ENABLED=1 go test -race ./... -count=1"
     }
 }
 

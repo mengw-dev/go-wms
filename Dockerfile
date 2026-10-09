@@ -1,5 +1,5 @@
 # ---- 构建阶段 ----
-FROM golang:1.26-alpine AS builder
+FROM golang:1.26.9-alpine AS builder
 WORKDIR /src
 ENV GOPROXY=https://goproxy.cn,direct
 COPY go.mod go.sum ./
