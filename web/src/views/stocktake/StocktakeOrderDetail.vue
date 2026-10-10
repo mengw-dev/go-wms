@@ -3,7 +3,6 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  approveStocktakeOrder,
   cancelStocktakeOrder,
   getStocktakeOrder,
   submitStocktakeActual,
@@ -13,10 +12,12 @@ import { statusTag, statusText } from '@/constants'
 import { formatTime } from '@/utils'
 import { loadWarehouseOptions, toOptionMap } from '@/utils/options'
 import { BUSINESS_EVENTS, emitBusinessEvent } from '@/events/businessEvents'
+import { useStocktakeApprove } from '@/composables/stocktake/useStocktakeApprove'
 
 const route = useRoute()
 const router = useRouter()
 const orderId = String(route.params.id)
+const approver = useStocktakeApprove()
 
 const loading = ref(false)
 const savingIds = reactive<Record<EntityID, boolean>>({})
@@ -90,6 +91,8 @@ async function load() {
         actualInputs[detail.id] = detail.actual_qty ?? detail.book_qty
       }
     }
+    const restoreError = approver.restoreForOrders([orderId as EntityID])
+    if (restoreError) ElMessage.error(restoreError)
     emitOrderLoaded()
   } finally {
     loading.value = false
@@ -129,8 +132,26 @@ async function onApprove() {
   } catch {
     return
   }
-  await approveStocktakeOrder(orderId)
-  ElMessage.success('审核完成，库存调整流水已生成')
+  try {
+    // 同 key 重试由 composable 自动恢复：审核无业务参数，原 key 即原内容。
+    await approver.approve(orderId as EntityID)
+    ElMessage.success('审核完成，库存调整流水已生成')
+  } catch {
+    const st = approver.stateOf(orderId as EntityID)
+    if (st.pending?.stale) {
+      try {
+        await ElMessageBox.confirm(
+          '该单据的上次审核已超过保留期仍未确认，请先核对单据状态。放弃后本地记录将被清除，可重新发起审核。',
+          '核对待确认审核',
+          { type: 'warning', confirmButtonText: '已核对，放弃', cancelButtonText: '保留记录' },
+        )
+      } catch {
+        return
+      }
+      approver.discard(orderId as EntityID)
+      ElMessage.success('已放弃待确认的审核记录')
+    }
+  }
   await load()
 }
 

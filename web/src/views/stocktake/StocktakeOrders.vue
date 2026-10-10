@@ -4,18 +4,19 @@ import { useAutoRefresh } from '@/composables/autoRefresh'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  approveStocktakeOrder,
   cancelStocktakeOrder,
   createStocktakeOrder,
   listStocktakeOrders,
 } from '@/api/stocktake'
-import type { EntityID,  StocktakeOrderItem } from '@/api/types'
+import type { EntityID, StocktakeOrderItem } from '@/api/types'
 import { STOCKTAKE_STATUS_OPTIONS, statusTag, statusText } from '@/constants'
 import { cleanParams, formatTime } from '@/utils'
 import { loadLocationOptions, loadWarehouseOptions, toOptionMap, type IdOption } from '@/utils/options'
 import { BUSINESS_EVENTS, emitBusinessEvent } from '@/events/businessEvents'
+import { useStocktakeApprove } from '@/composables/stocktake/useStocktakeApprove'
 
 const router = useRouter()
+const approver = useStocktakeApprove()
 
 // ---------- 基础选项 ----------
 const warehouseOptions = ref<IdOption[]>([])
@@ -49,6 +50,8 @@ async function load(silent = false) {
     if (seq !== requestSeq) return
     list.value = data.list ?? []
     total.value = data.total ?? 0
+    const restoreError = approver.restoreForOrders(list.value.map((item) => item.id))
+    if (restoreError) ElMessage.error(restoreError)
   } finally {
     if (!silent && seq === requestSeq) loading.value = false
   }
@@ -78,9 +81,31 @@ async function onApprove(row: StocktakeOrderItem) {
   } catch {
     return
   }
-  await approveStocktakeOrder(row.id)
-  ElMessage.success('审核完成')
+  try {
+    // 同 key 重试由 composable 自动恢复：审核无业务参数，原 key 即原内容。
+    await approver.approve(row.id)
+    ElMessage.success('审核完成')
+  } catch {
+    await handleStalePending(row.id)
+  }
   load()
+}
+
+/** 超过保留期的待确认审核：只能核对后放弃，不自动重发。 */
+async function handleStalePending(orderId: EntityID) {
+  const st = approver.stateOf(orderId)
+  if (!st.pending?.stale) return
+  try {
+    await ElMessageBox.confirm(
+      '该单据的上次审核已超过保留期仍未确认，请先核对单据状态。放弃后本地记录将被清除，可重新发起审核。',
+      '核对待确认审核',
+      { type: 'warning', confirmButtonText: '已核对，放弃', cancelButtonText: '保留记录' },
+    )
+  } catch {
+    return
+  }
+  approver.discard(orderId)
+  ElMessage.success('已放弃待确认的审核记录')
 }
 
 async function onCancel(row: StocktakeOrderItem) {

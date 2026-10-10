@@ -21,7 +21,9 @@ import (
 	sysmodel "gowms/internal/modules/system/model"
 	"gowms/internal/pkg/config"
 	"gowms/internal/pkg/errcode"
+	"gowms/internal/pkg/idempotency"
 	"gowms/internal/pkg/orderno"
+	"gowms/internal/pkg/snowflake"
 	"gowms/internal/pkg/tenant"
 	"gowms/internal/pkg/tx"
 	"gowms/internal/testutil"
@@ -33,8 +35,11 @@ func stocktakeFixture(t *testing.T) (*Service, *gorm.DB, context.Context, *invmo
 	if dsn == "" {
 		dsn = "root:1234@tcp(127.0.0.1:3306)/gowms?parseTime=true"
 	}
-	db := testutil.OpenIsolatedMySQL(t, dsn, &basicmodel.SKU{}, &basicmodel.Location{}, &invmodel.Inventory{}, &invmodel.InventoryTrans{}, &model.StocktakeOrder{}, &model.StocktakeDetail{})
+	db := testutil.OpenIsolatedMySQL(t, dsn, &basicmodel.SKU{}, &basicmodel.Location{}, &invmodel.Inventory{}, &invmodel.InventoryTrans{}, &model.StocktakeOrder{}, &model.StocktakeDetail{}, &idempotency.Record{})
 	if err := tenant.RegisterGORMCallbacks(db); err != nil {
+		t.Fatal(err)
+	}
+	if err := snowflake.Init(1); err != nil {
 		t.Fatal(err)
 	}
 	ctx := tenant.WithTenant(context.Background(), 11)
@@ -101,7 +106,7 @@ func TestStocktakeRollbackAndMissingInventory(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if err := s.Approve(ctx, o.ID, "test"); !errors.Is(err, want) {
+			if err := s.Approve(ctx, o.ID, "test", ""); !errors.Is(err, want) {
 				t.Fatalf("got %v want %v", err, want)
 			}
 			result, err := s.Get(ctx, o.ID)
@@ -145,7 +150,7 @@ func TestStocktakeDifferenceUsesLockedCurrentStock(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = db.Callback().Query().Remove("test:inventory_lock") })
 	done := make(chan error, 1)
-	go func() { done <- s.Approve(ctx, o.ID, "test") }()
+	go func() { done <- s.Approve(ctx, o.ID, "test", "") }()
 	select {
 	case <-locking:
 	case <-time.After(5 * time.Second):
@@ -219,7 +224,7 @@ func TestStocktakeApproveRequiresFullyCountedDetails(t *testing.T) {
 	}
 	actualByInventory[detail.Details[2].InventoryID] = 12
 
-	if err := s.Approve(ctx, o.ID, "test"); !errors.Is(err, errcode.StocktakeNotFullyCounted) {
+	if err := s.Approve(ctx, o.ID, "test", ""); !errors.Is(err, errcode.StocktakeNotFullyCounted) {
 		t.Fatalf("approve with missing actual qty: %v", err)
 	}
 	// 拒绝后：单据仍是草稿，明细未被调整，库存三数量和流水完全不变。
@@ -252,7 +257,7 @@ func TestStocktakeApproveRequiresFullyCountedDetails(t *testing.T) {
 	if err := s.RecordActual(ctx, o.ID, detail.Details[2].ID, 12); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Approve(ctx, o.ID, "test"); err != nil {
+	if err := s.Approve(ctx, o.ID, "test", ""); err != nil {
 		t.Fatal(err)
 	}
 	result, err = s.Get(ctx, o.ID)

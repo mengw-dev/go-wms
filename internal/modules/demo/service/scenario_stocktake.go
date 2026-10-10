@@ -138,7 +138,7 @@ func (s *Service) runStocktakeDemo(ctx context.Context, refs *demoRefs) (*Scenar
 	}
 
 	if err := run.execute(4, "DRAFT → COMPLETED", "stocktake.Service.Approve", func() (string, error) {
-		if err := s.stocktake.Approve(ctx, orderID, operator); err != nil {
+		if err := s.stocktake.Approve(ctx, orderID, operator, ""); err != nil {
 			return "", err
 		}
 		detail, err := s.stocktake.Get(ctx, orderID)

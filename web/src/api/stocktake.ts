@@ -28,9 +28,16 @@ export function submitStocktakeActual(id: EntityID, data: StocktakeActualParams)
   return post<void>(`/stocktake/orders/${id}/actual`, data)
 }
 
-/** 审核（按差异调整库存） */
-export function approveStocktakeOrder(id: EntityID) {
-  return post<void>(`/stocktake/orders/${id}/approve`)
+/**
+ * 审核（按差异调整库存）。Idempotency-Key 可选：项目自带客户端全部携带，
+ * 同 key 重试回放空成功（data 仍为 null），审核成功但响应丢失后的重试
+ * 不会因「已终态」被误报为业务失败；同 key 用于其他单据返回 409；
+ * 未携带 key 的调用方保持旧契约但不具备请求级去重保证。
+ */
+export function approveStocktakeOrder(id: EntityID, idempotencyKey?: string) {
+  return post<void>(`/stocktake/orders/${id}/approve`, undefined, {
+    headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined,
+  })
 }
 
 export function cancelStocktakeOrder(id: EntityID) {
