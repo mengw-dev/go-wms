@@ -130,7 +130,7 @@ func (s *Service) restockWithinRun(ctx context.Context, qty int) (*ScenarioResul
 		if putawayTaskID == 0 {
 			return "", errcode.DemoDataMissing
 		}
-		if err := s.inbound.Putaway(ctx, putawayTaskID, location.ID, putawayQty, operator); err != nil {
+		if err := s.inbound.Putaway(ctx, putawayTaskID, location.ID, putawayQty, operator, ""); err != nil {
 			return "", err
 		}
 		return fmt.Sprintf("%s / 库位 %s / %d 件", putawayTaskNo, location.Code, putawayQty), nil

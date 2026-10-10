@@ -131,6 +131,20 @@ npm run build
 
 ## 本地验证记录
 
+### 2026-10-10：上架请求级幂等验证（阶段 3-2）
+
+在收货基线上新增 `inbound.putaway` 幂等：后端 `putaway.go`（scope `inbound.putaway`，指纹=任务/库位/数量，空成功标记 + reconcilePutaway），handler 与 demo 调用方同步加参；前端新增 `composables/inbound/usePutaway.ts` + 改造 `PutawayDialog.vue`、`api/inbound.ts`。使用本地 MySQL 8.0 与 Memurai，`WMS_TEST_REQUIRED=1`。
+
+| 检查 | 结果 |
+| --- | --- |
+| `gofmt -l`（改动文件）、`go vet ./...` | 通过 |
+| `golangci-lint run ./internal/modules/inbound/...` | 0 issues |
+| `go test ./... -count=1`（`WMS_TEST_REQUIRED=1`、`WMS_TEST_REDIS_ADDR=127.0.0.1:6379`） | 41 个包全部 ok，0 fail |
+| 后端新增 `putaway_idempotency_test.go` | 3 个用例实际执行：同 key 重放不重复增加库存/流水/任务进度且完成后重放不重复写单据状态、同 key 改数量/库位 409、任务推进注入错误时库存/流水/库位状态/任务进度整体回滚、损坏标记 500、跨租户与 scope 隔离 |
+| 前端 `npm run lint` / `npm run test` / `npm run build` | 通过；新增 `usePutaway.spec.ts` 11 个用例，全仓 138 项单测通过；构建含类型检查 |
+
+未运行：race、Playwright E2E、k6（与阶段 2 相同的边界）。盘点审核幂等与外部出库单内容校验仍待实施。
+
 ### 2026-10-10：收货请求级幂等验证（阶段 3-1）
 
 在阶段 2 基线上新增 `inbound.receive` 幂等（后端）与前端收货操作生命周期。后端修改 `receiving.go`、`handler.go`、`pkg/idempotency`（空成功标记），调用方（demo/既有测试）同步加参；前端新增 `composables/inbound/useReceive.ts` + 改造 `ReceiveDialog.vue`、`api/inbound.ts`。使用本地 MySQL 8.0 与 Memurai，`WMS_TEST_REQUIRED=1`。

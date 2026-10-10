@@ -57,9 +57,15 @@ export function receiveInbound(id: EntityID, data: ReceiveParams, idempotencyKey
   })
 }
 
-/** 上架（路径 :id 即 task_id） */
-export function putawayInboundTask(taskId: EntityID, data: PutawayParams) {
-  return post<void>(`/inbound/tasks/${taskId}/putaway`, data)
+/**
+ * 上架（路径 :id 即 task_id）。Idempotency-Key 可选：项目自带客户端全部携带，
+ * 同 key 同内容重试回放空成功（data 仍为 null），同 key 不同内容返回 409；
+ * 未携带 key 的调用方保持旧契约但不具备请求级去重保证。
+ */
+export function putawayInboundTask(taskId: EntityID, data: PutawayParams, idempotencyKey?: string) {
+  return post<void>(`/inbound/tasks/${taskId}/putaway`, data, {
+    headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined,
+  })
 }
 
 /** Excel 导入（multipart，字段名 file），返回异步任务 id */

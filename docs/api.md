@@ -142,6 +142,8 @@ API Key 在服务端配置中绑定 `WMS_INTEGRATION_TENANT_ID`，请求体、�
 
 **收货幂等**：请求头可选携带 `Idempotency-Key`（项目自带客户端全部携带）。同一 key + 相同内容（指纹含单据、明细、数量、残品量与批次号，批次按精确比较）重试回放空成功（`data` 仍为 `null`），不重复累计、收齐后重放不重复生成上架任务；同 key 不同内容返回 409 / 40901；幂等记录与业务写入同事务提交，业务失败不留记录；未携带 key 的调用方保持旧契约但**不提供请求级去重**。幂等窗口与 PDA 一致（7 天保留期）。
 | POST | `/inbound/tasks/:id/putaway` | `wms:inbound:putaway` | 上架 `{location_id, qty}`，路径 `:id` 为 task_id：库存 Increase + RECEIVE 流水 |
+
+**上架幂等**：请求头可选携带 `Idempotency-Key`（项目自带客户端全部携带）。同一 key + 相同内容（指纹含任务、库位与数量）重试回放空成功（`data` 仍为 `null`），不重复增加库存、流水或任务进度；同 key 不同内容返回 409 / 40901；幂等记录与库存生效、库位占用、任务推进、单据状态同事务提交，业务失败整体回滚不留记录；未携带 key 的调用方保持旧契约但**不提供请求级去重**。幂等窗口与 PDA 一致（7 天保留期）。
 | POST | `/inbound/import` | `wms:inbound:create` | multipart 上传 Excel，异步建单，返回 `{task_id}` |
 | GET | `/inbound/import/:taskId` | 登录 | 导入进度 `{status, total_rows, success_rows, fail_rows, error_msg}` |
 

@@ -109,7 +109,7 @@ func (s *Service) runInboundDemo(ctx context.Context, refs *demoRefs) (*Scenario
 		if putawayTaskID == 0 {
 			return "", errcode.DemoDataMissing
 		}
-		if err := s.inbound.Putaway(ctx, putawayTaskID, refs.Location.ID, putawayQty, operator); err != nil {
+		if err := s.inbound.Putaway(ctx, putawayTaskID, refs.Location.ID, putawayQty, operator, ""); err != nil {
 			return "", err
 		}
 		return fmt.Sprintf("%s / 库位 %s / %d 件", putawayTaskNo, refs.Location.Code, putawayQty), nil
