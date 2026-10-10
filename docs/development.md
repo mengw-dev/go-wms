@@ -131,6 +131,35 @@ npm run build
 
 ## 本地验证记录
 
+### 2026-10-10：外部出库单同号内容校验验证（阶段 4）
+
+在盘点审核基线上实现外部 OMS 推送出库单按业务单号的内容校验：`CreateExternal` 先解析并规范化内容（仓库按编码解析、明细按「SKU 编码+数量」集合表示且顺序无关、备注精确比较、重复编码 50007），首次查询命中与并发撞唯一键回查两条路径统一经 `replayExternalOrder` 核对——一致回放原单（`idempotent: true`），不一致 409（业务码 `50012`），历史明细缺编码快照无法可靠核对时报 `50013` 待人工处理、不放行。比较只用创建期不可变字段（`warehouse_id`/`remark`/明细 `sku_code`/`expected_qty`，全仓无更新点），不新增指纹列与迁移；业务单号去重随订单生命周期保留，不依赖 7 天请求级幂等清理。使用本地 MySQL 8.0 与 Memurai，`WMS_TEST_REQUIRED=1`。
+
+| 检查 | 结果 |
+| --- | --- |
+| `gofmt -l`（改动文件）、`go build ./...`、`go vet ./...` | 通过 |
+| `golangci-lint run ./internal/app/... ./internal/modules/outbound/... ./internal/pkg/errcode/...` | 0 issues |
+| `go test ./... -count=1`（`WMS_TEST_REQUIRED=1`、`WMS_TEST_REDIS_ADDR=127.0.0.1:6379`） | 全量包 ok，exit 0，无 FAIL |
+| 新增 `internal/app/integration_test.go` 用例 | 7 个用例实际执行：同号同内容回放（返回原单不重复建单）、明细顺序不影响相等、数量/SKU 集合/备注/仓库变化均 409（50012）、跨租户同号不同内容独立、并发同号异内容只建一张单且后到者 409、历史订单缺编码快照报 50013；原有 2 个外部集成用例回归通过 |
+| 前端 | 本阶段无前端改动，未运行 npm 检查 |
+| `git diff --check` | 通过（仅历史存在的 CRLF 提示） |
+
+未运行：race、Playwright E2E、k6。本阶段与盘点审核成果均在本地未提交。
+
+### 2026-10-10：盘点审核请求级幂等验证（阶段 3-3）
+
+在收货/上架基线上新增 `stocktake.approve` 幂等（后端 `approve.go`，scope `stocktake.approve`，指纹=单据 ID——审核无业务请求体；空成功标记 + reconcileApprove），handler 与 demo 调用方同步加参；前端新增 `composables/stocktake/useStocktakeApprove.ts` + 接入列表/详情两个审核入口、`api/stocktake.ts`。使用本地 MySQL 8.0 与 Memurai，`WMS_TEST_REQUIRED=1`。
+
+| 检查 | 结果 |
+| --- | --- |
+| `gofmt -l`（改动文件）、`go vet ./...` | 通过 |
+| `golangci-lint run ./internal/modules/stocktake/...` | 0 issues |
+| `go test ./... -count=1`（`WMS_TEST_REQUIRED=1`、`WMS_TEST_REDIS_ADDR=127.0.0.1:6379`） | 41 个包全部 ok，0 fail |
+| 后端新增 `approve_idempotency_test.go` | 4 个用例实际执行：终态后同 key 重放成功（不再误报 60002）且库存/流水/明细不重复调整、未录全拒绝不留记录且补录后同 key 可复用、同 key 用于其他单据 409、损坏标记 500、跨租户与 scope 隔离 |
+| 前端 `npm run lint` / `npm run test` / `npm run build` | 通过；新增 `useStocktakeApprove.spec.ts` 10 个用例，全仓 148 项单测通过；构建含类型检查 |
+
+未运行：race、Playwright E2E、k6（与阶段 2 相同的边界）。外部出库单内容校验在阶段 4 落地，验证见上方小节。
+
 ### 2026-10-10：上架请求级幂等验证（阶段 3-2）
 
 在收货基线上新增 `inbound.putaway` 幂等：后端 `putaway.go`（scope `inbound.putaway`，指纹=任务/库位/数量，空成功标记 + reconcilePutaway），handler 与 demo 调用方同步加参；前端新增 `composables/inbound/usePutaway.ts` + 改造 `PutawayDialog.vue`、`api/inbound.ts`。使用本地 MySQL 8.0 与 Memurai，`WMS_TEST_REQUIRED=1`。

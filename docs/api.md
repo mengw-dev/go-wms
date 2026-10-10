@@ -220,9 +220,20 @@ API Key 在服务端配置中绑定 `WMS_INTEGRATION_TENANT_ID`，请求体、�
 }
 ```
 
-重复推送同一个 `biz_order_no` 时返回原订单，并设置 `idempotent: true`，不会重复建单。
+重复推送同一 `biz_order_no` 时按创建内容核对：
 
-并发推送同一业务单号时，数据库唯一约束保证只创建一张单，另一个请求返回原订单并标记 `idempotent: true`。
+- 内容一致（仓库编码解析结果、备注、明细的「SKU 编码 + 数量」集合一致；**明细顺序不影响相等判断**）→ 返回原订单并设置 `idempotent: true`，不重复建单；
+- 内容不一致（数量、SKU 集合、备注或仓库任一不同）→ HTTP 409，业务码 `50012`；
+- 历史订单因缺少 SKU 编码快照无法可靠核对内容 → HTTP 409，业务码 `50013`，需人工核对，不会被当作重复成功放行；
+- 同一编码的 SKU 不允许重复出现（`50007`）。
+
+内容核对只比较创建期不可变字段（仓库、备注、明细编码与数量快照），订单后续状态、已拣数量、更新时间不参与。两条路径口径一致：首次查询命中业务单号、并发撞唯一键后回查。业务单号去重跟随订单生命周期保留，不依赖 7 天清理的请求级幂等记录；同一 `biz_order_no` 在不同租户下相互独立，并发推送同一业务单号时数据库唯一约束保证只创建一张单。
+
+```json
+// POST /api/v1/integration/outbound-orders
+// 同号不同内容，HTTP 409
+{ "code": 50012, "msg": "业务订单号已存在，且创建内容不一致，请核对", "data": null }
+```
 
 ### 7.2 PDA 拣货（领取租约 + 强制扫码）
 
@@ -282,6 +293,8 @@ API Key 在服务端配置中绑定 `WMS_INTEGRATION_TENANT_ID`，请求体、�
 | POST | `/stocktake/orders` | `wms:stocktake:create` | 创建即快照 `{warehouse_id, location_id?}` |
 | POST | `/stocktake/orders/:id/actual` | `wms:stocktake:stocktake` | 录入实盘 `{detail_id, actual_qty}`（逐行） |
 | POST | `/stocktake/orders/:id/approve` | `wms:stocktake:approve` | 审核：锁内重算差异，调整库存 + ADJUST 流水 |
+
+**盘点审核幂等**：请求头可选携带 `Idempotency-Key`（项目自带客户端全部携带）。同一 key 重试回放空成功（`data` 仍为 `null`）——审核成功但响应丢失后的重试不会因「已终态」被误报为业务失败；同 key 用于其他盘点单返回 409 / 40901；幂等记录与差异调整、ADJUST 流水、明细标记、状态推进同事务提交，业务失败整体回滚不留记录；未携带 key 的调用方保持旧契约但**不提供请求级去重**。终态防重复调整仍由状态机与明细 `adjusted` 标记保证。幂等窗口与 PDA 一致（7 天保留期）。
 | POST | `/stocktake/orders/:id/cancel` | `wms:stocktake:cancel` | 取消 |
 
 ## 9. 演示模式

@@ -183,6 +183,9 @@ var (
 	PickLocationMismatch   = New(50009, "扫描的库位与任务不一致，请核对后再拣货")
 	PickLocationRequired   = New(50010, "PDA 拣货必须扫描库位")
 	PickBatchRequired      = New(50011, "该任务有批次要求，必须扫描批次")
+	// 外部出库单同业务单号的内容校验：不同内容 409；历史内容无法核对时要求人工处理。
+	BizOrderContentConflict = NewHTTP(50012, "业务订单号已存在，且创建内容不一致，请核对", 409)
+	BizOrderContentUnknown  = NewHTTP(50013, "业务订单号已存在的历史订单无法核对创建内容，请联系管理员处理", 409)
 )
 
 // 盘点 60000+
