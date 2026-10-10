@@ -45,24 +45,30 @@ func (s *Service) Putaway(ctx context.Context, taskID, locationID int64, qty int
 	if routing.TaskType != taskmodel.TaskPutaway {
 		return errcode.TaskStatusWrong
 	}
+	// 幂等快路径提前到可变业务状态校验之前：库位可用性会随时间变化（禁用/占用），
+	// 已提交成功的同 key 重试必须回放成功，不能被库位当前状态拦截；
+	// 库位校验只针对新操作。（身份/租户类访问校验由入口完成，路由读取不受业务状态影响。）
+	if idempotencyKey != "" {
+		record, err := idempotency.Find(s.tm.DB().WithContext(ctx), tenantID, putawayIdempotencyScope, idempotencyKey)
+		if err != nil {
+			return err
+		}
+		if record != nil {
+			if record.RequestHash != requestHash {
+				return errcode.IdempotencyKeyReused
+			}
+			return idempotency.ValidateEmptySuccess(record.ResultJSON)
+		}
+	}
 	// 库位校验：存在、非禁用，且必须属于单据仓库，防止跨仓库上架产生不一致库存
 	if err := s.basic.ValidateLocationInWarehouse(ctx, routing.WarehouseID, locationID); err != nil {
 		return err
 	}
 	err = s.tm.TxRetry(ctx, tx.MaxTxRetry, func(tx *gorm.DB) error {
-		// 幂等快路径：同 key 重试回放空成功；同 key 不同内容属于客户端误用，不可重试。
-		if idempotencyKey != "" {
-			record, err := idempotency.Find(tx, tenantID, putawayIdempotencyScope, idempotencyKey)
-			if err != nil {
-				return err
-			}
-			if record != nil {
-				if record.RequestHash != requestHash {
-					return errcode.IdempotencyKeyReused
-				}
-				return idempotency.ValidateEmptySuccess(record.ResultJSON)
-			}
-		}
+		// 事务内不再做幂等查询：并发同 key 撞唯一键后由 TxRetry 重跑业务，被终态拒绝后
+		// 经 reconcilePutaway 新读核对回放。事务第一条语句保持 FOR UPDATE（订单行锁），
+		// 完成判定的读视图在订单行锁之后才固定——同单并发上架的提交必被后到者看到，
+		// 不会出现全部任务已完成而单据停在 PUTAWAY。
 		o, err := s.repo.GetOrderForUpdate(tx, routing.OrderID)
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {

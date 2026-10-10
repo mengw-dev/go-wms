@@ -3,7 +3,11 @@ package service
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
+	"time"
+
+	"gorm.io/gorm"
 
 	invmodel "gowms/internal/modules/inventory/model"
 	"gowms/internal/modules/stocktake/dto"
@@ -140,5 +144,80 @@ func TestStocktakeApproveCorruptAndIsolation(t *testing.T) {
 	other, _ := countedOrder(ctx, t, s, 7)
 	if err := s.Approve(ctx, other.ID, "test", "appr-key-iso"); err != nil {
 		t.Fatalf("isolated approve: %v", err)
+	}
+}
+
+// TestStocktakeApproveUsesLatestActualQty 审核与实盘录入交错时，调整必须基于最新实盘数量：
+// 事务内幂等查询曾在 REPEATABLE READ 下固定旧读视图，复现「明细实盘已是 7、库存却被调整成 8」。
+// 用查询回调把审核停在幂等查询之后、期间提交一次实盘修改，审核必须按新值调整库存。
+func TestStocktakeApproveUsesLatestActualQty(t *testing.T) {
+	s, db, ctx, inventory := stocktakeFixture(t)
+	o, detailID := countedOrder(ctx, t, s, 8)
+
+	arrived := make(chan struct{}, 1)
+	release := make(chan struct{})
+	var once sync.Once
+	if err := db.Callback().Query().After("gorm:query").Register("stocktake:approve_race_idem", func(q *gorm.DB) {
+		if q.Statement == nil || q.Statement.Table != "wms_idempotency" {
+			return
+		}
+		once.Do(func() {
+			arrived <- struct{}{}
+			<-release
+		})
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	errCh := make(chan error, 1)
+	go func() { errCh <- s.Approve(ctx, o.ID, "test", "appr-key-race") }()
+	select {
+	case <-arrived:
+	case <-time.After(10 * time.Second):
+		t.Fatal("approve did not reach idempotency query")
+	}
+	// 审核已发出幂等查询、尚未锁单读明细时，把实盘数量从 8 改成 7
+	if err := s.RecordActual(ctx, o.ID, detailID, 7); err != nil {
+		t.Fatal(err)
+	}
+	close(release)
+	if err := <-errCh; err != nil {
+		t.Fatalf("approve: %v", err)
+	}
+	if err := db.WithContext(ctx).First(inventory, inventory.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if inventory.StockQuantity != 7 || inventory.AvailableQty != 7 {
+		t.Fatalf("inventory after approve=%+v want stock=7（按最新实盘调整）", inventory)
+	}
+	var detail model.StocktakeDetail
+	if err := db.WithContext(ctx).Where("order_id = ?", o.ID).First(&detail).Error; err != nil {
+		t.Fatal(err)
+	}
+	if detail.ActualQty == nil || *detail.ActualQty != 7 {
+		t.Fatalf("actual qty=%v want=7", detail.ActualQty)
+	}
+}
+
+// TestStocktakeApproveWithKeyUnderSmallPool 连接池上限 1：不带 key 审核、带 key 审核
+// 及其同 key 重试都必须完成。幂等预查询若放在事务回调内，事务占住唯一连接后还要
+// 申请第二条连接，请求会一直等待直到取消/超时。
+func TestStocktakeApproveWithKeyUnderSmallPool(t *testing.T) {
+	s, db, ctx, _ := stocktakeFixture(t)
+	if sqlDB, err := db.DB(); err != nil {
+		t.Fatal(err)
+	} else {
+		sqlDB.SetMaxOpenConns(1)
+	}
+	noKey, _ := countedOrder(ctx, t, s, 8)
+	if err := s.Approve(ctx, noKey.ID, "test", ""); err != nil {
+		t.Fatalf("approve without key under pool=1: %v", err)
+	}
+	withKey, _ := countedOrder(ctx, t, s, 7)
+	if err := s.Approve(ctx, withKey.ID, "test", "appr-small-pool"); err != nil {
+		t.Fatalf("approve with key under pool=1: %v", err)
+	}
+	if err := s.Approve(ctx, withKey.ID, "test", "appr-small-pool"); err != nil {
+		t.Fatalf("replay under pool=1: %v", err)
 	}
 }

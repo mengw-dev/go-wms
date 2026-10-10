@@ -131,6 +131,23 @@ npm run build
 
 ## 本地验证记录
 
+### 2026-10-10：并发快照与回放边界修复（评审反馈 P1×3 / P2×2）
+
+外部评审用定向复现测试指出 3 个 P1、2 个 P2，评委复验后又指出 1 个新的 P1。两轮修复：
+
+- 盘点审核与收货（approve.go / receiving.go）：幂等预查询**整体移出 TxRetry 回调**（独立连接、查完即还），事务内只保留业务锁读写与末尾 Insert。两轮分别消除两类问题：事务内第一条普通 SELECT 提前固定 REPEATABLE READ 读视图导致旧快照；事务占住连接后再向同一连接池申请第二条连接，池满时所有请求互相等待。交错录入实盘按最新实盘调整库存；并发收货收齐判断能看到对方提交、正常生成上架任务。
+- 上架（putaway.go）：幂等回放提前到库位校验之前（库位可用性只对新操作校验），事务内不再查幂等（并发同 key 撞唯一键由 TxRetry 重跑 + reconcilePutaway 新读兜底）；完成统计的读视图在订单行锁之后固定，同单并发上架全部完成后单据正常 COMPLETED。
+- 外部出库单（integration.go）：SKU 编码统一按主数据规范编码参与去重与内容比较，数据库大小写不敏感命中不再导致同内容重试误报 409。
+
+| 检查 | 结果 |
+| --- | --- |
+| `gofmt -l`（改动文件）、`go build ./...`、`go vet ./...`、`git diff --check` | 通过 |
+| `golangci-lint run ./internal/modules/inbound/... ./internal/modules/stocktake/... ./internal/modules/outbound/... ./internal/app/...` | 0 issues（顺带清理上架测试 fixture 的 unparam 告警） |
+| `go test ./... -count=1`（`WMS_TEST_REQUIRED=1`、`WMS_TEST_REDIS_ADDR=127.0.0.1:6379`） | 全量包 ok，exit 0 |
+| 新增回归测试 7 个 | 实际执行：审核与实盘录入交错按最新实盘调整（库存=7 而非 8）；同单不同明细并发收货后单据 PUTAWAY 且生成 2 个上架任务（连接池上限 2）；同单两任务并发上架后单据 COMPLETED（连接池上限 2）；上架成功后禁用库位同 key 重试回放成功、新 key 才被 20011 拒绝；外部出库 SKU 大小写变体回放不 409、变体重复行 50007、快照落规范编码；连接池上限 1 下带 key 收货/审核及其重试完成 |
+
+未运行：race、Playwright E2E、k6。本轮修改未提交。
+
 ### 2026-10-10：外部出库单同号内容校验验证（阶段 4）
 
 在盘点审核基线上实现外部 OMS 推送出库单按业务单号的内容校验：`CreateExternal` 先解析并规范化内容（仓库按编码解析、明细按「SKU 编码+数量」集合表示且顺序无关、备注精确比较、重复编码 50007），首次查询命中与并发撞唯一键回查两条路径统一经 `replayExternalOrder` 核对——一致回放原单（`idempotent: true`），不一致 409（业务码 `50012`），历史明细缺编码快照无法可靠核对时报 `50013` 待人工处理、不放行。比较只用创建期不可变字段（`warehouse_id`/`remark`/明细 `sku_code`/`expected_qty`，全仓无更新点），不新增指纹列与迁移；业务单号去重随订单生命周期保留，不依赖 7 天请求级幂等清理。使用本地 MySQL 8.0 与 Memurai，`WMS_TEST_REQUIRED=1`。

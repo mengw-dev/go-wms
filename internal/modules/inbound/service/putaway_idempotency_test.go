@@ -51,8 +51,9 @@ type putawayIdemStack struct {
 	location2 int64
 }
 
-func newPutawayIdemStack(t *testing.T, targetQty int) *putawayIdemStack {
+func newPutawayIdemStack(t *testing.T) *putawayIdemStack {
 	t.Helper()
+	targetQty := 10
 	db := testutil.OpenIsolatedMySQL(t, putawayTestDSN(),
 		&model.ReceiptOrder{}, &model.ReceiptOrderDetail{}, &taskmodel.Task{}, &idempotency.Record{},
 		&basicmodel.Warehouse{}, &basicmodel.SKU{}, &basicmodel.Location{},
@@ -159,7 +160,7 @@ func (st *putawayIdemStack) reloadLocation(t *testing.T) *basicmodel.Location {
 // 同 key 重试不重复增加库存/流水/任务进度；新 key 同参数是另一次合法上架；
 // 完成后重放不重复写入；同 key 改数量/库位返回 409。
 func TestPutawayIdempotencyReplay(t *testing.T) {
-	st := newPutawayIdemStack(t, 10)
+	st := newPutawayIdemStack(t)
 
 	// 第一次上架 4 件
 	if err := st.s.Putaway(st.ctx, st.task.ID, st.location, 4, "test", "pa-key-1"); err != nil {
@@ -231,7 +232,7 @@ func TestPutawayIdempotencyReplay(t *testing.T) {
 // TestPutawayFailureRollsBack 上架中途失败（任务推进注入错误）时，
 // 库存、流水、库位状态与任务进度全部回滚，不留下半成功状态。
 func TestPutawayFailureRollsBack(t *testing.T) {
-	st := newPutawayIdemStack(t, 10)
+	st := newPutawayIdemStack(t)
 
 	var once sync.Once
 	if err := st.db.Callback().Update().Before("gorm:update").Register("pa:task_update_fail", func(q *gorm.DB) {
@@ -262,7 +263,7 @@ func TestPutawayFailureRollsBack(t *testing.T) {
 
 // TestPutawayIdempotencyCorruptAndIsolation 损坏空成功标记返回内部错误；跨租户/跨 scope 同 key 隔离。
 func TestPutawayIdempotencyCorruptAndIsolation(t *testing.T) {
-	st := newPutawayIdemStack(t, 10)
+	st := newPutawayIdemStack(t)
 
 	if err := st.s.Putaway(st.ctx, st.task.ID, st.location, 3, "test", "pa-key-corrupt"); err != nil {
 		t.Fatalf("first putaway: %v", err)
@@ -297,5 +298,28 @@ func TestPutawayIdempotencyCorruptAndIsolation(t *testing.T) {
 	}
 	if gotTask := st.reloadTask(t); gotTask.DoneQty != 6 {
 		t.Fatalf("task done=%d want=6", gotTask.DoneQty)
+	}
+}
+
+// TestPutawayReplayNotBlockedByLocationState 上架成功后的同 key 重试不得被库位当前状态拦截：
+// 库位可用性是可变业务状态，只应对新操作校验；重试必须回放已提交的成功（此前会被 20011 拒绝）。
+func TestPutawayReplayNotBlockedByLocationState(t *testing.T) {
+	st := newPutawayIdemStack(t)
+	if err := st.s.Putaway(st.ctx, st.task.ID, st.location, 4, "test", "pa-key-state"); err != nil {
+		t.Fatalf("first putaway: %v", err)
+	}
+	if err := st.db.WithContext(st.ctx).Model(&basicmodel.Location{}).
+		Where("id = ?", st.location).Update("status", basicmodel.LocationStatusDisabled).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := st.s.Putaway(st.ctx, st.task.ID, st.location, 4, "test", "pa-key-state"); err != nil {
+		t.Fatalf("replay must not be blocked by location state: %v", err)
+	}
+	if inv := st.inventory(t); inv.StockQuantity != 4 {
+		t.Fatalf("replay must not change stock: %d", inv.StockQuantity)
+	}
+	// 新 key 的新操作才做库位校验
+	if err := st.s.Putaway(st.ctx, st.task.ID, st.location, 2, "test", "pa-key-new"); errcode.From(err).Code != errcode.LocationDisabled.Code {
+		t.Fatalf("new op on disabled location: %v", err)
 	}
 }

@@ -92,15 +92,19 @@ func (s *Service) resolveExternalContent(ctx context.Context, req *dto.ExternalC
 	content := &externalOrderContent{warehouseID: warehouse.ID, remark: req.Remark}
 	seen := make(map[string]struct{}, len(req.Details))
 	for _, item := range req.Details {
-		if _, dup := seen[item.SKUCode]; dup {
-			return nil, errcode.ShipDetailDuplicateSKU
-		}
-		seen[item.SKUCode] = struct{}{}
 		sku, err := s.basic.GetSKUByCode(ctx, item.SKUCode)
 		if err != nil {
 			return nil, err
 		}
-		content.details = append(content.details, externalOrderDetail{skuCode: item.SKUCode, skuID: sku.ID, qty: item.ExpectedQty})
+		// 统一用主数据中的规范编码做去重与创建快照：数据库排序规则大小写不敏感，
+		// 若保留请求原始书写，同码不同大小写会在重试时被误判为内容不一致（409），
+		// 重复 SKU 检测也会漏掉大小写变体。仓库按 ID 比较，不受编码书写影响。
+		code := sku.Code
+		if _, dup := seen[code]; dup {
+			return nil, errcode.ShipDetailDuplicateSKU
+		}
+		seen[code] = struct{}{}
+		content.details = append(content.details, externalOrderDetail{skuCode: code, skuID: sku.ID, qty: item.ExpectedQty})
 	}
 	sort.Slice(content.details, func(i, j int) bool { return content.details[i].skuCode < content.details[j].skuCode })
 	return content, nil

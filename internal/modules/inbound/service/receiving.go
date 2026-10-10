@@ -42,22 +42,27 @@ func (s *Service) Receive(ctx context.Context, orderID, detailID int64, req *dto
 		// 批次按既有业务口径参与指纹（精确字符串比较，不含空格/大小写归一化），不改变收货语义。
 		requestHash = receiveRequestHash(orderID, detailID, req)
 	}
-	err := s.tm.TxRetry(ctx, tx.MaxTxRetry, func(tx *gorm.DB) error {
-		// 幂等快路径：同 key 重试回放空成功；同 key 不同内容属于客户端误用，不可重试。
-		if idempotencyKey != "" {
-			record, err := idempotency.Find(tx, tenantID, receiveIdempotencyScope, idempotencyKey)
-			if err != nil {
-				return err
-			}
-			if record != nil {
-				if record.RequestHash != requestHash {
-					return errcode.IdempotencyKeyReused
-				}
-				// 回放此前成功提交的空成功标记；标记缺失/损坏按内部错误处理，
-				// 不能用「当前单据进度」伪装成功。
-				return idempotency.ValidateEmptySuccess(record.ResultJSON)
-			}
+	// 幂等预查询放在事务外（独立连接，查完即还）：
+	// 放在事务内会占住事务连接、再向同一连接池申请第二条连接，并发事务占满池时
+	// 所有请求互相等待直至取消/超时；且事务内第一条普通 SELECT 会提前固定
+	// REPEATABLE READ 读视图，收齐判断可能读到旧收货量。
+	// 并发同 key 撞唯一键仍由 TxRetry 重跑 + reconcileReceive 新读核对回放，
+	// 业务写入与幂等 Insert 保持同一事务提交。
+	if idempotencyKey != "" {
+		record, err := idempotency.Find(s.tm.DB().WithContext(ctx), tenantID, receiveIdempotencyScope, idempotencyKey)
+		if err != nil {
+			return err
 		}
+		if record != nil {
+			if record.RequestHash != requestHash {
+				return errcode.IdempotencyKeyReused
+			}
+			// 回放此前成功提交的空成功标记；标记缺失/损坏按内部错误处理，
+			// 不能用「当前单据进度」伪装成功。
+			return idempotency.ValidateEmptySuccess(record.ResultJSON)
+		}
+	}
+	err := s.tm.TxRetry(ctx, tx.MaxTxRetry, func(tx *gorm.DB) error {
 		o, err := s.repo.GetOrderForUpdate(tx, orderID)
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {

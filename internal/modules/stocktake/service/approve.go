@@ -38,20 +38,25 @@ func (s *Service) Approve(ctx context.Context, orderID int64, operator, idempote
 		// 审核接口只接受单据 ID（无明细请求体），指纹即单据：不读库拼可变明细。
 		requestHash = idempotency.Fingerprint(strconv.FormatInt(orderID, 10))
 	}
-	err := s.tm.TxRetry(ctx, pkgtx.MaxTxRetry, func(tx *gorm.DB) error {
-		// 幂等快路径：同 key 重试回放空成功；同 key 用于其他单据属于客户端误用，不可重试。
-		if idempotencyKey != "" {
-			record, err := idempotency.Find(tx, tenantID, approveIdempotencyScope, idempotencyKey)
-			if err != nil {
-				return err
-			}
-			if record != nil {
-				if record.RequestHash != requestHash {
-					return errcode.IdempotencyKeyReused
-				}
-				return idempotency.ValidateEmptySuccess(record.ResultJSON)
-			}
+	// 幂等预查询放在事务外（独立连接，查完即还）：
+	// 放在事务内会占住事务连接、再向同一连接池申请第二条连接，并发事务占满池时
+	// 所有请求互相等待直至取消/超时；且事务内第一条普通 SELECT 会提前固定
+	// REPEATABLE READ 读视图，交错录入实盘时审核会按过期数量调整库存。
+	// 并发同 key 撞唯一键仍由 TxRetry 重跑 + reconcileApprove 新读核对回放，
+	// 业务写入与幂等 Insert 保持同一事务提交。
+	if idempotencyKey != "" {
+		record, err := idempotency.Find(s.tm.DB().WithContext(ctx), tenantID, approveIdempotencyScope, idempotencyKey)
+		if err != nil {
+			return err
 		}
+		if record != nil {
+			if record.RequestHash != requestHash {
+				return errcode.IdempotencyKeyReused
+			}
+			return idempotency.ValidateEmptySuccess(record.ResultJSON)
+		}
+	}
+	err := s.tm.TxRetry(ctx, pkgtx.MaxTxRetry, func(tx *gorm.DB) error {
 		o, err := s.repo.GetOrderForUpdate(tx, orderID)
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {

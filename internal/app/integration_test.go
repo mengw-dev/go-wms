@@ -436,3 +436,43 @@ func TestExternalLegacyOrderContentUnverifiableNeedsReview(t *testing.T) {
 		t.Fatalf("status=%d code=%d body=%s", status, code, rec.Body.String())
 	}
 }
+
+// TestExternalReplaySKUCodeCaseInsensitive 数据库排序规则大小写不敏感：请求写 shared-sku 命中
+// 主数据 SHARED-SKU，创建快照保存规范编码；同内容重试必须回放原单而非 409（50012）；
+// 大小写变体的重复明细按同一规范口径拒绝（50007）。
+func TestExternalReplaySKUCodeCaseInsensitive(t *testing.T) {
+	db, _, _ := integrationFixture(t)
+	router := integrationRouter(t, db, 11)
+	ctx := context.Background()
+	body := func(count int) map[string]any {
+		return map[string]any{
+			"warehouse_code": "SHARED-WH",
+			"details":        []map[string]any{{"sku_code": "shared-sku", "expected_qty": count}},
+		}
+	}
+	first := externalResult(t, pushExternalBody(ctx, router, "CASE-BIZ", body(2)))
+	if first.Idempotent {
+		t.Fatalf("first push should create: %+v", first)
+	}
+	replayed := externalResult(t, pushExternalBody(ctx, router, "CASE-BIZ", body(2)))
+	if !replayed.Idempotent || replayed.OrderID != first.OrderID {
+		t.Fatalf("case-insensitive replay=%+v want ID=%d idempotent=true", replayed, first.OrderID)
+	}
+	rec := pushExternalBody(ctx, router, "CASE-DUP", map[string]any{
+		"warehouse_code": "SHARED-WH",
+		"details": []map[string]any{
+			{"sku_code": "shared-sku", "expected_qty": 1},
+			{"sku_code": "SHARED-SKU", "expected_qty": 1},
+		},
+	})
+	if status, code := externalError(t, rec); code != errcode.ShipDetailDuplicateSKU.Code {
+		t.Fatalf("duplicate sku variants: status=%d code=%d body=%s", status, code, rec.Body.String())
+	}
+	var detail model.ShipmentOrderDetail
+	if err := db.Where("order_id = ?", first.OrderID).First(&detail).Error; err != nil {
+		t.Fatal(err)
+	}
+	if detail.SKUCode != sharedFixtureSKU {
+		t.Fatalf("snapshot sku code=%q want=%q（规范编码）", detail.SKUCode, sharedFixtureSKU)
+	}
+}
