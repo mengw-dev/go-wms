@@ -10,7 +10,7 @@
 - 不允许根据文件名猜逻辑；不确定时先查调用链（grep 调用方/被调用方）与测试，再下结论。
 - 命令、环境变量、部署步骤不在本文件重复，直接看文末链接指向的文档。
 - 路径约定：本文件路径相对仓库根目录；`web/src/**` 小节内的路径相对 `web/src/`。
-- 相关文档：[文档目录](README.md)、[Go 约定](go-style.md)、[架构说明](architecture.md)、[数据库设计](database.md)、[可维护性评审](maintainability-review.md)。职责与依赖规则统一维护在 Go 约定中，本索引不重复实现细节。
+- 相关文档：[文档目录](README.md)、[Go 约定](go-style.md)、[架构说明](architecture.md)、[数据库设计](database.md)。职责与依赖规则统一维护在 Go 约定中，本索引不重复实现细节。
 
 ## 技术栈与顶层目录
 
