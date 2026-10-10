@@ -210,6 +210,16 @@ func (s *Service) Pick(ctx context.Context, taskID int64, qty int, operator stri
 		return nil
 	})
 	if err != nil {
+		// 业务写入已随事务回滚；同 key 并发下「后到者」可能因快照读不到先到者
+		// 已提交的记录，拿锁后又因旧状态（任务已完成/剩余量变化）被业务拒绝。
+		// 用事务外新读核对已提交记录：命中则回放首次成功或给出准确 409，
+		// 不把后到者误报为新业务操作失败（避免前端丢 key 换发造成重复执行）。
+		if idempotencyKey != "" {
+			replayed, reconcileErr, handled := s.reconcilePick(ctx, tenantID, idempotencyKey, requestHash)
+			if handled {
+				return replayed, reconcileErr
+			}
+		}
 		// 业务拒绝：事务已回滚，补一次非锁定读取返回当前进度（读取失败时快照为 nil）
 		snapshot, _ := s.pickSnapshot(ctx, taskID)
 		return snapshot, err
@@ -292,9 +302,70 @@ func (s *Service) ClaimPickTask(ctx context.Context, taskID int64, operator, ide
 		return nil
 	})
 	if err != nil {
+		// 同 key 并发下后到者的领取可能因竞争旧状态被拒：用新读核对已提交记录，
+		// 命中则回放首次凭证（或给出准确 409），不把后到者误报为领取失败。
+		if idempotencyKey != "" {
+			replayed, reconcileErr, handled := s.reconcileClaim(ctx, tenantID, idempotencyKey, requestHash)
+			if handled {
+				return replayed, reconcileErr
+			}
+		}
 		return nil, err
 	}
 	return result, nil
+}
+
+// reconcilePick 业务事务回滚后，用新读核对已提交的同 key 幂等记录：
+//   - 未命中或读取失败：返回 handled=false，保留原业务错误；
+//   - 命中且指纹一致：回放首次成功结果；
+//   - 命中但指纹不同：409 内容冲突（比状态/数量类错误更准确，前端不换 key 重发）；
+//   - 记录损坏：内部错误，不用当前进度伪装成功。
+//
+// 新读使用事务外连接（每次查询建立新快照），既不复用已回滚事务，
+// 也不用旧快照证明「无记录」；请求已取消时直接放弃核对，不发起额外查询。
+func (s *Service) reconcilePick(ctx context.Context, tenantID int64, idempotencyKey, requestHash string) (*dto.PickResult, error, bool) {
+	if cancelErr := ctx.Err(); cancelErr != nil {
+		// 请求已取消：不发起核对查询；handled=false，调用方保留原业务错误。
+		return nil, cancelErr, false
+	}
+	record, err := idempotency.Find(s.tm.DB().WithContext(ctx), tenantID, pickIdempotencyScope, idempotencyKey)
+	if err != nil {
+		return nil, err, false
+	}
+	if record == nil {
+		return nil, nil, false
+	}
+	if record.RequestHash != requestHash {
+		return nil, errcode.IdempotencyKeyReused, true
+	}
+	replayed, err := replayPickResult(record.ResultJSON)
+	if err != nil {
+		return nil, err, true
+	}
+	return replayed, nil, true
+}
+
+// reconcileClaim 领取命令的延迟核对，语义与 reconcilePick 一致。
+func (s *Service) reconcileClaim(ctx context.Context, tenantID int64, idempotencyKey, requestHash string) (*dto.ClaimResult, error, bool) {
+	if cancelErr := ctx.Err(); cancelErr != nil {
+		// 请求已取消：不发起核对查询；handled=false，调用方保留原业务错误。
+		return nil, cancelErr, false
+	}
+	record, err := idempotency.Find(s.tm.DB().WithContext(ctx), tenantID, claimIdempotencyScope, idempotencyKey)
+	if err != nil {
+		return nil, err, false
+	}
+	if record == nil {
+		return nil, nil, false
+	}
+	if record.RequestHash != requestHash {
+		return nil, errcode.IdempotencyKeyReused, true
+	}
+	replayed, err := replayClaimResult(record.ResultJSON)
+	if err != nil {
+		return nil, err, true
+	}
+	return replayed, nil, true
 }
 
 // claimFailure 领取条件更新 0 行后定位原因：任务不存在/类型或状态不允许，
@@ -403,29 +474,107 @@ func pickRequestHash(taskID int64, qty int, scan *PickScan) string {
 	return idempotency.Fingerprint(strconv.FormatInt(taskID, 10), strconv.Itoa(qty), location, batch, entry)
 }
 
-// replayClaimResult 反序列化幂等记录中的首次领取结果（凭证 + 租约 + 快照）；
-// 为空或损坏视为内部异常，避免把不可重放的记录伪装成成功回放。
+// replayClaimResult 反序列化幂等记录中的首次领取结果（凭证 + 租约 + 快照）。
+// 「能解析成 JSON」不等于「有效成功结果」：空串、非法 JSON、null、缺字段或
+// 字段类型错误都视为损坏记录，返回内部错误，不把不可重放的记录伪装成成功回放；
+// 凭证缺失或租约信息不可解析同样拒绝。租约是否已过期不影响回放（重放返回首次租约）。
 func replayClaimResult(raw string) (*dto.ClaimResult, error) {
-	if raw == "" {
-		return nil, errcode.Internal
+	fields, err := decodeResultFields(raw)
+	if err != nil {
+		return nil, err
+	}
+	if err := requireJSONString(fields, "claim_token"); err != nil {
+		return nil, err
+	}
+	if err := requireJSONString(fields, "lease_expire_at"); err != nil {
+		return nil, err
+	}
+	if err := requirePickSnapshotFields(fields); err != nil {
+		return nil, err
 	}
 	var result dto.ClaimResult
 	if err := json.Unmarshal([]byte(raw), &result); err != nil {
 		return nil, errcode.Wrap(err, errcode.Internal)
 	}
+	if result.ClaimToken == "" || result.LeaseExpireAt.IsZero() {
+		return nil, errcode.Internal
+	}
 	return &result, nil
 }
 
-// replayPickResult 反序列化幂等记录中的首次成功快照；
-// 快照缺失或损坏视为内部异常直接报错，不回退读取当前进度，
-// 避免把不可重放的记录伪装成成功回放。
+// replayPickResult 反序列化幂等记录中的首次成功快照；校验语义与 replayClaimResult
+// 一致，数量 0 是合法值，不用零值判断缺失。
 func replayPickResult(raw string) (*dto.PickResult, error) {
-	if raw == "" {
-		return nil, errcode.Internal
+	fields, err := decodeResultFields(raw)
+	if err != nil {
+		return nil, err
+	}
+	if err := requirePickSnapshotFields(fields); err != nil {
+		return nil, err
 	}
 	var result dto.PickResult
 	if err := json.Unmarshal([]byte(raw), &result); err != nil {
 		return nil, errcode.Wrap(err, errcode.Internal)
 	}
 	return &result, nil
+}
+
+// requirePickSnapshotFields 校验快照必需字段：状态为字符串、数量为 JSON 数字。
+func requirePickSnapshotFields(fields map[string]json.RawMessage) error {
+	for _, key := range []string{"task_status", "order_status"} {
+		if err := requireJSONString(fields, key); err != nil {
+			return err
+		}
+	}
+	for _, key := range []string{"done_qty", "remaining_qty"} {
+		if err := requireJSONNumber(fields, key); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// decodeResultFields 解析回放 JSON 的顶层字段：null / 非法 JSON / 非对象均视为损坏。
+func decodeResultFields(raw string) (map[string]json.RawMessage, error) {
+	if raw == "" {
+		return nil, errcode.Internal
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(raw), &fields); err != nil {
+		return nil, errcode.Wrap(err, errcode.Internal)
+	}
+	if fields == nil {
+		return nil, errcode.Internal
+	}
+	return fields, nil
+}
+
+// requireJSONString 校验字段存在且为 JSON 字符串（null / 数字 / 布尔均拒绝）。
+func requireJSONString(fields map[string]json.RawMessage, key string) error {
+	raw, ok := fields[key]
+	if !ok || strings.TrimSpace(string(raw)) == "null" {
+		return errcode.Internal
+	}
+	var value string
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return errcode.Internal
+	}
+	return nil
+}
+
+// requireJSONNumber 校验字段存在且为 JSON 数字（null / 字符串 / 布尔均拒绝）。
+func requireJSONNumber(fields map[string]json.RawMessage, key string) error {
+	raw, ok := fields[key]
+	if !ok {
+		return errcode.Internal
+	}
+	trimmed := strings.TrimSpace(string(raw))
+	if trimmed == "" || trimmed == "null" {
+		return errcode.Internal
+	}
+	var value float64
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return errcode.Internal
+	}
+	return nil
 }
