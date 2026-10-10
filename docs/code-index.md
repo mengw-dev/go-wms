@@ -10,7 +10,7 @@
 - 不允许根据文件名猜逻辑；不确定时先查调用链（grep 调用方/被调用方）与测试，再下结论。
 - 命令、环境变量、部署步骤不在本文件重复，直接看文末链接指向的文档。
 - 路径约定：本文件路径相对仓库根目录；`web/src/**` 小节内的路径相对 `web/src/`。
-- 相关文档：[文档目录](README.md)、[Go 约定](go-style.md)、[架构说明](architecture.md)、[数据库设计](database.md)。
+- 相关文档：[文档目录](README.md)、[Go 约定](go-style.md)、[架构说明](architecture.md)、[数据库设计](database.md)、[可维护性评审](maintainability-review.md)。职责与依赖规则统一维护在 Go 约定中，本索引不重复实现细节。
 
 ## 技术栈与顶层目录
 
@@ -39,10 +39,10 @@
 
 | 能力 | 目录 | 职责 | 对应测试 |
 | --- | --- | --- | --- |
-| 多租户隔离 | `internal/pkg/tenant` | 租户上下文注入与 GORM 全局过滤（平台旁路 `tenant_id=0`） | `gorm_test.go` |
+| 多租户隔离 | `internal/pkg/tenant` | 租户上下文与 GORM 过滤；区分平台旁路和精确租户（包括租户 0） | `gorm_test.go` |
 | 分布式锁 | `internal/pkg/lock` | 基于 Redis 的锁（`SET NX EX` + Lua 校验持有者释放） | — |
 | 事务与重试 | `internal/pkg/tx` | 事务管理器、死锁重试与退避 | `tx_test.go` |
-| 请求幂等 | `internal/pkg/idempotency` | 幂等记录写入/查询与过期清理（表 `wms_idempotency`） | — |
+| 请求幂等 | `internal/pkg/idempotency` | 幂等记录写入/查询与过期清理（表 `wms_idempotency`） | `internal/app/pick_race_test.go`（领取/拣货/清理集成测试） |
 | 数据库迁移 | `migrations/**` | 版本化 SQL 迁移，`embed.go` 内嵌 `versions/*.sql` | `migrations_test.go` |
 
 跨模块关键落点（仅记位置，细节以代码为准）：
