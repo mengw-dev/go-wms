@@ -15,6 +15,7 @@ package idempotency
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"strings"
 	"time"
@@ -83,4 +84,38 @@ func isDuplicateKey(err error) bool {
 func Fingerprint(parts ...string) string {
 	sum := sha256.Sum256([]byte(strings.Join(parts, "\x1f")))
 	return hex.EncodeToString(sum[:])
+}
+
+// EmptySuccessJSON 无返回值命令（HTTP 层 data:null）的成功回放固定表示：
+// 严格等于 "{}" 的空对象。用固定值区分「合法空成功」与「损坏记录」，
+// 不通过 ResultJSON 为空串或 "null" 表达成功。
+const EmptySuccessJSON = "{}"
+
+// ValidateEmptySuccess 校验空成功回放标记：
+// 仅接受严格等于 "{}" 的空 JSON 对象；空串、null、含字段或非法 JSON 均视为损坏。
+func ValidateEmptySuccess(raw string) error {
+	fields, err := decodeResultFields(raw)
+	if err != nil {
+		return err
+	}
+	if len(fields) != 0 {
+		return errcode.Internal
+	}
+	return nil
+}
+
+// decodeResultFields 解析回放 JSON 的顶层字段对象；空串/null/非法 JSON/非对象均视为损坏。
+// 供各命令共享「能解析不等于有效」的判定口径。
+func decodeResultFields(raw string) (map[string]json.RawMessage, error) {
+	if raw == "" {
+		return nil, errcode.Internal
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(raw), &fields); err != nil {
+		return nil, errcode.Wrap(err, errcode.Internal)
+	}
+	if fields == nil {
+		return nil, errcode.Internal
+	}
+	return fields, nil
 }

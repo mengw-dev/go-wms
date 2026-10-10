@@ -214,7 +214,9 @@ func (h *Handler) receive(c *gin.Context) {
 	if detailID == 0 {
 		detailID = req.DetailID
 	}
-	if err := h.svc.Receive(c.Request.Context(), id, detailID, &req, middleware.Username(c)); err != nil {
+	// 幂等键可选：项目自带客户端全部携带；不携带的旧调用方保持旧契约但无请求级去重保证。
+	idempotencyKey := strings.TrimSpace(c.GetHeader("Idempotency-Key"))
+	if err := h.svc.Receive(c.Request.Context(), id, detailID, &req, middleware.Username(c), idempotencyKey); err != nil {
 		response.Fail(c, err)
 		return
 	}

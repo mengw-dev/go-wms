@@ -46,9 +46,15 @@ export function cancelInboundOrder(id: EntityID) {
   return post<void>(`/inbound/orders/${id}/cancel`)
 }
 
-/** 收货 */
-export function receiveInbound(id: EntityID, data: ReceiveParams) {
-  return post<void>(`/inbound/orders/${id}/receive`, data)
+/**
+ * 收货。Idempotency-Key 可选：项目自带客户端全部携带，
+ * 同 key 同内容重试回放空成功（data 仍为 null），同 key 不同内容返回 409；
+ * 未携带 key 的调用方保持旧契约但不具备请求级去重保证。
+ */
+export function receiveInbound(id: EntityID, data: ReceiveParams, idempotencyKey?: string) {
+  return post<void>(`/inbound/orders/${id}/receive`, data, {
+    headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined,
+  })
 }
 
 /** 上架（路径 :id 即 task_id） */

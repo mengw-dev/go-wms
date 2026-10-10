@@ -131,6 +131,35 @@ npm run build
 
 ## 本地验证记录
 
+### 2026-10-10：收货请求级幂等验证（阶段 3-1）
+
+在阶段 2 基线上新增 `inbound.receive` 幂等（后端）与前端收货操作生命周期。后端修改 `receiving.go`、`handler.go`、`pkg/idempotency`（空成功标记），调用方（demo/既有测试）同步加参；前端新增 `composables/inbound/useReceive.ts` + 改造 `ReceiveDialog.vue`、`api/inbound.ts`。使用本地 MySQL 8.0 与 Memurai，`WMS_TEST_REQUIRED=1`。
+
+| 检查 | 结果 |
+| --- | --- |
+| `gofmt -l`（改动文件）、`go vet ./...` | 通过 |
+| `golangci-lint run ./internal/modules/inbound/... ./internal/pkg/idempotency/...` | 0 issues（修 nilerr 2 处后） |
+| `go test ./... -count=1`（`WMS_TEST_REQUIRED=1`、`WMS_TEST_REDIS_ADDR=127.0.0.1:6379`） | 41 个包全部 ok，0 fail |
+| 后端新增 `receive_idempotency_test.go` | 4 个用例实际执行：同 key 重放不重复累计（含残品只计一次）、新 key 再收正常累计、收齐后重放不重复生成上架任务、同 key 改数量/明细/批次 409、业务失败不留记录、损坏标记 Internal、租户与 scope 隔离 |
+| 前端 `npm run lint` / `npm run test` / `npm run build` | 通过；新增 `useReceive.spec.ts` 11 个用例，全仓 127 项单测通过；构建含类型检查 |
+
+未运行：race、Playwright E2E、k6（与阶段 2 相同的边界）。上架、盘点审核幂等与外部出库单内容校验仍待实施。
+
+### 2026-10-10：幂等并发回放加固验证（阶段 2）
+
+代码基线 `main` / `c8de262`（PDA 前端操作生命周期提交之后）。本次修改 `internal/modules/outbound/service/pick.go` 并新增 `internal/app/idempotency_race_test.go`。使用本地 MySQL 8.0（`MySQL80` 服务）与 Memurai（`127.0.0.1:6379`），仅访问本地测试依赖，未连接生产实例。
+
+| 检查 | 结果 |
+| --- | --- |
+| `gofmt -l`（改动文件） | 通过，无输出 |
+| `go vet ./...` | 通过 |
+| `golangci-lint run ./internal/modules/outbound/service/... ./internal/app/...` | 通过，0 issues（修复 nilerr 4 处后） |
+| `go test ./... -count=1`（`WMS_TEST_REQUIRED=1`、`WMS_TEST_REDIS_ADDR=127.0.0.1:6379`） | 41 个包全部 ok，0 fail，无跳过 |
+| 新增并发幂等测试 | 同 key 并发部分拣货 / 拣满剩余 / 异内容 409 / 并发领取不轮换凭证 / 插入失败整笔回滚 / 损坏快照形状校验 / 租约过期回放 / 租户与 scope 隔离，全部实际执行通过 |
+| 原有回归 | 取消↔拣货竞态、PDA 契约、指纹与清理等 `internal/app` 既有测试继续通过 |
+
+未运行：race（本地无 CGO 环境，需 `verify.ps1 -WithRace` 的 Linux 容器）、Playwright E2E、k6。前端本阶段无改动，未重跑前端检查；阶段 1 的前端 lint/test/build 结果以 `c8de262` 提交为基线。
+
 ### 2026-10-10：文档更新验证
 
 代码基线 `main` / `4e35b92`；本次只改文档，保留原有脚本改动。使用 Go 1.26.9，仅向本地 `127.0.0.1` 的测试依赖地址发起检查，没有连接生产实例。

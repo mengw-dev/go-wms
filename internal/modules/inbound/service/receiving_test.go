@@ -55,12 +55,12 @@ func TestReceiveCountsDefectiveGoodsOnce(t *testing.T) {
 				t.Fatal(err)
 			}
 			// 越界请求不能改变主单、任务或明细。
-			if err := s.Receive(ctx, order.ID, detail.ID, &dto.ReceiveReq{Qty: 11, BatchNo: "B"}, "test"); !errors.Is(err, errcode.ReceiveQtyOver) {
+			if err := s.Receive(ctx, order.ID, detail.ID, &dto.ReceiveReq{Qty: 11, BatchNo: "B"}, "test", ""); !errors.Is(err, errcode.ReceiveQtyOver) {
 				t.Fatalf("over receive: %v", err)
 			}
 			for _, batch := range tt.batches {
 				batch.BatchNo = "B"
-				if err := s.Receive(ctx, order.ID, detail.ID, &batch, "test"); err != nil {
+				if err := s.Receive(ctx, order.ID, detail.ID, &batch, "test", ""); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -98,7 +98,7 @@ func TestReceiveCountsDefectiveGoodsOnce(t *testing.T) {
 func TestReceiveRejectsInvalidQuantitiesBeforeTransaction(t *testing.T) {
 	s := &Service{}
 	for _, req := range []dto.ReceiveReq{{Qty: 0}, {Qty: -1}, {Qty: 1, DefectiveQty: -1}, {Qty: 1, DefectiveQty: 2}} {
-		if err := s.Receive(context.Background(), 1, 1, &req, "test"); !errors.Is(err, errcode.ParamError) {
+		if err := s.Receive(context.Background(), 1, 1, &req, "test", ""); !errors.Is(err, errcode.ParamError) {
 			t.Fatalf("req=%+v err=%v", req, err)
 		}
 	}

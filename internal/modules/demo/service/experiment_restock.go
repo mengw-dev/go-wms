@@ -103,7 +103,7 @@ func (s *Service) restockWithinRun(ctx context.Context, qty int) (*ScenarioResul
 		}
 		if err := s.inbound.Receive(ctx, orderID, detail.Details[0].ID, &inbounddto.ReceiveReq{
 			DetailID: detail.Details[0].ID, Qty: qty, BatchNo: batchNo,
-		}, operator); err != nil {
+		}, operator, ""); err != nil {
 			return "", err
 		}
 		return fmt.Sprintf("%s / 批次 %s / %d 件", orderNo, batchNo, qty), nil
