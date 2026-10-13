@@ -1,0 +1,273 @@
+# 项目审查问题总表
+
+更新：2026-10-13。源码审查基线：`12b0ba402802d12c3f900a10db9ff5e78a24a636` 及当时工作树。本文件汇总截至第五轮发现的后端、前端、工程、部署与历史遗留问题，供后续逐项处理。本次仅整理文档，未修复实现。
+
+## 阅读与状态口径
+
+- **F 编号：当前确认的问题**。保留 F1–F22 编号；F19 已撤销缺陷定级，转为已知边界。共 21 类：P1 8 类、P2 13 类；目前没有已确认的 P0。工程债务不混入这个计数。
+- **P1**：可能影响数据正确性、错误对象操作或核心可用性；**P2**：功能、恢复、安全策略或可靠性问题。严重性不等于证据强度。
+- 每项标明动态复现、静态调用链或尚待验证。没有把风险推导写成生产事故，也不把测试通过当成没有缺陷。
+- Go 清单 230/230 文件已有全文静态审查记录；全仓原清单为 431 文件，其中 255 全文、12 部分、164 尚未补齐逐文件覆盖证据，另有 6 个补充文件。**全仓审查未完成**；未补齐不等于此前从未看过。
+- 后文“建议/修复边界”是待实施事项。历史已修复项单独归档，不重新计作未修复。旧报告与此文冲突时，采用此文明确标出的后续修正。
+- 复现使用的 overlay、Node 脚本和原始日志仍保留在本地评审资料中，本次不提交；文中给出用例名/日志名只是证据索引，并非仓库中已有测试。关键触发步骤和结果直接写入本文，读者无需本地临时文件也能理解结论。
+
+## 一、当前确认的问题
+
+### F1–F10：事务、主数据与前端恢复
+
+
+| 编号 | 优先级 | 问题与触发条件 | 证据与建议 |
+|---|---|---|---|
+| F1 | P1 | 入库编辑事务占用一个连接，又通过 Basic API 借事务外连接；单连接池必然等待自身，小连接池高并发也可能耗尽。 | 前轮真实 MySQL 复现，order.go:102、113、116。明确事务内调用的连接契约，不能仅增加连接池或重试。 |
+| F2 | P1 | 入库建单先验证 SKU，再启动事务插单；删除 SKU 的引用检查与建单不共享主数据锁，交错后可生成引用已删除 SKU 的单据。 | 前轮真实 MySQL 屏障复现，order.go:62–82。建单/主数据删除共用锁协议。出库有同类结构，但未独立实测。 |
+| F3 | P1 | 幂等失败后核对查询自身失败，错误被忽略，返回原先的确定业务拒绝；前端据此删除 pending key。 | 前轮真实 MySQL 故障注入返回 40002；receiving.go:186，putaway.go:154，approve.go:127，pick/claim 同类。保留“结果未知”，核对失败不得降成确定未执行。未证明重复库存写入。 |
+| F4 | P1 | 编辑过 A 后打开 B，B 详情未返回时保存，会将 A 的表单内容写入 B。 | 本轮执行真实 useInboundOrderForm：update(B, A_payload)。useInboundOrderForm.ts:32–39、65–68；InboundOrders.vue:272。打开时清表单、记录加载代次，并阻止未完成加载时保存。 |
+| F5 | P1 | 同一详情路由从 A 导航到 B，组件被复用，但 orderId 只在 setup 读取一次；地址显示 B，提交/审核等仍针对 A。 | 审查中真实 Vue Router 内存路由 + 真实入库详情 setup：URL=/inbound/orders/B、mounts=1、submits=[A]。InboundOrderDetail.vue:21；出库:20、盘点:19 存在相同静态结构；Layout.vue:156 无 key。监听路由参数并管理在途请求，或按对象 ID 重建详情。出库/盘点未分别动态复现。 |
+| F6 | P2 | 后端成功但响应丢失，刷新后任务已完成；弹窗只允许选择未完成任务，pending 数据存在却无法显示/恢复。单据终态还会隐藏操作入口。 | 本轮真实 PickDialog/PutawayDialog setup：selectableTasks=0、selectedTaskId=null、visiblePending=null、storedPending=true。PutawayDialog.vue:27、49–55；PickDialog.vue:26、79–81。恢复入口独立于新操作入口，并纳入有 pending 的已完成任务。收货/盘点父页面也需覆盖终态恢复。尚未完整浏览器断网 E2E。 |
+| F7 | P2 | 旧请求的 401 晚到，会清除新建立的登录态。 | 本轮执行真实 request.ts 拦截器，旧 Bearer OLD 的 401 清掉 NEW token。request.ts:141–142。按发起请求的认证版本判断是否允许清会话。Demo 失效处理也需同样核对。 |
+| F8 | P2 | 三个作业弹窗 computed 返回 storageError Ref 本身，产生嵌套 Ref；没有存储错误时也渲染错误提示。 | 审查中真实 Vue SFC 编译 + SSR，三个弹窗都得到 isRef=true、titleValue="" 的 alert。ReceiveDialog.vue:24、PutawayDialog.vue:36、PickDialog.vue:43。直接使用原 Ref，或 computed 返回 .value。没有证据表明此问题会禁用全部按钮。 |
+| F9 | P2 | 任务详情固定首批 200 条，选项固定前 100 条，丢弃 total；数据增长后部分任务/SKU/库位在业务界面不可达。 | 静态调用链：inbound/query.go:35、outbound/query.go:40 和 task API 的 DetailTaskPageSize；options.ts:12、25、35、44。提供分页/搜索加载，或明确且一致地限制数据规模。 |
+| F10 | P2 | 四套幂等 composable 注册匿名 storage 监听，销毁时不注销，反复进入页面会累积监听和旧状态。 | 静态确认：useReceive.ts:314、usePutaway.ts:309、usePdaPick.ts:520、useStocktakeApprove.ts:274。用可注销函数并绑定 scope 生命周期。 |
+
+### F11 / P1：实盘数量缺失被写成已盘零库存
+
+- 位置：`internal/modules/stocktake/dto/dto.go:20–22`；handler/handler.go:81–89；service/counting.go:15–42；service/approve.go:76–92。
+- `RecordActualReq.ActualQty` 使用值类型 int，只检查 min=0。实际 Gin 绑定下，遗漏 actual_qty 和传 null 均合法，结果都是 0。
+- RecordActual 将这个 0 写到明细，原本用于区分“未盘”的 NULL 被替换；审核只要求 ActualQty 非 nil，再以该值调用库存 Adjust。对于允许调整且没有分配阻挡的库存，可能把未提供的实盘结果误当作清零指令。
+- 已验证：外部 overlay 测试调用真实 DTO 与 Gin，两种请求均触发预期失败断言。没有在本轮数据库上执行库存清零，后续影响依据真实调用链确认。
+- 建议：请求用可区分缺失的字段，例如 *int 配合 required/min=0；显式 0 仍合法。校验失败不得改明细。不要直接对 int 增加 required，否则会误拒合法零库存。
+- 回归：缺字段/null/负数返回参数错误；0/正数成功；非法请求后明细仍未盘，审核仍拒绝。
+
+### F12 / P2：正式迁移与开发测试数量字段宽度不同
+
+- 位置：`internal/modules/inventory/model/model.go:20`、`migrations/versions/000001_init.up.sql:105–107`、`internal/bootstrap/database.go:74`。
+- 当前 64 位 Go 环境，GORM 对 StockQuantity 的实际字段映射是 BIGINT；正式版本化 SQL 定义 stock_quantity/available_quantity/allocated_quantity 为 INT。请求数量主要只设下限，环境之间允许的数值范围不同。
+- 外部测试已调用真实 GORM MySQL dialector 并得到 bigint；与当前迁移文件的 INT 比对不一致。没有实际执行超范围数据库 INSERT。
+- 后果：超过 2,147,483,647 的数量或累计量可能通过参数校验/AutoMigrate 测试，却在 SQL 迁移部署的库中写入失败。属于结构及边界契约漂移，不是本轮已发生的生产事故。
+- 建议：先决定数量上限及字段类型，统一 DTO、业务累加检查和模型/增量迁移；不要直接改已发布旧迁移。补两个建表路径的结构对比，并在正式迁移建成的隔离库跑关键库存用例。000001 顶部“仅参考、以 AutoMigrate 为准”的历史注释也需纠正。
+
+### F13 / P2：AI 低库存查询先过滤批次，再汇总 SKU
+
+- 位置：`internal/modules/ai/repository/repository.go:135–146`；`internal/modules/ai/service/service.go:25、163、192`。
+- 查询 WHERE i.available_quantity <= threshold 后才 GROUP BY SKU；服务却将结果描述为 SKU 低可用库存（阈值 50）。
+- 同 SKU 两个批次 5+100 时，查询只统计 5，会把总可用 105 报成 5；30+30 时则把可用 60 的 SKU 放进“<=50”列表。
+- 证据：全文 SQL 与服务提示词调用链静态确认；第三轮时本地 MySQL 不可用，未将这两组数据实跑入库。不将静态结论伪装成 MySQL 动态复现。
+- 建议：先汇总该 SKU 全部符合租户/删除规则的库存行，再 HAVING SUM(available_quantity) <= threshold。另行明确无库存行 SKU 是否纳入，避免顺带改变业务口径。
+- 回归：5+100 不入低库存列表；30+30 不入；10+20 入且汇总 30；保留租户/已删除过滤、排序和条数上限。当前 AI 测试的每 SKU 单库存行样例抓不到该错误。
+
+### F17 — P1：上架可以覆盖并发提交的库位禁用
+
+- 位置：`internal/modules/inbound/service/putaway.go:64`、`:105`、`:113`；`internal/modules/inventory/repository/repository.go:34`。
+- 触发：上架先在事务外读到库位可用；管理员禁用该库位且成功提交；上架随后进入业务事务。
+- 根因：库存 Increase 的主数据锁只校验存在性，没有校验锁定后的库位状态。上架最后无条件把状态写为 Occupied。
+- 后果：已提交的禁用被覆盖，库存与任务进度继续增加。两操作都成功且最终 Occupied，不符合任一串行执行结果：若上架在先，最后应禁用；若禁用在先，上架应拒绝。
+- 实测：真实 MySQL 隔离库，原有上架 fixture，GORM 查询后屏障；调用真实 BasicService.UpdateLocationStatus。输出 `putaway=<nil> location=2 stock=4 done=4 trans=1`。
+- 证据：`review_location_disable_test.go`、`location-disable-overlay.json`、`location-disable-round4.txt`。
+- 修复边界：保留成功幂等回放在可变状态校验之前；仅新操作在事务内锁定库位后验证状态/所属仓库，再允许库存写入。沿现有锁顺序实现，不在持事务连接期间额外借连接；必须保护“成功后禁用，同 key 仍成功回放”的已有测试。
+- 回归：禁用先提交→新上架拒绝且库存/流水/任务不变；上架先持锁→上架提交后禁用生效；成功后的同 key 回放保持成功。
+
+### F18 — P1：批量库位数量计算溢出，可能耗尽进程内存
+
+- 位置：`internal/modules/basic/service/location.go:24`、`:40`；`internal/modules/basic/dto/dto.go:33`。
+- 触发：有 `wms:basic` 权限的调用者提交超大的排/列范围。DTO 只有最小值，没有最大值。
+- 根因：在 64 位 Go 中两个长度直接相乘可能溢出；例如两个方向均从 1 到 4294967296，乘积回绕为 0，绕过 1,000 上限。
+- 后果：有效仓库下开始构造巨大切片；租户 quota 检查在构造结束之后才执行，不能保护 CPU/内存。循环本身也不检查取消。终点为 MaxInt 的递增循环还存在回绕边界，应一并处理。
+- 实测范围：实际 Gin 绑定接受输入、实际 Service 未返回 LocationBatchLimit；测试故意使用不存在的仓库，在进入循环前安全退出，得到 WarehouseNotFound。**没有运行巨量生成，没有制造 OOM。** OOM 风险由已验证的入口与后续循环推导。
+- 证据：`review_basic_boundaries_test.go`、`basic-boundaries-overlay.json`、`basic-boundaries-round4.txt`。
+- 修复边界：DTO 与 Service 都给合理坐标范围；乘法前以长度和除法检查总量，避免先溢出再比较；循环按已验证数量迭代。不要只提高 quota 或依赖 HTTP 写超时。
+- 回归：正常 1,000 / 超限 1,001、极大维度、MaxInt 终点、反向范围；大输入必须在查询/分配切片前拒绝。
+
+### F14 — P2：撤权后，在途查询重新填回旧权限缓存
+
+- 位置：`internal/modules/system/service/permission.go:30`、`:37`、`:80`；角色更新成功后调用 invalidatePermCache。
+- 触发：缓存未命中→查询取得旧权限但未回填；另一请求更新角色并清缓存；旧查询随后回填。
+- 后果：**更新完成后发起的新请求**仍能从缓存得到已撤销权限，通常持续到该回填项的 60 秒 TTL。不是无限授权，不是跨租户漏洞。
+- 实测：真实 MySQL 隔离库，暂停实际权限查询，成功 UpdateRole 后恢复，随后 HasPerm 仍为 true。此前仅静态疑点，本轮升级为动态确认。
+- 证据：`review_permission_test.go`、`permission-overlay.json`、`permission-round4-fixed.txt`。
+- 修复边界：给缓存失效/加载增加版本协调，失效前开始的加载不能再写成有效缓存；或先取消权限缓存。单独使用 singleflight、清空 map 或缩短 TTL 都不能消除该交错。多实例失效延迟是另一个已记录边界。
+- 测试说明：旧屏障根据 Statement.Selects 匹配 Pluck 未命中，首跑超时是复现脚本错误，非应用死锁；修正版按查询目标类型和 SQL 匹配，并增加等待期限。
+
+### F15 — P2：密码字符数校验与 bcrypt 字节上限不一致
+
+- 位置：`internal/modules/system/dto/dto.go:35`、`:64`、`:69`；`internal/modules/system/service/password.go:6`。
+- 触发：25 个汉字的密码共 75 字节，满足 DTO 的 6–32 字符规则，却超过 bcrypt 的 72 字节上限。
+- 后果：创建用户、重置/修改密码会把 bcrypt 原始错误交给统一响应层，返回内部错误；用户无法从参数提示理解原因。没有截断密码或证明凭据泄露。
+- 实测：实际 Gin UserCreateReq 绑定成功，实际 hashPassword 失败，错误 `bcrypt: password length exceeds 72 bytes`。另两入口依据相同校验和调用链确认，未分别执行 HTTP 集成测试。
+- 证据：`review_auth_boundaries_test.go`、`auth-boundaries-overlay.json`、`auth-boundaries-round4-valid-hash.txt`。
+- 修复边界：保留 bcrypt，增加明确的字节长度校验与参数错误；三种设置密码入口一致，不静默截断或自行预哈希。
+
+### F16 — P2：MySQL 用户名等价规则与登录限流键不一致
+
+- 位置：`internal/modules/system/service/auth.go:23`、`:27`；`internal/modules/system/repository/user.go:28`。
+- 触发：MySQL `utf8mb4_unicode_ci` 把 `tester` 与 `téstér` 视为相同用户名，Go ToLower 却给它们不同的限流键。仓库 Compose 的 MySQL 正是该排序规则。
+- 后果：同一 IP 对同一存储账号达到失败次数上限后，改变重音字符写法仍可继续密码校验。不是已破解密码，也不意味着全局请求数没有任何上限。
+- 实测：隔离库里两个写法均命中用户 ID 42；tester 的第六次被限制，而 téstér 返回密码错误。最终复现 fixture 使用真实有效 bcrypt 哈希，排除了无效哈希提前失败的干扰。
+- 证据：`review_auth_boundaries_test.go`、`auth-boundaries-round4-valid-hash.txt`。
+- 修复边界：账号级限流依据解析后的稳定账号 ID/租户身份；查询前保护可按客户端维护。明确无租户登录与显式租户登录的一致口径，避免只增加另一种不完整字符串折叠规则。
+- 回归：大小写/重音变体同账号共享次数；不同租户同名账号的隔离；不存在账号与并发尝试仍受控。
+
+### F1 补充 — P1：领取冲突分支也存在连接池自等待
+
+- 位置：internal/modules/outbound/service/pick.go:278、:373；task/service/service.go 的 Get 使用服务上的共享 db。
+- 触发：任务已被 A 领取，B 在租约有效期内领取；Claim 的条件 UPDATE 返回 0，仍在事务回调中调用 claimFailure，后者用 taskAPI.Get 从同一个池再借连接。
+- 影响：正常业务冲突变成超时；并发事务占满连接池时请求彼此等待可用连接。单连接池不是生产必须配置，而是最小确定性复现该资源依赖。
+- 实测：真实服务建单/分配/领取，随后 SetMaxOpenConns(1)，B 领取得到 context deadline exceeded，WaitCount=1，预期应立即返回 TaskClaimConflict。测试 deadline 为 1 秒，避免卡住工具。
+- 证据：review_claim_pool_test.go，round5-extra-repros.txt，round5-overlay.json。
+- 归类：与已有 F1 同根因，不增加一个独立 P1 计数。原入库 Update 路径仍未修；本轮未发现收货/盘点审核当前预查询有该问题，它们已经真正移到事务回调之前，现有小池测试也通过。
+- 修复边界：冲突诊断使用当前事务连接，或先退出事务再查询；不要只扩大连接池。保留不同租户、任务不存在/终态/被他人占用、同 key 回放的错误语义。
+
+### F20 — P2：成功导入的文件清理失败后没有恢复路径
+
+- 位置：inbound/service/import_worker.go:81–86，service/import.go:65，service/import_cleanup.go:36、:61，repository/import.go:103、:119。
+- 触发：FinishImport 已持久化 COMPLETED，但进程在删除源文件前退出，或 os.Remove 暂时失败。
+- 根因：周期清理只查询 FAILED 任务；孤儿清理又把所有非空 FilePath 当作有效引用。COMPLETED + 文件仍存在的组合既不是失败文件，也不是孤儿。
+- 后果：即使文件很旧，多轮清理也不会删除，长期积累磁盘占用。没有证据说明该问题造成库存错误。
+- 实测：使用真实 MySQL importFixture 与真实上传函数；将任务置为“成功已持久化、文件尚未删除”的崩溃后状态，文件与任务时间回退 100 小时，连续执行两次真实清理函数后文件仍存在。此测试构造持久化中断状态，没有实际杀死 worker 或注入 OS 删除错误。
+- 证据：review_import_cleanup_gap_test.go，round5-repros.txt，round5-overlay.json。
+- 修复边界：成功任务残留路径也需要周期回收；删除成功或文件已不存在再清路径，允许重试，不能清掉正在处理的文件或缩短失败文件的约定保留期。
+
+### F21 — P2：SKU 编码仅变更大小写后，相同外部请求误报 409
+
+- 位置：outbound/service/integration.go:95–104、:130–139；basic/service/sku.go 的 UpdateSKU 允许修改 Code。
+- 触发：用 SHARED-SKU 建外部单成功；通过真实 UpdateSKU 将同一个 SKU 编码改为 shared-sku；原外部请求原样重发。
+- 根因：新请求按当前主数据 sku.Code 规范化，历史明细保留创建时编码；比较使用 Go 字符串精确 map key。数据库大小写不敏感，原请求仍解析到同一 SKU ID，但内容比较认为编码不同。
+- 实测：真实 MySQL unicode_ci 排序规则、真实更新服务和 HTTP 集成接口；第一次 HTTP 200，同请求重试 HTTP 409 / 50012。
+- 证据：review_external_case_update_test.go，round5-repros.txt，round5-overlay.json。
+- 修复边界：以稳定的 SKU 身份和创建快照定义比较规则；不要简单把所有 Unicode 编码 ToLower 当成数据库排序规则。必须保留同号数量/仓库/备注变化冲突、明细顺序无关、租户隔离，以及既有大小写变体重复行检测。若改成编码不可修改，需要明确兼容性决策。
+- 范围限制：这里证明的是同一 SKU 的大小写变更，不把主数据删除/禁用、实质改名后所有请求都必须成功回放当成默认要求。
+
+### F22 — P2：库存不足时报告已被本事务预占后的剩余量
+
+- 位置：inventory/service/stock.go:183–188；repository/repository.go 的 SumAvailableQty。
+- 触发：某 SKU 可用库存 10，审核申请 15。
+- 根因：Allocate 已在事务内分配了现有 10 件，然后才汇总 available_quantity；普通读可见本事务自己的 UPDATE，因此汇总为 0。函数返回错误后整个事务回滚，可用库存恢复为 10。
+- 实测：真实库存服务与 MySQL，错误为“需要15，实际可用0”；回滚后 available=10、allocated=0。
+- 影响：拒绝出库本身正确，提示数量错误，会误导差额判断；不是库存被清零或超卖。
+- 证据：review_available_message_test.go，round5-extra-repros.txt，round5-overlay.json。
+- 修复边界：以明确口径报告尝试前可分配量或真正缺口，不能直接报告当前事务预占后的余额。覆盖单批、多批、不足为零以及发生并发变化的分支。
+
+## 二、工程、可维护性与测试债务
+
+这些条目与上面的 F 问题分开管理。标为“待验证”或“优化”的内容不得直接升级成业务缺陷。
+
+|编号|状态/范围|发现与处理边界|
+|---|---|---|
+|D01|静态确认：建表可靠性|`internal/bootstrap/database.go` 的开发 AutoMigrate CHECK DDL 非重复错误只告警并返回 nil，重复判断依赖文本。应核对真实约束定义和驱动错误，明确失败策略；不能只照抄错误码 1061。正式 SQL 迁移是另一条路径，release 启动也没有在此验证 CHECK。关联 F12。|
+|D02|静态确认：本地测试门禁|`scripts/windows/verify.ps1` 默认未强制 `WMS_TEST_REQUIRED=1`，MySQL 不可用可能 skip 后仍显示成功。CI 和 WithRace 已强制依赖，不把它们一并判错。应在结果中区分跳过与强制集成通过。|
+|D03|静态确认：漏洞检查门禁|`.github/workflows/ci.yml` 的 govulncheck 使用 `|| true`，需区分扫描器执行失败与实际漏洞结果，不能仅凭空列表判通过。本次未联网扫描，不声称发现了具体依赖漏洞。|
+|D04|静态确认：部署探针|部署默认最终检查前端 `/healthz`，`web/nginx.conf` 在该地址静态返回 200。它只能证明前端存活，不能证明 API 或目标版本可用；Compose 的依赖健康检查不能代替最终端到端验收。|
+|D05|静态确认：发布版本一致性|镜像按触发 workflow 的 SHA 构建，服务器 Compose 却同步最新 main；连续提交可能组合不同版本。应让部署描述与镜像指向同一提交，补实际版本核对。没有执行生产部署。|
+|D06|静态确认：构建可追溯性|Dockerfile 没有注入 Version/Commit/BuildTime，版本接口可能仍为 dev/unknown。构建时注入并在部署探针核对。|
+|D07|已确认：依赖护栏缺失|Go lint/ESLint 尚未守住模块依赖方向。先盘点合法例外，再加最小 import 禁止规则；不能借此强行迁移 system 聚合短事务或全局只检查 diff。|
+|D08|维护债：lint 豁免|errcheck 对 Close 类错误的豁免较宽。针对写入/刷新资源判断关闭错误是否影响结果，不做机械全仓改写。|
+|D09|已确认：过期注释|`pkg/idempotency/idempotency.go` 仍要求事务内先 Find，可能诱导重引入 RR 旧快照；`000001_init.up.sql` 顶部仍写以 AutoMigrate 为准。更正文档/注释，不改已发布迁移语义。|
+|D10|已确认：文档状态漂移|交接和迭代旧段落仍混有“未提交”“收货尚无幂等”等过时状态；规范、架构、历史记录重复维护容易冲突。以代码和实际提交为准，旧段落标注历史，不复制为新待办。|
+|D11|已确认：前端生命周期重复|四套幂等 composable 分别维护操作状态与 safe-reject 数字集合，错误分类易漂移。先修 F3/F6/F10，再提取语义一致的小函数；不建立通用工作流框架。|
+|D12|规模优化，未证实故障|幂等清理使用一次 DELETE 清全部过期记录，数据增大后需分批、超时和指标；不是已发生的大表事故。|
+|D13|设计约束|Fingerprint 以分隔符拼接且未转义，推广至任意自由文本前需无歧义编码。尚未证明现有受限参数能触发业务指纹碰撞。|
+|D14|测试债|部分 fixture 未注册与实际 InitDB 相同的 tenant callbacks，AutoMigrate 字段/约束也未必等同正式迁移；“真实 MySQL”不能代替装配和结构一致性检查。|
+|D15|已确认：演示种子|`bootstrap/seed_demo.go` 直接写已完成入库/已发货出库主单，缺配套明细、任务、分配或发货流水，不能作为完整业务链路样本。应用业务闭环生成或明确标记初始数据来源。|
+|D16|静态确认：Redis 测试隔离|`testutil/redis.go` 没有独立键空间；Demo 租约测试使用固定租户键并先 DEL。共享实例的并行测试可互扰。使用专用实例或唯一运行命名空间；开发文档已禁止生产测试，不报告为生产漏洞。|
+|D17|静态确认：Demo 参数|部分可选 JSON 入口仅在 ContentLength>0 时拒绝绑定错误，未知长度非法 JSON 可能进入默认操作。以 EOF 区分真正空体，其余解析失败拒绝；服务仍有数量上限。|
+|D18|遗留实现，正常入口未找到|旧 useDemoRunner full 先运行 inbound 再 outbound，而后端每次重置，可能清掉前一段证据；当前首页走 staged。列旧实现清理，不宣称当前首页必现。|
+|D19|静态设计缺口：分步 Demo|仍有无 key 作业调用、运行状态仅内存、自动循环缺销毁停止机制。需统一丢响应恢复和取消语义，未动态证明重复库存写入。|
+|D20|待验证：AI 限流|Redis INCR 与 EXPIRE 分离，进程中断窗口可能留下无 TTL 分钟计数。需故障注入验证并明确原子设置策略，不与 F13 查询错误混淆。|
+|D21|待验证：AI 超时|主备请求各 30 秒、前端 20 秒及代理约 30 秒的预算不统一。需端到端验证超时/取消/备用切换，避免只提高单层超时。|
+|D22|静态确认：本地压测清理脚本|未提交的 cleanup-allocation.js 最多读 10 页，K6PROOF 订单未进一步限定目标 SKU/仓库，库存只读首 100 条，check 无 thresholds 不保证失败退出。未执行清理；先限制选择范围并验证分页/退出码。本次不提交该脚本。|
+|D23|历史未补齐：数据库防线|task/allocation/shipment_order 尚未具备与库存表同等的数量 CHECK；当前业务条件更新已存在，不等于已证实可超拣。新增约束前必须审计历史数据并使用增量迁移。|
+|D24|历史未补齐：冲突响应|TxRetry 对 1213/业务冲突重试，1205 及死锁耗尽可能成为通用 500；退避缺少抖动。明确可重试语义和总时限后补真实驱动场景，不盲目增重试或拆业务事务。|
+|D25|规模边界|审核缺少明确的明细数/分配规模上限，Increase 的主数据锁使同仓上架竞争。先增加耗时、重试、行锁等待指标及压测，再决定限额/优化；删除保护锁不可直接移除。|
+|D26|测试与观测缺口|补实际 1213/重试耗尽、导入源文件缺失及进程中断恢复、真实“提交成功但丢响应后刷新”E2E；已有并发、导入清理和上架回滚测试不能重复登记为全无。wms_db_wait 指标表示连接池等待，不表示数据库行锁等待。|
+|D27|维护计划|索引/N+1 和 EXPLAIN 证据、API/前端类型/文档同步、热点文件职责拆分仍需按实际变更推进；文件长或 DTO 相似本身不是缺陷，不建立 common/dto 或通用 CRUD。Demo 工具目录归属和命名只做渐进整理。|
+
+### 本轮补充的测试断言缺口
+
+
+1. 幂等并发测试屏障位置不严谨：app/idempotency_race_test.go:40 使用 Before("gorm:query") 发信号，却把信号解释为 SELECT 已执行。主协程收到信号后即可释放 A，B 的查询仍可能在 A 提交之后执行，走普通快路径成功。现有测试通过不足以证明必经旧快照/reconcile 分支。建议在查询完成且确认未命中后放行，并断言目标分支；这属于静态确认的测试缺口，不宣称生产回放因此必然失败。
+2. TestPickIdempotencyInsertFailureRollsBack 使用未拣满的任务，只验证进度回滚，没有执行真正发货扣库存的分支。应补“拣满后幂等 Insert 失败”的库存/流水回滚断言；不代表当前事务回滚已知错误。
+3. stocktake/service/response_test.go 把 version 检查放在聚合响应顶层，而实际 Order 在嵌套 order 内；这条断言挡不住 order.version 泄漏。当前 DTO 隐藏字段正确，是测试保护范围不足。
+4. 若干并发测试在超时/中间断言失败时未保证释放 channel gate 和取消 goroutine；失败时可能拖至总测试超时。改测试时应对屏障关闭和 goroutine 回收做统一清理。
+
+## 三、已知设计边界与待需求确认项
+
+|编号|边界|不得误写成的保证|
+|---|---|---|
+|B01 / F19|条码缓存 TTL + 更新后删除是明确接受的最终一致性；在途查询可回填旧值。真实 MySQL + 内存缓存替身已复现删除后仍查到旧 SKU，TTL 1 小时；未证实能对已删除 SKU 写库存。|第五轮依据 go-style.md 撤销独立 P2 定级；若提高一致性要求，再评估去缓存或版本协调。不是 Redis 集成验证。|
+|B02|权限缓存与登录限流是进程内实现，多实例不统一失效/计数。|不能宣称跨实例即时撤权；与 F14 单实例在途回填竞争分别处理。|
+|B03|导入文件在本地磁盘，共享数据库任务若由别的节点领取需要共享文件。|单机/共享 volume 能工作，不等于任意多节点部署可恢复。|
+|B04|缺失租户 context 与普通 tenant=0 具有平台旁路语义；Raw/Table 需显式范围。|不是发现了新的越权入口；新增调用必须验证精确租户 0、普通租户及 JOIN。|
+|B05|盘点不冻结实物作业，审核按当时锁读库存设置为录入的绝对实盘数。|不能当成冻结盘点或按创建快照差额累加；实盘与出入库交错需要独立业务决策。|
+|B06|FIFO 候选采用 RR 普通快照；同四元组后续收货合并，排序依据首次入库时间。|不能保证看到事务后新补货或逐次收货严格 FIFO。缩小锁范围是明确取舍。|
+|B07|配额 COUNT + INSERT 为软限制。|不能保证并发下精确上限；不作为未声明的新缺陷。|
+|B08|操作审计 best effort，队列满/故障/进程退出可丢失；库存流水另在事务内。|不能承诺审计必达，也不能据此声称库存流水丢账。|
+|B09|Snowflake 依赖唯一节点号，逻辑时间没有跨重启持久化。|不能承诺跨重启绝对唯一；进程内回拨处理已修。|
+|B10|认证每请求回数据库验证用户状态/token_version/租户。|是即时撤销的性能取舍；缓存优化需一起定义失效，不直接当作错误。|
+|B11|请求级幂等仅对同 key 且保留窗口内有效；不同 key 可能代表合法分次操作。|不能用短 TTL 内容去重替代操作身份；超过 7 天须核对，不能自动重发。|
+|B12|localStorage 待确认记录没有跨标签页原子互斥；换设备/清存储需额外恢复依据。|服务端同 key 去重不等于识别所有实物重复作业。|
+|B13|API Key 轮换、JWT localStorage、密码强度、AI 数据外发及 Redis 故障时限流放行。|属于安全策略与部署需求登记，未据此证明攻击或泄露。|
+|B14|备份/PITR/恢复演练、自动回滚/滚动发布、密钥治理、监控告警、链路追踪、镜像扫描/SBOM 等。|未实施/未验收的运维能力不能写成生产保证；按实际部署范围选取。|
+|B15|PDA 设备绑定、claimed_at、异常短拣/破损/重分配、波次/路线、箱码/托盘码等。|属于功能扩展，不能为了重构擅自扩大目标。AI/Demo 在这里是现有 Go 项目的审查对象，不是 Java 重构新增需求。|
+
+## 四、历史已修复问题（不计入当前未修复总数）
+
+下表来自项目历史修复记录，优先级是修复前影响；此次只归档，不声称每条历史路径均重新执行专项复现。后续同类残余问题按 F 编号单独列出。
+
+
+| 级别 | 文件 / 位置 | 原问题、后果与处理 |
+| --- | --- | --- |
+| P0 | `internal/modules/inbound/service/receiving.go` / Receive | 前端 qty 表示包含不良品的收货总量，后端又加上 defective_qty 计算剩余和任务进度，造成拒收或提前收齐。统一为总收货量，残品只在计算上架量时扣除。 |
+| P0 | `internal/modules/stocktake/service/approve.go` / Approve | 差异先普通查询、调整后锁读，可能使用两个账面值。由 Inventory.Adjust 在锁内返回实际应用差异，单据差异与流水一致。 |
+| P0 | `internal/modules/inventory/repository/repository.go` / FIFO 与数量写入 | 裸表和原生 Exec 无法依赖 GORM 模型租户回调。FIFO 显式过滤租户及软删，数量更新改为模型 Updates 保留条件防护。 |
+| P0 | `internal/modules/inbound/service/import_worker.go` | 上传与补偿启动独立 goroutine，旧执行可覆盖重跑状态。改为受入口管理的单消费者，数据库队列恢复，run_token 校验执行权。 |
+| P0 | `internal/app/router.go` / NewRouter | Gin 注册路由后才 Use(DemoSession)，之前注册的业务接口没有会话校验。先挂载中间件再注册业务路由。 |
+| P0 | `internal/pkg/middleware/middleware.go` / OperLog | Background 丢失请求租户；原始 query 未脱敏。保留请求 context、脱敏 query、超限立即拒绝。 |
+| P0 | `internal/pkg/tenant/gorm.go` / Create 回调 | 正租户上下文中显式指定其他 tenant_id 仍可创建。现在返回 ErrMismatch。 |
+| P0 | `internal/pkg/jwt/jwt.go`、`system/service/auth.go` | 补全 issuer、必要过期字段与有效声明校验，数据库复核租户。 |
+| P0 | `internal/modules/system/service/permission.go` / cachedPerms | 权限过期后数据库故障仍回退旧权限。改为查询失败拒绝授权。 |
+| P0 | `internal/modules/demo/service/session.go` | GET 后 EXPIRE/DEL 会在过期换主窗口操作其他访客的会话。改为 Lua 比较 token 后原子续期/删除/读取 TTL。 |
+| P0 | `internal/modules/demo/service/service.go` / demoTenantID | 只检查正租户 ID，拥有演示权限的普通租户也可能进入清空数据的路径。会话领取与重置现在只接受配置的演示租户。 |
+| P0 | `internal/modules/system/repository/repository.go` / replaceRoles | 分配角色未核对实际租户。写入前锁定并核对角色，关联使用用户实际租户。 |
+| P0 | `internal/pkg/snowflake/snowflake.go` / Next | 系统时钟回拨时序列可能重置并重用 ID。改为单个具体生成器和互斥锁，沿用逻辑时间。 |
+| P0 | `internal/pkg/middleware/api_key.go`、`outbound/service/integration.go` | 外部 API Key 入口原本没有租户绑定。现在由服务端配置固定租户，`tenant_id=0` 也使用精确隔离上下文。 |
+| P1 | `internal/modules/system/repository/repository.go` / UpdateUser、DeleteRole | 状态单独更新会清空昵称；删除角色先查后删，期间可能被分配。可选昵称使用指针保留字段存在性；检查引用与删除同事务。 |
+| P1 | `internal/pkg/orderno/orderno.go` | 单号本地计数跨日重置和跨实例降级有冲突风险。降级改为已有依赖提供的 UUID，Redis 操作设置超时，任务号复用主键。 |
+| P1 | `internal/modules/task/service/service.go` / Create、progress | 非法任务被静默跳过，进度相加可能整数溢出。拒绝无效类型、空任务和非正数量，改为剩余量比较。 |
+| P1 | `internal/modules/system/service/auth.go` / 登录 | 用户名只在租户内唯一，但登录 First 任意匹配。增加可选租户编号；省略时检测重名并拒绝。 |
+| P1 | `internal/modules/system/service/login_limiter.go` | 限流检查与失败计数分离，并发请求可同时通过。锁内预占次数，最多 10000 个记录。 |
+| P1 | `web/src/views/login/index.vue` / startDemo | 领取会话失败时已保存 JWT 却没有清理。失败时清空认证信息。 |
+| P1 | `internal/modules/outbound/service/order.go` | 并发相同业务单号插入时，唯一键冲突可能被当成订单号冲突反复重试。插入冲突后先按业务单号回查。 |
+| P1 | `internal/modules/inventory/service/stock.go` / Allocate | 分配改变可用量却没有 ALLOCATE 流水。补充同事务流水。 |
+| P1 | `internal/modules/inventory/repository/repository.go` / SummaryBySKU | total 统计库存批次行而不是汇总后的 SKU。改为 distinct sku_id 计数。 |
+| P1 | `cmd/wms`、`system/service/audit.go` | 构造阶段启动消费者、退出路径资源管理不完整。分离 run、HTTP 服务关闭和 dotenv 读取。 |
+| P1 | `internal/modules/inbound/service/import_parse.go` | 坏文件、空文件可能显示完成。严格整数校验，明确失败状态，限制解压大小。 |
+| P1 | basic/inbound/outbound/stocktake/system 的查询入口 | 数据库错误和 context 取消被当作业务不存在。仅 errors.Is(ErrRecordNotFound) 转业务错误。 |
+| P1 | `internal/modules/basic/service/sku.go` | 条码租户内唯一却共用缓存 key。使用租户 key、校验缓存内容，并在更新时使旧 key 失效。 |
+| P2 | `internal/pkg/tx/tx.go` | 用错误文本识别 MySQL 类型不可靠。使用 errors.As 读取错误码。 |
+| P2 | `docs/architecture.md`、`docs/database.md` | 原文包含不实保证。改为描述实际代码与限制。 |
+| P2 | `internal/testutil/mysql.go` | 全量测试中无上限连接池导致 MySQL 1040 错误。限制测试连接池。 |
+
+### 后续已完成的修复与不能重复登记的事项
+
+- 基础资料删除行锁、库存首次创建引用锁、零库存历史引用保护已做；订单创建未共用锁的残余问题是 F2。
+- 任务取消递增 version、盘点状态转换、租户索引对齐、原生查询精确租户 0、种子管理员与保留租户号段保护已做。
+- 出库 FIFO 翻页不再受重试次数限制；只锁候选前缀；拣货改任务行互斥；任务重复锁读已去掉。取消/拣货竞态、数量上限条件、RowsAffected 检查、任务 DetailID 及历史回填、聚合关系校验已做。
+- PDA 强制扫码与 Idempotency-Key、扫码/入口指纹、结果快照校验、领取幂等/租约字段、7 天清理与时间索引已做。
+- 前端一次真实操作一个 key、先落盘后发送、任务/身份隔离和恢复功能已实现；终态入口、嵌套 Ref、监听器等残余分别见 F6/F8/F10，不写成全部未实现。
+- 收货、上架、盘点审核请求级幂等和外部订单同号内容比较已实现。提交 6537c3f 已修复三条幂等路径过早固定 RR 快照和事务内借第二连接的问题；保留 F1 的另两条历史路径。
+- 成功上架后禁用库位，同 key 回放已修；新上架与禁用并发是 F17，不能混淆。外部请求大小写统一规范编码已修；之后编辑主数据引起的回放漂移是 F21。
+- 导入 run_token、恢复 PENDING、旧执行不得覆盖新执行、失败与孤儿文件清理已做；成功残留文件恢复是 F20。
+- HTTP 参数失败提前返回、前端 data:null 类型、批量库位响应、任务路径 ID、显式响应 DTO 隐藏 version 已做。
+- 无引用 concurrent 包和无读接口字段已删除；bootstrap/basic/system 按职责拆分、GoDoc、gofmt/工具链及验证入口已有落地。不存在“为了统一架构必须把所有 Repository 事务搬走”的修复任务。
+- 跨 key 内容去重不是默认必需层；每个包没有同名测试文件不代表缺测试；启动 Redis 故障自动绕过 Demo 会话的猜测已由调用链排除。
+
+## 五、验证与后续处理
+
+2026-10-13、上述基线：独立本地 MySQL 8.0.46（REPEATABLE READ）与独立 Memurai，`WMS_TEST_REQUIRED=1 go test ./... -count=1 -timeout=180s` 通过；`go vet ./...`、`go build -mod=readonly ./...`、`go mod verify`、跟踪 Go 文件 gofmt 检查、`git diff --check` 通过。独立测试服务已关闭，没有连接生产数据库。
+
+前端 lint、148 个单测和 build 曾在首轮同代码哈希下通过，后续有真实 composable/SFC/Router 受控复现；不是完整浏览器 E2E。本轮四个外部正确行为断言失败，分别确认 F20/F21/F22 与 F1 领取路径；与现有正常测试通过不矛盾。其他 F 条目的证据强度见各项。
+
+本轮未运行 race（当前 CGO=0 且 PATH 无 gcc）、E2E、k6、实时漏洞扫描或生产部署；历史通过不代表本轮复验。本文整理提交是纯文档变更，不重跑业务测试冒充新验证。
+
+处理顺序：先 F1/F2/F3/F4/F5/F11/F17/F18，再处理恢复与认证及查询问题；工程门禁和部署问题单独成组。一次只改一个任务组，保留现有锁/租户/事务不变量，补对应回归后再更新状态。前端、SQL、脚本和配置剩余审查继续按覆盖账本推进。
+
+文档后续维护：保留编号，追加修复提交、验证日期/命令/结果及剩余边界；已修复条目移入历史，不删除原根因，也不把“建议方案”标成“已完成”。
