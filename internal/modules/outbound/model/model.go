@@ -50,9 +50,9 @@ type ShipmentOrder struct {
 	WarehouseID  int64       `json:"warehouse_id,string" gorm:"not null"`
 	Status       OrderStatus `json:"status" gorm:"size:16;index;not null;default:'DRAFT'"`
 	Remark       string      `json:"remark" gorm:"size:255"`
-	ExpectedQty  int         `json:"expected_qty" gorm:"not null;default:0"`
-	AllocatedQty int         `json:"allocated_qty" gorm:"not null;default:0"`
-	PickedQty    int         `json:"picked_qty" gorm:"not null;default:0"`
+	ExpectedQty  int         `json:"expected_qty" gorm:"type:int;size:32;not null;default:0"`
+	AllocatedQty int         `json:"allocated_qty" gorm:"type:int;size:32;not null;default:0"`
+	PickedQty    int         `json:"picked_qty" gorm:"type:int;size:32;not null;default:0"`
 	CreatedBy    string      `json:"created_by" gorm:"size:64"`
 }
 
@@ -66,9 +66,9 @@ type ShipmentOrderDetail struct {
 	SKUID        int64  `json:"sku_id,string" gorm:"column:sku_id;not null"`
 	SKUCode      string `json:"sku_code" gorm:"size:64"`
 	SKUName      string `json:"sku_name" gorm:"size:128"`
-	ExpectedQty  int    `json:"expected_qty" gorm:"not null"`
-	AllocatedQty int    `json:"allocated_qty" gorm:"not null;default:0"`
-	PickedQty    int    `json:"picked_qty" gorm:"not null;default:0"`
+	ExpectedQty  int    `json:"expected_qty" gorm:"type:int;size:32;not null"`
+	AllocatedQty int    `json:"allocated_qty" gorm:"type:int;size:32;not null;default:0"`
+	PickedQty    int    `json:"picked_qty" gorm:"type:int;size:32;not null;default:0"`
 }
 
 func (ShipmentOrderDetail) TableName() string { return "wms_shipment_order_detail" }
@@ -95,8 +95,8 @@ type Allocation struct {
 	LocationID   int64            `json:"location_id,string" gorm:"not null"`
 	LocationCode string           `json:"location_code" gorm:"size:64"`
 	BatchNo      string           `json:"batch_no" gorm:"size:64"`
-	AllocatedQty int              `json:"allocated_qty" gorm:"not null"`
-	PickedQty    int              `json:"picked_qty" gorm:"not null;default:0"`
+	AllocatedQty int              `json:"allocated_qty" gorm:"type:int;size:32;not null"`
+	PickedQty    int              `json:"picked_qty" gorm:"type:int;size:32;not null;default:0"`
 	Status       AllocationStatus `json:"status" gorm:"size:16;index;not null;default:'ALLOCATED'"`
 }
 

@@ -23,6 +23,7 @@ func (s *Service) HasPerm(ctx context.Context, userID int64, perm string) bool {
 func (s *Service) cachedPerms(ctx context.Context, userID int64) []string {
 	s.permMu.Lock()
 	item, ok := s.permCache[userID]
+	generation := s.permGeneration
 	s.permMu.Unlock()
 	if ok && time.Now().Before(item.expire) {
 		return item.perms
@@ -34,8 +35,12 @@ func (s *Service) cachedPerms(ctx context.Context, userID int64) []string {
 		return nil
 	}
 	s.permMu.Lock()
+	defer s.permMu.Unlock()
+	if generation != s.permGeneration {
+		// 查询期间发生撤权，丢弃旧结果；下一请求重新加载。
+		return nil
+	}
 	s.permCache[userID] = permCacheItem{perms: perms, expire: time.Now().Add(permCacheTTL)}
-	s.permMu.Unlock()
 	return perms
 }
 
@@ -79,6 +84,7 @@ func expandPerms(raw []string) []string {
 
 func (s *Service) invalidatePermCache() {
 	s.permMu.Lock()
+	s.permGeneration++
 	s.permCache = make(map[int64]permCacheItem)
 	s.permMu.Unlock()
 }

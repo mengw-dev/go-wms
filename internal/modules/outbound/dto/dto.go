@@ -10,7 +10,7 @@ import (
 
 type OrderDetailItem struct {
 	SKUID       int64 `json:"sku_id,string" binding:"required"`
-	ExpectedQty int   `json:"expected_qty" binding:"required,min=1"`
+	ExpectedQty int   `json:"expected_qty" binding:"required,min=1,max=2147483647"`
 }
 
 type CreateOrderReq struct {
@@ -31,7 +31,7 @@ type OrderQuery struct {
 }
 
 type PickReq struct {
-	Qty int `json:"qty" binding:"required,min=1"`
+	Qty int `json:"qty" binding:"required,min=1,max=2147483647"`
 	// 扫码核对字段：后台接口可选（填写时校验）；PDA 入口强制要求库位与必需批次。
 	LocationCode string `json:"location_code"`
 	BatchNo      string `json:"batch_no"`
@@ -57,7 +57,7 @@ type ClaimResult struct {
 
 type ExternalOrderDetailItem struct {
 	SKUCode     string `json:"sku_code" binding:"required,max=64"`
-	ExpectedQty int    `json:"expected_qty" binding:"required,min=1"`
+	ExpectedQty int    `json:"expected_qty" binding:"required,min=1,max=2147483647"`
 }
 
 type ExternalCreateOrderReq struct {

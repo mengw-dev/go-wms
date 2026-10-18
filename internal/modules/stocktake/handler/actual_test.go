@@ -59,7 +59,7 @@ func TestActualQuantityMustBeExplicit(t *testing.T) {
 		}
 		return envelope.Code
 	}
-	for _, body := range []string{`{"detail_id":"2"}`, `{"detail_id":"2","actual_qty":null}`, `{"detail_id":"2","actual_qty":-1}`} {
+	for _, body := range []string{`{"detail_id":"2"}`, `{"detail_id":"2","actual_qty":null}`, `{"detail_id":"2","actual_qty":-1}`, `{"detail_id":"2","actual_qty":2147483648}`} {
 		if code := post(body); code != errcode.ParamError.Code {
 			t.Fatalf("body=%s code=%d", body, code)
 		}

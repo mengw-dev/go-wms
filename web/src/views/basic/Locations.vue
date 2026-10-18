@@ -11,14 +11,14 @@ import {
 import type { EntityID,  LocationItem, WarehouseItem } from '@/api/types'
 import { COMMON_STATUS, LOCATION_STATUS, locationStatusTag, locationStatusText } from '@/constants'
 import { cleanParams, formatTime } from '@/utils'
+import { loadAllPages } from '@/utils/pagination'
 
 // ---------- 仓库下拉 ----------
 const warehouseOptions = ref<WarehouseItem[]>([])
 const warehouseMap = ref<Record<EntityID, string>>({})
 
 async function loadWarehouses() {
-  const data = await listWarehouses({ page: 1, page_size: 100, status: COMMON_STATUS.ENABLED })
-  warehouseOptions.value = data.list ?? []
+  warehouseOptions.value = await loadAllPages((page, page_size) => listWarehouses({ page, page_size, status: COMMON_STATUS.ENABLED }))
   const map: Record<EntityID, string> = {}
   for (const w of warehouseOptions.value) {
     map[w.id] = `${w.code}（${w.name}）`

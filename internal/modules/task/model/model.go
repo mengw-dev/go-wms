@@ -61,8 +61,8 @@ type Task struct {
 	LocationID   int64  `json:"location_id,string" gorm:"index"`
 	LocationCode string `json:"location_code" gorm:"size:64"`
 	BatchNo      string `json:"batch_no" gorm:"size:64"`
-	TargetQty    int    `json:"target_qty" gorm:"not null"`
-	DoneQty      int    `json:"done_qty" gorm:"not null;default:0"`
+	TargetQty    int    `json:"target_qty" gorm:"type:int;size:32;not null"`
+	DoneQty      int    `json:"done_qty" gorm:"type:int;size:32;not null;default:0"`
 	Operator     string `json:"operator" gorm:"size:64"`
 	// 作业租约（拣货 PDA）：当前持有人、领取凭证与租约到期时间；
 	// 无租约 / 租约已过期 / 本人持有时可领取或续领，凭证不符的提交被拒绝。

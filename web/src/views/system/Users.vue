@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { passwordByteRule } from '@/utils/password'
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import {
@@ -103,6 +104,7 @@ const createRules: FormRules = {
   password: [
     { required: true, message: '请输入初始密码', trigger: 'blur' },
     { min: 6, max: 32, message: '密码长度 6-32 位', trigger: 'blur' },
+    passwordByteRule,
   ],
   nickname: [{ max: 64, message: '昵称最长 64 字符', trigger: 'blur' }],
 }
@@ -163,6 +165,7 @@ const pwdRules: FormRules = {
   password: [
     { required: true, message: '请输入新密码', trigger: 'blur' },
     { min: 6, max: 32, message: '密码长度 6-32 位', trigger: 'blur' },
+    passwordByteRule,
   ],
 }
 

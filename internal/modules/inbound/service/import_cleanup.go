@@ -29,9 +29,16 @@ const (
 )
 
 // CleanupExpiredImportFiles 执行一轮导入文件清理：
-//  1. 删除超过保留期仍保留源文件的失败任务文件，并置空路径；
+//  1. 补偿删除成功任务残留文件；超过保留期的失败任务文件一并删除，并置空路径；
 //  2. 删除上传目录中没有对应任务记录、且已超过保护期的孤儿文件。
 func (s *Service) CleanupExpiredImportFiles(ctx context.Context) error {
+	completed, err := s.repo.ListCompletedImportFiles(ctx, s.tm.DB(), importCleanupBatch)
+	if err != nil {
+		return err
+	}
+	for _, task := range completed {
+		s.removeImportFile(ctx, task)
+	}
 	before := time.Now().Add(-s.failedFileRetention)
 	expired, err := s.repo.ListExpiredFailedImports(ctx, s.tm.DB(), before, importCleanupBatch)
 	if err != nil {

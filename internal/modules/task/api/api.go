@@ -26,8 +26,26 @@ type CreateTask struct {
 	TargetQty    int
 }
 
-// DetailTaskPageSize 单据详情页加载该单全部任务时使用的页大小（任务数不会很大，一次取足）。
+// DetailTaskPageSize 单据详情聚合时每批任务的大小，不是单据任务总数上限。
 const DetailTaskPageSize = 200
+
+// ListOrderTasks 按页读取单据全部任务，保留租户与取消语义，不静默截断首批。
+func ListOrderTasks(ctx context.Context, tasks TaskAPI, orderID int64) ([]*model.Task, error) {
+	var all []*model.Task
+	for page := 1; ; page++ {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		batch, total, err := tasks.List(ctx, orderID, "", "", "", page, DetailTaskPageSize)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, batch...)
+		if len(batch) == 0 || int64(len(all)) >= total {
+			return all, nil
+		}
+	}
+}
 
 // TaskAPI task 模块对外接口：inbound / outbound 通过它操作统一任务表。
 type TaskAPI interface {

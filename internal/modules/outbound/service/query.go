@@ -37,7 +37,7 @@ func (s *Service) Get(ctx context.Context, id int64) (*OrderDetail, error) {
 	if err != nil {
 		return nil, err
 	}
-	tasks, _, err := s.taskAPI.List(ctx, id, "", "", "", 1, taskapi.DetailTaskPageSize)
+	tasks, err := taskapi.ListOrderTasks(ctx, s.taskAPI, id)
 	if err != nil {
 		return nil, err
 	}

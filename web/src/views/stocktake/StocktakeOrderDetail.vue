@@ -107,8 +107,8 @@ onMounted(async () => {
 // ---------- 录入实盘 ----------
 async function saveActual(row: StocktakeDetailItem) {
   const value = actualInputs[row.id]
-  if (value === undefined || value < 0) {
-    ElMessage.warning('请输入不小于 0 的实盘数量')
+  if (value === undefined || !Number.isInteger(value) || value < 0 || value > 2147483647) {
+    ElMessage.warning('请输入 0 至 2147483647 的整数实盘数量')
     return
   }
   savingIds[row.id] = true
@@ -249,7 +249,7 @@ async function onCancel() {
                 <div class="actual-editor">
                   <el-input-number
                     v-model="actualInputs[row.id]"
-                    :min="0"
+                    :min="0" :max="2147483647" :precision="0"
                     controls-position="right"
                     style="width: 120px"
                   />

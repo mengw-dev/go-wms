@@ -15,6 +15,7 @@ import (
 	"gowms/internal/modules/task/repository"
 	"gowms/internal/pkg/errcode"
 	"gowms/internal/pkg/modelbase"
+	"gowms/internal/pkg/quantity"
 	"gowms/internal/pkg/snowflake"
 )
 
@@ -47,6 +48,9 @@ func (s *Service) Create(ctx context.Context, tx *gorm.DB, creates []*api.Create
 	for _, ct := range creates {
 		if ct == nil || ct.TargetQty <= 0 {
 			return errcode.ParamError
+		}
+		if ct.TargetQty > quantity.Max {
+			return errcode.QuantityLimitExceeded
 		}
 		prefix := taskNoPrefix(ct.TaskType)
 		if prefix == "" {

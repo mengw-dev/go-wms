@@ -118,6 +118,7 @@ export const useAuthStore = defineStore('auth', {
       user: auth?.user ?? null,
       demoSessionId: sessionStorage.getItem(DEMO_SESSION_KEY) || '',
       demoSessionExpiresIn: 0,
+      sessionVersion: 0,
     }
   },
   getters: {
@@ -130,6 +131,7 @@ export const useAuthStore = defineStore('auth', {
   },
   actions: {
     setAuth(result: LoginResult) {
+      this.sessionVersion++
       this.clearDemoSession()
       const isDemo = (result.perms ?? []).includes('wms:demo')
       const user: AuthUser = {
@@ -156,16 +158,19 @@ export const useAuthStore = defineStore('auth', {
       writeUser(user, isDemo)
     },
     setDemoSession(info: DemoSessionInfo) {
+      this.sessionVersion++
       this.demoSessionId = info.session_id
       this.demoSessionExpiresIn = info.expires_in
       sessionStorage.setItem(DEMO_SESSION_KEY, info.session_id)
     },
     clearDemoSession() {
+      this.sessionVersion++
       this.demoSessionId = ''
       this.demoSessionExpiresIn = 0
       sessionStorage.removeItem(DEMO_SESSION_KEY)
     },
     clear() {
+      this.sessionVersion++
       this.clearDemoSession()
       this.token = ''
       this.user = null

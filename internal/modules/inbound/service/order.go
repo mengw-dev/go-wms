@@ -13,6 +13,7 @@ import (
 	"gowms/internal/pkg/errcode"
 	"gowms/internal/pkg/log"
 	"gowms/internal/pkg/modelbase"
+	"gowms/internal/pkg/quantity"
 	"gowms/internal/pkg/quota"
 	"gowms/internal/pkg/snowflake"
 	"gowms/internal/pkg/tx"
@@ -292,9 +293,14 @@ func (s *Service) transit(ctx context.Context, id int64, from, to model.OrderSta
 }
 
 func (s *Service) buildDetails(ctx context.Context, tx *gorm.DB, items []dto.OrderDetailItem) ([]*model.ReceiptOrderDetail, int, error) {
+	expected := 0
 	seen := map[int64]struct{}{}
 	skuIDs := make([]int64, 0, len(items))
 	for _, it := range items {
+		if it.ExpectedQty <= 0 || it.ExpectedQty > quantity.Max-expected {
+			return nil, 0, errcode.QuantityLimitExceeded
+		}
+		expected += it.ExpectedQty
 		if _, dup := seen[it.SKUID]; dup {
 			return nil, 0, errcode.DetailDuplicateSKU
 		}
@@ -307,7 +313,6 @@ func (s *Service) buildDetails(ctx context.Context, tx *gorm.DB, items []dto.Ord
 		return nil, 0, err
 	}
 	details := make([]*model.ReceiptOrderDetail, 0, len(items))
-	expected := 0
 	for _, it := range items {
 		sku := skuMap[it.SKUID]
 		details = append(details, &model.ReceiptOrderDetail{
@@ -315,7 +320,6 @@ func (s *Service) buildDetails(ctx context.Context, tx *gorm.DB, items []dto.Ord
 			SKUID: sku.ID, SKUCode: sku.Code, SKUName: sku.Name,
 			ExpectedQty: it.ExpectedQty,
 		})
-		expected += it.ExpectedQty
 	}
 	return details, expected, nil
 }

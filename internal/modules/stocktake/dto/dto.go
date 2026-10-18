@@ -20,7 +20,7 @@ type OrderQuery struct {
 type RecordActualReq struct {
 	DetailID int64 `json:"detail_id,string" binding:"required"`
 	// 指针区分未提供与明确盘为零；不能把缺失数量当作清零指令。
-	ActualQty *int `json:"actual_qty" binding:"required,min=0"`
+	ActualQty *int `json:"actual_qty" binding:"required,min=0,max=2147483647"`
 }
 
 // OrderResp 是盘点单列表和创建接口的稳定响应契约。

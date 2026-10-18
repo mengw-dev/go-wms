@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { validOrderQuantities } from '@/utils/quantity'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useAutoRefresh } from '@/composables/autoRefresh'
 import { useRouter } from 'vue-router'
@@ -263,6 +264,7 @@ async function submitCreate() {
   if (!createForm.warehouse_id) { ElMessage.warning('请选择仓库'); return }
   if (!createForm.biz_order_no.trim()) { ElMessage.warning('请输入业务订单号'); return }
   const details = createForm.details.filter((d) => d.sku_id && d.expected_qty > 0)
+  if (!validOrderQuantities(details)) { ElMessage.warning('每行须为正整数，单据累计数量不能超过 2147483647'); return }
   if (details.length === 0) { ElMessage.warning('请至少填写一行有效的明细'); return }
   createDialog.loading = true
   try {
@@ -448,7 +450,7 @@ useAutoRefresh(() => load(true), 0, () => selectedRows.value.length === 0)
               <el-select v-model="item.sku_id" placeholder="选择货品" filterable style="width: 320px">
                 <el-option v-for="s in skuOptions" :key="s.id" :label="s.label" :value="s.id" />
               </el-select>
-              <el-input-number v-model="item.expected_qty" :min="1" controls-position="right" style="width: 140px" />
+              <el-input-number v-model="item.expected_qty" :min="1" :max="2147483647" :precision="0" controls-position="right" style="width: 140px" />
               <el-button type="danger" plain circle size="small" :aria-label="`删除第 ${index + 1} 行明细`" @click="removeDetail(index)">
                 <el-icon><Delete /></el-icon>
               </el-button>

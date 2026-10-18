@@ -16,7 +16,7 @@ import (
 // externalOrderContent 外部创建请求的内容快照。
 // 规范化规则：
 //   - 仓库：按编码解析为仓库 ID；
-//   - 明细：按「SKU 编码 + 数量」表示，同一编码只允许出现一次，明细顺序不影响相等判断；
+//   - 明细：按「SKU ID + 数量」表示，同一商品只允许出现一次，明细顺序不影响相等判断；
 //   - 备注：精确字符串比较（含空串，不裁剪空白）。
 //
 // 只包含创建期不可变字段；订单后续状态、已拣数量、更新时间一律不参与比较。
@@ -83,14 +83,14 @@ func (s *Service) CreateExternal(ctx context.Context, req *dto.ExternalCreateOrd
 }
 
 // resolveExternalContent 解析并规范化创建内容：仓库按编码解析为仓库 ID，
-// 明细拒绝重复 SKU 编码（与手工建单口径一致）并按编码升序排列。
+// 明细按解析后的 SKU ID 拒绝重复商品（与手工建单口径一致）并按编码升序排列。
 func (s *Service) resolveExternalContent(ctx context.Context, req *dto.ExternalCreateOrderReq) (*externalOrderContent, error) {
 	warehouse, err := s.basic.GetWarehouseByCode(ctx, req.WarehouseCode)
 	if err != nil {
 		return nil, err
 	}
 	content := &externalOrderContent{warehouseID: warehouse.ID, remark: req.Remark}
-	seen := make(map[string]struct{}, len(req.Details))
+	seen := make(map[int64]struct{}, len(req.Details))
 	for _, item := range req.Details {
 		sku, err := s.basic.GetSKUByCode(ctx, item.SKUCode)
 		if err != nil {
@@ -100,10 +100,10 @@ func (s *Service) resolveExternalContent(ctx context.Context, req *dto.ExternalC
 		// 若保留请求原始书写，同码不同大小写会在重试时被误判为内容不一致（409），
 		// 重复 SKU 检测也会漏掉大小写变体。仓库按 ID 比较，不受编码书写影响。
 		code := sku.Code
-		if _, dup := seen[code]; dup {
+		if _, dup := seen[sku.ID]; dup {
 			return nil, errcode.ShipDetailDuplicateSKU
 		}
-		seen[code] = struct{}{}
+		seen[sku.ID] = struct{}{}
 		content.details = append(content.details, externalOrderDetail{skuCode: code, skuID: sku.ID, qty: item.ExpectedQty})
 	}
 	sort.Slice(content.details, func(i, j int) bool { return content.details[i].skuCode < content.details[j].skuCode })
@@ -118,8 +118,8 @@ func (s *Service) replayExternalOrder(ctx context.Context, existing *model.Shipm
 	if existing.WarehouseID != content.warehouseID || existing.Remark != content.remark {
 		return nil, false, errcode.BizOrderContentConflict
 	}
-	// 明细的 sku_code/expected_qty 是创建时写入的不可变快照，创建后不被任何路径更新，
-	// 因此历史订单与新建订单都按同一份持久化内容核对。
+	// SKU 身份与数量使用创建期快照；主数据编码后续仅改大小写不能改变商品身份。
+	// 编码仍保留作历史展示，不把 Go 字符串折叠当作数据库排序规则。
 	rows, err := s.repo.ListDetails(s.tm.DB().WithContext(ctx), existing.ID)
 	if err != nil {
 		return nil, false, err
@@ -127,15 +127,18 @@ func (s *Service) replayExternalOrder(ctx context.Context, existing *model.Shipm
 	if len(rows) != len(content.details) {
 		return nil, false, errcode.BizOrderContentConflict
 	}
-	byCode := make(map[string]int, len(rows))
+	bySKU := make(map[int64]int, len(rows))
 	for _, row := range rows {
-		if row.SKUCode == "" {
+		if row.SKUCode == "" || row.SKUID <= 0 {
 			return nil, false, errcode.BizOrderContentUnknown
 		}
-		byCode[row.SKUCode] = row.ExpectedQty
+		if _, dup := bySKU[row.SKUID]; dup {
+			return nil, false, errcode.BizOrderContentUnknown
+		}
+		bySKU[row.SKUID] = row.ExpectedQty
 	}
 	for _, d := range content.details {
-		if byCode[d.skuCode] != d.qty {
+		if qty, ok := bySKU[d.skuID]; !ok || qty != d.qty {
 			return nil, false, errcode.BizOrderContentConflict
 		}
 	}

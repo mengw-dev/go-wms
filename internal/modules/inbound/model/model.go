@@ -56,9 +56,9 @@ type ReceiptOrder struct {
 	Status       OrderStatus `json:"status" gorm:"size:16;index;not null;default:'DRAFT'"`
 	Source       string      `json:"source" gorm:"size:16;default:'MANUAL'"` // MANUAL / IMPORT
 	Remark       string      `json:"remark" gorm:"size:255"`
-	ExpectedQty  int         `json:"expected_qty" gorm:"not null;default:0"`
-	ReceivedQty  int         `json:"received_qty" gorm:"not null;default:0"`
-	DefectiveQty int         `json:"defective_qty" gorm:"not null;default:0"`
+	ExpectedQty  int         `json:"expected_qty" gorm:"type:int;size:32;not null;default:0"`
+	ReceivedQty  int         `json:"received_qty" gorm:"type:int;size:32;not null;default:0"`
+	DefectiveQty int         `json:"defective_qty" gorm:"type:int;size:32;not null;default:0"`
 	// 导入幂等键（导入任务 ID + Excel 行号），补偿扫描重跑已处理行时据此去重；
 	// 手工单为 NULL，MySQL 唯一索引对 NULL 不去重，不影响手工建单。
 	ImportTaskID *string `json:"import_task_id" gorm:"size:64;uniqueIndex:uk_import_row,priority:2"`
@@ -76,9 +76,9 @@ type ReceiptOrderDetail struct {
 	SKUID        int64  `json:"sku_id,string" gorm:"column:sku_id;not null"`
 	SKUCode      string `json:"sku_code" gorm:"size:64"`
 	SKUName      string `json:"sku_name" gorm:"size:128"`
-	ExpectedQty  int    `json:"expected_qty" gorm:"not null"`
-	ReceivedQty  int    `json:"received_qty" gorm:"not null;default:0"`
-	DefectiveQty int    `json:"defective_qty" gorm:"not null;default:0"`
+	ExpectedQty  int    `json:"expected_qty" gorm:"type:int;size:32;not null"`
+	ReceivedQty  int    `json:"received_qty" gorm:"type:int;size:32;not null;default:0"`
+	DefectiveQty int    `json:"defective_qty" gorm:"type:int;size:32;not null;default:0"`
 	BatchNo      string `json:"batch_no" gorm:"size:64"` // 收货时录入
 }
 

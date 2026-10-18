@@ -77,14 +77,15 @@ func IsConflictCode(code int) bool {
 
 // 通用错误码
 var (
-	OK              = New(0, "success")
-	Internal        = New(500, "系统内部错误")
-	ParamError      = New(400, "参数错误")
-	NotFound        = NewHTTP(404, "资源不存在", 404)
-	PayloadTooLarge = New(41300, "请求内容过大")
-	Unauthorized    = New(40100, "未登录或登录已过期")
-	Forbidden       = New(40300, "无权限执行该操作")
-	Conflict        = New(40900, "数据并发冲突，请重试")
+	OK                    = New(0, "success")
+	Internal              = New(500, "系统内部错误")
+	ParamError            = New(400, "参数错误")
+	QuantityLimitExceeded = New(400, "数量或累计数量必须在 0 至 2147483647 范围内")
+	NotFound              = NewHTTP(404, "资源不存在", 404)
+	PayloadTooLarge       = New(41300, "请求内容过大")
+	Unauthorized          = New(40100, "未登录或登录已过期")
+	Forbidden             = New(40300, "无权限执行该操作")
+	Conflict              = New(40900, "数据并发冲突，请重试")
 )
 
 // 请求级幂等 41000+（跨模块共用：同一请求编号被复用于不同内容属于客户端误用，不可重试）
@@ -112,6 +113,7 @@ var (
 	IntegrationUnauthorized    = New(10014, "集成 API Key 无效")
 	IntegrationDisabled        = New(10015, "集成 API 未启用")
 	RolePermNotAllowed         = New(10016, "角色权限包含未注册或不允许的权限")
+	PasswordTooLong            = New(10017, "密码不能超过 72 字节，请减少多字节字符")
 )
 
 // 基础资料 20000+

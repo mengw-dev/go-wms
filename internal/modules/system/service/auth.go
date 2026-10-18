@@ -3,7 +3,7 @@ package service
 import (
 	"context"
 	"errors"
-	"strings"
+	"fmt"
 
 	"gorm.io/gorm"
 
@@ -20,8 +20,8 @@ func (s *Service) Login(ctx context.Context, req *dto.LoginReq, clientIP string)
 	if req == nil || req.Username == "" || req.Password == "" || (req.TenantID != nil && *req.TenantID < 0) {
 		return nil, errcode.ParamError
 	}
-	attemptKey := strings.ToLower(strings.TrimSpace(req.Username)) + "|" + clientIP
-	if !s.beginLoginAttempt(attemptKey) {
+	// 查询前限制同 IP 总请求数，未知账号和不断变换的拼写也不能无限查询。
+	if !s.reserveLoginAttempt("ip:"+clientIP, maxLoginIPAttempts) {
 		return nil, errcode.TooManyLoginAttempts
 	}
 	u, err := s.repo.GetLoginUser(ctx, req.Username, req.TenantID)
@@ -30,6 +30,11 @@ func (s *Service) Login(ctx context.Context, req *dto.LoginReq, clientIP string)
 			return nil, errcode.UserOrPwdWrong
 		}
 		return nil, err
+	}
+	// MySQL 排序规则可以将不同拼写解析为同一用户，不能用输入字符串作账号键。
+	attemptKey := fmt.Sprintf("account:%d:%d|%s", u.TenantID, u.ID, clientIP)
+	if !s.beginLoginAttempt(attemptKey) {
+		return nil, errcode.TooManyLoginAttempts
 	}
 	if !checkPassword(u.PasswordHash, req.Password) {
 		return nil, errcode.UserOrPwdWrong

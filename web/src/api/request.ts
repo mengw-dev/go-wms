@@ -46,6 +46,7 @@ export interface RequestOptions {
 declare module 'axios' {
   interface AxiosRequestConfig {
     silentError?: boolean
+    authSnapshot?: { version: number; token: string; demoSession: string }
   }
 }
 
@@ -61,9 +62,6 @@ function classifyError(status: number | undefined, code: number | undefined): Ap
   if (code === 70002 || code === 70003 || code === 70005 || code === 70006) return 'demo'
   return 'business'
 }
-
-// 演示会话失效时只跳转一次，避免并发请求刷屏。
-let demoSessionRedirecting = false
 
 const service = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || '/api/v1',
@@ -86,27 +84,30 @@ interface ApiClient {
 
 const client = service as unknown as ApiClient
 
+function belongsToCurrentSession(config?: AxiosRequestConfig): boolean {
+  const snapshot = config?.authSnapshot
+  const auth = useAuthStore()
+  return !!snapshot && snapshot.version === auth.sessionVersion &&
+    snapshot.token === auth.token && snapshot.demoSession === auth.demoSessionId
+}
+
 /**
  * 处理演示会话失效（70003）：清空登录态并跳转登录页，全程只执行一次，
  * 防止自动刷新等并发请求产生大量重复提示。
  */
 function handleDemoSessionExpired() {
-  if (demoSessionRedirecting) return
-  demoSessionRedirecting = true
+  // clear 会推进会话版本，其余旧请求由 belongsToCurrentSession 拦住。
   useAuthStore().clear()
   ElMessage.warning('演示会话已失效，请重新登录')
   if (router.currentRoute.value.path !== '/login') {
     void router.push('/login')
   }
-  // 留一个短暂窗口，便于用户重新登录后再次触发。
-  window.setTimeout(() => {
-    demoSessionRedirecting = false
-  }, 1500)
 }
 
 // 请求拦截器：注入 token
 service.interceptors.request.use((config) => {
   const auth = useAuthStore()
+  config.authSnapshot = { version: auth.sessionVersion, token: auth.token, demoSession: auth.demoSessionId }
   if (auth.token) {
     config.headers.Authorization = `Bearer ${auth.token}`
   }
@@ -139,16 +140,18 @@ service.interceptors.response.use(
     // 后台自动刷新与轮询等场景可在请求级声明静默，失败时只抛错不提示。
     const silent = error?.config?.silentError === true
     if (status === 401) {
-      useAuthStore().clear()
-      if (router.currentRoute.value.path !== '/login') {
-        ElMessage.error('登录已失效，请重新登录')
-        router.push('/login')
+      if (belongsToCurrentSession(error.config)) {
+        useAuthStore().clear()
+        if (router.currentRoute.value.path !== '/login') {
+          ElMessage.error('登录已失效，请重新登录')
+          void router.push('/login')
+        }
       }
     } else if (code === 70005 || code === 70006) {
       // 这两类演示错误由演示中心给出下一步操作对话框，避免同时出现重复提示。
     } else if (status === 423 && code === 70003) {
       // 演示会话失效：清空登录态并跳转登录页，防刷屏。
-      handleDemoSessionExpired()
+      if (belongsToCurrentSession(error.config)) handleDemoSessionExpired()
     } else if (status === 423 && code === 70002) {
       if (!silent) {
         ElMessage.warning(error?.response?.data?.msg || '演示环境正在被其他访客使用，对方空闲约 5 分钟后自动释放，请稍后重试')

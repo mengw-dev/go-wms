@@ -4,6 +4,34 @@
 
 以下命令均从仓库根目录执行，另有说明的除外。下方按日期保留历史验证记录，其中旧阶段的“未提交”“幂等尚待实施”只代表当时状态；当前幂等已完成，以 2026-10-18 验收记录为准。
 
+## 2026-10-18 十项 P2 专项
+
+基线 `main` / `e67b5ea`。修复问题总表 F7/F9/F12/F13/F14/F15/F16/F20/F21/F22，并将当前登记未关闭 P1/P2 均更新为 0；工程债务和未完成全仓审查不随之关闭。实现与回归逐项见 review-findings.md 的 P2 专项表。
+
+主要改动：system 的登录/权限/密码；前端 auth/request 和密码规则；task API 与入出库详情聚合、业务选项；五个业务模型的 27 个数量字段、DTO/累计校验、bootstrap 开发数量审计；AI 聚合查询、导入文件补偿、外部单 SKU 身份核对及库存不足口径。新增或扩展 `p2_auth_test.go`、`task_pagination_test.go`、`order_quantity_test.go`、`external_identity_test.go`、`low_stock_test.go`、`import_completed_cleanup_test.go`、`availability_test.go`、bootstrap/migrations 的 `quantity_test.go`、实盘 HTTP 校验，以及前端 request/options/quantity 回归和 P2 选项 E2E。
+
+本轮仅提取 P2 改动进入 index；原有外部单来源/查询/取消/删除保护、迁移 000012、Makefile 和 Windows/k6 脚本保留本地。四个共享出库文件按原工作区与 HEAD 对齐提取增量；不能把工作区整体通过当成拟发布提交通过。实际从 index 导出的独立源码快照（源码树 `5deab6160e8f8befdc51fcf8b7c158960017751b`，后续仅补文档）验证：
+
+```powershell
+$env:WMS_TEST_REQUIRED='1'
+$env:WMS_TEST_DSN='root@tcp(127.0.0.1:23306)/?parseTime=true&timeout=2s'
+$env:WMS_TEST_REDIS_ADDR='127.0.0.1:26379'
+go test ./... -count=1
+go vet ./...
+go build ./...
+golangci-lint run ./...
+# web/
+npm run lint
+npm run test
+npm run build
+$env:E2E_BASE_URL='http://127.0.0.1:25173'
+npx playwright test p2-options.spec.ts p1-order-safety.spec.ts idempotency-recovery.spec.ts inventory-lifecycle.spec.ts --reporter=list
+```
+
+Go 全量真实 MySQL/Redis 测试、vet/build 和全仓 lint（0 issues）通过；gofmt/goimports 与 diff 空白检查通过。前端 lint、21 文件/194 单测、vue-tsc/build 通过；真实后端 Playwright 12 场景通过，包含新增超过 100 条选项后选择仓库/SKU并真实建单、P1 四场景、幂等恢复三场景及库存闭环四场景。测试依赖为独立本地 MySQL 23306/Redis 26379；E2E 使用专用 `gowms_p2_e2e_20261018` schema、API 28080 与 Vite 25173，没有连接开发或生产业务库。
+
+数量选择保持正式 SQL 的 INT 契约，本轮不改旧迁移、不新增生产收窄迁移、不裁剪历史数据；开发 AutoMigrate 必须在停止其他写入后运行，审计超限值会阻止改表。限流/权限缓存仍是进程内能力，分页聚合不是严格一致读快照。未运行本地 race（CGO_ENABLED=0）、k6、生产部署或全部其它 E2E；远端 CI 状态另行核对，不能以本地通过代替远端结果。
+
 ## 2026-10-18 七项 P1 专项
 
 基线 `main` / `f0d7bca`，范围为问题总表 F1/F2/F4/F5/F11/F17/F18。对应实现与回归已补齐；提交说明与 GitHub 推送说明使用中文。当前工作区原有外部集成来源/查询/取消/删除保护、迁移 000012、Makefile 和 Windows/k6 脚本改动保留，不纳入本轮发布；共享的 `outbound/service/order.go` 只提取 P1 主数据锁改动进入暂存区。

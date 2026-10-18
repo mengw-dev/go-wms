@@ -14,6 +14,7 @@ import (
 	taskmodel "gowms/internal/modules/task/model"
 	"gowms/internal/pkg/errcode"
 	"gowms/internal/pkg/idempotency"
+	"gowms/internal/pkg/quantity"
 	"gowms/internal/pkg/snowflake"
 	"gowms/internal/pkg/tenant"
 	"gowms/internal/pkg/tx"
@@ -28,6 +29,9 @@ const receiveIdempotencyScope = "inbound.receive"
 // idempotencyKey 非空时启用请求级幂等：同 key + 同内容重试回放空成功（data:null 契约不变），
 // 同 key 不同内容返回 409；未携带 key 保持旧契约但无请求级去重保证。
 func (s *Service) Receive(ctx context.Context, orderID, detailID int64, req *dto.ReceiveReq, operator, idempotencyKey string) error {
+	if req.Qty > quantity.Max {
+		return errcode.QuantityLimitExceeded
+	}
 	// qty 是本次收货总量（包含残品），与前端及 received_qty 的含义一致。
 	if req.Qty <= 0 || req.DefectiveQty < 0 || req.DefectiveQty > req.Qty {
 		return errcode.ParamError

@@ -68,6 +68,10 @@ func (s *Service) removeImportFile(ctx context.Context, task *model.ImportTask) 
 	}
 	if err := os.Remove(task.FilePath); err != nil && !errors.Is(err, os.ErrNotExist) {
 		log.WithContext(ctx).Warn("remove completed import file failed", "task_id", task.TaskID, "err", err)
+		return
+	}
+	if err := s.repo.ClearImportFilePath(ctx, s.tm.DB(), task.TaskID, task.FilePath); err != nil {
+		log.WithContext(ctx).Warn("clear completed import path failed", "task_id", task.TaskID, "err", err)
 	}
 }
 

@@ -1,3 +1,4 @@
+import { validOrderQuantities } from '@/utils/quantity'
 /**
  * 入库单新建 / 编辑表单：表单模型、校验与提交。
  *
@@ -85,6 +86,7 @@ export function useInboundOrderForm(onSaved: () => void | Promise<void>) {
       return
     }
     const details = editForm.details.filter((d) => d.sku_id && d.expected_qty > 0)
+    if (!validOrderQuantities(details)) { ElMessage.warning('每行须为正整数，单据累计数量不能超过 2147483647'); return }
     if (details.length === 0) {
       ElMessage.warning('请至少填写一行有效的明细（选择货品且数量大于 0）')
       return

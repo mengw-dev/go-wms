@@ -14,6 +14,7 @@ import (
 	"gowms/internal/modules/inventory/repository"
 	"gowms/internal/pkg/errcode"
 	"gowms/internal/pkg/modelbase"
+	"gowms/internal/pkg/quantity"
 	"gowms/internal/pkg/snowflake"
 	pkgtx "gowms/internal/pkg/tx"
 )
@@ -25,6 +26,9 @@ import (
 // 释放把 allocated 退回 available；盘点调减不能吃掉已分配库存。
 
 func (s *Service) Increase(ctx context.Context, tx *gorm.DB, req *api.IncreaseReq) error {
+	if req.Quantity > quantity.Max {
+		return errcode.QuantityLimitExceeded
+	}
 	if req.Quantity <= 0 {
 		return errcode.ParamError
 	}
@@ -36,6 +40,9 @@ func (s *Service) Increase(ctx context.Context, tx *gorm.DB, req *api.IncreaseRe
 		// 行锁读取：并发上架在 FOR UPDATE 上串行化
 		inv, err := s.repo.GetByTupleForUpdate(tx, req.WarehouseID, req.LocationID, req.SKUID, req.BatchNo)
 		if err == nil {
+			if inv.StockQuantity > quantity.Max-req.Quantity || inv.AvailableQty > quantity.Max-req.Quantity {
+				return errcode.QuantityLimitExceeded
+			}
 			if err := s.repo.IncreaseQty(tx, inv.ID, req.Quantity, req.Quantity); err != nil {
 				return err
 			}
@@ -84,6 +91,9 @@ func (s *Service) Increase(ctx context.Context, tx *gorm.DB, req *api.IncreaseRe
 const allocateBatchSize = 20
 
 func (s *Service) Allocate(ctx context.Context, tx *gorm.DB, req *api.AllocateReq) (*api.AllocateResult, error) {
+	if req.Quantity > quantity.Max {
+		return nil, errcode.QuantityLimitExceeded
+	}
 	if req.Quantity <= 0 {
 		return nil, errcode.ParamError
 	}
@@ -180,10 +190,9 @@ func (s *Service) Allocate(ctx context.Context, tx *gorm.DB, req *api.AllocateRe
 		if staleDetected {
 			return nil, errcode.Conflict
 		}
-		totalAvailable, err := s.repo.SumAvailableQty(tx, req.WarehouseID, req.SKUID)
-		if err != nil {
-			return nil, err
-		}
+		// 本事务已经预占的量就是本次实际找到的可分配量；普通汇总读会看到
+		// 自己的扣减而少报。失败由外层整体回滚，不能把预占后的余额用于提示。
+		totalAvailable := req.Quantity - remaining
 		return nil, errcode.New(errcode.AvailableNotEnough.Code,
 			availableNotEnoughMsg(req.SKUID, req.Quantity, totalAvailable))
 	}
@@ -213,12 +222,12 @@ func (s *Service) Allocate(ctx context.Context, tx *gorm.DB, req *api.AllocateRe
 // minRequiredPrefix 返回按 FIFO 累加刚好覆盖需求所需的候选前缀长度（至少 1 个）。
 // 只用于估算"该锁哪几行"，锁到手后仍以实际可用量为准。
 func minRequiredPrefix(candidates []repository.FIFOCandidate, required int) int {
-	sum := 0
+	remaining := required
 	for i, c := range candidates {
-		sum += c.AvailableQty
-		if sum >= required {
+		if c.AvailableQty >= remaining {
 			return i + 1
 		}
+		remaining -= c.AvailableQty
 	}
 	return len(candidates)
 }
@@ -280,6 +289,9 @@ func (s *Service) Release(ctx context.Context, tx *gorm.DB, req *api.ReleaseReq)
 }
 
 func (s *Service) Adjust(ctx context.Context, tx *gorm.DB, req *api.AdjustReq) (int, error) {
+	if req.NewStock > quantity.Max {
+		return 0, errcode.QuantityLimitExceeded
+	}
 	if req.NewStock < 0 {
 		return 0, errcode.AdjustNotAllow
 	}

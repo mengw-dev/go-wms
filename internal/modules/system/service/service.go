@@ -14,8 +14,9 @@ type Service struct {
 	jwtSecret string
 	jwtExpire time.Duration
 
-	permMu    sync.Mutex
-	permCache map[int64]permCacheItem // 进程内权限缓存，TTL 60s；角色变更后自动过期
+	permMu         sync.Mutex
+	permCache      map[int64]permCacheItem // 进程内权限缓存，TTL 60s；角色变更后自动过期
+	permGeneration uint64                  // 失效前开始的查询不能回填旧权限
 
 	loginMu        sync.Mutex
 	loginAttempts  map[string]loginAttempt
@@ -37,6 +38,7 @@ type permCacheItem struct {
 const (
 	permCacheTTL       = 60 * time.Second
 	maxLoginAttempts   = 5
+	maxLoginIPAttempts = 100
 	loginFailureWindow = 15 * time.Minute
 	maxTrackedLogins   = 10000
 	loginSweepInterval = time.Minute

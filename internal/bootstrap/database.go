@@ -72,6 +72,9 @@ func InitRedis(cfg *config.Config) *redis.Client {
 
 // AutoMigrate 自动迁移表结构 + CHECK 约束。生产环境应使用 cmd/migrate。
 func AutoMigrate(db *gorm.DB) error {
+	if err := auditQuantityColumns(db); err != nil {
+		return err
+	}
 	if err := db.AutoMigrate(
 		&sysmodel.SysUser{}, &sysmodel.SysRole{}, &sysmodel.SysUserRole{}, &sysmodel.SysOperLog{},
 		&model.Warehouse{}, &model.Location{}, &model.SKU{},

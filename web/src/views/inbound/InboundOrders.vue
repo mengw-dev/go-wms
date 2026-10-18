@@ -258,7 +258,7 @@ useAutoRefresh(() => load(true), 0, () => selectedRows.value.length === 0)
               <el-select v-model="item.sku_id" placeholder="选择货品" filterable style="width: 320px">
                 <el-option v-for="s in skuOptions" :key="s.id" :label="s.label" :value="s.id" />
               </el-select>
-              <el-input-number v-model="item.expected_qty" :min="1" controls-position="right" style="width: 140px" />
+              <el-input-number v-model="item.expected_qty" :min="1" :max="2147483647" :precision="0" controls-position="right" style="width: 140px" />
               <el-button type="danger" plain circle size="small" :aria-label="`删除第 ${index + 1} 行明细`" @click="removeDetail(index)">
                 <el-icon><Delete /></el-icon>
               </el-button>

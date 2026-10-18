@@ -123,24 +123,6 @@ func (r *Repository) ListLocationCodes(tx *gorm.DB, ids []int64) (map[int64]stri
 	return codes, nil
 }
 
-// SumAvailableQty 汇总某仓库/SKU 的可用量，只在分配失败时用于生成准确的错误提示。
-// 与候选查询同用事务快照：调用方在未观察到快照过期时才走这里，此时快照与真实值一致。
-func (r *Repository) SumAvailableQty(tx *gorm.DB, warehouseID, skuID int64) (int, error) {
-	var row struct {
-		Total int `gorm:"column:total"`
-	}
-	q := tx.Table("wms_inventory i").
-		Select("COALESCE(SUM(i.available_quantity), 0) AS total").
-		Where("i.warehouse_id = ? AND i.sku_id = ? AND i.deleted_at IS NULL", warehouseID, skuID)
-	if tenantID, scoped := tenant.Scope(tx.Statement.Context); scoped {
-		q = q.Where("i.tenant_id = ?", tenantID)
-	}
-	if err := q.Scan(&row).Error; err != nil {
-		return 0, err
-	}
-	return row.Total, nil
-}
-
 // GetForUpdate 按主键锁定库存行。
 func (r *Repository) GetForUpdate(tx *gorm.DB, id int64) (*model.Inventory, error) {
 	var inv model.Inventory

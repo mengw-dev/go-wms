@@ -57,9 +57,9 @@ type StocktakeDetail struct {
 	LocationID   int64  `json:"location_id,string"`
 	LocationCode string `json:"location_code" gorm:"size:64"`
 	BatchNo      string `json:"batch_no" gorm:"size:64"`
-	BookQty      int    `json:"book_qty"`   // 快照账面库存
-	ActualQty    *int   `json:"actual_qty"` // 实盘数，nil 表示未盘
-	DiffQty      int    `json:"diff_qty"`   // actual - 当前库存，审核时重算
+	BookQty      int    `json:"book_qty" gorm:"type:int;size:32"`   // 快照账面库存
+	ActualQty    *int   `json:"actual_qty" gorm:"type:int;size:32"` // 实盘数，nil 表示未盘
+	DiffQty      int    `json:"diff_qty" gorm:"type:int;size:32"`   // actual - 当前库存，审核时重算
 	Adjusted     bool   `json:"adjusted"`
 }
 

@@ -3,8 +3,12 @@ package service
 import "time"
 
 // beginLoginAttempt 在慢查询和密码校验之前原子预占次数，避免并发请求同时通过检查。
-// 限制作用于当前进程的“用户名 + 客户端 IP”；登录成功后清空，失败或取消则保留计数。
+// 账号限制按解析后的租户/用户 ID + IP 计数；查询前另设 IP 总额度。
 func (s *Service) beginLoginAttempt(key string) bool {
+	return s.reserveLoginAttempt(key, maxLoginAttempts)
+}
+
+func (s *Service) reserveLoginAttempt(key string, limit int) bool {
 	s.loginMu.Lock()
 	defer s.loginMu.Unlock()
 	now := time.Now()
@@ -28,7 +32,7 @@ func (s *Service) beginLoginAttempt(key string) bool {
 		}
 		item = loginAttempt{ResetAt: now.Add(loginFailureWindow)}
 	}
-	if item.Attempts >= maxLoginAttempts {
+	if item.Attempts >= limit {
 		return false
 	}
 	item.Attempts++

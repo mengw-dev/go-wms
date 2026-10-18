@@ -17,9 +17,9 @@ type Inventory struct {
 	LocationID          int64     `json:"location_id,string" gorm:"not null;uniqueIndex:uk_inv,priority:3"`
 	SKUID               int64     `json:"sku_id,string" gorm:"column:sku_id;not null;uniqueIndex:uk_inv,priority:4"`
 	BatchNo             string    `json:"batch_no" gorm:"size:64;not null;default:'';uniqueIndex:uk_inv,priority:5"`
-	StockQuantity       int       `json:"stock_quantity" gorm:"not null;default:0"`
-	AvailableQty        int       `json:"available_quantity" gorm:"column:available_quantity;not null;default:0"`
-	AllocatedQty        int       `json:"allocated_quantity" gorm:"column:allocated_quantity;not null;default:0"`
+	StockQuantity       int       `json:"stock_quantity" gorm:"type:int;size:32;not null;default:0"`
+	AvailableQty        int       `json:"available_quantity" gorm:"type:int;size:32;column:available_quantity;not null;default:0"`
+	AllocatedQty        int       `json:"allocated_quantity" gorm:"type:int;size:32;column:allocated_quantity;not null;default:0"`
 	StockInTime         time.Time `json:"stock_in_time"`                       // FIFO 依据
 	LocationCode        string    `json:"location_code" gorm:"->;-:migration"` // 联查字段，不落库
 }
@@ -43,11 +43,11 @@ type InventoryTrans struct {
 	TenantID        int64     `json:"tenant_id,string" gorm:"not null;default:0;index:idx_trans_tenant"`
 	InventoryID     int64     `json:"inventory_id,string" gorm:"index"`
 	TransType       TransType `json:"trans_type" gorm:"size:16;index"`
-	QuantityChange  int       `json:"quantity_change"`
-	BeforeQuantity  int       `json:"before_quantity"` // 变更前 stock_quantity
-	AfterQuantity   int       `json:"after_quantity"`  // 变更后 stock_quantity
-	AvailableBefore int       `json:"available_before"`
-	AvailableAfter  int       `json:"available_after"`
+	QuantityChange  int       `json:"quantity_change" gorm:"type:int;size:32"`
+	BeforeQuantity  int       `json:"before_quantity" gorm:"type:int;size:32"` // 变更前 stock_quantity
+	AfterQuantity   int       `json:"after_quantity" gorm:"type:int;size:32"`  // 变更后 stock_quantity
+	AvailableBefore int       `json:"available_before" gorm:"type:int;size:32"`
+	AvailableAfter  int       `json:"available_after" gorm:"type:int;size:32"`
 	OrderNo         string    `json:"order_no" gorm:"size:64;index"` // 来源单据
 	TaskNo          string    `json:"task_no" gorm:"size:64"`
 	Operator        string    `json:"operator" gorm:"size:64"`

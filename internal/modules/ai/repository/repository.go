@@ -138,8 +138,9 @@ func (r *Repository) LowAvailableSKU(ctx context.Context, threshold, limit int) 
 		Select("s.code AS sku_code, s.name AS sku_name, s.spec, s.unit, "+
 			"SUM(i.stock_quantity) AS stock_qty, SUM(i.available_quantity) AS available_qty").
 		Joins("JOIN wms_sku s ON s.id = i.sku_id AND s.deleted_at IS NULL AND s.tenant_id = i.tenant_id").
-		Where("i.deleted_at IS NULL AND i.available_quantity <= ?", threshold))
+		Where("i.deleted_at IS NULL"))
 	err := q.Group("s.id, s.code, s.name, s.spec, s.unit").
+		Having("SUM(i.available_quantity) <= ?", threshold).
 		Order("available_qty ASC").
 		Limit(limit).
 		Scan(&list).Error

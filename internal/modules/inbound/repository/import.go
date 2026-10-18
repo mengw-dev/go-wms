@@ -112,7 +112,16 @@ func (r *Repository) ListExpiredFailedImports(ctx context.Context, db *gorm.DB, 
 func (r *Repository) ClearImportFilePath(ctx context.Context, db *gorm.DB, taskID, filePath string) error {
 	return db.WithContext(ctx).Model(&model.ImportTask{}).
 		Where("task_id = ? AND file_path = ?", taskID, filePath).
+		Where("status IN ?", []model.ImportTaskStatus{model.ImportCompleted, model.ImportFailed}).
 		Update("file_path", "").Error
+}
+
+// ListCompletedImportFiles 扫描成功后未完成文件清理的任务，供进程重启和删除失败后补偿。
+func (r *Repository) ListCompletedImportFiles(ctx context.Context, db *gorm.DB, limit int) ([]*model.ImportTask, error) {
+	var tasks []*model.ImportTask
+	err := db.WithContext(ctx).Where("status = ? AND file_path <> ''", model.ImportCompleted).
+		Order("updated_at, id").Limit(limit).Find(&tasks).Error
+	return tasks, err
 }
 
 // ListImportFilePaths 返回所有仍记录源文件路径的任务（孤儿文件清理用）。

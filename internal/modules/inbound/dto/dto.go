@@ -11,7 +11,7 @@ import (
 
 type OrderDetailItem struct {
 	SKUID       int64 `json:"sku_id,string" binding:"required"`
-	ExpectedQty int   `json:"expected_qty" binding:"required,min=1"`
+	ExpectedQty int   `json:"expected_qty" binding:"required,min=1,max=2147483647"`
 }
 
 type CreateOrderReq struct {
@@ -33,14 +33,14 @@ type OrderQuery struct {
 
 type ReceiveReq struct {
 	DetailID     int64  `json:"detail_id,string" binding:"required"`
-	Qty          int    `json:"qty" binding:"required,min=1"`  // 本次收货总量，包含残品
-	DefectiveQty int    `json:"defective_qty" binding:"min=0"` // 总量中的残品，不能大于 Qty
+	Qty          int    `json:"qty" binding:"required,min=1,max=2147483647"`  // 本次收货总量，包含残品
+	DefectiveQty int    `json:"defective_qty" binding:"min=0,max=2147483647"` // 总量中的残品，不能大于 Qty
 	BatchNo      string `json:"batch_no" binding:"max=64"`
 }
 
 type PutawayReq struct {
 	LocationID int64 `json:"location_id,string" binding:"required"`
-	Qty        int   `json:"qty" binding:"required,min=1"`
+	Qty        int   `json:"qty" binding:"required,min=1,max=2147483647"`
 }
 
 type ImportResp struct {
