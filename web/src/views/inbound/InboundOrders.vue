@@ -239,11 +239,11 @@ useAutoRefresh(() => load(true), 0, () => selectedRows.value.length === 0)
       :title="editDialog.editingId ? '编辑入库单' : '新建入库单'"
       width="720px"
       destroy-on-close
-      :close-on-click-modal="true"
+      :close-on-click-modal="!editDialog.loading"
       :close-on-press-escape="!editDialog.loading"
       :show-close="!editDialog.loading"
     >
-      <el-form label-width="90px">
+      <el-form v-loading="editDialog.fetching" :disabled="editDialog.fetching || editDialog.loading || !editDialog.ready" label-width="90px">
         <el-form-item label="仓库" required>
           <el-select v-model="editForm.warehouse_id" placeholder="选择仓库" style="width: 300px">
             <el-option v-for="w in warehouseOptions" :key="w.id" :label="w.label" :value="w.id" />
@@ -269,7 +269,7 @@ useAutoRefresh(() => load(true), 0, () => selectedRows.value.length === 0)
       </el-form>
       <template #footer>
         <el-button :disabled="editDialog.loading" @click="editDialog.visible = false">取消</el-button>
-        <el-button type="primary" :loading="editDialog.loading" @click="submitEdit">保存</el-button>
+        <el-button type="primary" :loading="editDialog.loading" :disabled="editDialog.fetching || !editDialog.ready" @click="submitEdit">保存</el-button>
       </template>
     </el-dialog>
 

@@ -101,6 +101,10 @@ func (s *Service) Putaway(ctx context.Context, taskID, locationID int64, qty int
 		if detail == nil || detail.BatchNo == "" {
 			return errcode.BatchNoRequired
 		}
+		// 以锁内状态为准；沿仓库→库位→SKU 的库存加锁顺序，复用当前事务。
+		if err := s.basic.ValidateLocationInWarehouseInTx(ctx, tx, o.WarehouseID, locationID); err != nil {
+			return err
+		}
 		// 库存生效：上架时才增加库存
 		if err := s.inv.Increase(ctx, tx, &invapi.IncreaseReq{
 			WarehouseID: o.WarehouseID, LocationID: locationID, SKUID: routing.SKUID,

@@ -36,6 +36,15 @@ func (r *Repository) GetWarehouseForUpdate(ctx context.Context, db *gorm.DB, id 
 	return &w, nil
 }
 
+// GetWarehouseForShare 为订单引用持共享锁，防止删除/禁用穿过校验与写入窗口。
+func (r *Repository) GetWarehouseForShare(ctx context.Context, tx *gorm.DB, id int64) (*model.Warehouse, error) {
+	var warehouse model.Warehouse
+	if err := tx.WithContext(ctx).Clauses(clause.Locking{Strength: "SHARE"}).First(&warehouse, id).Error; err != nil {
+		return nil, err
+	}
+	return &warehouse, nil
+}
+
 func (r *Repository) CreateWarehouse(ctx context.Context, db *gorm.DB, w *model.Warehouse) error {
 	return db.WithContext(ctx).Create(w).Error
 }

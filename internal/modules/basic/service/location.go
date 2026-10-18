@@ -18,10 +18,15 @@ import (
 // 库位业务。
 
 func (s *Service) BatchCreateLocations(ctx context.Context, req *dto.LocationBatchReq) (created int, err error) {
-	if req.RowTo < req.RowFrom || req.ColTo < req.ColFrom {
+	// 坐标统一为正 INT32；先校验端点再计算长度，避免差值本身溢出。
+	const maxCoordinate = 2147483647
+	if req.RowFrom < 1 || req.ColFrom < 1 || req.RowTo > maxCoordinate || req.ColTo > maxCoordinate ||
+		req.RowTo < req.RowFrom || req.ColTo < req.ColFrom {
 		return 0, errcode.ParamError
 	}
-	if (req.RowTo-req.RowFrom+1)*(req.ColTo-req.ColFrom+1) > 1000 {
+	rowCount, colCount := req.RowTo-req.RowFrom+1, req.ColTo-req.ColFrom+1
+	// 除法先检查总量，不能先乘法溢出再与上限比较。
+	if rowCount > 1000 || colCount > 1000 || rowCount > 1000/colCount {
 		return 0, errcode.LocationBatchLimit
 	}
 	err = s.tm.TxRetry(ctx, pkgtx.MaxTxRetry, func(txDB *gorm.DB) error {
@@ -36,9 +41,15 @@ func (s *Service) BatchCreateLocations(ctx context.Context, req *dto.LocationBat
 		if err != nil {
 			return err
 		}
-		list := make([]*model.Location, 0, 64)
-		for row := req.RowFrom; row <= req.RowTo; row++ {
-			for col := req.ColFrom; col <= req.ColTo; col++ {
+		list := make([]*model.Location, 0, rowCount*colCount)
+		// 按数量迭代，终点为最大合法整数时也不递增溢出。
+		for rowOffset := 0; rowOffset < rowCount; rowOffset++ {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			row := req.RowFrom + rowOffset
+			for colOffset := 0; colOffset < colCount; colOffset++ {
+				col := req.ColFrom + colOffset
 				code := fmt.Sprintf("%s-%02d-%02d", req.Zone, row, col)
 				if _, dup := exists[code]; dup {
 					continue

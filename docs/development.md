@@ -4,6 +4,38 @@
 
 以下命令均从仓库根目录执行，另有说明的除外。下方按日期保留历史验证记录，其中旧阶段的“未提交”“幂等尚待实施”只代表当时状态；当前幂等已完成，以 2026-10-18 验收记录为准。
 
+## 2026-10-18 七项 P1 专项
+
+基线 `main` / `f0d7bca`，范围为问题总表 F1/F2/F4/F5/F11/F17/F18。对应实现与回归已补齐；提交说明与 GitHub 推送说明使用中文。当前工作区原有外部集成来源/查询/取消/删除保护、迁移 000012、Makefile 和 Windows/k6 脚本改动保留，不纳入本轮发布；共享的 `outbound/service/order.go` 只提取 P1 主数据锁改动进入暂存区。
+
+### 实现与回归范围
+
+| 问题 | 实现 | 回归 |
+| --- | --- | --- |
+| F11 | RecordActualReq.ActualQty 为 required/min=0 指针，HTTP 绑定通过后才解引用 | `stocktake/handler/actual_test.go`：真实 HTTP + MySQL，缺失/null/负数不改明细且审核拒绝，显式 0/正数成功 |
+| F18 | 正 INT32 坐标，先除法检查总量≤1000，再按数量迭代，前端同步端点上限 | `basic/dto/dto_test.go`、`basic/service/location_limits_test.go`：1000/1001、零/负/反向、极大维度、MaxInt 和最大合法终点，幂等重放 |
+| F4 | 清空旧表单、加载代次与 ready/fetching 状态、禁止加载未完成保存、保存中防双击 | `useInboundOrderForm.spec.ts` 四个异步场景与 `p1-order-safety.spec.ts` 的真实后端编辑场景 |
+| F5 | Layout 按 route.path 重建 router-view，单据 ID 变化重新初始化 | `p1-order-safety.spec.ts` 三个真实 SPA Router 跳转场景，入库/出库提交、盘点录入/审核均只作用 B，A 不变 |
+| F1/F2 | 调用方事务内校验仓库、共享锁批量读取 SKU 快照；仓库→SKU 升序共享锁与删除排他锁互斥，允许并发建单 | `internal/app/order_references_test.go`：单连接池编辑/失败回滚、入出库创建与 SKU 删除两种交错、租户隔离；原外部同号并发回放继续回归 |
+| F17 | 新上架写库存前按仓库→库位锁顺序核对当前库位可用性/归属；已成功 key 继续提前回放 | `inbound/service/putaway_location_race_test.go`：禁用先提交拒绝无副作用、上架先持锁则禁用最后生效、禁用后原 key 回放成功 |
+
+仅连接本地专用 MySQL 127.0.0.1:23306 与 Memurai 127.0.0.1:26379，后端集成测试由 OpenIsolatedMySQL 创建回收独立 schema。浏览器用独立测试库；没有连接开发库或生产库。发布前已从暂存区导出源码快照，排除其他本地功能后执行全量校验；结果见本节下表。
+
+### 发布前校验结果
+
+以下检查针对从 Git 暂存区导出的独立源码快照 `tmpgen/p1-release-20261018/source`，不包含外部单保护等其他本地改动。
+
+| 命令/场景 | 结果 |
+| --- | --- |
+| Go 新增/修改文件 gofmt/goimports；`git diff --cached --check` | 通过 |
+| `WMS_TEST_REQUIRED=1 WMS_TEST_DSN=... WMS_TEST_REDIS_ADDR=127.0.0.1:26379 go test ./... -count=1` | 全量通过，真实 MySQL/Redis；含本轮新增 HTTP、单连接池、主数据并发和回滚回归 |
+| `go vet ./...`、`go build ./...` | 通过 |
+| `golangci-lint run ./...` | 通过，0 issues |
+| web：`npm run lint`、`npm run test -- --reporter=dot`、`npm run build` | 通过；18 文件、177 单测；build 含 vue-tsc |
+| web：`E2E_BASE_URL=http://127.0.0.1:25173 npm run test:e2e -- p1-order-safety.spec.ts idempotency-recovery.spec.ts inventory-lifecycle.spec.ts --reporter=line` | 11 passed；4 个 P1 编辑/真实 SPA 路由回归、3 个幂等恢复、4 个原业务闭环 |
+
+E2E 使用独立 `gowms_p1_release_e2e_20261018` schema，前后端均由这份提交快照启动（API 28080、Vite 25173）。未运行本地 race（CGO_ENABLED=0）、k6 或生产部署；数据库数量字段类型、其他 P2 与工程债仍按原范围保留。
+
 ## 2026-10-18 幂等专项：已完成并通过本地验收
 
 基线：`main` / `ca24141`；`git ls-remote origin refs/heads/main` 已核对 GitHub main 同一提交。依据 `docs/review-findings.md` 的 F3/F6/F10，含相关 F8 与 F1 领取分支，本次提交包含本轮幂等实现、测试及文档。既有外部单保护、迁移 000012、Makefile/Windows 脚本/k6 修改完整保留，不属于本轮新增实现。

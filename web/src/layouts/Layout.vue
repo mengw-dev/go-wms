@@ -153,7 +153,8 @@ async function submitPassword() {
       </el-header>
       <el-main class="main">
         <div class="page-stage">
-          <router-view />
+          <!-- 路径包含单据 ID；对象变化时重建页面，避免复用旧 setup 中的操作目标。 -->
+          <router-view :key="route.path" />
         </div>
       </el-main>
     </el-container>

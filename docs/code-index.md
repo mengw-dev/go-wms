@@ -29,11 +29,11 @@
 
 | 模块 | 目录 | 职责 | 对应测试 |
 | --- | --- | --- | --- |
-| 入库 inbound | `internal/modules/inbound` | 入库单生命周期、收货、上架、Excel 异步导入 | `service/{order,receiving,query,import,import_cleanup,response}_test.go`、`dto/dto_test.go`、`handler/handler_test.go`、`model/model_test.go` |
+| 入库 inbound | `internal/modules/inbound` | 入库单生命周期、收货、上架、Excel 异步导入 | `service/{order,receiving,query,import,import_cleanup,response,putaway_location_race}_test.go`、`dto/dto_test.go`、`handler/handler_test.go`、`model/model_test.go` |
 | 出库 outbound | `internal/modules/outbound` | 出库单生命周期、审核 + FIFO 分配、拣货、发货、集成下单 | `service/{order,response}_test.go`、`model/model_test.go`、`handler/handler_test.go` |
 | 任务 task | `internal/modules/task` | 收货/上架/拣货任务的状态与进度 | `service/{service,response}_test.go` |
 | 库存 inventory | `internal/modules/inventory` | 库存汇总/明细、并发分配与扣减、调整、流水 | `service/{service,concurrency,response}_test.go`、`repository/repository_test.go` |
-| 盘点 stocktake | `internal/modules/stocktake` | 盘点单、账面快照、实盘录入、差异、审核调整 | `service/{service,response}_test.go`、`model/model_test.go` |
+| 盘点 stocktake | `internal/modules/stocktake` | 盘点单、账面快照、实盘录入、差异、审核调整 | `service/{service,response}_test.go`、`handler/actual_test.go`、`model/model_test.go` |
 
 核心基础设施（同样禁止随意重构）：
 
@@ -58,14 +58,14 @@
 | 模块 | 目录 | 职责 | 对应测试 |
 | --- | --- | --- | --- |
 | 系统 system | `internal/modules/system` | 鉴权（登录/JWT）、权限、用户、角色、操作日志 | `service/{auth,permission,user,role,login_limiter,builtin,audit,response}_test.go`、`dto/dto_test.go`、`model/model_test.go` |
-| 基础数据 basic | `internal/modules/basic` | 仓库、库位、SKU | `service/{sku,delete,rows_affected,conflict,response}_test.go`、`dto/dto_test.go`、`handler/handler_test.go`、`repository/repository_test.go`、`model/model_json_test.go` |
+| 基础数据 basic | `internal/modules/basic` | 仓库、库位、SKU | `service/{sku,delete,rows_affected,conflict,response,location_limits}_test.go`、`dto/dto_test.go`、`handler/handler_test.go`、`repository/repository_test.go`、`model/model_json_test.go` |
 | AI ai | `internal/modules/ai` | 库存问答（智谱 BigModel） | `service/service_test.go` |
 
 应用装配与启动：
 
 | 路径 | 职责 | 对应测试 |
 | --- | --- | --- |
-| `internal/app` | 依赖组装与路由注册 | `router_test.go`、`integration_test.go`、`pick_race_test.go` |
+| `internal/app` | 依赖组装与路由注册 | `router_test.go`、`integration_test.go`、`pick_race_test.go`、`order_references_test.go` |
 | `internal/bootstrap` | DB/Redis 初始化、迁移、种子（管理员/演示/体验账号）、演示数据重置 | `seed_test.go`、`personal_test.go`、`reset_test.go` |
 | `cmd/wms` | 服务入口、`.env` 加载、优雅关停、后台 worker 启动 | `dotenv_test.go`、`server_test.go` |
 | `cmd/migrate` | 迁移工具与管理员/应用账户初始化 | — |

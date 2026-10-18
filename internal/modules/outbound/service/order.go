@@ -36,16 +36,9 @@ func (s *Service) Create(ctx context.Context, req *dto.CreateOrderReq, operator 
 	if err := quota.Guard(ctx, s.tm.DB(), &model.ShipmentOrder{}, s.limits.MaxShipmentOrders, 1, "出库单"); err != nil {
 		return nil, err
 	}
-	if err := s.basic.ValidateWarehouse(ctx, req.WarehouseID); err != nil {
-		return nil, err
-	}
 	if _, err := s.repo.GetOrderByBizNo(ctx, s.tm.DB(), req.BizOrderNo); err == nil {
 		return nil, errcode.BizOrderDuplicate
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, err
-	}
-	details, expected, err := s.buildDetails(ctx, req.Details)
-	if err != nil {
 		return nil, err
 	}
 	var order *model.ShipmentOrder
@@ -53,9 +46,17 @@ func (s *Service) Create(ctx context.Context, req *dto.CreateOrderReq, operator 
 		order = &model.ShipmentOrder{
 			Base: modelbase.Base{ID: snowflake.Next()}, OrderNo: s.no.Next(ctx, model.OrderNoPrefix),
 			BizOrderNo: req.BizOrderNo, WarehouseID: req.WarehouseID,
-			Status: model.OrderDraft, Remark: req.Remark, ExpectedQty: expected, CreatedBy: operator,
+			Status: model.OrderDraft, Remark: req.Remark, CreatedBy: operator,
 		}
-		err = s.tm.Tx(ctx, func(tx *gorm.DB) error {
+		err := s.tm.Tx(ctx, func(tx *gorm.DB) error {
+			if err := s.basic.ValidateWarehouseInTx(ctx, tx, req.WarehouseID); err != nil {
+				return err
+			}
+			details, expected, err := s.buildDetails(ctx, tx, req.Details)
+			if err != nil {
+				return err
+			}
+			order.ExpectedQty = expected
 			return s.repo.CreateOrder(tx, order, details)
 		})
 		if err == nil {
@@ -308,7 +309,7 @@ func (s *Service) BatchCancel(ctx context.Context, ids []int64, operator string)
 	})
 }
 
-func (s *Service) buildDetails(ctx context.Context, items []dto.OrderDetailItem) ([]*model.ShipmentOrderDetail, int, error) {
+func (s *Service) buildDetails(ctx context.Context, tx *gorm.DB, items []dto.OrderDetailItem) ([]*model.ShipmentOrderDetail, int, error) {
 	seen := map[int64]struct{}{}
 	skuIDs := make([]int64, 0, len(items))
 	for _, it := range items {
@@ -319,7 +320,7 @@ func (s *Service) buildDetails(ctx context.Context, items []dto.OrderDetailItem)
 		skuIDs = append(skuIDs, it.SKUID)
 	}
 	// 批量查询 SKU，避免循环内逐条查询产生 N+1。
-	skuMap, err := s.basic.GetSKUsByIDs(ctx, skuIDs)
+	skuMap, err := s.basic.GetSKUsByIDsForShare(ctx, tx, skuIDs)
 	if err != nil {
 		return nil, 0, err
 	}

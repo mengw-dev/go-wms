@@ -293,14 +293,14 @@ async function onDelete(row: LocationItem) {
           <el-input v-model="batchForm.zone" placeholder="如 A01" />
         </el-form-item>
         <el-form-item label="排范围">
-          <el-input-number v-model="batchForm.row_from" :min="1" controls-position="right" style="width: 120px" />
+          <el-input-number v-model="batchForm.row_from" :min="1" :max="2147483647" controls-position="right" style="width: 120px" />
           <span class="range-sep">至</span>
-          <el-input-number v-model="batchForm.row_to" :min="1" controls-position="right" style="width: 120px" />
+          <el-input-number v-model="batchForm.row_to" :min="1" :max="2147483647" controls-position="right" style="width: 120px" />
         </el-form-item>
         <el-form-item label="列范围">
-          <el-input-number v-model="batchForm.col_from" :min="1" controls-position="right" style="width: 120px" />
+          <el-input-number v-model="batchForm.col_from" :min="1" :max="2147483647" controls-position="right" style="width: 120px" />
           <span class="range-sep">至</span>
-          <el-input-number v-model="batchForm.col_to" :min="1" controls-position="right" style="width: 120px" />
+          <el-input-number v-model="batchForm.col_to" :min="1" :max="2147483647" controls-position="right" style="width: 120px" />
         </el-form-item>
       </el-form>
       <template #footer>

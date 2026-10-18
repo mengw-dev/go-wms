@@ -99,7 +99,7 @@ API Key 在服务端配置中绑定 `WMS_INTEGRATION_TENANT_ID`，请求体、�
 | PUT / DELETE | `/basic/warehouses/:id` | 更新 / 删除仓库 |
 | PUT | `/basic/warehouses/:id/status` | 启停仓库 |
 | GET | `/basic/locations` | 库位列表（warehouse_id 过滤） |
-| POST | `/basic/locations/batch` | **批量生成库位**（幂等：已存在编码自动跳过） |
+| POST | `/basic/locations/batch` | **批量生成库位**（已存在编码跳过；排/列端点 1–2147483647，每批最多 1000 个） |
 | PUT | `/basic/locations/:id/status` | 库位启停 |
 | DELETE | `/basic/locations/:id` | 删除库位 |
 | GET | `/basic/skus` | 货品列表 |
@@ -297,7 +297,7 @@ API Key 在服务端配置中绑定 `WMS_INTEGRATION_TENANT_ID`，请求体、�
 | GET | `/stocktake/orders` | 登录 | 盘点单列表 |
 | GET | `/stocktake/orders/:id` | 登录 | 详情（含明细快照/实盘/差异） |
 | POST | `/stocktake/orders` | `wms:stocktake:create` | 创建即快照 `{warehouse_id, location_id?}` |
-| POST | `/stocktake/orders/:id/actual` | `wms:stocktake:stocktake` | 录入实盘 `{detail_id, actual_qty}`（逐行） |
+| POST | `/stocktake/orders/:id/actual` | `wms:stocktake:stocktake` | 录入实盘 `{detail_id, actual_qty}`（逐行）；数量必填且 ≥0，0 合法，缺失/null 拒绝且不改明细 |
 | POST | `/stocktake/orders/:id/approve` | `wms:stocktake:approve` | 审核：锁内重算差异，调整库存 + ADJUST 流水 |
 
 **盘点审核幂等**：请求头可选携带 `Idempotency-Key`（项目自带客户端全部携带）。同一 key 重试回放空成功（`data` 仍为 `null`）——审核成功但响应丢失后的重试不会因「已终态」被误报为业务失败；同 key 用于其他盘点单返回 409 / 40901；幂等记录与差异调整、ADJUST 流水、明细标记、状态推进同事务提交，业务失败整体回滚不留记录；未携带 key 的调用方保持旧契约但**不提供请求级去重**。终态防重复调整仍由状态机与明细 `adjusted` 标记保证。幂等窗口与 PDA 一致（7 天保留期）。

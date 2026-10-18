@@ -64,27 +64,28 @@ func (s *Service) createOrder(ctx context.Context, req *dto.CreateOrderReq, oper
 	if err := quota.Guard(ctx, s.tm.DB(), &model.ReceiptOrder{}, s.limits.MaxReceiptOrders, 1, "入库单"); err != nil {
 		return nil, err
 	}
-	if err := s.basic.ValidateWarehouse(ctx, req.WarehouseID); err != nil {
-		return nil, err
-	}
-	details, expected, err := s.buildDetails(ctx, req.Details)
-	if err != nil {
-		return nil, err
-	}
 	var order *model.ReceiptOrder
 	for i := 0; i < tx.MaxOrderNoRetry; i++ { // 单号冲突重试
 		order = &model.ReceiptOrder{
 			Base:        modelbase.Base{ID: snowflake.Next()},
 			OrderNo:     s.no.Next(ctx, model.OrderNoPrefix),
 			WarehouseID: req.WarehouseID, Status: model.OrderDraft,
-			Source: model.SourceManual, Remark: req.Remark, ExpectedQty: expected, CreatedBy: operator,
+			Source: model.SourceManual, Remark: req.Remark, CreatedBy: operator,
 		}
-		err = s.tm.Tx(ctx, func(tx *gorm.DB) error {
+		err := s.tm.Tx(ctx, func(tx *gorm.DB) error {
 			if prepare != nil {
 				if err := prepare(tx, order); err != nil {
 					return err
 				}
 			}
+			if err := s.basic.ValidateWarehouseInTx(ctx, tx, req.WarehouseID); err != nil {
+				return err
+			}
+			details, expected, err := s.buildDetails(ctx, tx, req.Details)
+			if err != nil {
+				return err
+			}
+			order.ExpectedQty = expected
 			return s.repo.CreateOrder(tx, order, details)
 		})
 		if err == nil {
@@ -110,10 +111,10 @@ func (s *Service) Update(ctx context.Context, id int64, req *dto.CreateOrderReq)
 		if o.Status != model.OrderDraft {
 			return errcode.OrderStatusWrong
 		}
-		if err := s.basic.ValidateWarehouse(ctx, req.WarehouseID); err != nil {
+		if err := s.basic.ValidateWarehouseInTx(ctx, tx, req.WarehouseID); err != nil {
 			return err
 		}
-		details, expected, err := s.buildDetails(ctx, req.Details)
+		details, expected, err := s.buildDetails(ctx, tx, req.Details)
 		if err != nil {
 			return err
 		}
@@ -290,7 +291,7 @@ func (s *Service) transit(ctx context.Context, id int64, from, to model.OrderSta
 	})
 }
 
-func (s *Service) buildDetails(ctx context.Context, items []dto.OrderDetailItem) ([]*model.ReceiptOrderDetail, int, error) {
+func (s *Service) buildDetails(ctx context.Context, tx *gorm.DB, items []dto.OrderDetailItem) ([]*model.ReceiptOrderDetail, int, error) {
 	seen := map[int64]struct{}{}
 	skuIDs := make([]int64, 0, len(items))
 	for _, it := range items {
@@ -300,8 +301,8 @@ func (s *Service) buildDetails(ctx context.Context, items []dto.OrderDetailItem)
 		seen[it.SKUID] = struct{}{}
 		skuIDs = append(skuIDs, it.SKUID)
 	}
-	// 批量查询 SKU，避免循环内逐条查询产生 N+1。
-	skuMap, err := s.basic.GetSKUsByIDs(ctx, skuIDs)
+	// 与 SKU 删除共用行锁；锁内快照用于明细，事务内不额外借连接。
+	skuMap, err := s.basic.GetSKUsByIDsForShare(ctx, tx, skuIDs)
 	if err != nil {
 		return nil, 0, err
 	}

@@ -3,14 +3,15 @@
  *
  * 仓库、货品选项由页面从列表 composable 取用并渲染，这里只负责表单本身。
  */
-import { reactive } from 'vue'
+import { reactive, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { createInboundOrder, getInboundOrder, updateInboundOrder } from '@/api/inbound'
 import type { EntityID, InboundOrderItem } from '@/api/types'
 import { BUSINESS_EVENTS, emitBusinessEvent } from '@/events/businessEvents'
 
 export function useInboundOrderForm(onSaved: () => void | Promise<void>) {
-  const editDialog = reactive({ visible: false, loading: false, editingId: '' as EntityID })
+  const editDialog = reactive({ visible: false, loading: false, fetching: false, ready: false, editingId: '' as EntityID })
+  let generation = 0
   const editForm = reactive({
     warehouse_id: undefined as EntityID | undefined,
     remark: '',
@@ -21,22 +22,52 @@ export function useInboundOrderForm(onSaved: () => void | Promise<void>) {
     return { _uid: crypto.randomUUID(), sku_id, expected_qty }
   }
 
-  function openCreate() {
-    editDialog.editingId = ''
+  function resetForm() {
     editForm.warehouse_id = undefined
     editForm.remark = ''
     editForm.details = [makeDetail()]
+  }
+
+  watch(() => editDialog.visible, (visible) => {
+    if (!visible) {
+      generation++
+      editDialog.ready = false
+      editDialog.fetching = false
+    }
+  }, { flush: 'sync' })
+
+  function openCreate() {
+    if (editDialog.loading) return
+    generation++
+    editDialog.editingId = ''
+    editDialog.fetching = false
+    resetForm()
+    editDialog.ready = true
     editDialog.visible = true
   }
 
   async function openEdit(row: InboundOrderItem) {
-    editDialog.editingId = row.id
+    if (editDialog.loading) return
+    const current = ++generation
+    const id = row.id
+    editDialog.editingId = id
+    resetForm()
+    editDialog.ready = false
+    editDialog.fetching = true
     editDialog.visible = true
-    const detail = await getInboundOrder(row.id)
-    editForm.warehouse_id = detail.order.warehouse_id
-    editForm.remark = detail.order.remark
-    editForm.details = (detail.details ?? []).map((d) => makeDetail(d.sku_id, d.expected_qty))
-    if (editForm.details.length === 0) editForm.details = [makeDetail()]
+    try {
+      const detail = await getInboundOrder(id)
+      if (current !== generation || !editDialog.visible || editDialog.editingId !== id) return
+      editForm.warehouse_id = detail.order.warehouse_id
+      editForm.remark = detail.order.remark
+      editForm.details = (detail.details ?? []).map((d) => makeDetail(d.sku_id, d.expected_qty))
+      if (editForm.details.length === 0) editForm.details = [makeDetail()]
+      editDialog.ready = true
+    } catch {
+      if (current === generation && editDialog.visible) ElMessage.error('入库单加载失败，请关闭后重新打开')
+    } finally {
+      if (current === generation) editDialog.fetching = false
+    }
   }
 
   function addDetail() {
@@ -48,6 +79,7 @@ export function useInboundOrderForm(onSaved: () => void | Promise<void>) {
   }
 
   async function submitEdit() {
+    if (editDialog.loading || editDialog.fetching || !editDialog.ready || !editDialog.visible) return
     if (!editForm.warehouse_id) {
       ElMessage.warning('请选择仓库')
       return
@@ -62,10 +94,11 @@ export function useInboundOrderForm(onSaved: () => void | Promise<void>) {
       remark: editForm.remark,
       details: details.map((d) => ({ sku_id: d.sku_id!, expected_qty: d.expected_qty })),
     }
+    const editingId = editDialog.editingId
     editDialog.loading = true
     try {
-      if (editDialog.editingId) {
-        await updateInboundOrder(editDialog.editingId, payload)
+      if (editingId) {
+        await updateInboundOrder(editingId, payload)
         ElMessage.success('保存成功')
       } else {
         const created = await createInboundOrder(payload)

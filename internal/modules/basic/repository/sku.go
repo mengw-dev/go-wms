@@ -61,6 +61,22 @@ func (r *Repository) GetSKUForUpdate(ctx context.Context, db *gorm.DB, id int64)
 	return &s, nil
 }
 
+// GetSKUsByIDsForShare 依主键升序共享锁定 SKU，允许并发建单并与删除的排他锁互斥。
+func (r *Repository) GetSKUsByIDsForShare(ctx context.Context, tx *gorm.DB, ids []int64) (map[int64]*model.SKU, error) {
+	var list []*model.SKU
+	if len(ids) > 0 {
+		if err := tx.WithContext(ctx).Clauses(clause.Locking{Strength: "SHARE"}).
+			Where("id IN ?", ids).Order("id ASC").Find(&list).Error; err != nil {
+			return nil, err
+		}
+	}
+	result := make(map[int64]*model.SKU, len(list))
+	for _, sku := range list {
+		result[sku.ID] = sku
+	}
+	return result, nil
+}
+
 func (r *Repository) CreateSKU(ctx context.Context, db *gorm.DB, s *model.SKU) error {
 	return db.WithContext(ctx).Create(s).Error
 }

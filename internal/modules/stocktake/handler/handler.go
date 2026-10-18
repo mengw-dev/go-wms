@@ -86,7 +86,7 @@ func (h *Handler) recordActual(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := h.svc.RecordActual(c.Request.Context(), id, req.DetailID, req.ActualQty); err != nil {
+	if err := h.svc.RecordActual(c.Request.Context(), id, req.DetailID, *req.ActualQty); err != nil {
 		response.Fail(c, err)
 		return
 	}

@@ -24,6 +24,10 @@ type BasicAPI interface {
 	ValidateSKU(ctx context.Context, id int64) error                              // 存在且启用
 	GetSKU(ctx context.Context, id int64) (*model.SKU, error)
 	GetSKUsByIDs(ctx context.Context, ids []int64) (map[int64]*model.SKU, error)
+	// 以下方法复用调用方事务连接；锁持有到调用方提交/回滚，不得传事务外 db。
+	ValidateWarehouseInTx(ctx context.Context, tx *gorm.DB, id int64) error
+	GetSKUsByIDsForShare(ctx context.Context, tx *gorm.DB, ids []int64) (map[int64]*model.SKU, error)
+	ValidateLocationInWarehouseInTx(ctx context.Context, tx *gorm.DB, warehouseID, id int64) error
 	GetLocation(ctx context.Context, id int64) (*model.Location, error)
 	GetWarehouseByCode(ctx context.Context, code string) (*model.Warehouse, error)
 	GetSKUByCode(ctx context.Context, code string) (*model.SKU, error)
