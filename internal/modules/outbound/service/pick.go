@@ -275,7 +275,7 @@ func (s *Service) ClaimPickTask(ctx context.Context, taskID int64, operator, ide
 			return err
 		}
 		if n == 0 {
-			return s.claimFailure(ctx, taskID)
+			return s.claimFailure(ctx, tx, taskID)
 		}
 		// 快照与领取写入同事务读取：任务行已被本事务的领取 UPDATE 锁定，复用锁定读不引入新等待
 		snapshot, err := s.pickSnapshotTx(ctx, tx, taskID)
@@ -316,7 +316,7 @@ func (s *Service) ClaimPickTask(ctx context.Context, taskID int64, operator, ide
 }
 
 // reconcilePick 业务事务回滚后，用新读核对已提交的同 key 幂等记录：
-//   - 未命中或读取失败：返回 handled=false，保留原业务错误；
+//   - 未命中：返回 handled=false；读取失败：返回结果未知，禁止客户端丢弃 key；
 //   - 命中且指纹一致：回放首次成功结果；
 //   - 命中但指纹不同：409 内容冲突（比状态/数量类错误更准确，前端不换 key 重发）；
 //   - 记录损坏：内部错误，不用当前进度伪装成功。
@@ -325,12 +325,12 @@ func (s *Service) ClaimPickTask(ctx context.Context, taskID int64, operator, ide
 // 也不用旧快照证明「无记录」；请求已取消时直接放弃核对，不发起额外查询。
 func (s *Service) reconcilePick(ctx context.Context, tenantID int64, idempotencyKey, requestHash string) (*dto.PickResult, error, bool) {
 	if cancelErr := ctx.Err(); cancelErr != nil {
-		// 请求已取消：不发起核对查询；handled=false，调用方保留原业务错误。
-		return nil, cancelErr, false
+		// 请求已取消：不发起核对查询；返回结果未知，不能用原业务拒绝证明该 key 尚未成功。
+		return nil, errcode.Wrap(cancelErr, errcode.IdempotencyResultUnknown), true
 	}
 	record, err := idempotency.Find(s.tm.DB().WithContext(ctx), tenantID, pickIdempotencyScope, idempotencyKey)
 	if err != nil {
-		return nil, err, false
+		return nil, errcode.Wrap(err, errcode.IdempotencyResultUnknown), true
 	}
 	if record == nil {
 		return nil, nil, false
@@ -348,12 +348,12 @@ func (s *Service) reconcilePick(ctx context.Context, tenantID int64, idempotency
 // reconcileClaim 领取命令的延迟核对，语义与 reconcilePick 一致。
 func (s *Service) reconcileClaim(ctx context.Context, tenantID int64, idempotencyKey, requestHash string) (*dto.ClaimResult, error, bool) {
 	if cancelErr := ctx.Err(); cancelErr != nil {
-		// 请求已取消：不发起核对查询；handled=false，调用方保留原业务错误。
-		return nil, cancelErr, false
+		// 请求已取消：不发起核对查询；返回结果未知，不能用原业务拒绝证明该 key 尚未成功。
+		return nil, errcode.Wrap(cancelErr, errcode.IdempotencyResultUnknown), true
 	}
 	record, err := idempotency.Find(s.tm.DB().WithContext(ctx), tenantID, claimIdempotencyScope, idempotencyKey)
 	if err != nil {
-		return nil, err, false
+		return nil, errcode.Wrap(err, errcode.IdempotencyResultUnknown), true
 	}
 	if record == nil {
 		return nil, nil, false
@@ -370,8 +370,10 @@ func (s *Service) reconcileClaim(ctx context.Context, tenantID int64, idempotenc
 
 // claimFailure 领取条件更新 0 行后定位原因：任务不存在/类型或状态不允许，
 // 否则为已被他人领取且租约未过期。
-func (s *Service) claimFailure(ctx context.Context, taskID int64) error {
-	t, err := s.taskAPI.Get(ctx, taskID)
+func (s *Service) claimFailure(ctx context.Context, tx *gorm.DB, taskID int64) error {
+	// 复用领取事务连接；池中只有一条连接时再借连接会等待自身释放。
+	// 使用当前锁读，避免幂等预查询固定的快照掩盖已提交的任务状态。
+	t, err := s.taskAPI.GetForUpdate(ctx, tx, taskID)
 	if err != nil {
 		return err
 	}

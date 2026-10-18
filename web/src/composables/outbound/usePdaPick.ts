@@ -1,4 +1,4 @@
-import { reactive, ref } from 'vue'
+import { getCurrentScope, onScopeDispose, reactive, ref } from 'vue'
 import { claimPdaTask, pickPdaTask } from '@/api/outbound'
 import type { ApiError } from '@/api/request'
 import type { ClaimResult, EntityID, PickParams, PickResult } from '@/api/types'
@@ -88,7 +88,8 @@ export function usePdaPick() {
 
   /** 取（或创建）任务状态：所有展示字段都从这里读，保证切换任务即切换展示。 */
   function stateOf(taskId: EntityID): TaskPickState {
-    const key = String(taskId)
+    const auth = useAuthStore()
+    const key = JSON.stringify([auth.user?.user_id, auth.demoSessionId, String(taskId)])
     let st = states.get(key)
     if (!st) {
       st = emptyState()
@@ -122,6 +123,11 @@ export function usePdaPick() {
   function findOp(taskId: EntityID, scope: string): PendingOperation | null {
     const c = currentContext()
     if (!c.ctx) return null
+    const loaded = loadPending(c.ctx.identity, c.ctx.storage)
+    if (loaded.error) {
+      storageError.value = loaded.error
+      throw new Error(loaded.error)
+    }
     return findPending(c.ctx.identity, c.ctx.storage, scope, taskId)
   }
 
@@ -272,12 +278,13 @@ export function usePdaPick() {
       st.lastError = '领取操作已超过保留期，请核对任务是否已被领取后再操作'
       return false
     }
-    return await sendClaim(taskId, existing.operationKey)
+    return await claim(taskId)
   }
 
   /** 核对后放弃未确认的领取操作：仅删除本地记录，不向服务端发送任何请求。 */
   function discardClaim(taskId: EntityID) {
     const st = stateOf(taskId)
+    if (st.claiming || st.submitting) return
     const existing = findOp(taskId, CLAIM_SCOPE)
     if (!existing) {
       st.pendingClaim = null
@@ -303,6 +310,7 @@ export function usePdaPick() {
     st.lastError = ''
     try {
       const result: ClaimResult = await claimPdaTask(taskId, operationKey)
+      if (stateOf(taskId) !== st) return false
       if (st.claimFlight === seq) {
         st.claimToken = result.claim_token
         st.leaseExpireAt = result.lease_expire_at
@@ -312,6 +320,7 @@ export function usePdaPick() {
       st.pendingClaim = null
       return true
     } catch (error) {
+      if (stateOf(taskId) !== st) return false
       const outcome = classify(error, CLAIM_SAFE_REJECT_CODES)
       const message = errorMessage(error)
       if (st.claimFlight === seq) {
@@ -399,12 +408,13 @@ export function usePdaPick() {
       st.lastError = '上次拣货已超过保留期，请核对任务进度后再操作'
       throw new Error(st.lastError)
     }
-    return await sendPick(taskId, existing.operationKey, existing.businessPayload as PickBusinessPayload)
+    return await pick(taskId, existing.businessPayload as PickBusinessPayload)
   }
 
   /** 核对后放弃未确认的拣货操作：仅删除本地记录，不向服务端发送任何请求。 */
   function discardPick(taskId: EntityID) {
     const st = stateOf(taskId)
+    if (st.claiming || st.submitting) return
     const existing = findOp(taskId, PICK_SCOPE)
     if (!existing) {
       st.pendingPick = null
@@ -430,6 +440,7 @@ export function usePdaPick() {
     st.lastError = ''
     try {
       const result = await pickPdaTask(taskId, { ...data, claim_token: st.claimToken }, operationKey)
+      if (stateOf(taskId) !== st) throw new Error('登录身份已变更，请在原账号核对该操作')
       if (st.pickFlight === seq) {
         st.snapshot = result
         st.lastError = ''
@@ -438,6 +449,7 @@ export function usePdaPick() {
       st.pendingPick = null
       return result
     } catch (error) {
+      if (stateOf(taskId) !== st) throw error
       const outcome = classify(error, PICK_SAFE_REJECT_CODES)
       const message = errorMessage(error)
       if (st.pickFlight === seq) {
@@ -484,7 +496,7 @@ export function usePdaPick() {
   function restoreForTasks(taskIds: EntityID[]): string {
     knownTaskIds = taskIds
     for (const id of taskIds) {
-      const st = states.get(String(id))
+      const st = stateOf(id)
       if (st) {
         st.pendingClaim = null
         st.pendingPick = null
@@ -516,10 +528,12 @@ export function usePdaPick() {
 
   // 其他标签页写入存储时，本地横幅同步绑定最新状态；
   // 这不是跨标签页互斥，两个标签页仍然可能各自发送请求，最终由服务端 key 级去重兜底。
-  if (typeof window !== 'undefined') {
-    window.addEventListener('storage', () => {
+  if (typeof window !== 'undefined' && getCurrentScope()) {
+    const onStorage = () => {
       if (knownTaskIds.length > 0) restoreForTasks(knownTaskIds)
-    })
+    }
+    window.addEventListener('storage', onStorage)
+    onScopeDispose(() => window.removeEventListener('storage', onStorage))
   }
 
   return {

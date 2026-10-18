@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
@@ -15,6 +15,14 @@ import { formatTime } from '@/utils'
 import { loadWarehouseOptions, toOptionMap } from '@/utils/options'
 import ReceiveDialog from '@/components/ReceiveDialog.vue'
 import PutawayDialog from '@/components/PutawayDialog.vue'
+
+import { useReceive } from '@/composables/inbound/useReceive'
+import { usePutaway } from '@/composables/inbound/usePutaway'
+
+const receiver = useReceive()
+const puter = usePutaway()
+const hasPendingReceive = computed(() => data.value?.details?.some((row) => receiver.stateOf(row.id).pending))
+const hasPendingPutaway = computed(() => data.value?.tasks?.some((task) => puter.stateOf(task.id).pending))
 
 const route = useRoute()
 const router = useRouter()
@@ -50,6 +58,9 @@ async function load() {
   loading.value = true
   try {
     data.value = await getInboundOrder(orderId)
+    const error = receiver.restoreForDetails((data.value.details ?? []).map((row) => row.id))
+      || puter.restoreForTasks((data.value.tasks ?? []).map((task) => task.id))
+    if (error) ElMessage.error(error)
     emitOrderLoaded()
   } finally {
     loading.value = false
@@ -153,6 +164,8 @@ async function onPutawaySuccess() {
           <template v-else-if="data.order.status === 'PUTAWAY'">
             <el-button v-permission="'wms:inbound:putaway'" data-tour="inbound-putaway" type="warning" plain @click="openPutaway()">上架</el-button>
           </template>
+          <el-button v-if="hasPendingReceive" v-permission="'wms:inbound:receive'" type="warning" plain @click="openReceive">恢复待确认收货</el-button>
+          <el-button v-if="hasPendingPutaway" v-permission="'wms:inbound:putaway'" type="warning" plain @click="openPutaway()">恢复待确认上架</el-button>
         </div>
 
         <el-descriptions :column="3" border>

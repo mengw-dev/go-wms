@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
@@ -14,6 +14,14 @@ import { formatTime } from '@/utils'
 import { loadWarehouseOptions, toOptionMap } from '@/utils/options'
 import PickDialog from '@/components/PickDialog.vue'
 import { BUSINESS_EVENTS, emitBusinessEvent } from '@/events/businessEvents'
+
+import { usePdaPick } from '@/composables/outbound/usePdaPick'
+
+const picker = usePdaPick()
+const hasPendingPick = computed(() => data.value?.tasks?.some((task) => {
+  const state = picker.stateOf(task.id)
+  return state.pendingPick || state.pendingClaim
+}))
 
 const route = useRoute()
 const router = useRouter()
@@ -59,6 +67,8 @@ async function load() {
   loading.value = true
   try {
     data.value = await getOutboundOrder(orderId)
+    const error = picker.restoreForTasks((data.value.tasks ?? []).map((task) => task.id))
+    if (error) ElMessage.error(error)
     emitOrderLoaded()
   } finally {
     loading.value = false
@@ -145,6 +155,7 @@ function canPick(task: { task_type: string; status: string }): boolean {
             <el-button v-permission="'wms:outbound:pick'" data-tour="outbound-pick" type="primary" plain @click="openPick()">拣货</el-button>
             <el-button v-permission="'wms:outbound:cancel'" type="danger" plain @click="onCancel">取消</el-button>
           </template>
+          <el-button v-if="hasPendingPick" v-permission="'wms:outbound:pick'" type="warning" plain @click="openPick()">恢复待确认拣货</el-button>
         </div>
 
         <el-descriptions :column="3" border>

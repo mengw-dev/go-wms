@@ -25,7 +25,7 @@ const form = reactive({
 const selectedTask = computed(() => tasks.value.find((t) => t.id === form.task_id))
 
 const pendingTasks = computed(() =>
-  tasks.value.filter((t) => t.task_type === 'PUTAWAY' && (t.status === 'CREATED' || t.status === 'IN_PROGRESS')),
+  tasks.value.filter((t) => t.task_type === 'PUTAWAY' && (t.status === 'CREATED' || t.status === 'IN_PROGRESS' || puter.stateOf(t.id).pending)),
 )
 
 // 提交中与待确认横幅按当前任务读取：切换任务即切换展示。
@@ -33,7 +33,7 @@ const current = computed(() => (form.task_id ? puter.stateOf(form.task_id) : nul
 const submitting = computed(() => current.value?.submitting ?? false)
 const pendingPutaway = computed(() => current.value?.pending ?? null)
 const lastError = computed(() => current.value?.lastError ?? '')
-const storageError = computed(() => puter.storageError)
+const storageError = computed(() => puter.storageError.value)
 
 async function open(id: EntityID, task?: TaskItem) {
   orderId.value = id
@@ -51,7 +51,7 @@ async function open(id: EntityID, task?: TaskItem) {
     if (detail.order?.warehouse_id) {
       locationOptions.value = await loadIdleLocationOptions(detail.order.warehouse_id)
     }
-    const preselect = task ?? pendingTasks.value[0]
+    const preselect = task ?? pendingTasks.value.find((t) => puter.stateOf(t.id).pending) ?? pendingTasks.value[0]
     if (preselect) {
       onTaskChange(preselect.id)
     } else {

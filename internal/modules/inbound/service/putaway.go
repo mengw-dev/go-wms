@@ -173,15 +173,15 @@ func putawayRequestHash(taskID, locationID int64, qty int) string {
 
 // reconcilePutaway 业务事务回滚后，用新读核对已提交的同 key 幂等记录（语义与拣货一致）：
 // 命中且指纹一致且空成功标记合法 → 回放成功；指纹不同 → 409；记录损坏 → 内部错误；
-// 未命中/读取失败/请求已取消 → handled=false，保留原业务错误。
+// 未命中 → handled=false；读取失败/请求已取消 → 结果未知，保留原 key。
 func (s *Service) reconcilePutaway(ctx context.Context, tenantID int64, idempotencyKey, requestHash string) (error, bool) {
 	if cancelErr := ctx.Err(); cancelErr != nil {
-		// 请求已取消：不发起核对查询；handled=false，调用方保留原业务错误。
-		return cancelErr, false
+		// 请求已取消：不发起核对查询；返回结果未知，不能用原业务拒绝证明该 key 尚未成功。
+		return errcode.Wrap(cancelErr, errcode.IdempotencyResultUnknown), true
 	}
 	record, err := idempotency.Find(s.tm.DB().WithContext(ctx), tenantID, putawayIdempotencyScope, idempotencyKey)
 	if err != nil {
-		return err, false
+		return errcode.Wrap(err, errcode.IdempotencyResultUnknown), true
 	}
 	if record == nil {
 		return nil, false

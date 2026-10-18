@@ -2,7 +2,38 @@
 
 [文档导航](README.md) · [项目首页](../README.md)
 
-以下命令均从仓库根目录执行，另有说明的除外。
+以下命令均从仓库根目录执行，另有说明的除外。下方按日期保留历史验证记录，其中旧阶段的“未提交”“幂等尚待实施”只代表当时状态；当前幂等已完成，以 2026-10-18 验收记录为准。
+
+## 2026-10-18 幂等专项：已完成并通过本地验收
+
+基线：`main` / `ca24141`；`git ls-remote origin refs/heads/main` 已核对 GitHub main 同一提交。依据 `docs/review-findings.md` 的 F3/F6/F10，含相关 F8 与 F1 领取分支，本次提交包含本轮幂等实现、测试及文档。既有外部单保护、迁移 000012、Makefile/Windows 脚本/k6 修改完整保留，不属于本轮新增实现。
+
+### 修复及文件范围
+
+- 后端：`internal/modules/inbound/service/{receiving,putaway}.go`、`internal/modules/stocktake/service/approve.go`、`internal/modules/outbound/service/pick.go`、`internal/pkg/errcode/errcode.go`。五条 reconcile 读取失败/取消返回 50301 / HTTP 503，不能退回确定拒绝促使客户端丢 key；领取冲突诊断复用当前事务的锁读，避免再借连接。没有变更库存计算、业务指纹或迁移。
+- 前端：`web/src/composables/inbound/{useReceive,usePutaway}.ts`、`outbound/usePdaPick.ts`、`stocktake/useStocktakeApprove.ts`；恢复复用普通提交校验，发送中不能放弃，提交前检查存储读取，状态按账号/演示会话隔离，旧身份晚返回保留原 pending；storage 监听随组件/effect scope 销毁注销。
+- 入口：`web/src/components/{ReceiveDialog,PutawayDialog,PickDialog}.vue` 与三个业务详情页、盘点列表。修正 storageError 嵌套 Ref；终态恢复入口独立于新作业入口，上架/拣货可选择有 pending 的已完成任务并优先选中待确认项。
+- 新增回归：`internal/app/{claim_pool,reconcile_failure}_test.go`、入库/盘点 `service/reconcile_failure_test.go`、`web/src/composables/operationRecovery.spec.ts`、`web/tests/e2e/idempotency-recovery.spec.ts`。已有 `internal/app/idempotency_race_test.go` 的屏障改在 SELECT 完成且未命中后通知，Insert 失败回滚用例改为拣满请求以实际经过发货库存/流水分支。
+
+### 实际环境与结果
+
+使用独立 MySQL 8.0.46（127.0.0.1:23306）、Memurai（127.0.0.1:26379），MySQL data dir 为 `tmpgen/idem-20261018/mysql`，没有连接开发库或生产库。后端测试由 OpenIsolatedMySQL 创建/回收临时 schema；浏览器用独立 `gowms_idem_e2e_20261018` schema，当前源码编译的后端在 28080、Vite 在 25173。未使用业务响应 mock 证明并发或库存正确性。
+
+| 命令 | 结果 |
+| --- | --- |
+| gofmt/goimports（本轮 Go 文件） | 通过 |
+| `WMS_TEST_REQUIRED=1 WMS_TEST_DSN=... WMS_TEST_REDIS_ADDR=127.0.0.1:26379 go test ./... -count=1` | 通过；真实 MySQL/Redis；含五命令核对失败故障注入、领取单连接池、并发与回滚回归 |
+| `go vet ./...` / `go build ./...` | 通过 |
+| `golangci-lint run ./...` | 1 条既有问题：本轮开始前已存在的未跟踪 `internal/pkg/errcode/integration.go:3` 导出变量注释不以 ExternalOrderProtected 开头（ST1022）；未改该外部单保护文件 |
+| `npm run lint` / `npm run test -- --reporter=dot` / `npm run build`（web） | 通过；17 文件、173 单测；build 含 vue-tsc |
+| `E2E_BASE_URL=http://127.0.0.1:25173 npm run test:e2e -- idempotency-recovery.spec.ts inventory-lifecycle.spec.ts --reporter=line`（web） | 7 passed；3 个新恢复场景覆盖收货/上架/领取/拣货/盘点审核，另 4 个原有入库导入/入库/出库/盘点闭环回归 |
+| `git diff --check` | 通过 |
+
+E2E 故障注入先通过 route.fetch 把请求发送到真实后端，确认响应 code=0 后丢弃响应，刷新页面，从终态/任务入口恢复并断言 key 与原业务参数相同，库存/任务/单据数量不重复累加。拣货的 claim_token 不属于业务指纹，刷新后恢复无须重建旧凭证。
+
+发布前再次从 Git 暂存区导出独立源码快照（`tmpgen/idem-release-20261018/source`），不包含其他未提交功能；该快照的 `go test ./... -count=1`（强制真实 MySQL/Redis）、`go vet ./...`、`go build ./...`、`golangci-lint run ./...` 均通过（0 issues），前端 lint、173 单测与 build 通过。上表 ST1022 仅存在于原工作区的另一个未提交文件，不属于本次提交，也没有通过放宽 lint 规则绕过。E2E 沿用本节已完成的 7 场景真实后端验证。
+
+未运行 Linux race（当前 CGO_ENABLED=0、Docker daemon 未启动）、k6、全套其它 E2E 或生产部署。保留 7 天同 key 窗口；不承诺跨 key、跨标签页互斥、清缓存/跨设备后的自动恢复。F1 入库编辑、F2/F4/F5/F7/F9 等其他专项未处理。
 
 ## 本地启动
 

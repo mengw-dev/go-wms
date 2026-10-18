@@ -248,6 +248,7 @@ useAutoRefresh(() => load(true), 0)
         <template #default="{ row }">
           <div class="table-oper">
             <el-button size="small" @click="goDetail(row)">详情</el-button>
+            <el-button v-if="row.status !== 'DRAFT' && approver.stateOf(row.id).pending" v-permission="'wms:stocktake:approve'" size="small" type="warning" plain @click="onApprove(row)">恢复审核</el-button>
             <template v-if="row.status === 'DRAFT'">
               <el-button v-permission="'wms:stocktake:stocktake'" size="small" type="primary" plain @click="goDetail(row)">录入实盘</el-button>
               <el-button v-permission="'wms:stocktake:approve'" size="small" type="success" plain @click="onApprove(row)">审核</el-button>

@@ -1,4 +1,4 @@
-import { reactive, ref } from 'vue'
+import { getCurrentScope, onScopeDispose, reactive, ref } from 'vue'
 import { putawayInboundTask } from '@/api/inbound'
 import type { EntityID, PutawayParams } from '@/api/types'
 import { useAuthStore } from '@/stores/auth'
@@ -70,7 +70,8 @@ export function usePutaway() {
   }
 
   function stateOf(taskId: EntityID): TaskState {
-    const key = String(taskId)
+    const auth = useAuthStore()
+    const key = JSON.stringify([auth.user?.user_id, auth.demoSessionId, String(taskId)])
     let st = states.get(key)
     if (!st) {
       st = { submitting: false, flight: 0, pending: null, blocked: false, blockedReason: '', lastError: '' }
@@ -82,6 +83,11 @@ export function usePutaway() {
   function findOp(taskId: EntityID): PendingOperation | null {
     const c = currentContext()
     if (!c.ctx) return null
+    const loaded = loadPending(c.ctx.identity, c.ctx.storage)
+    if (loaded.error) {
+      storageError.value = loaded.error
+      throw new Error(loaded.error)
+    }
     return findPending(c.ctx.identity, c.ctx.storage, PUTAWAY_SCOPE, taskId)
   }
 
@@ -215,12 +221,13 @@ export function usePutaway() {
       st.lastError = '该任务的上次上架已超过保留期，请核对库存与任务进度后再操作'
       throw new Error(st.lastError)
     }
-    return await sendPutaway(taskId, existing.operationKey, existing.businessPayload as PutawayBusinessPayload)
+    return await putaway(taskId, existing.businessPayload as PutawayBusinessPayload)
   }
 
   /** 核对后放弃未确认的上架：仅删除本地记录，不向服务端发送任何请求。 */
   function discardPutaway(taskId: EntityID) {
     const st = stateOf(taskId)
+    if (st.submitting) return
     const existing = findOp(taskId)
     if (!existing) {
       st.pending = null
@@ -246,9 +253,11 @@ export function usePutaway() {
     st.lastError = ''
     try {
       await putawayInboundTask(taskId, data, operationKey)
+      if (stateOf(taskId) !== st) throw new Error('登录身份已变更，请在原账号核对该操作')
       endOperation(taskId, operationKey)
       st.pending = null
     } catch (error) {
+      if (stateOf(taskId) !== st) throw error
       const outcome = classify(error)
       if (st.flight === seq) {
         st.lastError = errorMessage(error)
@@ -281,7 +290,7 @@ export function usePutaway() {
   function restoreForTasks(taskIds: EntityID[]): string {
     knownTaskIds = taskIds
     for (const id of taskIds) {
-      const st = states.get(String(id))
+      const st = stateOf(id)
       if (st) {
         st.pending = null
         st.blocked = false
@@ -305,10 +314,12 @@ export function usePutaway() {
   }
 
   // 其他标签页写入存储时，本地横幅同步绑定最新状态；这不是跨标签页互斥。
-  if (typeof window !== 'undefined') {
-    window.addEventListener('storage', () => {
+  if (typeof window !== 'undefined' && getCurrentScope()) {
+    const onStorage = () => {
       if (knownTaskIds.length > 0) restoreForTasks(knownTaskIds)
-    })
+    }
+    window.addEventListener('storage', onStorage)
+    onScopeDispose(() => window.removeEventListener('storage', onStorage))
   }
 
   return {

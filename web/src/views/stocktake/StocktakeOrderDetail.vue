@@ -196,6 +196,7 @@ async function onCancel() {
             </el-button>
             <el-button v-permission="'wms:stocktake:cancel'" type="danger" plain @click="onCancel">取消</el-button>
           </template>
+          <el-button v-if="data.order.status !== 'DRAFT' && approver.stateOf(orderId).pending" v-permission="'wms:stocktake:approve'" type="warning" plain @click="onApprove">恢复待确认审核</el-button>
         </div>
 
         <el-descriptions :column="3" border>

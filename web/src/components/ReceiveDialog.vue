@@ -21,7 +21,7 @@ interface RowForm {
 }
 const forms = reactive<Record<EntityID, RowForm>>({})
 
-const storageError = computed(() => receiver.storageError)
+const storageError = computed(() => receiver.storageError.value)
 const hasSubmitting = computed(() =>
   details.value.some((row) => receiver.stateOf(row.id).submitting),
 )

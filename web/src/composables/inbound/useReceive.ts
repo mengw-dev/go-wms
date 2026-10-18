@@ -1,4 +1,4 @@
-import { reactive, ref } from 'vue'
+import { getCurrentScope, onScopeDispose, reactive, ref } from 'vue'
 import { receiveInbound } from '@/api/inbound'
 import type { EntityID, ReceiveParams } from '@/api/types'
 import { useAuthStore } from '@/stores/auth'
@@ -74,7 +74,8 @@ export function useReceive() {
   }
 
   function stateOf(detailId: EntityID): RowState {
-    const key = String(detailId)
+    const auth = useAuthStore()
+    const key = JSON.stringify([auth.user?.user_id, auth.demoSessionId, String(detailId)])
     let st = states.get(key)
     if (!st) {
       st = { submitting: false, flight: 0, pending: null, blocked: false, blockedReason: '', lastError: '' }
@@ -86,6 +87,11 @@ export function useReceive() {
   function findOp(detailId: EntityID): PendingOperation | null {
     const c = currentContext()
     if (!c.ctx) return null
+    const loaded = loadPending(c.ctx.identity, c.ctx.storage)
+    if (loaded.error) {
+      storageError.value = loaded.error
+      throw new Error(loaded.error)
+    }
     return findPending(c.ctx.identity, c.ctx.storage, RECEIVE_SCOPE, detailId)
   }
 
@@ -220,12 +226,13 @@ export function useReceive() {
       st.lastError = '该明细的上次收货已超过保留期，请核对已收数量后再操作'
       throw new Error(st.lastError)
     }
-    return await sendReceive(orderId, detailId, existing.operationKey, existing.businessPayload as ReceiveBusinessPayload)
+    return await receive(orderId, detailId, existing.businessPayload as ReceiveBusinessPayload)
   }
 
   /** 核对后放弃未确认的收货：仅删除本地记录，不向服务端发送任何请求。 */
   function discardReceive(detailId: EntityID) {
     const st = stateOf(detailId)
+    if (st.submitting) return
     const existing = findOp(detailId)
     if (!existing) {
       st.pending = null
@@ -251,9 +258,11 @@ export function useReceive() {
     st.lastError = ''
     try {
       await receiveInbound(orderId, { detail_id: detailId, ...data }, operationKey)
+      if (stateOf(detailId) !== st) throw new Error('登录身份已变更，请在原账号核对该操作')
       endOperation(detailId, operationKey)
       st.pending = null
     } catch (error) {
+      if (stateOf(detailId) !== st) throw error
       const outcome = classify(error)
       if (st.flight === seq) {
         st.lastError = errorMessage(error)
@@ -286,7 +295,7 @@ export function useReceive() {
   function restoreForDetails(detailIds: EntityID[]): string {
     knownDetailIds = detailIds
     for (const id of detailIds) {
-      const st = states.get(String(id))
+      const st = stateOf(id)
       if (st) {
         st.pending = null
         st.blocked = false
@@ -310,10 +319,12 @@ export function useReceive() {
   }
 
   // 其他标签页写入存储时，本地横幅同步绑定最新状态；这不是跨标签页互斥。
-  if (typeof window !== 'undefined') {
-    window.addEventListener('storage', () => {
+  if (typeof window !== 'undefined' && getCurrentScope()) {
+    const onStorage = () => {
       if (knownDetailIds.length > 0) restoreForDetails(knownDetailIds)
-    })
+    }
+    window.addEventListener('storage', onStorage)
+    onScopeDispose(() => window.removeEventListener('storage', onStorage))
   }
 
   return {

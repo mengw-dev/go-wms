@@ -24,7 +24,7 @@ const picker = usePdaPick()
 const selectedTask = computed(() => tasks.value.find((t) => t.id === form.task_id))
 
 const pendingTasks = computed(() =>
-  tasks.value.filter((t) => t.task_type === 'PICK' && (t.status === 'CREATED' || t.status === 'IN_PROGRESS')),
+  tasks.value.filter((t) => t.task_type === 'PICK' && (t.status === 'CREATED' || t.status === 'IN_PROGRESS' || (picker.stateOf(t.id).pendingPick || picker.stateOf(t.id).pendingClaim))),
 )
 
 // 任务已指定批次时必须扫码核对，避免同一库位混放多个批次时拣错。
@@ -40,7 +40,7 @@ const snapshot = computed(() => current.value?.snapshot ?? null)
 const lastError = computed(() => current.value?.lastError ?? '')
 const pendingClaim = computed(() => current.value?.pendingClaim ?? null)
 const pendingPick = computed(() => current.value?.pendingPick ?? null)
-const storageError = computed(() => picker.storageError)
+const storageError = computed(() => picker.storageError.value)
 const pendingTip = computed(() => {
   if (pendingPick.value) {
     return pendingPick.value.stale
@@ -78,7 +78,7 @@ async function open(id: EntityID, task?: TaskItem) {
     // 恢复这批任务上一次未确认的领取/拣货操作（关闭弹窗、刷新后不丢）。
     const restoreError = picker.restoreForTasks(tasks.value.map((t) => t.id))
     if (restoreError) ElMessage.error(restoreError)
-    const preselect = task ?? pendingTasks.value[0]
+    const preselect = task ?? pendingTasks.value.find((t) => picker.stateOf(t.id).pendingPick || picker.stateOf(t.id).pendingClaim) ?? pendingTasks.value[0]
     if (preselect) {
       onTaskChange(preselect.id)
     } else {

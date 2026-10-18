@@ -31,20 +31,22 @@ func strictScan(task *taskmodel.Task) *outservice.PickScan {
 	return &outservice.PickScan{Strict: true, LocationCode: task.LocationCode, BatchNo: task.BatchNo}
 }
 
-// signalIdempotencyRead 在 wms_idempotency 的 SELECT（事务内幂等快路径）下发前关闭一次信号。
+// signalIdempotencyRead 在 wms_idempotency 的 SELECT 完成且确认未命中后关闭一次信号。
 // 在「先到者已持任务行锁且未提交」之后注册：先到者已完成查询不会再触发，
-// 信号关闭即代表后到者的查询已执行（其事务快照中必然查不到先到者未提交的记录）。
+// 信号关闭即代表后到者的查询已完成且未命中（其事务快照中必然查不到先到者未提交的记录）。
 func signalIdempotencyRead(t *testing.T, db *gorm.DB, name string, ch chan struct{}) {
 	t.Helper()
 	var once sync.Once
-	if err := db.Callback().Query().Before("gorm:query").Register(name, func(query *gorm.DB) {
+	if err := db.Callback().Query().After("gorm:query").Register(name, func(query *gorm.DB) {
 		if query.Statement == nil || query.Statement.Table != "wms_idempotency" {
 			return
 		}
 		if _, ok := query.Statement.Dest.(*idempotency.Record); !ok {
 			return
 		}
-		once.Do(func() { close(ch) })
+		if errors.Is(query.Error, gorm.ErrRecordNotFound) {
+			once.Do(func() { close(ch) })
+		}
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -254,7 +256,7 @@ func TestPickIdempotencyInsertFailureRollsBack(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := stack.out.Pick(stack.ctx, task.ID, 1, "picker", scan, "", "idem-race-insfail"); errcode.From(err).Code != errcode.Internal.Code {
+	if _, err := stack.out.Pick(stack.ctx, task.ID, 2, "picker", scan, "", "idem-race-insfail"); errcode.From(err).Code != errcode.Internal.Code {
 		t.Fatalf("pick err=%v", err)
 	}
 
