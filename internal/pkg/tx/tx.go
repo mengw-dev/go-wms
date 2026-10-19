@@ -4,6 +4,7 @@ package tx
 import (
 	"context"
 	"errors"
+	"math/rand/v2"
 	"time"
 
 	"github.com/go-sql-driver/mysql"
@@ -32,22 +33,37 @@ func (m *Manager) DB() *gorm.DB { return m.db }
 
 // Tx 在事务内执行 fn，panic 或返回 error 时回滚。
 func (m *Manager) Tx(ctx context.Context, fn func(tx *gorm.DB) error) error {
-	return m.db.WithContext(ctx).Transaction(fn)
+	err := m.db.WithContext(ctx).Transaction(fn)
+	var driverErr *mysql.MySQLError
+	if errors.As(err, &driverErr) && (driverErr.Number == 1205 || driverErr.Number == 1213) {
+		log.WithContext(ctx).Warn("transaction lock conflict", "mysql_code", driverErr.Number, "err", err)
+		return errcode.Wrap(err, errcode.TransactionBusy)
+	}
+	return err
 }
 
-// retryBackoff 冲突重试基础退避，第 i 次重试等待 (i+1)*retryBackoff（50ms、100ms、150ms...）。
-const retryBackoff = 50 * time.Millisecond
+const (
+	retryBackoff = 50 * time.Millisecond
+	// 只限制发起后续事务的窗口，不强行截断正常长事务；单轮执行受调用方 context 和 MySQL 超时限制。
+	retryWindow = 2 * time.Second
+)
 
 // TxRetry 在事务内执行 fn；遇到并发冲突（乐观锁失败、MySQL 死锁 1213）自动用新事务重试。
 // 每次重试都是全新事务，fn 内必须重新读取数据（不要依赖上一轮的内存状态）。
+// 1205 不自动重试；1213 耗尽/超出重试窗口返回 50302，业务版本冲突保留原 409。
+// 默认三次尝试的等待合计不足 300ms，不延长调用方 deadline；首轮耗时超过窗口后不再开新事务。
 func (m *Manager) TxRetry(ctx context.Context, maxAttempts int, fn func(tx *gorm.DB) error) error {
 	if maxAttempts < 1 {
 		return errors.New("transaction attempts must be positive")
 	}
 	var err error
+	retryUntil := time.Now().Add(retryWindow)
 	for i := 0; i < maxAttempts; i++ {
 		if err := ctx.Err(); err != nil {
 			return err
+		}
+		if i > 0 && !time.Now().Before(retryUntil) {
+			break
 		}
 		err = m.Tx(ctx, fn)
 		if err == nil {
@@ -59,14 +75,25 @@ func (m *Manager) TxRetry(ctx context.Context, maxAttempts int, fn func(tx *gorm
 		if i == maxAttempts-1 {
 			break
 		}
+		delay := retryDelay(i)
+		if !time.Now().Add(delay).Before(retryUntil) {
+			break
+		}
 		log.WithContext(ctx).Warn("tx conflict, retrying", "attempt", i+1, "max", maxAttempts, "err", err)
+		timer := time.NewTimer(delay)
 		select {
 		case <-ctx.Done():
+			timer.Stop()
 			return ctx.Err()
-		case <-time.After(time.Duration(i+1) * retryBackoff):
+		case <-timer.C:
 		}
 	}
 	return err
+}
+
+func retryDelay(attempt int) time.Duration {
+	base := time.Duration(min(attempt, 3)+1) * retryBackoff
+	return base + rand.N(base) // #nosec G404 -- scheduling jitter is not a security token.
 }
 
 // IsRetryable 判断事务失败后是否可以安全重试：

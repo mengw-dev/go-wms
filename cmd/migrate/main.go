@@ -16,6 +16,7 @@ import (
 	"github.com/golang-migrate/migrate/v4"
 	migratemysql "github.com/golang-migrate/migrate/v4/database/mysql"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
+	gormmysql "gorm.io/driver/mysql"
 	"gorm.io/gorm"
 
 	"gowms/internal/bootstrap"
@@ -88,6 +89,14 @@ func run() error {
 
 	switch flag.Arg(0) {
 	case "up":
+		// 只读预检在 m.Up 设置 dirty / 执行任何业务 DDL 前完成；迁移期间须停止写入。
+		auditDB, err := gorm.Open(gormmysql.New(gormmysql.Config{Conn: sqlDB, SkipInitializeWithVersion: true}), &gorm.Config{DisableAutomaticPing: true})
+		if err != nil {
+			return fmt.Errorf("open migration audit: %w", err)
+		}
+		if err := bootstrap.AuditQuantityChecks(auditDB); err != nil {
+			return fmt.Errorf("migration quantity preflight: %w", err)
+		}
 		if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
 			return fmt.Errorf("migrate up: %w", err)
 		}

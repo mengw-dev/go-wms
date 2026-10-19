@@ -41,9 +41,9 @@
 | --- | --- | --- | --- |
 | 多租户隔离 | `internal/pkg/tenant` | 租户上下文与 GORM 过滤；区分平台旁路和精确租户（包括租户 0） | `gorm_test.go` |
 | 分布式锁 | `internal/pkg/lock` | 基于 Redis 的锁（`SET NX EX` + Lua 校验持有者释放） | — |
-| 事务与重试 | `internal/pkg/tx` | 事务管理器、死锁重试与退避 | `tx_test.go` |
+| 事务与重试 | `internal/pkg/tx` | 事务管理器、死锁重试与退避 | `tx_test.go`、`mysql_test.go` |
 | 请求幂等 | `internal/pkg/idempotency` | 幂等记录写入/查询与过期清理（表 `wms_idempotency`） | `internal/app/pick_race_test.go`（领取/拣货/清理集成测试） |
-| 数据库迁移 | `migrations/**` | 版本化 SQL 迁移，`embed.go` 内嵌 `versions/*.sql` | `migrations_test.go`、`quantity_test.go` |
+| 数据库迁移 | `migrations/**` | 版本化 SQL 迁移，`embed.go` 内嵌 `versions/*.sql` | `migrations_test.go`、`quantity_test.go`、`checks_test.go` |
 
 跨模块关键落点（仅记位置，细节以代码为准）：
 
@@ -66,9 +66,9 @@
 | 路径 | 职责 | 对应测试 |
 | --- | --- | --- |
 | `internal/app` | 依赖组装与路由注册 | `router_test.go`、`integration_test.go`、`pick_race_test.go`、`order_references_test.go`、`order_quantity_test.go`、`task_pagination_test.go`、`external_identity_test.go` |
-| `internal/bootstrap` | DB/Redis 初始化、迁移、种子（管理员/演示/体验账号）、演示数据重置 | `seed_test.go`、`personal_test.go`、`reset_test.go` |
+| `internal/bootstrap` | DB/Redis 初始化、迁移、种子（管理员/演示/体验账号）、演示数据重置 | `seed_test.go`、`personal_test.go`、`reset_test.go`、`quantity_test.go`、`checks_test.go` |
 | `cmd/wms` | 服务入口、`.env` 加载、优雅关停、后台 worker 启动 | `dotenv_test.go`、`server_test.go` |
-| `cmd/migrate` | 迁移工具与管理员/应用账户初始化 | — |
+| `cmd/migrate` | 迁移工具与管理员/应用账户初始化 | `preflight_test.go` |
 | `internal/testutil` | 测试用 MySQL/Redis 基础设施（独立测试库） | `mysql_test.go` |
 
 通用能力 `internal/pkg/**`：

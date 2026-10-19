@@ -178,7 +178,7 @@ func seedDemoData(db *gorm.DB) error {
 		outboundOrder := outboundmodel.ShipmentOrder{
 			OrderNo: "CK20260915000001", BizOrderNo: "CUST20260915001", WarehouseID: warehouses[0].ID,
 			Status: outboundmodel.OrderShipped, Remark: "演示数据：客户订单 CUST20260915001",
-			ExpectedQty: 30, PickedQty: 30, CreatedBy: "system-seed",
+			ExpectedQty: 30, AllocatedQty: 30, PickedQty: 30, CreatedBy: "system-seed",
 		}
 		return tx.Create(&outboundOrder).Error
 	})

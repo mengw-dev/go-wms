@@ -23,6 +23,7 @@ func TestHTTPStatus(t *testing.T) {
 		{errcode.Internal, 500},
 		{errcode.PayloadTooLarge, 413},
 		{errcode.Conflict, 409},
+		{errcode.TransactionBusy, 503},
 		{errcode.OrderVersionBad, 409},
 		{errcode.ShipOrderVersionBad, 409},
 		{errcode.AllocConflict, 409},

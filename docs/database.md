@@ -186,3 +186,17 @@ erDiagram
 - `000011` 按关联分配行回填历史 PICK 任务中为 0 的 `detail_id`，配合拣货时的任务与分配关系校验。此迁移修改历史字段，升级前应备份并评估在途任务。
 
 完整升级流程见 [部署指南](deployment.md)，回归入口为 `migrations/migrations_test.go`。引用完整性策略另见 [database-design.md](database-design.md)。
+
+## 10. 数量进度约束（迁移 000012）
+
+| 表 | 约束 | 保证 |
+| --- | --- | --- |
+| wms_task | chk_task_quantity_progress | target_qty、done_qty 非负，done_qty ≤ target_qty |
+| wms_allocation | chk_allocation_quantity_progress | allocated_qty、picked_qty 非负，picked_qty ≤ allocated_qty |
+| wms_shipment_order | chk_shipment_quantity_progress | expected_qty、allocated_qty、picked_qty 非负，picked_qty ≤ allocated_qty ≤ expected_qty |
+
+与库存原有三个 CHECK 一起，由 `bootstrap/checks.go` 核对定义及 ENFORCED。开发迁移在改表前只读审计全部租户和软删行，创建完成后复核；同名异定义、NOT ENFORCED、元数据读取或 DDL 失败都返回错误。MySQL 3822 只有回查确认同一表上正确且启用的约束后才可视为并发创建成功，不能按错误文本或 1061 忽略。
+
+正式 `migrate up` 在执行迁移前运行相同只读审计；历史数据不满足约束时保留数据及原版本，不自动修正数量。每个 ALTER 仍检查当时的数据；MySQL DDL 非跨表事务，发生其他 DDL 故障可能留下 dirty 状态和部分约束，处理流程见部署文档。`down` 仅删除本轮三个 CHECK，不改变业务数据和库存原有约束。
+
+新增演示出库种子同步设置分配量，避免新样本违反进度约束；旧演示行不自动回填。此变更没有补齐演示单据明细/任务/流水，D15 仍保留。

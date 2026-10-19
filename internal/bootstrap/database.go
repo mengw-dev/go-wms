@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -22,7 +21,6 @@ import (
 	taskmodel "gowms/internal/modules/task/model"
 	"gowms/internal/pkg/config"
 	"gowms/internal/pkg/idempotency"
-	"gowms/internal/pkg/log"
 	"gowms/internal/pkg/tenant"
 )
 
@@ -75,6 +73,9 @@ func AutoMigrate(db *gorm.DB) error {
 	if err := auditQuantityColumns(db); err != nil {
 		return err
 	}
+	if err := AuditQuantityChecks(db); err != nil {
+		return err
+	}
 	if err := db.AutoMigrate(
 		&sysmodel.SysUser{}, &sysmodel.SysRole{}, &sysmodel.SysUserRole{}, &sysmodel.SysOperLog{},
 		&model.Warehouse{}, &model.Location{}, &model.SKU{},
@@ -87,23 +88,5 @@ func AutoMigrate(db *gorm.DB) error {
 	); err != nil {
 		return err
 	}
-	// CHECK 约束（MySQL 8.0.16+ 强制执行）；已存在时报 1061 duplicate，属预期可忽略。
-	checks := []struct {
-		name       string
-		expression string
-	}{
-		{name: "chk_inv_non_negative", expression: "available_quantity >= 0 AND stock_quantity >= 0"},
-		{name: "chk_inv_allocated_non_negative", expression: "allocated_quantity >= 0"},
-		{name: "chk_inv_quantity_balance", expression: "stock_quantity = available_quantity + allocated_quantity"},
-	}
-	for _, check := range checks {
-		query := fmt.Sprintf("ALTER TABLE wms_inventory ADD CONSTRAINT %s CHECK (%s)", check.name, check.expression)
-		if err := db.Exec(query).Error; err != nil {
-			if !strings.Contains(strings.ToLower(err.Error()), "duplicate") &&
-				!strings.Contains(err.Error(), "1061") {
-				log.L().Warn("add inventory check constraint failed", "constraint", check.name, "err", err)
-			}
-		}
-	}
-	return nil
+	return ensureQuantityChecks(db)
 }

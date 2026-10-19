@@ -63,6 +63,9 @@ func run() error {
 		}
 	} else {
 		log.L().Info("AutoMigrate disabled in release mode; run cmd/migrate before startup")
+		if err := bootstrap.VerifyQuantityChecks(db.WithContext(ctx)); err != nil {
+			return fmt.Errorf("verify database checks: %w", err)
+		}
 		if err := bootstrap.SeedDemoAccounts(db, cfg); err != nil {
 			return fmt.Errorf("sync demo accounts: %w", err)
 		}

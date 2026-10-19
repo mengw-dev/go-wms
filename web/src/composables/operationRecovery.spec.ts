@@ -112,9 +112,9 @@ describe.each(cases)('$name 恢复边界', ({ setup }) => {
     expect(op.api).toHaveBeenCalledTimes(1)
   })
 
-  it('后端无法核对结果时保留原 key 和参数，恢复仍发送同一操作', async () => {
+  it.each([50301, 50302])('后端结果未知或数据库繁忙（%i）时保留原 key 和参数', async (code) => {
     const op = setup()
-    const unknown = { code: 50301, status: 503, message: '结果暂时无法确认' }
+    const unknown = { code, status: 503, message: '结果暂时无法确认' }
     op.api.mockRejectedValueOnce(unknown)
     await expect(op.submit()).rejects.toEqual(unknown)
     const pending = loadPending({ userId: '1', sessionNamespace: '' }, localStorage).items[0]
@@ -123,6 +123,18 @@ describe.each(cases)('$name 恢复边界', ({ setup }) => {
     await op.recover()
     expect(op.api.mock.calls[1]?.at(-1)).toBe(pending?.operationKey)
   })
+})
+
+it('领取遇到数据库繁忙时保留同一个 key，恢复后才保存凭证', async () => {
+  const op = usePdaPick()
+  vi.mocked(claimPdaTask).mockRejectedValueOnce({ code: 50302, status: 503, message: '数据库繁忙' })
+  expect(await op.claim('1')).toBe(false)
+  const pending = loadPending({ userId: '1', sessionNamespace: '' }, localStorage).items[0]
+  expect(pending?.state).toBe('uncertain')
+  vi.mocked(claimPdaTask).mockResolvedValueOnce(claimSnapshot)
+  expect(await op.recoverClaim('1')).toBe(true)
+  expect(vi.mocked(claimPdaTask).mock.calls[1]?.at(-1)).toBe(pending?.operationKey)
+  expect(loadPending({ userId: '1', sessionNamespace: '' }, localStorage).items).toHaveLength(0)
 })
 
 it('领取恢复同样禁止双击和发送中放弃，切账号不泄露凭证', async () => {
