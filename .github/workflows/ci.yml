@@ -72,6 +72,9 @@ jobs:
           JWT_SECRET: ci-jwt-secret-0123456789abcdef0123456789abcdef
         run: docker compose -f deploy/docker-compose.yaml config --quiet
 
+      - name: Deployment regression (Git revision + readiness + metadata)
+        run: bash scripts/tests/deploy.tests.sh
+
       - name: Verify modules
         run: go mod verify
 
@@ -140,11 +143,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set build metadata
+        run: |
+          echo "COMMIT=$GITHUB_SHA" >> "$GITHUB_ENV"
+          echo "VERSION=sha-$GITHUB_SHA" >> "$GITHUB_ENV"
+          echo "BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
       - name: Build backend image
-        run: docker build -t gowms-api:test .
+        run: docker build --build-arg VERSION="$VERSION" --build-arg COMMIT="$COMMIT" --build-arg BUILD_TIME="$BUILD_TIME" -t gowms-api:test .
 
       - name: Build frontend image
-        run: docker build -t gowms-web:test ./web
+        run: docker build --build-arg VERSION="$VERSION" --build-arg COMMIT="$COMMIT" --build-arg BUILD_TIME="$BUILD_TIME" -t gowms-web:test ./web
+
+      - name: Verify container readiness and build versions
+        run: bash scripts/tests/deploy-containers.sh
 
   e2e:
     name: E2E (Playwright)

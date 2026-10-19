@@ -1,0 +1,10 @@
+# 自动发布只使用构建作业返回的不可变 digest；手动开发启动继续使用基础 Compose。
+services:
+  migrate:
+    image: ${WMS_API_IMAGE:?missing API image digest}
+  bootstrap-admin:
+    image: ${WMS_API_IMAGE:?missing API image digest}
+  wms:
+    image: ${WMS_API_IMAGE:?missing API image digest}
+  web:
+    image: ${WMS_WEB_IMAGE:?missing Web image digest}

@@ -5,11 +5,16 @@ ENV GOPROXY=https://goproxy.cn,direct
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/wms ./cmd/wms \
+ARG VERSION=dev
+ARG COMMIT=unknown
+ARG BUILD_TIME=unknown
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w -X gowms/internal/pkg/version.Version=${VERSION} -X gowms/internal/pkg/version.Commit=${COMMIT} -X gowms/internal/pkg/version.BuildTime=${BUILD_TIME}" -o /out/wms ./cmd/wms \
     && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/migrate ./cmd/migrate
 
 # ---- 运行阶段 ----
 FROM alpine:3.21
+ARG COMMIT=unknown
+LABEL org.opencontainers.image.revision="${COMMIT}"
 RUN apk add --no-cache ca-certificates tzdata wget \
     && addgroup -S app \
     && adduser -S -G app app

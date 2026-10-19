@@ -3,9 +3,15 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
-RUN npm run build
+ARG VERSION=dev
+ARG COMMIT=unknown
+ARG BUILD_TIME=unknown
+RUN npm run build \
+    && printf '{"version":"%s","commit":"%s","build_time":"%s"}\n' "$VERSION" "$COMMIT" "$BUILD_TIME" > /app/dist/build-info.json
 
 FROM nginxinc/nginx-unprivileged:1.27-alpine
+ARG COMMIT=unknown
+LABEL org.opencontainers.image.revision="${COMMIT}"
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=builder --chown=101:101 /app/dist /usr/share/nginx/html
 EXPOSE 8080

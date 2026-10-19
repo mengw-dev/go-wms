@@ -1,6 +1,7 @@
 # 自有镜像（migrate / wms / web）同时声明了 image 与 build：
 #   - 服务器部署：CI 在 GitHub 上构建好并推送到 GHCR，服务器只 `docker compose pull`，不在本机编译；
-#     部署 workflow 会通过 WMS_IMAGE_TAG 传入本次 commit 的镜像标签。
+#     部署 workflow 叠加 docker-compose.release.yaml，传入构建产物的不可变 digest。
+#     WMS_IMAGE_TAG 仍可用于人工指定标签；latest 不是自动发布的版本依据。
 #   - 本地开发与 E2E：脚本一律带 --build，Compose 会以本地 Dockerfile 构建并用上面的名字打标签，
 #     因此改代码后必须 --build（否则 Compose 可能去 GHCR 拉取旧镜像）。
 services:

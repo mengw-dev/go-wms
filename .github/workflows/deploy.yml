@@ -12,7 +12,7 @@
 #     DEPLOY_PORT     SSH 端口，可选，默认 22
 #   Variables（非敏感，也可放进 Secrets）:
 #     DEPLOY_PATH         服务器上仓库目录，默认 /opt/gowms
-#     DEPLOY_HEALTH_URL   部署后健康检查地址，默认 http://127.0.0.1:8081/healthz
+#     DEPLOY_HEALTH_URL   Web 入口 /healthz 地址，默认 http://127.0.0.1:8081/healthz；同源检查 readyz 和前后端版本
 #
 # ── HTTPS（服务器上一次性配置）──
 #   服务器 .env 里配置 WMS_SITE_DOMAIN / WMS_ACME_EMAIL / WMS_WEB_BIND=127.0.0.1 /
@@ -29,7 +29,7 @@
 #   `docker login ghcr.io`，使用一个仅含 read:packages 权限的 PAT。
 #
 # ── 服务器一次性准备 ──
-#   1. 安装 git / curl / Docker + compose 插件
+#   1. 安装 git / curl / jq / Docker + compose 插件
 #   2. git clone https://github.com/mengw-dev/go-wms.git /opt/gowms
 #   3. 在 /opt/gowms/.env 生成全新密钥（不要复用本地 .env）
 #   4. 本地 ssh-keygen 生成部署密钥，公钥追加到服务器 ~/.ssh/authorized_keys
@@ -61,7 +61,10 @@ jobs:
       contents: read
       packages: write
     outputs:
-      tag: ${{ steps.meta.outputs.tag }}
+      revision: ${{ steps.meta.outputs.revision }}
+      build_time: ${{ steps.meta.outputs.build_time }}
+      api_digest: ${{ steps.backend.outputs.digest }}
+      web_digest: ${{ steps.frontend.outputs.digest }}
     steps:
       # workflow_run 触发时 github.sha 指向默认分支的最新提交，而不是触发 CI 的那一次提交，
       # 必须显式 checkout workflow_run.head_sha，否则可能构建到错误的代码。
@@ -73,7 +76,11 @@ jobs:
         id: meta
         env:
           REVISION: ${{ github.event.workflow_run.head_sha || github.sha }}
-        run: echo "tag=sha-${REVISION::7}" >> "$GITHUB_OUTPUT"
+        run: |
+          test "$(git rev-parse HEAD)" = "$REVISION"
+          echo "revision=$REVISION" >> "$GITHUB_OUTPUT"
+          echo "tag=sha-$REVISION" >> "$GITHUB_OUTPUT"
+          echo "build_time=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
       - uses: docker/setup-buildx-action@v3
 
@@ -84,13 +91,18 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # 同时打 latest 与 sha-xxxxxxx 两个标签：部署按 sha 精确拉取，
+      # 同时打 latest 与完整 SHA 标签；发布只使用构建作业返回的不可变 digest，
       # latest 仅用于人工排查和手动回滚时的参照。
       - name: Build and push backend image
+        id: backend
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
+          build-args: |
+            VERSION=${{ steps.meta.outputs.tag }}
+            COMMIT=${{ steps.meta.outputs.revision }}
+            BUILD_TIME=${{ steps.meta.outputs.build_time }}
           tags: |
             ghcr.io/mengw-dev/gowms-api:latest
             ghcr.io/mengw-dev/gowms-api:${{ steps.meta.outputs.tag }}
@@ -98,10 +110,15 @@ jobs:
           cache-to: type=gha,mode=max,scope=gowms-api
 
       - name: Build and push frontend image
+        id: frontend
         uses: docker/build-push-action@v6
         with:
           context: ./web
           push: true
+          build-args: |
+            VERSION=${{ steps.meta.outputs.tag }}
+            COMMIT=${{ steps.meta.outputs.revision }}
+            BUILD_TIME=${{ steps.meta.outputs.build_time }}
           tags: |
             ghcr.io/mengw-dev/gowms-web:latest
             ghcr.io/mengw-dev/gowms-web:${{ steps.meta.outputs.tag }}
@@ -125,58 +142,28 @@ jobs:
             echo "skip=true" >> "$GITHUB_OUTPUT"
           fi
 
+      # script_path 发送 runner 上固定提交的脚本，不执行服务器旧 checkout 的脚本。
+      - uses: actions/checkout@v4
+        if: steps.guard.outputs.skip != 'true'
+        with:
+          ref: ${{ needs.build.outputs.revision }}
+
       - name: SSH deploy
         if: steps.guard.outputs.skip != 'true'
         uses: appleboy/ssh-action@v1.2.0
         env:
           DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/opt/gowms' }}
           HEALTH_URL: ${{ vars.DEPLOY_HEALTH_URL || 'http://127.0.0.1:8081/healthz' }}
-          IMAGE_TAG: ${{ needs.build.outputs.tag }}
+          DEPLOY_REVISION: ${{ needs.build.outputs.revision }}
+          BUILD_TIME: ${{ needs.build.outputs.build_time }}
+          API_DIGEST: ${{ needs.build.outputs.api_digest }}
+          WEB_DIGEST: ${{ needs.build.outputs.web_digest }}
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: ${{ secrets.DEPLOY_PORT || 22 }}
-          script_stop: true
-          envs: DEPLOY_PATH,HEALTH_URL,IMAGE_TAG
-          script: |
-            set -eu
-            cd "$DEPLOY_PATH"
-
-            if [ ! -f .env ]; then
-              echo "服务器上缺少 $DEPLOY_PATH/.env，请在服务器生成后再部署（密钥不要复用本地）。"
-              exit 1
-            fi
-
-            echo "==> 同步 origin/main（更新 compose 文件与迁移脚本）"
-            git fetch --prune origin main
-            git reset --hard origin/main
-
-            # 指定本次 commit 对应的镜像标签；shell 变量优先于 --env-file 中的同名变量。
-            export WMS_IMAGE_TAG="$IMAGE_TAG"
-
-            # 只拉自有镜像，避免浮动 tag（mysql:8.0 / redis:7-alpine）被顺带升级。
-            # 镜像不存在或仓库未公开时这里会直接失败退出，不会退化成在服务器上编译。
-            echo "==> 拉取镜像（tag=$IMAGE_TAG）"
-            docker compose --env-file .env -f deploy/docker-compose.yaml --profile tls pull migrate bootstrap-admin wms web caddy
-
-            # --no-build：即使镜像缺失也绝不在服务器上构建，宁可报错暴露问题。
-            echo "==> 启动容器（migrate 执行结构迁移，bootstrap-admin 初始化管理员，--profile tls 会一并启动 Caddy）"
-            docker compose --env-file .env -f deploy/docker-compose.yaml --profile tls up -d --no-build --remove-orphans
-
-            echo "==> 清理悬空镜像"
-            docker image prune -f
-
-            echo "==> 健康检查 $HEALTH_URL"
-            for attempt in $(seq 1 30); do
-              if curl -fsS "$HEALTH_URL" >/dev/null; then
-                echo "部署成功：服务已通过健康检查"
-                exit 0
-              fi
-              sleep 5
-            done
-
-            echo "健康检查失败，最近容器状态与日志如下："
-            docker compose --env-file .env -f deploy/docker-compose.yaml --profile tls ps
-            docker compose --env-file .env -f deploy/docker-compose.yaml --profile tls logs --tail=100
-            exit 1
+          # 脚本内 set -eu 负责失败退出；script_stop 会逐行插入语句，破坏函数和循环。
+          command_timeout: 20m
+          envs: DEPLOY_PATH,HEALTH_URL,DEPLOY_REVISION,BUILD_TIME,API_DIGEST,WEB_DIGEST
+          script_path: scripts/deploy.sh

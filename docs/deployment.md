@@ -162,4 +162,18 @@ make migrate-down
 
 GitHub Actions 的 CI 与 Deploy 配置位于 `.github/workflows/`。Deploy 在 main 的 CI 成功后构建并推送镜像，再通过 SSH 部署；Secrets、Variables 和 HTTPS 的配置说明见 [deploy.yml](../.github/workflows/deploy.yml)。
 
+自动发布固定使用触发 CI 的完整提交号（手动触发则使用该次 workflow 的提交号）。构建作业给前后端注入 `VERSION=sha-<完整 SHA>`、`COMMIT` 和 UTC `BUILD_TIME`，同时输出两个镜像的 digest；服务器叠加 `deploy/docker-compose.release.yaml` 按 digest 拉取镜像，核对镜像 revision 标签，再使用相同提交的 Compose 启动。`latest` 与 SHA 标签供人工查找，自动发布不依赖可移动标签。
+
+服务器须安装 Git、curl、jq、Docker 与 Compose 插件。服务器 `.env` 保留在原仓库目录，Compose 的目录、项目名及数据卷规则不变。发布前如有已跟踪、暂存或普通未跟踪文件，脚本会停止，须先处理这些现场修改；不会强制丢弃文件。成功后 checkout 处于本次提交的 detached HEAD，下一次发布仍直接获取指定提交，不依赖本地 main。
+
+`DEPLOY_HEALTH_URL` 必须指向 Web 入口并以 `/healthz` 结尾，默认 `http://127.0.0.1:8081/healthz`，端口须与服务器配置一致。此地址用于确定检查的同源入口，发布成功需要该入口同时通过：
+
+- `/readyz`：nginx 代理后端 `/healthz`，检查 API 与数据库可用性；Redis 保持现有可降级语义。
+- `/api/v1/version`：后端完整提交号、版本及构建时间等于本次构建输出。
+- `/build-info.json`：前端镜像中的三项构建信息也等于本次构建输出。
+
+检查解析 JSON 并限制连接/请求超时；后端故障、数据库故障、SPA 回落页面、缺失元数据或旧版本均不能通过。最多尝试 30 次，失败输出容器状态和日志。Web `/healthz` 仍只表示 nginx 存活，不能单独作为发布验收。手动本地构建未传构建参数时保留 `dev/unknown`，不能通过自动发布的版本核对。
+
+回归入口为 `bash scripts/tests/deploy.tests.sh`（真实临时 Git A/B 提交与 jq，Docker/HTTP 替身）和 CI 的 `scripts/tests/deploy-containers.sh`（专用 Compose 项目，真实前后端/MySQL，检查版本并停止 MySQL/API 验证非 2xx）。后者仅用于 CI，结束时删除自己创建的测试项目及数据卷。发布检查不提供自动回滚，也不表示已做生产上线或恢复演练。
+
 监控见 [monitoring.md](monitoring.md)，环境变量见 [configuration.md](configuration.md)，备份恢复、滚动升级等未完成能力见 [production-readiness.md](production-readiness.md)。

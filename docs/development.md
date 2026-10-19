@@ -4,6 +4,23 @@
 
 以下命令均从仓库根目录执行，另有说明的除外。下方按日期保留历史验证记录，其中旧阶段的“未提交”“幂等尚待实施”只代表当时状态；当前幂等已完成，以 2026-10-18 验收记录为准。
 
+## 2026-10-19 部署一致性 D04 / D05 / D06
+
+基线 `main` / `55826ee`。仅修改发布 workflow、Dockerfile、nginx 就绪入口、release Compose、发布脚本及回归；保留原有业务逻辑、迁移和未提交工作。D04–D06 的根因和修复见问题总表，配置与使用边界见 deployment.md。
+
+发布固定完整提交、两个不可变镜像 digest 及三项构建信息；服务器仓库不干净时停止。最终检查从同一 Web 入口解析数据库/API 就绪响应，并逐项核对前后端元数据。SSH 发送 runner 固定提交的脚本，使用脚本自身 `set -eu`，关闭会逐行插入语句并破坏多行控制结构的 script_stop。
+
+| 检查 | 本地实际结果 |
+| --- | --- |
+| `bash scripts/tests/deploy.tests.sh` | 19 场景通过；实际临时 Git 远端含 A/B 两个提交，最新 main 为 B 仍部署 A；保留 .env，已跟踪/暂存/未跟踪修改均阻断且保留。Docker/HTTP 为替身，jq 为真实 1.8.1。覆盖 API/DB 故障、SPA、连接中断、多个 JSON、前后端旧版、dev/unknown、业务错误/字段缺失、pull/镜像标签失败及非法输入。 |
+| `sh -n scripts/deploy.sh`、`bash -n scripts/tests/*.sh` | 本轮两个 Bash 回归脚本与发布脚本语法通过 |
+| actionlint v1.7.7 | 当前 CI/Deploy workflow 均通过（本地未启用外部 shellcheck/pyflakes） |
+| CI/Deploy YAML、Compose | js-yaml 解析通过；基础 + release + tls Compose 经 Docker CLI config 检查通过，不需要 daemon |
+| `scripts/windows/verify.ps1` | 独立暂存源码快照 `d3bdd646c99db380a4bcfa681300b7043bb81818`：Go build、真实 MySQL/Redis 全量测试零跳过、vet、全仓 lint 0 issues、租户原生查询检查；前端 lint、21 文件/194 单测、类型检查与 build、diff check 全过。之后仅补文档、删除 SSH 的 script_stop 开关及加固回归脚本临时目录清理范围；最终 workflow 已单独经过 actionlint 检查，回归脚本已复跑。 |
+| 原有未提交修改保护 | 任务前后剩余 diff 的所有新增/删除行完全一致，未把外部单保护、迁移 000012、Makefile/reset/k6 等混入发布 |
+
+测试仅连接本轮启动的本地 MySQL 23306 / Redis 26379，各 fixture 自建测试 schema，没有连接开发或生产业务库。测试后关闭临时服务。本地未运行 race、E2E、k6、生产部署；Docker daemon 未运行，因此本地没有执行真实容器构建/故障测试。CI 的 containers 作业已加入 `deploy-containers.sh`，使用独立项目与测试卷，核对真实前后端构建元数据，并在停止 MySQL/API 后确认 nginx 存活而 readyz 失败。此记录在提交前写入，远端结果以该提交的 Actions 实际记录为准，不把新增检查入口写成远端已通过。
+
 ## 2026-10-19 验证门禁 D02 / D03
 
 基线 `main` / `926ad0e`。本轮只修复本地集成测试和 CI 漏洞扫描的假通过问题；没有修改业务运行逻辑、数据库迁移或前端功能。原有外部单保护、迁移 000012、Makefile/Windows/k6 未提交改动保留。verify.ps1 原有本地状态仅为行尾差异，本轮仅提交新增门禁改动。
