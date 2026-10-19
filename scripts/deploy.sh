@@ -36,12 +36,27 @@ export WMS_WEB_IMAGE="ghcr.io/mengw-dev/gowms-web@$WEB_DIGEST"
 compose() {
     docker compose --env-file .env -f deploy/docker-compose.yaml -f deploy/docker-compose.release.yaml --profile tls "$@"
 }
+deploy_phase='拉取镜像'
+on_exit() {
+    status=$?
+    trap - 0
+    if [ "$status" -ne 0 ]; then
+        echo "部署失败（$deploy_phase，退出码 $status），容器状态与最近日志如下：" >&2
+        compose ps -a || true
+        compose logs --no-color --tail=100 migrate bootstrap-admin wms web || true
+    fi
+    exit "$status"
+}
+trap on_exit 0
+. ./scripts/lib/deploy-services.sh
 compose pull migrate bootstrap-admin wms web caddy
+deploy_phase='核对镜像版本'
 for image in "$WMS_API_IMAGE" "$WMS_WEB_IMAGE"; do
     actual=$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$image")
     [ "$actual" = "$DEPLOY_REVISION" ] || fail "镜像 revision 标签与本次提交不匹配：$image"
 done
-compose up -d --no-build --remove-orphans
+deploy_services caddy
+deploy_phase='核对发布就绪与版本'
 
 get() { curl --fail --silent --show-error --connect-timeout 3 --max-time 5 "$1"; }
 check_version() {
@@ -69,7 +84,5 @@ while [ "$attempt" -le 30 ]; do
     [ "$attempt" -eq 30 ] || sleep 5
     attempt=$((attempt + 1))
 done
-echo "发布就绪或版本检查失败，最近容器状态与日志如下：" >&2
-compose ps || true
-compose logs --tail=100 || true
+echo "发布就绪或版本检查失败" >&2
 exit 1
