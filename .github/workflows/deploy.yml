@@ -23,19 +23,15 @@ jobs:
             set -eu
             cd "$DEPLOY_PATH"
             docker compose --env-file .env -f deploy/docker-compose.yaml exec -T mysql sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql --batch --raw --default-character-set=utf8mb4 -uroot "$MYSQL_DATABASE"' <<'WMS_AUDIT_SQL'
-            -- 仅用于授权后的只读核对；不修改表结构、迁移版本、业务数量或状态。
             START TRANSACTION READ ONLY;
-            SELECT version, dirty FROM schema_migrations;
-            SELECT COUNT(*) AS invalid_shipment_count
-            FROM wms_shipment_order
-            WHERE NOT (expected_qty >= 0 AND allocated_qty >= 0 AND picked_qty >= 0
-                       AND picked_qty <= allocated_qty AND allocated_qty <= expected_qty);
-            SELECT id, tenant_id, order_no, biz_order_no, status, expected_qty,
-                   allocated_qty, picked_qty, created_by, deleted_at
-            FROM wms_shipment_order
-            WHERE NOT (expected_qty >= 0 AND allocated_qty >= 0 AND picked_qty >= 0
-                       AND picked_qty <= allocated_qty AND allocated_qty <= expected_qty)
-            ORDER BY tenant_id, id
-            LIMIT 100;
+            SELECT o.id,o.tenant_id,o.order_no,o.biz_order_no,o.status,o.expected_qty,o.allocated_qty,o.picked_qty,o.created_by,o.remark,o.version,o.deleted_at,w.code AS warehouse_code,
+            (SELECT COUNT(*) FROM wms_shipment_order_detail d WHERE d.tenant_id=o.tenant_id AND d.order_id=o.id) AS details,
+            (SELECT COUNT(*) FROM wms_allocation a WHERE a.tenant_id=o.tenant_id AND a.order_id=o.id) AS allocations,
+            (SELECT COUNT(*) FROM wms_task t WHERE t.tenant_id=o.tenant_id AND (t.order_id=o.id AND t.task_type='PICK' OR t.order_no=o.order_no)) AS tasks,
+            (SELECT COUNT(*) FROM wms_inventory_trans it WHERE it.tenant_id=o.tenant_id AND it.order_no=o.order_no) AS inventory_transactions
+            FROM wms_shipment_order o LEFT JOIN wms_warehouse w ON w.id=o.warehouse_id AND w.tenant_id=o.tenant_id
+            WHERE NOT (o.expected_qty>=0 AND o.allocated_qty>=0 AND o.picked_qty>=0 AND o.picked_qty<=o.allocated_qty AND o.allocated_qty<=o.expected_qty)
+            ORDER BY o.tenant_id,o.id LIMIT 100;
             ROLLBACK;
+            
             WMS_AUDIT_SQL
