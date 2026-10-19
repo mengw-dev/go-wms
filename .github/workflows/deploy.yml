@@ -22,5 +22,20 @@ jobs:
           script: |
             set -eu
             cd "$DEPLOY_PATH"
-            docker compose --env-file .env -f deploy/docker-compose.yaml --profile tls ps -a
-            docker compose --env-file .env -f deploy/docker-compose.yaml --profile tls logs --no-color --tail=80 migrate
+            docker compose --env-file .env -f deploy/docker-compose.yaml exec -T mysql sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql --batch --raw --default-character-set=utf8mb4 -uroot "$MYSQL_DATABASE"' <<'WMS_AUDIT_SQL'
+            -- 仅用于授权后的只读核对；不修改表结构、迁移版本、业务数量或状态。
+            START TRANSACTION READ ONLY;
+            SELECT version, dirty FROM schema_migrations;
+            SELECT COUNT(*) AS invalid_shipment_count
+            FROM wms_shipment_order
+            WHERE NOT (expected_qty >= 0 AND allocated_qty >= 0 AND picked_qty >= 0
+                       AND picked_qty <= allocated_qty AND allocated_qty <= expected_qty);
+            SELECT id, tenant_id, order_no, biz_order_no, status, expected_qty,
+                   allocated_qty, picked_qty, created_by, deleted_at
+            FROM wms_shipment_order
+            WHERE NOT (expected_qty >= 0 AND allocated_qty >= 0 AND picked_qty >= 0
+                       AND picked_qty <= allocated_qty AND allocated_qty <= expected_qty)
+            ORDER BY tenant_id, id
+            LIMIT 100;
+            ROLLBACK;
+            WMS_AUDIT_SQL
