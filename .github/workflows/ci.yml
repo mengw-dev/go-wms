@@ -63,6 +63,7 @@ jobs:
             [System.Management.Automation.Language.Parser]::ParseFile($file.FullName, [ref]$tokens, [ref]$errors) | Out-Null
             if ($errors.Count -gt 0) { throw "$($file.FullName) has PowerShell syntax errors" }
           }
+          & ./scripts/tests/verification-gates.tests.ps1
 
       - name: Validate Docker Compose
         env:
@@ -88,22 +89,17 @@ jobs:
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
           GVT="$(go env GOPATH)/bin/govulncheck"
-          "$GVT" -format=json ./... > vuln.json || true
-          # 漏洞库实时更新，新公告可能在代码完全没变的情况下让流水线变红。
-          # 因此只拦截「代码确实调用到、且上游已发布修复版本」的漏洞（trace 含 function 帧才算调用到）；
-          # 上游尚未发版的漏洞无法通过升级消除，仅告警，待其发版后本步骤会自动变红要求升级。
-          jq -r '.finding | select(.trace[]? | has("function")) | select(.fixed_version) | "\(.osv) 修复版本 \(.fixed_version)"' vuln.json | sort -u > vuln-fixable.txt
-          jq -r '.finding | select(.trace[]? | has("function")) | select(.fixed_version | not) | .osv' vuln.json | sort -u > vuln-nofix.txt
-          if [ -s vuln-nofix.txt ]; then
-            echo "::warning::以下漏洞上游尚未发布修复版本，暂时无法通过升级依赖消除，本次仅告警："
-            cat vuln-nofix.txt
-          fi
-          if [ -s vuln-fixable.txt ]; then
-            echo "::error::以下漏洞已有修复版本，请升级对应依赖后重新提交："
-            cat vuln-fixable.txt
-            exit 1
-          fi
-          echo "依赖安全扫描通过：未发现可被调用的未修复漏洞"
+          # 扫描器退出异常、报告为空/损坏/目标缺失均失败；已调用且有修复版本的漏洞阻断，
+          # 上游无修复版本的已调用漏洞仅告警。由同一入口执行扫描与判定，避免忽略执行失败。
+          go run ./scripts/check-vulns -scanner "$GVT" -report vuln.json
+
+      - name: Upload vulnerability report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-vulnerability-report
+          path: vuln.json
+          if-no-files-found: ignore
 
       - name: Test（race + MySQL 集成测试）
         run: go test -race ./... -v -count=1

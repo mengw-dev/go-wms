@@ -29,3 +29,6 @@ docs/context-handoff.md
 
 # 本地审查过程记录（公开待办见 docs/requirements.md）
 docs/review-progress.md
+
+# 本地漏洞扫描原始报告（CI 单独上传 artifact）
+/vuln.json

@@ -4,6 +4,36 @@
 
 以下命令均从仓库根目录执行，另有说明的除外。下方按日期保留历史验证记录，其中旧阶段的“未提交”“幂等尚待实施”只代表当时状态；当前幂等已完成，以 2026-10-18 验收记录为准。
 
+## 2026-10-19 验证门禁 D02 / D03
+
+基线 `main` / `926ad0e`。本轮只修复本地集成测试和 CI 漏洞扫描的假通过问题；没有修改业务运行逻辑、数据库迁移或前端功能。原有外部单保护、迁移 000012、Makefile/Windows/k6 未提交改动保留。verify.ps1 原有本地状态仅为行尾差异，本轮仅提交新增门禁改动。
+
+- D02：`verify.ps1` 调用新的 `test-go.ps1`，默认要求显式测试 DSN/Redis 地址，临时强制 WMS_TEST_REQUIRED=1；JSON 事件区分无测试文件的包与实际测试跳过。缺少配置、测试失败、跳过用例、没有成功测试包、无效 JSON 均不能通过；成功和失败均恢复环境。显式 AllowSkippedIntegration 只能产生部分检查结果，不显示完整通过。
+- D03：`scripts/check-vulns` 以子进程运行真实 govulncheck，检查退出状态和完整 JSON 对象流、协议、符号级源码扫描及 SBOM 目标。扫描失败/取消、空/截断/损坏/无目标报告均拒绝；保留已有漏洞策略、去重输出与原始报告，CI 上传 artifact。报告输出路径为本地 CLI 参数、使用 0600 文件权限，单行 gosec 说明限定于该开发者输出边界，不关闭全局规则。
+- 验证完整脚本时发现系统级数量审计被既有租户字符串检查误报；仅补充其跨全部 tenant_id 的意图注释，SQL 与运行逻辑不变。D07 模块依赖护栏仍待实施。
+
+从 index 导出独立源码快照 `tmpgen/gates-20261019/source`（源码树 `d2381cb76afea1fcfeb058501f4e6ea00b5dd193`，之后仅补文档/报告忽略规则）执行：
+
+```powershell
+$env:WMS_TEST_DSN='root@tcp(127.0.0.1:23306)/?parseTime=true&timeout=2s'
+$env:WMS_TEST_REDIS_ADDR='127.0.0.1:26379'
+.\scripts\windows\verify.ps1
+.\scripts\tests\verification-gates.tests.ps1
+go test ./scripts/check-vulns -count=1
+go run ./scripts/check-vulns -scanner <本机 govulncheck 路径> -report vuln.json
+```
+
+| 验证 | 结果 |
+| --- | --- |
+| 完整 verify 入口 | 通过：gofmt、Go build/真实 MySQL 与 Redis 全量测试（跳过 0 项）、vet、golangci-lint 0 issues、租户原生查询检查、前端 lint/21 文件 194 单测/vue-tsc/build、diff 检查 |
+| PowerShell 门禁回归与语法检查 | 通过：缺 DSN/Redis、失败退出、实际跳过、空/损坏 JSON、无测试文件包、显式部分模式、环境恢复；无 Pester 依赖，已纳入 CI |
+| 扫描器进程与报告回归 | 通过：扫描失败/部分输出后失败、缺失扫描器、取消、空/损坏/协议或级别不符/缺少目标报告；可修复已调用阻断、无修复仅告警、模块/导入未调用不升级、重复 finding 去重 |
+| 真实扫描（govulncheck v1.8.0，Go 1.26.9） | 完成且门禁通过：无已调用且已有修复版本的漏洞，无修复版本告警 0；仅为本次扫描结论 |
+| 真实扫描失败目标 | 无匹配包时扫描器退出 2，门禁退出 1，未输出成功；保留原始报告 |
+| CI YAML | 本地解析通过，新增脚本回归及报告上传步骤结构有效；不代表远端已执行完成 |
+
+仅使用本轮启动的本地测试 MySQL 23306 / Redis 26379，各 Go fixture 自建临时 schema；没有连接开发或生产业务库。测试服务在结束后关闭。未运行本地 race、E2E、k6 或生产部署；本快照没有 .env，完整脚本未执行条件式 Docker Compose 配置检查。本轮前端无功能变更，前端检查由完整入口一并执行。
+
 ## 2026-10-18 十项 P2 专项
 
 基线 `main` / `e67b5ea`。修复问题总表 F7/F9/F12/F13/F14/F15/F16/F20/F21/F22，并将当前登记未关闭 P1/P2 均更新为 0；工程债务和未完成全仓审查不随之关闭。实现与回归逐项见 review-findings.md 的 P2 专项表。
@@ -146,8 +176,13 @@ npm run dev
 ### 4. 提交前完整验证
 
 ```powershell
+# 配置你自己的本地/专用测试实例，以下地址与密码仅作示例；禁止使用生产实例。
+$env:WMS_TEST_DSN = 'test_admin:your-test-password@tcp(127.0.0.1:23306)/?parseTime=true&timeout=2s'
+$env:WMS_TEST_REDIS_ADDR = '127.0.0.1:26379'
 .\scripts\windows\verify.ps1
 ```
+
+默认通过 `test-go.ps1` 强制 `WMS_TEST_REQUIRED=1`，结束后恢复调用前的环境变量。配置缺失、依赖不可用、Go 失败或测试用例跳过均阻断；Go 的“没有测试文件”包不会误算作测试跳过。只想在缺少依赖时做部分检查，可显式运行 `verify.ps1 -AllowSkippedIntegration`，脚本会报告实际跳过数，并始终标记不能作为完整验证通过。后端单独使用同样门禁可运行 `scripts/windows/test-go.ps1`。
 
 需要同时运行 Linux race 检查时：
 
@@ -155,7 +190,7 @@ npm run dev
 .\scripts\windows\verify.ps1 -WithRace
 ```
 
-`verify.ps1` 和 `e2e.ps1` 会先检查 Node.js 版本；要求为 20.19+ 或 22.12+。
+`verify.ps1` 和 `e2e.ps1` 会检查 Node.js 版本；要求为 20.19+ 或 22.12+。
 
 如果需要额外运行真实后端 Playwright E2E：
 
@@ -172,6 +207,14 @@ npm run dev
 ```
 
 脚本要求工作区干净，并使用 `git archive` 只打包当前提交中的跟踪文件；默认输出到 `dist/wms-<commit>.zip`。
+
+## 漏洞扫描门禁
+
+CI 安装 govulncheck 后使用 `go run ./scripts/check-vulns -scanner <扫描器路径> -report vuln.json`。该入口先执行符号级源码扫描，扫描器失败（含加载/网络/取消）、报告为空或 JSON 损坏、协议/扫描级别不符、缺少目标记录均失败。原始报告保留，CI 使用 `go-vulnerability-report` artifact 上传。
+
+策略保持原样：实际调用到且已有修复版本的漏洞阻断；实际调用到但上游未提供修复版本的漏洞告警；仅出现于模块/导入层面的 finding 不升级为实际调用。通过表示本次扫描完成且没有触发上述阻断条件，不等于所有依赖永久无漏洞。CLI 的 `-report` 是开发者/CI 指定的本地输出位置，不接受业务 HTTP 输入。
+
+门禁回归无需 MySQL/Redis：`go test ./scripts/check-vulns -count=1` 和 `scripts/tests/verification-gates.tests.ps1`；后者无需 Pester，验证真实 PowerShell 入口的配置、退出码、跳过与环境恢复规则。CI 同时执行这两类回归。
 
 ## 测试与检查
 

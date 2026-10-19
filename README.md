@@ -67,9 +67,11 @@ Redis 不可用时部分能力降级；演示会话依赖 Redis，不能将其�
 
 ## 验证
 
-Windows 全量检查入口：
+Windows 全量检查入口（先显式配置专用测试 MySQL/Redis）：
 
 ```powershell
+$env:WMS_TEST_DSN = 'test_admin:your-test-password@tcp(127.0.0.1:23306)/?parseTime=true&timeout=2s'
+$env:WMS_TEST_REDIS_ADDR = '127.0.0.1:26379'
 .\scripts\windows\verify.ps1
 # 可选：-WithRace、-WithE2E
 ```
@@ -84,7 +86,7 @@ npm --prefix web test
 npm --prefix web run build
 ```
 
-数据库与 Redis 不可用时部分集成测试默认跳过；完整验证需要专用测试依赖和 `WMS_TEST_REQUIRED=1`。测试配置、隔离 E2E 与压测说明见 [开发指南](docs/development.md) 和 [压测指南](docs/load-testing.md)。
+`verify.ps1` 默认强制执行集成测试：配置缺失、依赖不可用、测试失败或测试被跳过均不能通过。仅做部分检查可显式使用 `-AllowSkippedIntegration`，结果会警告且不标为完整通过。直接运行 `go test` 仍保留原先的可跳过行为。测试配置、隔离 E2E 与压测说明见 [开发指南](docs/development.md) 和 [压测指南](docs/load-testing.md)。
 
 ## 项目结构
 

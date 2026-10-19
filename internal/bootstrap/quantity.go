@@ -33,7 +33,7 @@ func auditQuantityColumns(db *gorm.DB) error {
 			var invalid int
 			// 标识符全部来自上方固定表，不拼接用户输入；包含软删数据和全部租户。
 			query := fmt.Sprintf("SELECT EXISTS(SELECT 1 FROM `%s` WHERE `%s` > ? OR `%s` < ?)", table, column, column)
-			if err := db.Raw(query, quantity.Max, -quantity.Max-1).Scan(&invalid).Error; err != nil {
+			if err := db.Raw(query, quantity.Max, -quantity.Max-1).Scan(&invalid).Error; err != nil { // 启动审计覆盖全部 tenant_id，不按请求租户过滤。
 				return err
 			}
 			if invalid != 0 {

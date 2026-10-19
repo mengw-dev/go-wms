@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
     [switch]$WithRace,
-    [switch]$WithE2E
+    [switch]$WithE2E,
+    [switch]$AllowSkippedIntegration
 )
 
 $ErrorActionPreference = "Stop"
@@ -30,7 +31,9 @@ Invoke-Step "Go formatting" {
     }
 }
 Invoke-Step "Go build" { go build ./... }
-Invoke-Step "Go tests" { go test ./... -count=1 }
+Invoke-Step "Go tests" {
+    & (Join-Path $PSScriptRoot "test-go.ps1") -AllowSkippedIntegration:$AllowSkippedIntegration
+}
 Invoke-Step "Go vet" { go vet ./... }
 Invoke-Step "golangci-lint" {
     go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2 run
@@ -105,4 +108,8 @@ if (Test-Path .env) {
 
 Invoke-Step "Git diff check" { git diff --check }
 Write-Host ""
-Write-Host "All verification steps passed." -ForegroundColor Green
+if ($AllowSkippedIntegration) {
+    Write-Warning "检查已结束，但允许集成测试跳过；本结果不能作为完整验证通过。"
+} else {
+    Write-Host "所有验证步骤通过，MySQL/Redis 集成测试已强制执行。" -ForegroundColor Green
+}
