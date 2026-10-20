@@ -10,11 +10,13 @@
 
 - Excelize 从 v2.11.0 固定到 `v2.11.1-0.20260930021559-01a9ff32fb3c`，同时按其依赖要求更新 mscfb 到 v1.0.8、efp 到 v0.0.2；主项目 Go 版本保持 1.26.9。选择上游已修复提交，原因是核对时最新正式标签仍为 v2.11.0。修复依据见 [Go 漏洞库](https://vuln.go.dev/ID/GO-2026-6685.json) 与 [上游提交](https://github.com/qax-os/excelize/commit/01a9ff32fb3c1f873cf01205e1b8a3285b0e1d23)。
 - 新增 `TestImportRejectsOutOfRangeWorksheetRow`，从正常模板生成小体积 XLSX 后注入超过 Excel 行上限的后续行，直接验证实际 doImport 在读取阶段返回失败、未产生任何业务行处理、未进入 panic 恢复。测试不依赖数据库；正常模板与导入执行仍由既有真实数据库回归覆盖。
-- 升级仅叠加到独立发布源码快照：Go build/vet、强制真实 MySQL/Redis 的全量测试（跳过 0 项）及全仓 lint（0 issues）均通过；govulncheck v1.9.0 实际扫描和现有门禁通过，已调用可修复漏洞 0、无修复版本告警 0。测试仅用本地 23306/26379，结束后关闭服务。最终远端完整 CI 仍须包含 40 条 E2E、该演示用例额外 5 次无重试与真实容器验证；不把首个被门禁阻断的运行写成成功。
+- 升级仅叠加到独立发布源码快照：Go build/vet、强制真实 MySQL/Redis 的全量测试（跳过 0 项）及全仓 lint（0 issues）均通过；govulncheck v1.9.0 实际扫描和现有门禁通过，已调用可修复漏洞 0、无修复版本告警 0。测试仅用本地 23306/26379，结束后关闭服务。后续 [CI](https://github.com/mengw-dev/go-wms/actions/runs/39361820930) 全部成功，含 Backend/race、Frontend、40 条 E2E、演示用例额外 5 次无重试及真实容器验证；[自动部署](https://github.com/mengw-dev/go-wms/actions/runs/39362626384) 也成功，日志确认前后端版本 `6e3b384d1ffa1f06b547b97c880c0510660e97ca` 与数据库就绪一致。安全升级与验收已完成；首个失败运行仍保留其真实结果。
 
 ## 2026-10-20 一键演示 E2E 稳定性
 
 基线 `main` / `cdce9a5`。上一轮 [CI](https://github.com/mengw-dev/go-wms/actions/runs/39193419819) 的一键演示用例出现 1 flaky：全局 `getByText('创建入库单').first()` 命中了关闭后保留的运行器隐藏节点，并非业务操作记录中的单元格。记录面板每页 5 行、按时间倒序，创建操作也不应假定出现在首页。
+
+状态：已完成。修复提交 `9aa0e32`，安全依赖补充提交 `6e3b384` 均已推送；最终 CI 日志为 `40 passed (2.5m)` 与 `5 passed (1.1m)`，无 flaky，自动部署成功。重复运行是本次覆盖范围的稳定性证据，不保证以后所有环境都不会出现偶发失败。
 
 - 用例将断言限定到“业务操作记录”tabpanel，先确认首页的真实拣货操作，再切换末页。创建记录同时核对本次 POST 建单响应的单号，避免同名步骤或其他单据造成假通过；显式确认关闭运行器中的同名节点仍保留且隐藏，覆盖原故障条件。
 - CI 在完整 Playwright 测试后额外重复该用例 5 次，强制 `--retries=0`，任一次失败均阻断 CI。重复测试使用独立结果子目录及 line reporter，保留完整测试的 HTML 和失败附件；不增加等待时长、全局重试次数或固定休眠。
