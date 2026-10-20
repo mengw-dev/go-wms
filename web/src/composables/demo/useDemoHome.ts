@@ -132,31 +132,23 @@ export function useDemoHome() {
   const router = useRouter()
   const guide = useGuideStore()
   const selectedStep = ref(0)
-  const runModeDialogVisible = ref(false)
 
   const currentStep = computed(() => businessSteps[selectedStep.value] ?? businessSteps[0])
-  const previewSteps = computed(() => [businessSteps[0], businessSteps[1], businessSteps[3], businessSteps[4]])
 
   function selectStep(index: number): void {
     selectedStep.value = index
   }
 
   function startAutomaticDemo(scenario: AutomaticScenario): void {
-    if (scenario === 'full') {
-      runModeDialogVisible.value = true
-      return
-    }
     if (scenario === 'stocktake') return
     runDemoAutomaticallyInConsole(scenario)
   }
 
   function startOneClickDemo(): void {
-    runModeDialogVisible.value = false
     runDemoAutomaticallyInConsole('full')
   }
 
   function startStepByStepDemo(): void {
-    runModeDialogVisible.value = false
     runDemoStepByStepInConsole()
   }
 
@@ -196,6 +188,10 @@ export function useDemoHome() {
     void router.push({ path: '/demo/activity', query: { tab: 'operations' } })
   }
 
+  function openEvidence(): void {
+    void router.push('/demo/activity')
+  }
+
   function goPerformance(section?: string): void {
     if (section) {
       void router.push({ path: '/demo/performance', query: { section } })
@@ -210,8 +206,6 @@ export function useDemoHome() {
     selectedStep,
     selectStep,
     currentStep,
-    previewSteps,
-    runModeDialogVisible,
     startAutomaticDemo,
     startOneClickDemo,
     startStepByStepDemo,
@@ -221,6 +215,7 @@ export function useDemoHome() {
     openArchitecture,
     openSelectedBusinessPage,
     openRecords,
+    openEvidence,
     goPerformance,
   }
 }

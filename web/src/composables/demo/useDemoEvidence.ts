@@ -41,7 +41,7 @@ export function useDemoEvidence(currentStep: ComputedRef<BusinessStep>) {
     if (currentEvidence.value) return `${currentEvidence.value.label}：${currentEvidence.value.value}`
     return currentStep.value.object
   })
-  const currentStatus = computed(() => (recentEvidence.value ? '已有执行记录' : currentStep.value.status))
+  const currentStatus = computed(() => (currentEvidence.value ? '已有执行记录' : currentStep.value.status))
 
   return { recentEvidence, currentEvidence, currentObject, currentStatus }
 }

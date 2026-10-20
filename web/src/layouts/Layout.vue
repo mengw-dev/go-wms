@@ -153,12 +153,13 @@ async function submitPassword() {
           </el-dropdown>
         </div>
       </el-header>
-      <el-main class="main">
+      <el-main class="main" :class="{ 'main--demo-home': route.path === '/demo' }">
         <div class="page-stage">
           <!-- 路径包含单据 ID；对象变化时重建页面，避免复用旧 setup 中的操作目标。 -->
           <router-view :key="route.path" />
         </div>
       </el-main>
+      <DemoConsole />
     </el-container>
 
     <el-drawer
@@ -194,7 +195,6 @@ async function submitPassword() {
       </template>
     </el-dialog>
   </el-container>
-  <DemoConsole />
   <ManualGuide />
 </template>
 
@@ -286,6 +286,13 @@ async function submitPassword() {
   margin: 0 auto;
 }
 .workspace { min-width: 0; }
+.main--demo-home { padding-bottom: 12px; }
+@media (max-height: 720px) and (min-width: 981px) {
+  .main--demo-home { padding: 16px 20px 10px; }
+}
+@media (max-height: 640px) and (min-width: 981px) {
+  .main--demo-home { padding-top: 12px; padding-bottom: 8px; }
+}
 .header-left { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .user-name { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 900px) {

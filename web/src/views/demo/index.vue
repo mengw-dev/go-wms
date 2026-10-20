@@ -1,363 +1,124 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { ArrowRight } from '@element-plus/icons-vue'
+import { Aim, ArrowRight, Connection, Document, TopRight } from '@element-plus/icons-vue'
 import DemoHeader from '@/components/demo/DemoHeader.vue'
+import DemoExperience from '@/components/demo/DemoExperience.vue'
 import DemoResultPanel from '@/components/demo/DemoResultPanel.vue'
 import ScenarioSelector from '@/components/demo/ScenarioSelector.vue'
 import { useDemoEvidence } from '@/composables/demo/useDemoEvidence'
 import { engineeringChecks, useDemoHome, type EngineeringCheck } from '@/composables/demo/useDemoHome'
 
 const {
-  businessSteps,
-  selectedStep,
-  selectStep,
-  currentStep,
-  previewSteps,
-  runModeDialogVisible,
-  startAutomaticDemo,
-  startOneClickDemo,
-  startStepByStepDemo,
-  startSelectedAutomaticDemo,
-  startGuidedExperience,
-  startSelectedGuide,
-  openArchitecture,
-  openSelectedBusinessPage,
-  openRecords,
-  goPerformance,
+  businessSteps, selectedStep, selectStep, currentStep,
+  startOneClickDemo, startStepByStepDemo, startSelectedAutomaticDemo, startSelectedGuide,
+  openArchitecture, openSelectedBusinessPage, openRecords, openEvidence, goPerformance,
 } = useDemoHome()
-const { recentEvidence, currentObject, currentStatus } = useDemoEvidence(currentStep)
-
-// 异步导入机制是纯说明弹窗，开关留在页面内维护。
+const { recentEvidence, currentEvidence, currentObject, currentStatus } = useDemoEvidence(currentStep)
 const mechanismVisible = ref(false)
+const checkIcons = { allocation: Connection, picking: Aim, import: Document }
 
 function openEngineeringCheck(check: EngineeringCheck): void {
-  if (check.key === 'import') {
-    mechanismVisible.value = true
-    return
-  }
-  goPerformance(check.key)
+  if (check.key === 'import') mechanismVisible.value = true
+  else goPerformance(check.key)
 }
 </script>
 
 <template>
   <div class="demo-home">
-    <DemoHeader
-      :preview-steps="previewSteps"
-      @start-automatic="startAutomaticDemo('full')"
-      @start-guided-inbound="startGuidedExperience('inbound')"
-      @open-architecture="openArchitecture"
-    />
-
-    <section class="app-card flow-section">
-      <div class="section-head">
-        <div>
-          <h2>业务流程</h2>
-          <p>点击流程节点查看说明，也可以进入真实业务页面</p>
-        </div>
-        <span>本次演示 · 5 个关键步骤</span>
-      </div>
-
-      <div class="flow-layout">
+    <DemoHeader @open-architecture="openArchitecture" />
+    <div class="demo-workspace">
+      <section class="flow-section" aria-label="业务流程">
+        <header class="section-head"><div><h2>业务全流程</h2><span>单据、任务与库存环环相扣</span></div><small>5 个关键阶段</small></header>
         <ScenarioSelector :steps="businessSteps" :selected="selectedStep" @select="selectStep" />
-
-        <DemoResultPanel
-          :step="currentStep"
-          :status="currentStatus"
-          :object-text="currentObject"
-          :has-evidence="Boolean(recentEvidence)"
-          @open-business="openSelectedBusinessPage"
-          @start-guide="startSelectedGuide"
-          @start-auto="startSelectedAutomaticDemo"
-          @open-records="openRecords"
-        />
-      </div>
-    </section>
-
-    <section class="app-card engineering-section">
-      <div class="section-head">
-        <div>
-          <h2>工程验证</h2>
-          <p>点击卡片后配置参数，结果以简洁方式呈现</p>
-        </div>
-        <el-button link type="primary" @click="goPerformance()">查看全部 →</el-button>
-      </div>
-
+        <DemoResultPanel :step="currentStep" :status="currentStatus" :object-text="currentObject" :has-evidence="Boolean(currentEvidence)" @open-business="openSelectedBusinessPage" @start-guide="startSelectedGuide" @start-auto="startSelectedAutomaticDemo" @open-records="openRecords" />
+      </section>
+      <DemoExperience :evidence="recentEvidence" @start-automatic="startOneClickDemo" @start-step="startStepByStepDemo" @open-evidence="openEvidence" />
+    </div>
+    <section class="engineering-section" aria-label="工程验证">
+      <header class="section-head"><div><h2>工程验证</h2><span>业务之外，经得起并发与异常的考验</span></div><el-button link @click="goPerformance()">查看全部 <el-icon><TopRight /></el-icon></el-button></header>
       <div class="engineering-grid">
-        <article v-for="check in engineeringChecks" :key="check.key" class="app-card engineering-card">
-          <div>
-            <h3>{{ check.title }}</h3>
-            <p>{{ check.description }}</p>
-            <span>{{ check.tag }}</span>
-          </div>
-          <el-button text type="primary" @click="openEngineeringCheck(check)">
-            {{ check.action }} <ArrowRight />
-          </el-button>
+        <article v-for="check in engineeringChecks" :key="check.key" class="engineering-card" :aria-label="`${check.title}：${check.tag}`">
+          <span class="engineering-icon"><el-icon><component :is="checkIcons[check.key]" /></el-icon></span>
+          <h3>{{ check.title }}</h3><el-icon class="card-corner"><TopRight /></el-icon><p>{{ check.description }}</p>
+          <el-button link type="primary" @click="openEngineeringCheck(check)">{{ check.action }} <el-icon><ArrowRight /></el-icon></el-button>
         </article>
       </div>
     </section>
-
-    <div class="deep-links">
-      <el-button text type="primary" @click="openRecords">业务证据 →</el-button>
-      <el-button text type="primary" @click="goPerformance()">工程验证 →</el-button>
-    </div>
-
-    <el-dialog
-      v-model="runModeDialogVisible"
-      title="选择自动演示方式"
-      width="min(560px, 94vw)"
-      append-to-body
-      :close-on-click-modal="true"
-    >
-      <div class="run-mode-grid">
-        <button type="button" class="run-mode-card" @click="startOneClickDemo">
-          <b>一键自动完成</b>
-          <span>连续调用真实入库和出库接口，完成后展示业务结果。</span>
-          <small>适合快速查看完整闭环</small>
-        </button>
-        <button type="button" class="run-mode-card" @click="startStepByStepDemo">
-          <b>分步执行</b>
-          <span>点击一次“执行下一步”，系统才执行当前真实业务步骤。</span>
-          <small>每一步都可打开真实页面核对</small>
-        </button>
-      </div>
-    </el-dialog>
-
-    <el-dialog
-      v-model="mechanismVisible"
-      title="异步导入可靠性"
-      width="min(520px, 92vw)"
-      append-to-body
-      :close-on-click-modal="true"
-    >
-      <ul class="mechanism-list">
-        <li>导入任务持久化为待处理状态，由单个后台消费者领取，避免多实例重复执行。</li>
-        <li>每次执行使用独立执行标识，旧消费者不能覆盖新任务状态。</li>
-        <li>失败行保留源文件用于排查和重试，成功任务完成后才清理文件。</li>
-        <li>每行业务写入仍受租户、校验和事务边界保护。</li>
-      </ul>
-      <template #footer>
-        <el-button @click="mechanismVisible = false">关闭</el-button>
-        <el-button type="primary" @click="openRecords">查看操作记录</el-button>
-      </template>
+    <el-dialog v-model="mechanismVisible" title="异步导入可靠性" width="min(520px, 92vw)" append-to-body :close-on-click-modal="true">
+      <ul class="mechanism-list"><li>导入任务持久化为待处理状态，由单个后台消费者领取，避免多实例重复执行。</li><li>每次执行使用独立执行标识，旧消费者不能覆盖新任务状态。</li><li>失败行保留源文件用于排查和重试，成功任务完成后才清理文件。</li><li>每行业务写入仍受租户、校验和事务边界保护。</li></ul>
+      <template #footer><el-button @click="mechanismVisible = false">关闭</el-button><el-button type="primary" @click="openRecords">查看操作记录</el-button></template>
     </el-dialog>
   </div>
 </template>
 
 <style scoped>
-.demo-home {
-  width: min(1180px, 100%);
-  height: 100%;
-  margin: 0 auto;
-  padding-bottom: 52px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  color: var(--el-text-color-primary);
+.demo-home { width: 100%; height: 100%; min-height: 0; display: grid; grid-template-rows: 68px minmax(300px, 1fr) 160px; gap: 18px; color: var(--el-text-color-primary); }
+.demo-workspace { display: grid; grid-template-columns: minmax(0, 1fr) 290px; gap: 18px; min-width: 0; min-height: 0; }
+.flow-section { min-width: 0; min-height: 0; display: grid; grid-template-rows: 27px minmax(75px, 0.55fr) minmax(150px, 1fr); gap: 15px; padding: 20px 22px; border: 1px solid var(--el-border-color-light); border-radius: 12px; background: var(--el-bg-color); }
+.section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; }
+.section-head > div { display: flex; align-items: baseline; gap: 9px; min-width: 0; }
+.section-head h2 { margin: 0; font-size: 16px; font-weight: 600; white-space: nowrap; }
+.section-head span, .section-head small { font-size: 11px; color: var(--el-text-color-secondary); }
+.flow-section > .section-head { align-items: flex-start; padding-bottom: 10px; border-bottom: 1px solid var(--el-border-color-light); }
+.section-head small { white-space: nowrap; }
+.engineering-section { min-height: 0; display: grid; grid-template-rows: 24px minmax(0, 1fr); gap: 11px; }
+.engineering-section > .section-head .el-button { font-size: 11px; color: var(--el-text-color-secondary); margin: 0; }
+.engineering-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; min-height: 0; }
+.engineering-card { min-width: 0; min-height: 0; display: grid; grid-template-columns: 33px minmax(0, 1fr) 15px; grid-template-rows: auto 1fr auto; gap: 0 11px; padding: 16px 18px; border: 1px solid var(--el-border-color-light); border-radius: 10px; background: var(--el-bg-color); }
+.engineering-icon { grid-column: 1; grid-row: 1 / 3; display: grid; place-items: center; width: 33px; height: 33px; border-radius: 9px; background: var(--el-color-primary-light-9); color: var(--el-color-primary); }
+.engineering-icon .el-icon { font-size: 18px; }
+.engineering-card h3 { grid-column: 2; grid-row: 1; margin: 3px 0 0; font-size: 15px; font-weight: 600; }
+.card-corner { grid-column: 3; grid-row: 1; margin-top: 3px; color: var(--el-text-color-placeholder); }
+.engineering-card p { grid-column: 2; grid-row: 2; margin: 6px 0 0; font-size: 12px; line-height: 1.7; color: var(--el-text-color-secondary); }
+.engineering-card .el-button { grid-column: 2; grid-row: 3; justify-self: start; margin: 0; padding: 8px 0 0; font-size: 12px; }
+.engineering-card .el-button .el-icon { margin-left: 5px; }
+.mechanism-list { margin: 0; padding-left: 20px; line-height: 1.8; color: var(--el-text-color-secondary); }
+@media (min-width: 1600px) and (min-height: 800px) {
+  .demo-home { grid-template-rows: 78px minmax(330px, 1fr) 180px; gap: 21px; }
+  .demo-workspace { grid-template-columns: minmax(0, 1fr) 330px; gap: 22px; }
+  .flow-section { padding: 23px 26px; grid-template-rows: 28px minmax(85px, 0.55fr) minmax(164px, 1fr); gap: 17px; }
+  .engineering-card { padding: 21px; grid-template-columns: 37px minmax(0, 1fr) 16px; gap: 0 13px; }
+  .engineering-icon { width: 37px; height: 37px; }
+  .engineering-card h3 { font-size: 16px; }
+  .engineering-card p { font-size: 13px; }
 }
-
-.flow-section,
-.engineering-section {
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 14px;
-  background: var(--el-bg-color);
+@media (max-height: 720px) and (min-width: 981px) {
+  .demo-home { grid-template-rows: 54px minmax(280px, 1fr) 126px; gap: 12px; }
+  .flow-section { padding: 12px 17px; grid-template-rows: 24px minmax(62px, 0.5fr) minmax(146px, 1fr); gap: 10px; }
+  .section-head h2 { font-size: 15px; }
+  .engineering-section { grid-template-rows: 22px 1fr; gap: 7px; }
+  .engineering-card { padding: 11px 14px; grid-template-columns: 28px minmax(0, 1fr) 14px; gap: 0 9px; }
+  .engineering-icon { width: 28px; height: 28px; }
+  .engineering-icon .el-icon { font-size: 15px; }
+  .engineering-card h3 { font-size: 13px; }
+  .engineering-card p, .engineering-card .el-button { font-size: 11px; }
+  .engineering-card p { margin-top: 4px; }
+  .engineering-card .el-button { padding-top: 4px; }
 }
-
-.flow-section {
-  flex: 0 0 auto;
-  padding: 14px 16px;
+@media (max-width: 1180px) and (min-width: 981px) {
+  .demo-workspace { grid-template-columns: minmax(0, 1fr) 235px; gap: 13px; }
+  .flow-section { padding-inline: 14px; }
+  .section-head span { display: none; }
+  .engineering-grid { gap: 10px; }
+  .engineering-card { padding-inline: 11px; gap: 0 8px; }
+  .engineering-card h3 { font-size: 12px; }
 }
-
-.section-head {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 8px;
-}
-
-.section-head h2 {
-  margin: 0 0 2px;
-  font-size: 16px;
-}
-
-.section-head p,
-.section-head > span {
-  margin: 0;
-  color: var(--el-text-color-secondary);
-  font-size: 11px;
-}
-
-.flow-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(360px, 0.85fr);
-  gap: 12px;
-}
-
-.engineering-section {
-  flex: 1 1 auto;
-  min-height: 160px;
-  padding: 14px 16px;
-}
-
-.engineering-grid {
-  height: calc(100% - 36px);
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.engineering-card {
-  min-width: 0;
-  padding: 13px 14px;
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 11px;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  background: var(--el-fill-color-extra-light);
-}
-
-.engineering-card h3 {
-  margin: 0 0 5px;
-  font-size: 15px;
-}
-
-.engineering-card p {
-  margin: 0 0 8px;
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-  line-height: 1.55;
-}
-
-.engineering-card span {
-  display: inline-block;
-  padding: 3px 7px;
-  border-radius: 999px;
-  color: var(--el-color-primary);
-  background: var(--el-color-primary-light-9);
-  font-size: 10px;
-}
-
-.engineering-card .el-button {
-  justify-content: flex-start;
-  margin: 8px 0 0 -4px;
-}
-
-.deep-links {
-  display: flex;
-  justify-content: flex-end;
-  gap: 4px;
-  min-height: 24px;
-}
-
-.deep-links .el-button {
-  margin-left: 0;
-}
-
-.mechanism-list {
-  margin: 0;
-  padding-left: 20px;
-  color: var(--el-text-color-secondary);
-  line-height: 1.8;
-}
-
-@media (max-height: 760px) and (min-width: 761px) {
-  .demo-home {
-    gap: 8px;
-    padding-bottom: 24px;
-  }
-
-  .deep-links {
-    display: none;
-  }
-
-  .engineering-section {
-    min-height: 142px;
-  }
-
-  .engineering-card {
-    padding: 10px 12px;
-  }
-
-  .engineering-card p,
-  .engineering-card span {
-    display: none;
-  }
-
-  .engineering-card h3 {
-    margin-bottom: 0;
-  }
-
-  .engineering-card .el-button {
-    margin-top: 2px;
-  }
-}
-
+@media (max-height: 640px) and (min-width: 981px) { .demo-home { gap: 8px; } }
 @media (max-width: 980px) {
-  .flow-layout {
-    grid-template-columns: 1fr;
-  }
-
-  .demo-home {
-    height: auto;
-    padding-bottom: 0;
-  }
+  .demo-home { height: auto; display: flex; flex-direction: column; gap: 18px; }
+  .demo-workspace { grid-template-columns: 1fr; gap: 17px; }
+  .flow-section { min-height: 390px; grid-template-rows: 27px 85px 1fr; gap: 15px; padding: 18px; }
+  .engineering-section { min-height: 170px; }
+  .engineering-card { min-height: 135px; padding: 13px; }
+  .engineering-card h3 { font-size: 13px; }
+  .engineering-card p { font-size: 11px; }
+  .section-head span { display: none; }
 }
-
-@media (max-width: 680px) {
-  .engineering-grid {
-    height: auto;
-    grid-template-columns: 1fr;
-  }
-
-  .section-head {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-}
-
-.run-mode-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.run-mode-card {
-  min-width: 0;
-  padding: 16px;
-  border: 1px solid var(--el-border-color);
-  border-radius: 11px;
-  display: grid;
-  gap: 7px;
-  text-align: left;
-  color: var(--el-text-color-primary);
-  background: var(--el-bg-color);
-  cursor: pointer;
-}
-
-.run-mode-card:hover {
-  border-color: var(--el-color-primary);
-  background: var(--el-color-primary-light-9);
-}
-
-.run-mode-card b {
-  font-size: 16px;
-}
-
-.run-mode-card span {
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-  line-height: 1.6;
-}
-
-.run-mode-card small {
-  color: var(--el-color-primary);
-  font-size: 11px;
-}
-
-@media (max-width: 680px) {
-  .run-mode-grid {
-    grid-template-columns: 1fr;
-  }
+@media (max-width: 640px) {
+  .flow-section { min-height: 440px; padding: 15px; }
+  .engineering-grid { grid-template-columns: 1fr; gap: 11px; }
+  .engineering-card { min-height: 126px; padding: 16px; }
+  .engineering-card h3 { font-size: 14px; }
+  .engineering-card p { font-size: 12px; }
 }
 </style>

@@ -262,9 +262,9 @@ onBeforeUnmount(() => {
 
 <template>
   <div
-    v-if="auth.isDemo && auth.demoSessionId && !visible"
+    v-if="auth.isDemo && auth.demoSessionId && (!visible || route.path === '/demo')"
     class="demo-statusbar"
-    :class="{ urgent: remaining <= 60 }"
+    :class="{ urgent: remaining <= 60, 'home-dock': route.path === '/demo' }"
     aria-label="演示环境状态"
   >
     <i aria-hidden="true"></i>
@@ -446,6 +446,31 @@ onBeforeUnmount(() => {
   height: 7px;
   border-radius: 50%;
   background: var(--el-color-success);
+}
+
+/* 首页使用布局中的独立底栏，其他业务页沿用浮动控制入口。 */
+.demo-statusbar.home-dock {
+  position: static;
+  flex: 0 0 auto;
+  width: calc(100% - 48px);
+  max-width: 1600px;
+  margin: 0 auto 14px;
+  padding: 0;
+  min-height: 28px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  justify-content: flex-start;
+  font-size: 11px;
+}
+.home-dock .reset-action { margin-left: auto; }
+@media (max-width: 900px) {
+  .demo-statusbar.home-dock { width: calc(100% - 32px); margin-bottom: 10px; }
+}
+@media (max-width: 480px) {
+  .demo-statusbar.home-dock { width: calc(100% - 24px); font-size: 10px; }
+  .home-dock > span { flex: 1 1 calc(100% - 20px); }
 }
 
 .demo-statusbar.urgent > i {

@@ -16,7 +16,6 @@ async function startScenarioFromHome(
 ): Promise<Locator> {
   if (scenario === 'full') {
     await page.getByRole('button', { name: '开始自动演示', exact: true }).click()
-    await page.getByRole('dialog', { name: '选择自动演示方式' }).getByRole('button', { name: /一键自动完成/ }).click()
   } else {
     const step = page.locator('.flow-step').filter({ hasText: cardTitle || '' }).first()
     await step.click()
@@ -88,7 +87,7 @@ test('demo home is a concise one-screen launcher', async ({ page }) => {
 
   await expect(page.getByRole('heading', { name: 'WMS 业务闭环', exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: '开始自动演示', exact: true })).toHaveCount(1)
-  await expect(page.getByRole('button', { name: '引导体验 · 入库', exact: true })).toHaveCount(1)
+  await expect(page.locator('.detail-panel').getByRole('button', { name: '引导演示', exact: true })).toHaveCount(1)
   await expect(page.getByRole('button', { name: '系统架构图', exact: true })).toHaveCount(1)
   const [overview] = await Promise.all([
     page.waitForEvent('popup'),
@@ -99,7 +98,8 @@ test('demo home is a concise one-screen launcher', async ({ page }) => {
   await expect(page.locator('.flow-step')).toHaveCount(5)
   await expect(page.locator('.engineering-card')).toHaveCount(3)
   await expect(page.getByText('库存盘点', { exact: true })).toHaveCount(0)
-  await expect(page.locator('.deep-links .el-button')).toHaveCount(2)
+  await expect(page.locator('.experience-panel').getByRole('button', { name: '业务证据 →', exact: true })).toBeVisible()
+  await expect(page.locator('.demo-statusbar')).toHaveCSS('position', 'static')
   await expect(page.getByRole('button', { name: '打开演示控制' })).toHaveCount(0)
 
   const metrics = await page.locator('.main').evaluate((element) => ({
@@ -118,11 +118,12 @@ test('demo drawer and business dialog close when the blank backdrop is clicked',
   await page.mouse.click(24, 24)
   await expect(controlDrawer).not.toBeVisible()
 
-  await page.getByRole('button', { name: '开始自动演示', exact: true }).click()
-  const modeDialog = page.getByRole('dialog', { name: '选择自动演示方式' })
-  await expect(modeDialog).toBeVisible()
+  await page.locator('.mode-tabs').getByRole('button', { name: '分步执行', exact: true }).click()
+  await page.getByRole('button', { name: '开始分步执行', exact: true }).click()
+  const stagedDialog = page.getByRole('dialog', { name: '分步执行演示' })
+  await expect(stagedDialog).toBeVisible()
   await page.mouse.click(24, 24)
-  await expect(modeDialog).not.toBeVisible()
+  await expect(stagedDialog).not.toBeVisible()
 
   await page.goto('/inbound/orders')
   await page.getByRole('button', { name: '新建入库单', exact: true }).click()
@@ -173,9 +174,8 @@ test('staged demo creates an idle location when none is available', async ({ pag
 
 test('start demo supports staged real execution', async ({ page }) => {
   await loginDemo(page)
-  await page.getByRole('button', { name: '开始自动演示', exact: true }).click()
-  const modeDialog = page.getByRole('dialog', { name: '选择自动演示方式' })
-  await modeDialog.getByRole('button', { name: /分步执行/ }).click()
+  await page.locator('.mode-tabs').getByRole('button', { name: '分步执行', exact: true }).click()
+  await page.getByRole('button', { name: '开始分步执行', exact: true }).click()
 
   const stagedDialog = page.getByRole('dialog', { name: '分步执行演示' })
   await expect(stagedDialog).toBeVisible()
@@ -203,8 +203,8 @@ test('start demo supports staged real execution', async ({ page }) => {
 
 test('staged demo recovers committed create, receive, putaway and pick after response loss and refresh', async ({ page }) => {
   await loginDemo(page)
-  await page.getByRole('button', { name: '开始自动演示', exact: true }).click()
-  await page.getByRole('dialog', { name: '选择自动演示方式' }).getByRole('button', { name: /分步执行/ }).click()
+  await page.locator('.mode-tabs').getByRole('button', { name: '分步执行', exact: true }).click()
+  await page.getByRole('button', { name: '开始分步执行', exact: true }).click()
   const runner = page.getByRole('dialog', { name: '分步执行演示' })
   let writes = 0
   page.on('request', (request) => { if (request.method() === 'POST' && /\/api\/v1\/(inbound|outbound)\//.test(request.url())) writes++ })
