@@ -306,6 +306,9 @@ useAutoRefresh(() => load(true), 0, () => selectedRows.value.length === 0)
 
     <section class="app-card app-card--flush">
     <el-form inline class="query-form app-filter-bar order-filters" @submit.prevent="search">
+      <el-form-item label="单号">
+        <el-input v-model="query.keyword" placeholder="单号模糊搜索" clearable style="width: 180px" @keyup.enter="search" @clear="search" />
+      </el-form-item>
       <el-form-item label="仓库">
         <el-select v-model="query.warehouse_id" placeholder="全部" clearable style="width: 200px" @change="search">
           <el-option v-for="w in warehouseOptions" :key="w.id" :label="w.label" :value="w.id" />
@@ -330,17 +333,14 @@ useAutoRefresh(() => load(true), 0, () => selectedRows.value.length === 0)
           @change="onDateRangeChange"
         />
       </el-form-item>
-      <el-form-item label="单号">
-        <el-input v-model="query.keyword" placeholder="单号模糊搜索" clearable style="width: 180px" @keyup.enter="search" @clear="search" />
-      </el-form-item>
-      <el-form-item>
-        <el-button type="primary" @click="search">查询</el-button>
+      <el-form-item class="filter-actions">
+        <el-button type="primary" plain @click="search">查询</el-button>
         <el-button @click="resetSearch">重置</el-button>
       </el-form-item>
     </el-form>
 
     <div class="app-table-region">
-      <div class="app-toolbar">
+      <div class="app-toolbar" :class="{ 'has-selection': selectedRows.length > 0 }">
         <div class="app-toolbar__actions">
           <span class="table-summary">出库单列表 · 共 <strong>{{ total }}</strong> 条</span>
           <span class="selected-hint" :class="{ 'is-hidden': selectedRows.length === 0 }">已选 {{ selectedRows.length }} 项</span>
@@ -365,7 +365,7 @@ useAutoRefresh(() => load(true), 0, () => selectedRows.value.length === 0)
       </div>
 
     <p class="table-scroll-hint">左右滑动表格可查看完整字段与操作</p>
-    <el-table ref="tableRef" v-loading="loading" :data="list" border stripe @selection-change="onSelectionChange">
+    <el-table max-height="var(--business-table-height)" ref="tableRef" v-loading="loading" :data="list" border stripe @selection-change="onSelectionChange">
       <el-table-column type="selection" width="42" />
       <el-table-column prop="order_no" label="出库单号" min-width="170">
         <template #default="{ row }">
@@ -424,7 +424,7 @@ useAutoRefresh(() => load(true), 0, () => selectedRows.value.length === 0)
       </div>
 
     <!-- 新建 -->
-    <el-dialog
+    <el-dialog class="business-dialog"
       v-model="createDialog.visible"
       title="新建出库单"
       width="760px"

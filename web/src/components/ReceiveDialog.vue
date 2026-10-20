@@ -10,6 +10,7 @@ const emit = defineEmits<{ (e: 'success'): void }>()
 const visible = ref(false)
 const loading = ref(false)
 const orderId = ref<EntityID>('')
+const orderNo = ref('')
 const details = ref<InboundOrderDetailRow[]>([])
 
 const receiver = useReceive()
@@ -36,10 +37,12 @@ function stateOf(row: InboundOrderDetailRow) {
 
 async function open(id: EntityID) {
   orderId.value = id
+  orderNo.value = ''
   visible.value = true
   loading.value = true
   try {
     const detail = await getInboundOrder(id)
+    orderNo.value = detail.order.order_no
     details.value = detail.details ?? []
     Object.keys(forms).forEach((key) => delete forms[key])
     for (const row of details.value) {
@@ -116,7 +119,7 @@ defineExpose({ open })
 </script>
 
 <template>
-  <el-dialog
+  <el-dialog class="business-dialog business-operation"
     v-model="visible"
     title="收货"
     width="960px"
@@ -125,6 +128,10 @@ defineExpose({ open })
     :close-on-press-escape="!loading && !hasSubmitting"
     :show-close="!loading && !hasSubmitting"
   >
+    <div class="operation-context">
+      <span>入库单</span><strong>{{ orderNo || '加载中…' }}</strong>
+      <p>核对货品与批次，填写本次收货数量；不良品数量计入本次收货。</p>
+    </div>
     <el-alert v-if="storageError" :title="storageError" type="error" show-icon :closable="false" class="storage-tip" />
     <el-table v-loading="loading" :data="details" border max-height="420">
       <el-table-column prop="sku_code" label="货品编码" min-width="110" />

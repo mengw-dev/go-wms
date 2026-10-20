@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PageHeader from '@/components/common/PageHeader.vue'
 import { nextTick, ref } from 'vue'
 import { Promotion } from '@element-plus/icons-vue'
 import { aiChat } from '@/api/ai'
@@ -54,15 +55,9 @@ function onKeydown(e: KeyboardEvent) {
 </script>
 
 <template>
-  <div class="ai-page">
+  <div class="app-page ai-page">
+    <PageHeader title="AI 库存问答" description="基于实时库存查询仓库分布、货品数量与批次明细。" />
     <el-card shadow="never" class="ai-card">
-      <template #header>
-        <div class="card-header">
-          <span class="title">AI 库存问答</span>
-          <span class="subtitle">基于系统实时库存数据的智能助手（检索增强，回答有据可查）</span>
-        </div>
-      </template>
-
       <div class="chat-wrap">
         <!-- 消息列表 -->
         <div ref="listRef" class="msg-list">
@@ -147,23 +142,6 @@ function onKeydown(e: KeyboardEvent) {
   flex: 1;
   overflow: hidden;
   padding: 0;
-}
-
-.card-header {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.card-header .title {
-  font-weight: 600;
-  font-size: 16px;
-}
-
-.card-header .subtitle {
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
 }
 
 .chat-wrap {

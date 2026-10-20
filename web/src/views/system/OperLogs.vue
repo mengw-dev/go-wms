@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import BusinessListPage from '@/components/common/BusinessListPage.vue'
 import { onMounted, reactive, ref } from 'vue'
 import { listOperLogs } from '@/api/system'
 import type { OperLogItem } from '@/api/types'
@@ -29,17 +30,19 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="page-card">
-    <el-form inline class="query-form" @submit.prevent="search">
-      <el-form-item label="用户名">
-        <el-input v-model="query.username" placeholder="按操作人筛选" clearable @keyup.enter="search" @clear="search" />
-      </el-form-item>
-      <el-form-item>
-        <el-button type="primary" @click="search">查询</el-button>
-      </el-form-item>
-    </el-form>
+  <BusinessListPage title="操作日志" description="按操作人追溯请求记录，核对处理结果与耗时。" :total="total">
+    <template #filters>
+      <el-form inline class="query-form" @submit.prevent="search">
+        <el-form-item label="用户名">
+          <el-input v-model="query.username" placeholder="按操作人筛选" clearable @keyup.enter="search" @clear="search" />
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" plain @click="search">查询</el-button>
+        </el-form-item>
+      </el-form>
+    </template>
 
-    <el-table v-loading="loading" :data="list" border stripe>
+    <el-table max-height="var(--business-table-height)" v-loading="loading" :data="list" border stripe>
       <el-table-column prop="username" label="操作人" width="120" />
       <el-table-column prop="method" label="方法" width="90" />
       <el-table-column prop="path" label="请求路径" min-width="220" show-overflow-tooltip />
@@ -69,5 +72,5 @@ onMounted(load)
       @current-change="load"
       @size-change="search"
     />
-  </div>
+  </BusinessListPage>
 </template>

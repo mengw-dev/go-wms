@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import BusinessListPage from '@/components/common/BusinessListPage.vue'
 import { passwordByteRule } from '@/utils/password'
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
@@ -212,22 +213,22 @@ async function onDelete(row: UserItem) {
 </script>
 
 <template>
-  <div class="page-card">
-    <el-form inline class="query-form" @submit.prevent="search">
-      <el-form-item label="关键字">
-        <el-input v-model="query.keyword" placeholder="用户名/昵称" clearable @keyup.enter="search" @clear="search" />
-      </el-form-item>
-      <el-form-item>
-        <el-button type="primary" @click="search">查询</el-button>
-      </el-form-item>
-    </el-form>
-
-    <div class="toolbar">
-      <span />
+  <BusinessListPage title="用户管理" description="管理用户、角色与账号状态，按职责分配访问权限。" :total="total">
+    <template #actions>
       <el-button v-permission="'wms:system:user'" type="primary" @click="openCreate">新增用户</el-button>
-    </div>
+    </template>
+    <template #filters>
+      <el-form inline class="query-form" @submit.prevent="search">
+        <el-form-item label="关键字">
+          <el-input v-model="query.keyword" placeholder="用户名/昵称" clearable @keyup.enter="search" @clear="search" />
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" plain @click="search">查询</el-button>
+        </el-form-item>
+      </el-form>
+    </template>
 
-    <el-table v-loading="loading" :data="list" border stripe>
+    <el-table max-height="var(--business-table-height)" v-loading="loading" :data="list" border stripe>
       <el-table-column label="用户名" min-width="150">
         <template #default="{ row }">
           <span class="user-name">{{ row.username }}</span>
@@ -299,7 +300,7 @@ async function onDelete(row: UserItem) {
       @size-change="search"
     />
 
-    <el-dialog
+    <el-dialog class="business-dialog"
       v-model="dialog.visible"
       :title="dialog.editingId ? '编辑用户' : '新增用户'"
       width="480px"
@@ -339,7 +340,7 @@ async function onDelete(row: UserItem) {
       </template>
     </el-dialog>
 
-    <el-dialog
+    <el-dialog class="business-dialog"
       v-model="pwdDialog.visible"
       :title="`重置密码 - ${pwdDialog.username}`"
       width="420px"
@@ -358,7 +359,7 @@ async function onDelete(row: UserItem) {
         <el-button type="primary" :loading="pwdDialog.loading" @click="submitResetPwd">确定</el-button>
       </template>
     </el-dialog>
-  </div>
+  </BusinessListPage>
 </template>
 
 <style scoped>

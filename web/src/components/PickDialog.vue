@@ -10,6 +10,7 @@ const emit = defineEmits<{ (e: 'success'): void }>()
 const visible = ref(false)
 const loading = ref(false)
 const orderId = ref<EntityID>('')
+const orderNo = ref('')
 const tasks = ref<TaskItem[]>([])
 
 const form = reactive({
@@ -67,6 +68,7 @@ watch(
 
 async function open(id: EntityID, task?: TaskItem) {
   orderId.value = id
+  orderNo.value = ''
   visible.value = true
   loading.value = true
   form.task_id = undefined
@@ -74,6 +76,7 @@ async function open(id: EntityID, task?: TaskItem) {
   form.batch_scan = ''
   try {
     const detail = await getOutboundOrder(id)
+    orderNo.value = detail.order.order_no
     tasks.value = detail.tasks ?? []
     // 恢复这批任务上一次未确认的领取/拣货操作（关闭弹窗、刷新后不丢）。
     const restoreError = picker.restoreForTasks(tasks.value.map((t) => t.id))
@@ -229,7 +232,7 @@ defineExpose({ open })
 </script>
 
 <template>
-  <el-dialog
+  <el-dialog class="business-dialog business-operation"
     v-model="visible"
     title="PDA 拣货"
     width="560px"
@@ -238,6 +241,10 @@ defineExpose({ open })
     :close-on-press-escape="!submitting"
     :show-close="!submitting"
   >
+    <div class="operation-context">
+      <span>出库单</span><strong>{{ orderNo || '加载中…' }}</strong>
+      <p>领取任务后核对作业库位、批次与数量，再确认拣货。</p>
+    </div>
     <el-form label-width="90px" v-loading="loading">
       <el-form-item v-if="storageError" label=" ">
         <el-alert :title="storageError" type="error" show-icon :closable="false" />

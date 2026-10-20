@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import BusinessListPage from '@/components/common/BusinessListPage.vue'
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { createRole, deleteRole, listRoles, updateRole } from '@/api/system'
@@ -210,22 +211,22 @@ async function onDelete(row: RoleItem) {
 </script>
 
 <template>
-  <div class="page-card">
-    <el-form inline class="query-form" @submit.prevent="search">
-      <el-form-item label="关键字">
-        <el-input v-model="query.keyword" placeholder="角色名称" clearable @keyup.enter="search" @clear="search" />
-      </el-form-item>
-      <el-form-item>
-        <el-button type="primary" @click="search">查询</el-button>
-      </el-form-item>
-    </el-form>
-
-    <div class="toolbar">
-      <span />
+  <BusinessListPage title="角色管理" description="按业务职责配置权限，清晰管理各类操作范围。" :total="total">
+    <template #actions>
       <el-button v-permission="'wms:system:role'" type="primary" @click="openCreate">新增角色</el-button>
-    </div>
+    </template>
+    <template #filters>
+      <el-form inline class="query-form" @submit.prevent="search">
+        <el-form-item label="关键字">
+          <el-input v-model="query.keyword" placeholder="角色名称" clearable @keyup.enter="search" @clear="search" />
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" plain @click="search">查询</el-button>
+        </el-form-item>
+      </el-form>
+    </template>
 
-    <el-table v-loading="loading" :data="list" border stripe>
+    <el-table max-height="var(--business-table-height)" v-loading="loading" :data="list" border stripe>
       <el-table-column label="角色名称" min-width="170">
         <template #default="{ row }">
           <span class="role-name">{{ row.name }}</span>
@@ -285,7 +286,7 @@ async function onDelete(row: RoleItem) {
       @size-change="search"
     />
 
-    <el-dialog
+    <el-dialog class="business-dialog"
       v-model="dialog.visible"
       :title="dialog.editingId ? '编辑角色' : '新增角色'"
       width="760px"
@@ -338,7 +339,7 @@ async function onDelete(row: RoleItem) {
         <el-button type="primary" :loading="dialog.loading" @click="submit">确定</el-button>
       </template>
     </el-dialog>
-  </div>
+  </BusinessListPage>
 </template>
 
 <style scoped>

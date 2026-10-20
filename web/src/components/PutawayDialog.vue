@@ -11,6 +11,7 @@ const emit = defineEmits<{ (e: 'success'): void }>()
 const visible = ref(false)
 const loading = ref(false)
 const orderId = ref<EntityID>('')
+const orderNo = ref('')
 const tasks = ref<TaskItem[]>([])
 const locationOptions = ref<IdOption[]>([])
 
@@ -37,6 +38,7 @@ const storageError = computed(() => puter.storageError.value)
 
 async function open(id: EntityID, task?: TaskItem) {
   orderId.value = id
+  orderNo.value = ''
   visible.value = true
   loading.value = true
   form.task_id = undefined
@@ -44,6 +46,7 @@ async function open(id: EntityID, task?: TaskItem) {
   form.qty = 1
   try {
     const detail = await getInboundOrder(id)
+    orderNo.value = detail.order.order_no
     tasks.value = detail.tasks ?? []
     // 恢复这批任务上次未确认的上架操作（关闭弹窗、刷新后不丢）。
     const restoreError = puter.restoreForTasks(tasks.value.map((t) => t.id))
@@ -136,7 +139,7 @@ defineExpose({ open })
 </script>
 
 <template>
-  <el-dialog
+  <el-dialog class="business-dialog business-operation"
     v-model="visible"
     title="上架"
     width="520px"
@@ -145,6 +148,10 @@ defineExpose({ open })
     :close-on-press-escape="!submitting"
     :show-close="!submitting"
   >
+    <div class="operation-context">
+      <span>入库单</span><strong>{{ orderNo || '加载中…' }}</strong>
+      <p>选择上架任务与目标库位，核对待上架数量后确认。</p>
+    </div>
     <el-form label-width="90px" v-loading="loading">
       <el-form-item v-if="storageError" label=" ">
         <el-alert :title="storageError" type="error" show-icon :closable="false" />

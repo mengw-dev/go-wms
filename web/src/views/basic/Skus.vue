@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import BusinessListPage from '@/components/common/BusinessListPage.vue'
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { createSku, deleteSku, listSkus, updateSku } from '@/api/basic'
@@ -101,22 +102,22 @@ async function onDelete(row: SkuItem) {
 </script>
 
 <template>
-  <div class="page-card">
-    <el-form inline class="query-form" @submit.prevent="search">
-      <el-form-item label="关键字">
-        <el-input v-model="query.keyword" placeholder="编码/条码/名称" clearable @keyup.enter="search" @clear="search" />
-      </el-form-item>
-      <el-form-item>
-        <el-button type="primary" @click="search">查询</el-button>
-      </el-form-item>
-    </el-form>
-
-    <div class="toolbar">
-      <span />
+  <BusinessListPage title="货品管理" description="维护货品编码、条码与规格，建立统一的业务资料。" :total="total">
+    <template #actions>
       <el-button v-permission="'wms:basic'" type="primary" @click="openCreate">新增货品</el-button>
-    </div>
+    </template>
+    <template #filters>
+      <el-form inline class="query-form" @submit.prevent="search">
+        <el-form-item label="关键字">
+          <el-input v-model="query.keyword" placeholder="编码/条码/名称" clearable @keyup.enter="search" @clear="search" />
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" plain @click="search">查询</el-button>
+        </el-form-item>
+      </el-form>
+    </template>
 
-    <el-table v-loading="loading" :data="list" border stripe>
+    <el-table max-height="var(--business-table-height)" v-loading="loading" :data="list" border stripe>
       <el-table-column prop="code" label="编码" min-width="120" />
       <el-table-column prop="barcode" label="条码" min-width="140" />
       <el-table-column prop="name" label="名称" min-width="160" />
@@ -146,7 +147,7 @@ async function onDelete(row: SkuItem) {
       @size-change="search"
     />
 
-    <el-dialog
+    <el-dialog class="business-dialog"
       v-model="dialog.visible"
       :title="dialog.editingId ? '编辑货品' : '新增货品'"
       width="480px"
@@ -177,5 +178,5 @@ async function onDelete(row: SkuItem) {
         <el-button type="primary" :loading="dialog.loading" @click="submit">确定</el-button>
       </template>
     </el-dialog>
-  </div>
+  </BusinessListPage>
 </template>

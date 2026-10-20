@@ -113,12 +113,12 @@
 | `api/` | 各业务模块 HTTP 客户端与类型（`api/*.ts`、`api/types/*.ts`） | — |
 | `stores/` | Pinia 状态（`auth` 登录态、`guide` 运行态、`theme`） | `stores/auth.spec.ts`、`stores/guide.spec.ts` |
 | `router/` | 路由与登录/权限守卫（`router/index.ts`） | — |
-| `layouts/` | 布局与导航（`Layout.vue`、`WmsNavigation.vue`） | — |
+| `layouts/` | 布局与导航（`Layout.vue`、`WmsNavigation.vue`）；业务路由独立启用 `business-layout.css`，仪表盘/演示保持原样 | E2E `ui-layout.spec.ts`、`business-layout.spec.ts`、`demo-home-layout.spec.ts` |
 | `composables/` | 组合式函数：`autoRefresh`（防重叠轮询）、`inbound/*`（列表/表单/导入轮询）、`outbound/usePdaPick`、`demo/*` | `autoRefresh.spec.ts`、`inbound/useInboundImport.spec.ts`、`outbound/usePdaPick.spec.ts` |
 | `events/` | 业务页面与 Guide/Demo 的唯一契约（`businessEvents.ts`） | `businessEvents.spec.ts` |
 | `utils/` | 前端工具（事件、演示证据/操作、分步检查点、options 等） | `utils/{demoOperations,demoEvidence,index}.spec.ts`、`composables/demo/useStagedDemoRunner.spec.ts` |
 | `views/` | 业务页面（`login`、`dashboard`、`basic`、`system`、`task`、`ai`、`inventory`、`inbound`、`outbound`、`stocktake`、`demo`） | E2E 见 `web/tests/e2e/**` |
-| `components/` | 组件（`DemoConsole`、`demo/*`、`PickDialog`、`PutawayDialog`、`ReceiveDialog`、`common/PageHeader`） | — |
+| `components/` | 组件（`DemoConsole`、`demo/*`、`PickDialog`、`PutawayDialog`、`ReceiveDialog`、`common/PageHeader`、`common/BusinessListPage`） | E2E `business-layout.spec.ts` |
 | `directives/` | `permission` 指令（按权限控制显示） | — |
 | `main.ts` / `App.vue` / `style.css` / `constants.ts` | 应用装配、根组件、全局样式与常量 | — |
 

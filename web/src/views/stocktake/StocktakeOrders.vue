@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import BusinessListPage from '@/components/common/BusinessListPage.vue'
 import { onMounted, reactive, ref } from 'vue'
 import { useAutoRefresh } from '@/composables/autoRefresh'
 import { useRouter } from 'vue-router'
@@ -188,28 +189,8 @@ useAutoRefresh(() => load(true), 0)
 </script>
 
 <template>
-  <div class="page-card">
-    <el-form inline class="query-form" @submit.prevent="search">
-      <el-form-item label="仓库">
-        <el-select v-model="query.warehouse_id" placeholder="全部" clearable style="width: 200px" @change="search">
-          <el-option v-for="w in warehouseOptions" :key="w.id" :label="w.label" :value="w.id" />
-        </el-select>
-      </el-form-item>
-      <el-form-item label="状态">
-        <el-select v-model="query.status" placeholder="全部" clearable style="width: 130px" @change="search">
-          <el-option v-for="s in STOCKTAKE_STATUS_OPTIONS" :key="s" :label="statusText(s)" :value="s" />
-        </el-select>
-      </el-form-item>
-      <el-form-item label="单号">
-        <el-input v-model="query.keyword" placeholder="单号模糊搜索" clearable style="width: 180px" @keyup.enter="search" @clear="search" />
-      </el-form-item>
-      <el-form-item>
-        <el-button type="primary" @click="search">查询</el-button>
-      </el-form-item>
-    </el-form>
-
-    <div class="toolbar">
-      <span />
+  <BusinessListPage title="盘点管理" description="创建盘点单、录入实盘数量，核对并处理库存差异。" :total="total">
+    <template #actions>
       <el-button
         v-permission="'wms:stocktake:create'"
         data-tour="stocktake-create"
@@ -218,9 +199,29 @@ useAutoRefresh(() => load(true), 0)
       >
         新建盘点单
       </el-button>
-    </div>
+    </template>
+    <template #filters>
+      <el-form inline class="query-form" @submit.prevent="search">
+        <el-form-item label="仓库">
+          <el-select v-model="query.warehouse_id" placeholder="全部" clearable style="width: 200px" @change="search">
+            <el-option v-for="w in warehouseOptions" :key="w.id" :label="w.label" :value="w.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="状态">
+          <el-select v-model="query.status" placeholder="全部" clearable style="width: 130px" @change="search">
+            <el-option v-for="s in STOCKTAKE_STATUS_OPTIONS" :key="s" :label="statusText(s)" :value="s" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="单号">
+          <el-input v-model="query.keyword" placeholder="单号模糊搜索" clearable style="width: 180px" @keyup.enter="search" @clear="search" />
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" plain @click="search">查询</el-button>
+        </el-form-item>
+      </el-form>
+    </template>
 
-    <el-table v-loading="loading" :data="list" border stripe>
+    <el-table max-height="var(--business-table-height)" v-loading="loading" :data="list" border stripe>
       <el-table-column prop="order_no" label="盘点单号" min-width="170">
         <template #default="{ row }">
           <el-link type="primary" @click="goDetail(row)">{{ row.order_no }}</el-link>
@@ -271,7 +272,7 @@ useAutoRefresh(() => load(true), 0)
     />
 
     <!-- 新建 -->
-    <el-dialog
+    <el-dialog class="business-dialog"
       v-model="createDialog.visible"
       title="新建盘点单"
       width="520px"
@@ -313,7 +314,7 @@ useAutoRefresh(() => load(true), 0)
         <el-button type="primary" :loading="createDialog.loading" @click="submitCreate">创建</el-button>
       </template>
     </el-dialog>
-  </div>
+  </BusinessListPage>
 </template>
 
 <style scoped>

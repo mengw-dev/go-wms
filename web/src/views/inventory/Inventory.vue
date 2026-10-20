@@ -192,11 +192,11 @@ useAutoRefresh(refreshActiveTab, 0)
             <el-switch v-model="detailQuery.in_stock_only" @change="searchDetail" />
           </el-form-item>
           <el-form-item>
-            <el-button type="primary" @click="searchDetail">查询</el-button>
+            <el-button type="primary" plain @click="searchDetail">查询</el-button>
           </el-form-item>
         </el-form>
 
-        <el-table v-loading="detailLoading" :data="detailList" border stripe>
+        <el-table max-height="var(--business-table-height)" v-loading="detailLoading" :data="detailList" border stripe>
           <el-table-column label="仓库" min-width="150">
             <template #default="{ row }">{{ warehouseMap[row.warehouse_id] || row.warehouse_id }}</template>
           </el-table-column>
@@ -243,11 +243,11 @@ useAutoRefresh(refreshActiveTab, 0)
             </el-select>
           </el-form-item>
           <el-form-item>
-            <el-button type="primary" @click="searchSummary">查询</el-button>
+            <el-button type="primary" plain @click="searchSummary">查询</el-button>
           </el-form-item>
         </el-form>
 
-        <el-table v-loading="summaryLoading" :data="summaryList" border stripe>
+        <el-table max-height="var(--business-table-height)" v-loading="summaryLoading" :data="summaryList" border stripe>
           <el-table-column prop="sku_code" label="货品编码" min-width="130" />
           <el-table-column prop="sku_name" label="货品名称" min-width="180" show-overflow-tooltip />
           <el-table-column prop="unit" label="单位" width="80">
@@ -273,7 +273,7 @@ useAutoRefresh(refreshActiveTab, 0)
     </el-tabs>
     </section>
 
-    <el-drawer v-model="drawerVisible" title="库存流水" size="60%">
+    <el-drawer class="business-dialog" v-model="drawerVisible" title="库存流水" size="60%">
       <div data-tour="inventory-evidence">
       <div v-if="transInventory" class="trans-summary">
         库位：{{ transInventory.location_code || transInventory.location_id }}
@@ -290,11 +290,11 @@ useAutoRefresh(refreshActiveTab, 0)
           </el-select>
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" @click="searchTrans">查询</el-button>
+          <el-button type="primary" plain @click="searchTrans">查询</el-button>
         </el-form-item>
       </el-form>
 
-      <el-table v-loading="transLoading" :data="transList" border stripe size="small">
+      <el-table max-height="480" v-loading="transLoading" :data="transList" border stripe size="small">
         <el-table-column label="类型" width="90">
           <template #default="{ row }">
             <el-tag :type="statusTag(row.trans_type)" size="small">{{ statusText(row.trans_type) }}</el-tag>

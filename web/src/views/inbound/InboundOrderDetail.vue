@@ -138,7 +138,7 @@ async function onPutawaySuccess() {
 </script>
 
 <template>
-  <div v-loading="loading">
+  <div v-loading="loading" class="business-detail">
     <el-page-header class="detail-header" @back="router.back()">
       <template #content>
         <span class="header-title">入库单详情</span>
@@ -148,6 +148,7 @@ async function onPutawaySuccess() {
     <template v-if="data?.order">
       <div class="page-card">
         <div class="detail-actions">
+          <h1 class="document-id">{{ data.order.order_no }}</h1>
           <el-tag :type="statusTag(data.order.status)" size="large">{{ statusText(data.order.status) }}</el-tag>
           <template v-if="data.order.status === 'DRAFT'">
             <el-button v-permission="'wms:inbound:submit'" data-tour="inbound-submit" type="success" plain @click="onSubmit">提交</el-button>
@@ -169,17 +170,17 @@ async function onPutawaySuccess() {
         </div>
 
         <el-alert v-if="data.order.created_by === 'system-seed'" title="历史演示样本，仅供展示，不代表完整业务链。" type="info" :closable="false" />
-        <el-descriptions :column="3" border>
-          <el-descriptions-item label="入库单号">{{ data.order.order_no }}</el-descriptions-item>
-          <el-descriptions-item label="仓库">{{ warehouseMap[data.order.warehouse_id] || data.order.warehouse_id }}</el-descriptions-item>
-          <el-descriptions-item label="来源">{{ data.order.source === 'IMPORT' ? '导入' : '手动' }}</el-descriptions-item>
-          <el-descriptions-item label="应收数量">{{ data.order.expected_qty }}</el-descriptions-item>
-          <el-descriptions-item label="已收数量">{{ data.order.received_qty }}</el-descriptions-item>
-          <el-descriptions-item label="不良品数量">{{ data.order.defective_qty }}</el-descriptions-item>
-          <el-descriptions-item label="创建人">{{ data.order.created_by || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="创建时间">{{ formatTime(data.order.created_at) }}</el-descriptions-item>
-          <el-descriptions-item label="备注">{{ data.order.remark || '-' }}</el-descriptions-item>
-        </el-descriptions>
+        <dl class="business-facts">
+          <div><dt>入库单号</dt><dd>{{ data.order.order_no }}</dd></div>
+          <div><dt>仓库</dt><dd>{{ warehouseMap[data.order.warehouse_id] || data.order.warehouse_id }}</dd></div>
+          <div><dt>来源</dt><dd>{{ data.order.source === 'IMPORT' ? '导入' : '手动' }}</dd></div>
+          <div><dt>应收数量</dt><dd>{{ data.order.expected_qty }}</dd></div>
+          <div><dt>已收数量</dt><dd>{{ data.order.received_qty }}</dd></div>
+          <div><dt>不良品数量</dt><dd>{{ data.order.defective_qty }}</dd></div>
+          <div><dt>创建人</dt><dd>{{ data.order.created_by || '-' }}</dd></div>
+          <div><dt>创建时间</dt><dd>{{ formatTime(data.order.created_at) }}</dd></div>
+          <div><dt>备注</dt><dd>{{ data.order.remark || '-' }}</dd></div>
+        </dl>
       </div>
 
       <div class="page-card section">

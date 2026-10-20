@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import BusinessListPage from '@/components/common/BusinessListPage.vue'
 import { onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAutoRefresh } from '@/composables/autoRefresh'
@@ -51,27 +52,29 @@ useAutoRefresh(() => load(true), 0)
 </script>
 
 <template>
-  <div class="page-card">
-    <el-form inline class="query-form" @submit.prevent="search">
-      <el-form-item label="任务类型">
-        <el-select v-model="query.task_type" placeholder="全部" clearable style="width: 120px" @change="search">
-          <el-option v-for="t in TASK_TYPE_OPTIONS" :key="t" :label="taskTypeText(t)" :value="t" />
-        </el-select>
-      </el-form-item>
-      <el-form-item label="状态">
-        <el-select v-model="query.status" placeholder="全部" clearable style="width: 130px" @change="search">
-          <el-option v-for="s in TASK_STATUS_OPTIONS" :key="s" :label="statusText(s)" :value="s" />
-        </el-select>
-      </el-form-item>
-      <el-form-item label="单据ID">
-        <el-input v-model="query.order_id" placeholder="来源单据 ID" clearable style="width: 130px" @keyup.enter="search" @clear="search" />
-      </el-form-item>
-      <el-form-item>
-        <el-button type="primary" @click="search">查询</el-button>
-      </el-form-item>
-    </el-form>
+  <BusinessListPage title="任务中心" description="集中查看收货、上架与拣货任务，跟进当前作业进度。" :total="total">
+    <template #filters>
+      <el-form inline class="query-form" @submit.prevent="search">
+        <el-form-item label="任务类型">
+          <el-select v-model="query.task_type" placeholder="全部" clearable style="width: 120px" @change="search">
+            <el-option v-for="t in TASK_TYPE_OPTIONS" :key="t" :label="taskTypeText(t)" :value="t" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="状态">
+          <el-select v-model="query.status" placeholder="全部" clearable style="width: 130px" @change="search">
+            <el-option v-for="s in TASK_STATUS_OPTIONS" :key="s" :label="statusText(s)" :value="s" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="单据ID">
+          <el-input v-model="query.order_id" placeholder="来源单据 ID" clearable style="width: 130px" @keyup.enter="search" @clear="search" />
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" plain @click="search">查询</el-button>
+        </el-form-item>
+      </el-form>
+    </template>
 
-    <el-table v-loading="loading" :data="list" border stripe>
+    <el-table max-height="var(--business-table-height)" v-loading="loading" :data="list" border stripe>
       <el-table-column prop="task_no" label="任务号" min-width="170" />
       <el-table-column label="类型" width="90">
         <template #default="{ row }">{{ taskTypeText(row.task_type) }}</template>
@@ -110,5 +113,5 @@ useAutoRefresh(() => load(true), 0)
       @current-change="load"
       @size-change="search"
     />
-  </div>
+  </BusinessListPage>
 </template>

@@ -133,7 +133,7 @@ function canPick(task: { task_type: string; status: string }): boolean {
 </script>
 
 <template>
-  <div v-loading="loading">
+  <div v-loading="loading" class="business-detail">
     <el-page-header class="detail-header" @back="router.back()">
       <template #content>
         <span class="header-title">出库单详情</span>
@@ -143,6 +143,7 @@ function canPick(task: { task_type: string; status: string }): boolean {
     <template v-if="data?.order">
       <div class="page-card">
         <div class="detail-actions">
+          <h1 class="document-id">{{ data.order.order_no }}</h1>
           <el-tag data-tour="outbound-shipped" :type="statusTag(data.order.status)" size="large">{{ statusText(data.order.status) }}</el-tag>
           <template v-if="data.order.status === 'DRAFT'">
             <el-button v-permission="'wms:outbound:submit'" data-tour="outbound-submit" type="success" plain @click="onSubmit">提交</el-button>
@@ -159,17 +160,17 @@ function canPick(task: { task_type: string; status: string }): boolean {
         </div>
 
         <el-alert v-if="data.order.created_by === 'system-seed'" title="历史演示样本，仅供展示，不代表完整业务链。" type="info" :closable="false" />
-        <el-descriptions :column="3" border>
-          <el-descriptions-item label="出库单号">{{ data.order.order_no }}</el-descriptions-item>
-          <el-descriptions-item label="业务订单号">{{ data.order.biz_order_no }}</el-descriptions-item>
-          <el-descriptions-item label="仓库">{{ warehouseMap[data.order.warehouse_id] || data.order.warehouse_id }}</el-descriptions-item>
-          <el-descriptions-item label="需求数量">{{ data.order.expected_qty }}</el-descriptions-item>
-          <el-descriptions-item label="已分配数量">{{ data.order.allocated_qty }}</el-descriptions-item>
-          <el-descriptions-item label="已拣货数量">{{ data.order.picked_qty }}</el-descriptions-item>
-          <el-descriptions-item label="创建人">{{ data.order.created_by || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="创建时间">{{ formatTime(data.order.created_at) }}</el-descriptions-item>
-          <el-descriptions-item label="备注">{{ data.order.remark || '-' }}</el-descriptions-item>
-        </el-descriptions>
+        <dl class="business-facts">
+          <div><dt>出库单号</dt><dd>{{ data.order.order_no }}</dd></div>
+          <div><dt>业务订单号</dt><dd>{{ data.order.biz_order_no }}</dd></div>
+          <div><dt>仓库</dt><dd>{{ warehouseMap[data.order.warehouse_id] || data.order.warehouse_id }}</dd></div>
+          <div><dt>需求数量</dt><dd>{{ data.order.expected_qty }}</dd></div>
+          <div><dt>已分配数量</dt><dd>{{ data.order.allocated_qty }}</dd></div>
+          <div><dt>已拣货数量</dt><dd>{{ data.order.picked_qty }}</dd></div>
+          <div><dt>创建人</dt><dd>{{ data.order.created_by || '-' }}</dd></div>
+          <div><dt>创建时间</dt><dd>{{ formatTime(data.order.created_at) }}</dd></div>
+          <div><dt>备注</dt><dd>{{ data.order.remark || '-' }}</dd></div>
+        </dl>
       </div>
 
       <div class="page-card section">

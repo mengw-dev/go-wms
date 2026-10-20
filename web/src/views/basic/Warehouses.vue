@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import BusinessListPage from '@/components/common/BusinessListPage.vue'
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import {
@@ -134,28 +135,28 @@ async function onDelete(row: WarehouseItem) {
 </script>
 
 <template>
-  <div class="page-card">
-    <el-form inline class="query-form" @submit.prevent="search">
-      <el-form-item label="关键字">
-        <el-input v-model="query.keyword" placeholder="编码/名称" clearable @keyup.enter="search" @clear="search" />
-      </el-form-item>
-      <el-form-item label="状态">
-        <el-select v-model="query.status" placeholder="全部" clearable style="width: 120px" @change="search">
-          <el-option label="启用" :value="COMMON_STATUS.ENABLED" />
-          <el-option label="停用" :value="COMMON_STATUS.DISABLED" />
-        </el-select>
-      </el-form-item>
-      <el-form-item>
-        <el-button type="primary" @click="search">查询</el-button>
-      </el-form-item>
-    </el-form>
-
-    <div class="toolbar">
-      <span />
+  <BusinessListPage title="仓库管理" description="维护仓库资料与启停状态，统一管理仓储空间。" :total="total">
+    <template #actions>
       <el-button v-permission="'wms:basic'" type="primary" @click="openCreate">新增仓库</el-button>
-    </div>
+    </template>
+    <template #filters>
+      <el-form inline class="query-form" @submit.prevent="search">
+        <el-form-item label="关键字">
+          <el-input v-model="query.keyword" placeholder="编码/名称" clearable @keyup.enter="search" @clear="search" />
+        </el-form-item>
+        <el-form-item label="状态">
+          <el-select v-model="query.status" placeholder="全部" clearable style="width: 120px" @change="search">
+            <el-option label="启用" :value="COMMON_STATUS.ENABLED" />
+            <el-option label="停用" :value="COMMON_STATUS.DISABLED" />
+          </el-select>
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" plain @click="search">查询</el-button>
+        </el-form-item>
+      </el-form>
+    </template>
 
-    <el-table v-loading="loading" :data="list" border stripe>
+    <el-table max-height="var(--business-table-height)" v-loading="loading" :data="list" border stripe>
       <el-table-column prop="code" label="编码" min-width="110" />
       <el-table-column prop="name" label="名称" min-width="140" />
       <el-table-column prop="remark" label="备注" min-width="160" show-overflow-tooltip />
@@ -196,7 +197,7 @@ async function onDelete(row: WarehouseItem) {
       @size-change="search"
     />
 
-    <el-dialog
+    <el-dialog class="business-dialog"
       v-model="dialog.visible"
       :title="dialog.editingId ? '编辑仓库' : '新增仓库'"
       width="480px"
@@ -221,5 +222,5 @@ async function onDelete(row: WarehouseItem) {
         <el-button type="primary" :loading="dialog.loading" @click="submit">确定</el-button>
       </template>
     </el-dialog>
-  </div>
+  </BusinessListPage>
 </template>

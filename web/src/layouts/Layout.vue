@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import '@/business-layout.css'
 import { passwordByteRule } from '@/utils/password'
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -34,6 +35,8 @@ function toggleNavigation() {
 onMounted(() => compactMedia.addEventListener('change', syncViewport))
 onUnmounted(() => compactMedia.removeEventListener('change', syncViewport))
 watch(() => route.fullPath, () => { mobileMenuVisible.value = false })
+
+const isBusinessPage = computed(() => route.path !== '/dashboard' && !route.path.startsWith('/demo'))
 
 const pageTitle = computed(() => (route.meta.title as string) || '')
 
@@ -107,7 +110,7 @@ async function submitPassword() {
 </script>
 
 <template>
-  <el-container class="layout">
+  <el-container class="layout" :class="{ 'layout--business': isBusinessPage }">
     <el-aside v-if="!compact && sidebarVisible" id="desktop-navigation" width="220px" class="gowms-aside aside">
       <WmsNavigation />
     </el-aside>

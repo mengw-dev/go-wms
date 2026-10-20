@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import BusinessListPage from '@/components/common/BusinessListPage.vue'
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import {
@@ -178,42 +179,42 @@ async function onDelete(row: LocationItem) {
 </script>
 
 <template>
-  <div class="page-card">
-    <el-form inline class="query-form" @submit.prevent="search">
-      <el-form-item label="仓库">
-        <el-select
-          v-model="query.warehouse_id"
-          placeholder="选择仓库"
-          style="width: 220px"
-          @change="search"
-        >
-          <el-option v-for="w in warehouseOptions" :key="w.id" :label="`${w.code}（${w.name}）`" :value="w.id" />
-        </el-select>
-      </el-form-item>
-      <el-form-item label="库区">
-        <el-input v-model="query.zone" placeholder="库区" clearable style="width: 120px" @keyup.enter="search" @clear="search" />
-      </el-form-item>
-      <el-form-item label="编码">
-        <el-input v-model="query.keyword" placeholder="库位编码" clearable style="width: 150px" @keyup.enter="search" @clear="search" />
-      </el-form-item>
-      <el-form-item label="状态">
-        <el-select v-model="query.status" placeholder="全部" clearable style="width: 110px" @change="search">
-          <el-option label="禁用" :value="LOCATION_STATUS.DISABLED" />
-          <el-option label="空闲" :value="LOCATION_STATUS.IDLE" />
-          <el-option label="占用" :value="LOCATION_STATUS.OCCUPIED" />
-        </el-select>
-      </el-form-item>
-      <el-form-item>
-        <el-button type="primary" @click="search">查询</el-button>
-      </el-form-item>
-    </el-form>
-
-    <div class="toolbar">
-      <span />
+  <BusinessListPage title="库位管理" description="按仓库查看库区与库位，批量生成并管理作业空间。" :total="total">
+    <template #actions>
       <el-button v-permission="'wms:basic'" type="primary" @click="openBatch">批量生成库位</el-button>
-    </div>
+    </template>
+    <template #filters>
+      <el-form inline class="query-form" @submit.prevent="search">
+        <el-form-item label="仓库">
+          <el-select
+            v-model="query.warehouse_id"
+            placeholder="选择仓库"
+            style="width: 220px"
+            @change="search"
+          >
+            <el-option v-for="w in warehouseOptions" :key="w.id" :label="`${w.code}（${w.name}）`" :value="w.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="库区">
+          <el-input v-model="query.zone" placeholder="库区" clearable style="width: 120px" @keyup.enter="search" @clear="search" />
+        </el-form-item>
+        <el-form-item label="编码">
+          <el-input v-model="query.keyword" placeholder="库位编码" clearable style="width: 150px" @keyup.enter="search" @clear="search" />
+        </el-form-item>
+        <el-form-item label="状态">
+          <el-select v-model="query.status" placeholder="全部" clearable style="width: 110px" @change="search">
+            <el-option label="禁用" :value="LOCATION_STATUS.DISABLED" />
+            <el-option label="空闲" :value="LOCATION_STATUS.IDLE" />
+            <el-option label="占用" :value="LOCATION_STATUS.OCCUPIED" />
+          </el-select>
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" plain @click="search">查询</el-button>
+        </el-form-item>
+      </el-form>
+    </template>
 
-    <el-table v-loading="loading" :data="list" border stripe>
+    <el-table max-height="var(--business-table-height)" v-loading="loading" :data="list" border stripe>
       <el-table-column label="仓库" min-width="160">
         <template #default="{ row }">{{ warehouseMap[row.warehouse_id] || row.warehouse_id }}</template>
       </el-table-column>
@@ -267,7 +268,7 @@ async function onDelete(row: LocationItem) {
       @size-change="search"
     />
 
-    <el-dialog
+    <el-dialog class="business-dialog"
       v-model="batchDialog.visible"
       title="批量生成库位"
       width="480px"
@@ -308,7 +309,7 @@ async function onDelete(row: LocationItem) {
         <el-button type="primary" :loading="batchDialog.loading" @click="submitBatch">生成</el-button>
       </template>
     </el-dialog>
-  </div>
+  </BusinessListPage>
 </template>
 
 <style scoped>
