@@ -126,7 +126,7 @@ const shortcuts = [
         <button v-if="data.access.inbound" class="metric" @click="todayOrders('/inbound/orders')"><span>今日新建入库单 <el-icon><ArrowRight /></el-icon></span><strong>{{ count(data.inbound, undefined, true) }}<small>单</small></strong><p>按创建时间统计</p></button>
         <button v-if="data.access.outbound" class="metric" @click="todayOrders('/outbound/orders')"><span>今日新建出库单 <el-icon><ArrowRight /></el-icon></span><strong>{{ count(data.outbound, undefined, true) }}<small>单</small></strong><p>按创建时间统计</p></button>
         <button v-if="data.access.tasks" class="metric" @click="go('/tasks', { status: 'CREATED' })"><span>当前待执行任务 <el-icon><ArrowRight /></el-icon></span><strong>{{ pending }}<small>项</small></strong><p>另有 {{ running }} 项进行中</p></button>
-        <button v-if="data.access.basic" class="metric" :disabled="!warehouseId" title="占用库位 / 启用库位；选择具体仓库后可查看库位" @click="go('/basic/locations')"><span>启用库位占用率 <el-icon><ArrowRight /></el-icon></span><strong>{{ data.locations?.enabled ? occupied : '—' }}<small>%</small></strong><p>{{ data.locations?.occupied || 0 }} / {{ data.locations?.enabled || 0 }} 个启用库位</p></button>
+        <button v-if="data.access.basic" class="metric" title="查看占用库位；占用率 = 占用库位 / 启用库位" @click="go('/basic/locations', { status: '2' })"><span>启用库位占用率 <el-icon><ArrowRight /></el-icon></span><strong>{{ data.locations?.enabled ? occupied : '—' }}<small>%</small></strong><p>{{ data.locations?.occupied || 0 }} / {{ data.locations?.enabled || 0 }} 个启用库位</p></button>
       </div>
 
       <div class="dashboard-grid">

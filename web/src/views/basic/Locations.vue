@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import BusinessListPage from '@/components/common/BusinessListPage.vue'
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import {
@@ -19,10 +19,11 @@ const route = useRoute()
 
 // ---------- 仓库下拉 ----------
 const warehouseOptions = ref<WarehouseItem[]>([])
+const enabledWarehouses = computed(() => warehouseOptions.value.filter(w => w.status === COMMON_STATUS.ENABLED))
 const warehouseMap = ref<Record<EntityID, string>>({})
 
 async function loadWarehouses() {
-  warehouseOptions.value = await loadAllPages((page, page_size) => listWarehouses({ page, page_size, status: COMMON_STATUS.ENABLED }))
+  warehouseOptions.value = await loadAllPages((page, page_size) => listWarehouses({ page, page_size }))
   const map: Record<EntityID, string> = {}
   for (const w of warehouseOptions.value) {
     map[w.id] = `${w.code}（${w.name}）`
@@ -40,14 +41,10 @@ const query = reactive({
   warehouse_id: (typeof route.query.warehouse_id === 'string' ? route.query.warehouse_id : '') as EntityID | '',
   zone: '',
   keyword: '',
-  status: '' as number | '',
+  status: (typeof route.query.status === 'string' && ['0', '1', '2'].includes(route.query.status) ? Number(route.query.status) : '') as number | '',
 })
 
 async function load() {
-  if (query.warehouse_id === '' ) {
-    ElMessage.warning('请先选择仓库')
-    return
-  }
   loading.value = true
   try {
     const data = await listLocations(cleanParams({ ...query }))
@@ -65,9 +62,6 @@ function search() {
 
 onMounted(async () => {
   await loadWarehouses()
-  if (!query.warehouse_id && warehouseOptions.value.length > 0) {
-    query.warehouse_id = warehouseOptions.value[0]!.id
-  }
   load()
 })
 
@@ -89,7 +83,7 @@ const batchRules: FormRules = {
 }
 
 function openBatch() {
-  batchForm.warehouse_id = query.warehouse_id === '' ? undefined : query.warehouse_id
+  batchForm.warehouse_id = enabledWarehouses.value.find(w => w.id === query.warehouse_id)?.id
   batchForm.zone = ''
   batchForm.row_from = 1
   batchForm.row_to = 1
@@ -191,7 +185,9 @@ async function onDelete(row: LocationItem) {
         <el-form-item label="仓库">
           <el-select
             v-model="query.warehouse_id"
-            placeholder="选择仓库"
+            placeholder="全部仓库"
+            aria-label="库位仓库"
+            clearable
             style="width: 220px"
             @change="search"
           >
@@ -290,7 +286,7 @@ async function onDelete(row: LocationItem) {
       <el-form ref="batchFormRef" :model="batchForm" :rules="batchRules" label-width="90px">
         <el-form-item label="仓库" prop="warehouse_id">
           <el-select v-model="batchForm.warehouse_id" placeholder="选择仓库" style="width: 100%">
-            <el-option v-for="w in warehouseOptions" :key="w.id" :label="`${w.code}（${w.name}）`" :value="w.id" />
+            <el-option v-for="w in enabledWarehouses" :key="w.id" :label="`${w.code}（${w.name}）`" :value="w.id" />
           </el-select>
         </el-form-item>
         <el-form-item label="库区" prop="zone">

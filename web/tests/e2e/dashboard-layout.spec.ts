@@ -33,6 +33,36 @@ async function setup(page: Page, theme: string, limited = false, demo = false) {
 }
 
 for (const theme of ['light', 'dark']) {
+  test(`${theme}: occupied location metric opens matching locations for all or selected warehouses`, async ({ page }) => {
+    await setup(page, theme)
+    for (const warehouseId of ['', '2']) {
+      await page.goto('/dashboard')
+      if (warehouseId) {
+        await page.getByRole('combobox', { name: '仪表盘仓库' }).click()
+        await page.getByRole('option', { name: 'WH-HZ · 杭州仓' }).click()
+        await expect(page.locator('.metric').first()).toContainText('3')
+      }
+      const metric = page.getByRole('button', { name: /启用库位占用率/ })
+      await expect(metric).toBeEnabled()
+      const request = page.waitForRequest(req => new URL(req.url()).pathname.endsWith('/basic/locations'))
+      await metric.click()
+      const url = new URL((await request).url())
+      expect(url.searchParams.get('warehouse_id')).toBe(warehouseId || null)
+      expect(url.searchParams.get('status')).toBe('2')
+      await expect(page.locator('.query-form .el-select').last()).toContainText('占用')
+      if (warehouseId) {
+        const select = page.locator('.query-form .el-select').first()
+        await expect(select).toContainText('WH-HZ（杭州仓）')
+        await select.hover()
+        const cleared = page.waitForRequest(req => new URL(req.url()).pathname.endsWith('/basic/locations') && !new URL(req.url()).searchParams.has('warehouse_id'))
+        await select.locator('.el-select__clear').click()
+        expect(new URL((await cleared).url()).searchParams.get('status')).toBe('2')
+      } else {
+        await expect(page.locator('.query-form .el-select').first()).toContainText('全部仓库')
+      }
+    }
+  })
+
   test(`${theme}: dashboard reserves the demo dock lane on smaller desktop screens`, async ({ page }) => {
     await setup(page, theme, false, true)
     await page.goto('/dashboard')
@@ -109,4 +139,20 @@ test('task-only users do not see warehouse, order or inventory information', asy
   await expect(page.locator('.metric')).toHaveCount(1)
   await expect(page.locator('.workflow-panel, .trend-panel, .inventory-panel')).toHaveCount(0)
   await expect(page.getByRole('combobox', { name: '仪表盘仓库' })).toHaveCount(0)
+})
+
+test('location browsing includes disabled warehouses but batch creation only offers enabled warehouses', async ({ page }) => {
+  await setup(page, 'light')
+  await page.route('**/api/v1/basic/warehouses*', route => route.fulfill({ json: { code: 0, msg: 'ok', data: {
+    list: [{ id: '1', code: 'WH-ON', name: '启用仓', status: 1 }, { id: '2', code: 'WH-OFF', name: '停用仓', status: 0 }], total: 2,
+  } } }))
+  await page.goto('/basic/locations?warehouse_id=2&status=0')
+  await expect(page.locator('.query-form .el-select').first()).toContainText('WH-OFF（停用仓）')
+  await expect(page.locator('.query-form .el-select').last()).toContainText('禁用')
+  await page.getByRole('button', { name: '批量生成库位', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '批量生成库位', exact: true })
+  await expect(dialog.getByRole('combobox')).toHaveValue('')
+  await dialog.locator('.el-select').click()
+  await expect(page.getByRole('option', { name: 'WH-ON（启用仓）', exact: true })).toBeVisible()
+  await expect(page.getByRole('option', { name: 'WH-OFF（停用仓）', exact: true })).toHaveCount(0)
 })
