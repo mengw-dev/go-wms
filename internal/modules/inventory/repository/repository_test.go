@@ -22,9 +22,6 @@ func inventoryFixture(t *testing.T) *gorm.DB {
 		dsn = "root:1234@tcp(127.0.0.1:3306)/gowms?parseTime=true&timeout=2s"
 	}
 	db := testutil.OpenIsolatedMySQL(t, dsn, &model.Inventory{}, &basicmodel.SKU{}, &basicmodel.Location{})
-	if err := tenant.RegisterGORMCallbacks(db); err != nil {
-		t.Fatal(err)
-	}
 	return db
 }
 

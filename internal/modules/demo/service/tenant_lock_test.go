@@ -22,9 +22,8 @@ func reserveDemoSession(t *testing.T, rdb *redis.Client, tid int64) string {
 	ctx = tenant.WithTenant(ctx, tid)
 	sessionKey := activeSessionKeyOf(tid)
 	lockKey := demoResetLockKeyOf(tid)
-	if err := rdb.Del(ctx, sessionKey, lockKey).Err(); err != nil {
-		t.Fatalf("cleanup demo keys: %v", err)
-	}
+	// OpenTestRedis gives this fixture its own namespace; never pre-delete a
+	// possibly live session just to make a reservation succeed.
 	sessionID := uuid.NewString()
 	if ok, err := rdb.SetNX(ctx, sessionKey, sessionID, time.Minute).Result(); err != nil || !ok {
 		t.Fatalf("reserve demo session: ok=%v err=%v", ok, err)
@@ -40,6 +39,7 @@ func reserveDemoSession(t *testing.T, rdb *redis.Client, tid int64) string {
 }
 
 func TestScenarioExecutionLockIsScopedPerTenant(t *testing.T) {
+	t.Parallel()
 	rdb := testutil.OpenTestRedis(t)
 	s := &Service{cfg: &config.Config{Demo: config.DemoConfig{Enabled: true, Instances: 99, SessionTTLSeconds: 300}}, rdb: rdb}
 	tid := int64(10098)
@@ -91,6 +91,7 @@ func TestScenarioExecutionLockIsScopedPerTenant(t *testing.T) {
 }
 
 func TestDifferentDemoTenantsRunConcurrently(t *testing.T) {
+	t.Parallel()
 	rdb := testutil.OpenTestRedis(t)
 	s := &Service{cfg: &config.Config{Demo: config.DemoConfig{Enabled: true, Instances: 99, SessionTTLSeconds: 300}}, rdb: rdb}
 	tidA, tidB := int64(10097), int64(10096)
@@ -135,6 +136,7 @@ func TestDifferentDemoTenantsRunConcurrently(t *testing.T) {
 }
 
 func TestOldSessionCannotResetNewSession(t *testing.T) {
+	t.Parallel()
 	rdb := testutil.OpenTestRedis(t)
 	tid := int64(10095)
 	oldToken := reserveDemoSession(t, rdb, tid)

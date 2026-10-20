@@ -36,9 +36,6 @@ type receiveConcurrentStack struct {
 func newReceiveConcurrentStack(t *testing.T) *receiveConcurrentStack {
 	t.Helper()
 	db := testutil.OpenIsolatedMySQL(t, receiveTestDSN(), &model.ReceiptOrder{}, &model.ReceiptOrderDetail{}, &taskmodel.Task{}, &idempotency.Record{})
-	if err := tenant.RegisterGORMCallbacks(db); err != nil {
-		t.Fatal(err)
-	}
 	if err := snowflake.Init(1); err != nil {
 		t.Fatal(err)
 	}

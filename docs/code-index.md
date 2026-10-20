@@ -65,11 +65,11 @@
 
 | 路径 | 职责 | 对应测试 |
 | --- | --- | --- |
-| `internal/app` | 依赖组装与路由注册 | `router_test.go`、`integration_test.go`、`pick_race_test.go`、`order_references_test.go`、`order_quantity_test.go`、`task_pagination_test.go`、`external_identity_test.go` |
+| `internal/app` | 依赖组装与路由注册 | `router_test.go`、`integration_test.go`、`pick_race_test.go`、`order_references_test.go`、`order_quantity_test.go`、`task_pagination_test.go`、`external_identity_test.go`、`schema_contract_test.go` |
 | `internal/bootstrap` | DB/Redis 初始化、迁移、种子（管理员/演示/体验账号）、演示数据重置 | `seed_test.go`、`personal_test.go`、`reset_test.go`、`quantity_test.go`、`checks_test.go` |
 | `cmd/wms` | 服务入口、`.env` 加载、优雅关停、后台 worker 启动 | `dotenv_test.go`、`server_test.go` |
 | `cmd/migrate` | 迁移工具与管理员/应用账户初始化 | `preflight_test.go` |
-| `internal/testutil` | 测试用 MySQL/Redis 基础设施（独立测试库） | `mysql_test.go` |
+| `internal/testutil` | 测试用 MySQL/Redis 基础设施（临时 schema、租户回调、正式迁移入口、Redis 命名空间） | `mysql_test.go`、`redis_test.go`；应用结构契约见 `internal/app/schema_contract_test.go` |
 
 通用能力 `internal/pkg/**`：
 

@@ -33,9 +33,6 @@ func resetTestDB(t *testing.T) *gorm.DB {
 		&stocktakemodel.StocktakeOrder{}, &stocktakemodel.StocktakeDetail{},
 	)
 	// 与生产一致：重置与种子都依赖租户回调做隔离/注入，测试库必须显式注册。
-	if err := tenant.RegisterGORMCallbacks(db); err != nil {
-		t.Fatalf("register tenant callbacks: %v", err)
-	}
 	return db
 }
 

@@ -51,9 +51,6 @@ func newPutawayConcurrentStack(t *testing.T, perTask int) *putawayConcurrentStac
 		&model.ReceiptOrder{}, &model.ReceiptOrderDetail{}, &taskmodel.Task{}, &idempotency.Record{},
 		&basicmodel.Warehouse{}, &basicmodel.SKU{}, &basicmodel.Location{},
 		&invmodel.Inventory{}, &invmodel.InventoryTrans{})
-	if err := tenant.RegisterGORMCallbacks(db); err != nil {
-		t.Fatal(err)
-	}
 	if err := snowflake.Init(1); err != nil {
 		t.Fatal(err)
 	}

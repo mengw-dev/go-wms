@@ -87,9 +87,6 @@ func TestQuantitySchemaAndBoundariesMatchBothCreationPaths(t *testing.T) {
 					t.Errorf("%s.%s: %s, want int", column.TableName, column.ColumnName, column.DataType)
 				}
 			}
-			if err := tenant.RegisterGORMCallbacks(db); err != nil {
-				t.Fatal(err)
-			}
 			if err := snowflake.Init(1); err != nil {
 				t.Fatal(err)
 			}

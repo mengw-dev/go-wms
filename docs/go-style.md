@@ -108,6 +108,10 @@
 
 基本检查：`go test ./...`、`go vet ./...`、`golangci-lint run ./...`。MySQL 集成测试通过 `internal/testutil` 创建临时数据库；需要强制执行时设置 `WMS_TEST_REQUIRED=1` 和仅用于本地或测试环境的 `WMS_TEST_DSN`。
 
+MySQL fixture 统一通过 `OpenIsolatedMySQL` 安装与 `InitDB` 相同的租户回调，调用方不重复注册；局部模型建表用于具体模块和故障注入。需要正式发布结构时使用 `OpenMigratedMySQL`，执行当前嵌入的版本化迁移。`internal/app/schema_contract_test.go` 在开发/正式两条建表路径经真实 `InitDB + app.New` 跑完整业务链，检查全部列集合、关键类型、租户唯一键、六个数量 CHECK 及租户读写隔离；不宣称所有历史默认值、空值属性和非唯一索引名称完全相同。
+
+Redis 测试只使用显式的 `WMS_TEST_REDIS_ADDR` 专用/本地单节点实例。`OpenTestRedis` 按 fixture 自动加 UUID 前缀，涵盖已支持命令、普通/事务流水线和 Lua 的显式 KEYS；脚本必须用 KEYS 引用测试数据，不能在脚本中拼接未声明的全局键。新增命令需先补命名空间规则和回归，未知命令直接拒绝。清理仅扫描删除自己的前缀，不使用 FLUSHDB/FLUSHALL，也不预删应用固定会话键；这不提供任意 Lua 沙箱或 Redis Cluster 支持，禁止指向生产实例。
+
 测试连接池最多使用 8 个业务连接，允许真实事务竞争，同时避免多个包同时运行耗尽 MySQL 连接。200 个并发调用不等于必须建立 200 个数据库连接；防超卖测试还应确认失败原因为库存不足，不能把连接错误也算作正确拒绝。
 
 `go test -race ./...` 需要 CGO 和兼容的 C 编译器。它检查 Go 内存访问竞争，不能替代真实 MySQL 上的库存并发测试。CI 已包含入口包及内部模块的 race 测试。

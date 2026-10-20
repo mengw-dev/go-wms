@@ -33,9 +33,6 @@ func importFixture(t *testing.T) (*Service, *gorm.DB, context.Context) {
 		dsn = "root:1234@tcp(127.0.0.1:3306)/gowms?parseTime=true"
 	}
 	db := testutil.OpenIsolatedMySQL(t, dsn, &basicmodel.Warehouse{}, &basicmodel.SKU{}, &model.ImportTask{}, &model.ReceiptOrder{}, &model.ReceiptOrderDetail{})
-	if err := tenant.RegisterGORMCallbacks(db); err != nil {
-		t.Fatal(err)
-	}
 	ctx := tenant.WithTenant(context.Background(), 11)
 	for _, row := range []any{
 		&basicmodel.Warehouse{Base: sysmodel.Base{ID: 1}, Code: "WH", Name: "Warehouse", Status: 1},

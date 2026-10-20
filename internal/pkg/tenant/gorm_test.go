@@ -1,4 +1,4 @@
-package tenant
+package tenant_test
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"gorm.io/gorm"
 
 	basicmodel "gowms/internal/modules/basic/model"
+	"gowms/internal/pkg/tenant"
 	"gowms/internal/testutil"
 )
 
@@ -20,9 +21,6 @@ func newTenantTestDB(t *testing.T) *gorm.DB {
 		dsn = "root:1234@tcp(127.0.0.1:3306)/gowms?charset=utf8mb4&parseTime=True&loc=Local"
 	}
 	db := testutil.OpenIsolatedMySQL(t, dsn, &basicmodel.SKU{})
-	if err := RegisterGORMCallbacks(db); err != nil {
-		t.Fatalf("register tenant callbacks: %v", err)
-	}
 	return db
 }
 
@@ -31,8 +29,8 @@ func newTenantTestDB(t *testing.T) *gorm.DB {
 // 同一编码在不同租户可重复创建（联合唯一键）。
 func TestTenantIsolation(t *testing.T) {
 	db := newTenantTestDB(t)
-	ctxA := WithTenant(context.Background(), 1001)
-	ctxB := WithTenant(context.Background(), 2002)
+	ctxA := tenant.WithTenant(context.Background(), 1001)
+	ctxB := tenant.WithTenant(context.Background(), 2002)
 
 	// Create：ctx 有租户且字段为零值时自动填充
 	if err := db.WithContext(ctxA).Create(&basicmodel.SKU{Code: "SKU-T1", Barcode: "BC-T1", Name: "租户A货品"}).Error; err != nil {
@@ -92,7 +90,7 @@ func TestTenantIsolation(t *testing.T) {
 
 	// 租户请求不能通过显式字段跨租户创建；平台上下文仍支持代操作。
 	explicit := basicmodel.SKU{TenantID: 3003, Code: "SKU-T2", Barcode: "BC-T2", Name: "显式租户"}
-	if err := db.WithContext(ctxA).Create(&explicit).Error; !errors.Is(err, ErrMismatch) {
+	if err := db.WithContext(ctxA).Create(&explicit).Error; !errors.Is(err, tenant.ErrMismatch) {
 		t.Fatalf("cross-tenant create: %v", err)
 	}
 	if err := db.WithContext(context.Background()).Create(&explicit).Error; err != nil {
@@ -108,8 +106,8 @@ func TestTenantIsolation(t *testing.T) {
 // （AI 模块快照查询曾因此泄漏跨租户数据）。
 func TestTenantScanIsolation(t *testing.T) {
 	db := newTenantTestDB(t)
-	ctxA := WithTenant(context.Background(), 1001)
-	ctxB := WithTenant(context.Background(), 2002)
+	ctxA := tenant.WithTenant(context.Background(), 1001)
+	ctxB := tenant.WithTenant(context.Background(), 2002)
 
 	for _, ctx := range []context.Context{ctxA, ctxB} {
 		if err := db.WithContext(ctx).Create(&basicmodel.SKU{Code: "SCAN-T", Barcode: "SCAN-BC", Name: "扫描隔离"}).Error; err != nil {
@@ -147,14 +145,14 @@ func TestWithExactTenantZeroDoesNotBypass(t *testing.T) {
 	}).Error; err != nil {
 		t.Fatalf("create platform sku: %v", err)
 	}
-	if err := db.WithContext(WithTenant(context.Background(), 1001)).Create(&basicmodel.SKU{
+	if err := db.WithContext(tenant.WithTenant(context.Background(), 1001)).Create(&basicmodel.SKU{
 		Code: "TENANT-1", Barcode: "TENANT-1-BC", Name: "租户货品",
 	}).Error; err != nil {
 		t.Fatalf("create tenant sku: %v", err)
 	}
 
 	var platformRows []basicmodel.SKU
-	if err := db.WithContext(WithExactTenant(context.Background(), 0)).Find(&platformRows).Error; err != nil {
+	if err := db.WithContext(tenant.WithExactTenant(context.Background(), 0)).Find(&platformRows).Error; err != nil {
 		t.Fatalf("query exact tenant 0: %v", err)
 	}
 	if len(platformRows) != 1 || platformRows[0].TenantID != 0 || platformRows[0].Code != "PLATFORM" {
@@ -162,7 +160,7 @@ func TestWithExactTenantZeroDoesNotBypass(t *testing.T) {
 	}
 
 	var allRows []basicmodel.SKU
-	if err := db.WithContext(WithTenant(context.Background(), 0)).Find(&allRows).Error; err != nil {
+	if err := db.WithContext(tenant.WithTenant(context.Background(), 0)).Find(&allRows).Error; err != nil {
 		t.Fatalf("query platform bypass: %v", err)
 	}
 	if len(allRows) != 2 {
@@ -171,16 +169,16 @@ func TestWithExactTenantZeroDoesNotBypass(t *testing.T) {
 }
 
 func TestScope(t *testing.T) {
-	if tenantID, scoped := Scope(context.Background()); scoped || tenantID != 0 {
+	if tenantID, scoped := tenant.Scope(context.Background()); scoped || tenantID != 0 {
 		t.Fatalf("plain context scope=(%d,%v), want (0,false)", tenantID, scoped)
 	}
-	if tenantID, scoped := Scope(WithTenant(context.Background(), 0)); scoped || tenantID != 0 {
+	if tenantID, scoped := tenant.Scope(tenant.WithTenant(context.Background(), 0)); scoped || tenantID != 0 {
 		t.Fatalf("tenant reset scope=(%d,%v), want (0,false)", tenantID, scoped)
 	}
-	if tenantID, scoped := Scope(WithExactTenant(context.Background(), 0)); !scoped || tenantID != 0 {
+	if tenantID, scoped := tenant.Scope(tenant.WithExactTenant(context.Background(), 0)); !scoped || tenantID != 0 {
 		t.Fatalf("exact tenant 0 scope=(%d,%v), want (0,true)", tenantID, scoped)
 	}
-	if tenantID, scoped := Scope(WithTenant(context.Background(), 42)); !scoped || tenantID != 42 {
+	if tenantID, scoped := tenant.Scope(tenant.WithTenant(context.Background(), 42)); !scoped || tenantID != 42 {
 		t.Fatalf("tenant 42 scope=(%d,%v), want (42,true)", tenantID, scoped)
 	}
 }
@@ -190,7 +188,7 @@ func TestScope(t *testing.T) {
 // （曾因切片元素为指针未解引用导致明细 tenant_id=0，跨租户丢失单据）。
 func TestTenantCreatePointerSliceAndBatches(t *testing.T) {
 	db := newTenantTestDB(t)
-	ctxA := WithTenant(context.Background(), 1001)
+	ctxA := tenant.WithTenant(context.Background(), 1001)
 
 	// 指针切片普通 Create
 	slice := []*basicmodel.SKU{
@@ -241,19 +239,19 @@ func TestTenantCreatePointerSliceAndBatches(t *testing.T) {
 
 // TestFromContext 覆盖与缺省语义。
 func TestFromContext(t *testing.T) {
-	if FromContext(context.TODO()) != 0 {
+	if tenant.FromContext(context.TODO()) != 0 {
 		t.Fatal("empty ctx should be 0")
 	}
-	if FromContext(context.Background()) != 0 {
+	if tenant.FromContext(context.Background()) != 0 {
 		t.Fatal("plain ctx should be 0")
 	}
-	ctx := WithTenant(context.Background(), 42)
-	if FromContext(ctx) != 42 {
-		t.Fatalf("want 42, got %d", FromContext(ctx))
+	ctx := tenant.WithTenant(context.Background(), 42)
+	if tenant.FromContext(ctx) != 42 {
+		t.Fatalf("want 42, got %d", tenant.FromContext(ctx))
 	}
 	// 0 视为清除租户（旁路）
-	ctx = WithTenant(ctx, 0)
-	if FromContext(ctx) != 0 {
-		t.Fatalf("want 0 after reset, got %d", FromContext(ctx))
+	ctx = tenant.WithTenant(ctx, 0)
+	if tenant.FromContext(ctx) != 0 {
+		t.Fatalf("want 0 after reset, got %d", tenant.FromContext(ctx))
 	}
 }

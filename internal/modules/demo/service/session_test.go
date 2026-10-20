@@ -15,6 +15,7 @@ import (
 )
 
 func TestSessionOperationsRejectPreviousOwner(t *testing.T) {
+	t.Parallel()
 	rdb := testutil.OpenTestRedis(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -75,6 +76,7 @@ func TestSessionOperationsRejectPreviousOwner(t *testing.T) {
 }
 
 func TestExecutionLockPreventsSessionReplacementDuringLongRun(t *testing.T) {
+	t.Parallel()
 	rdb := testutil.OpenTestRedis(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

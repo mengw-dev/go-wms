@@ -23,9 +23,6 @@ func newQuotaTestDB(t *testing.T) *gorm.DB {
 		dsn = "root:1234@tcp(127.0.0.1:3306)/gowms?charset=utf8mb4&parseTime=True&loc=Local"
 	}
 	db := testutil.OpenIsolatedMySQL(t, dsn, &basicmodel.SKU{})
-	if err := tenant.RegisterGORMCallbacks(db); err != nil {
-		t.Fatalf("register tenant callbacks: %v", err)
-	}
 	return db
 }
 

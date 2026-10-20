@@ -23,9 +23,6 @@ func TestGetOrderPreservesTenantAndCancellation(t *testing.T) {
 		dsn = "root:1234@tcp(127.0.0.1:3306)/gowms?charset=utf8mb4&parseTime=True&loc=Local"
 	}
 	db := testutil.OpenIsolatedMySQL(t, dsn, &model.ReceiptOrder{}, &model.ReceiptOrderDetail{}, &taskmodel.Task{})
-	if err := tenant.RegisterGORMCallbacks(db); err != nil {
-		t.Fatal(err)
-	}
 	ctx := tenant.WithTenant(context.Background(), 101)
 	order := &model.ReceiptOrder{OrderNo: "TEST-CONTEXT", WarehouseID: 1}
 	if err := db.WithContext(ctx).Create(order).Error; err != nil {

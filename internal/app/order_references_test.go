@@ -53,9 +53,6 @@ func newOrderReferenceStack(t *testing.T) *orderReferenceStack {
 		dsn = "root:1234@tcp(127.0.0.1:3306)/gowms?parseTime=true&timeout=2s"
 	}
 	db := testutil.OpenIsolatedMySQL(t, dsn)
-	if err := tenant.RegisterGORMCallbacks(db); err != nil {
-		t.Fatal(err)
-	}
 	if err := bootstrap.AutoMigrate(db); err != nil {
 		t.Fatal(err)
 	}

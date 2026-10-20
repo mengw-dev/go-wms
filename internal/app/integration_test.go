@@ -19,7 +19,6 @@ import (
 	"gowms/internal/modules/outbound/model"
 	"gowms/internal/pkg/config"
 	"gowms/internal/pkg/errcode"
-	"gowms/internal/pkg/tenant"
 	"gowms/internal/testutil"
 )
 
@@ -32,9 +31,6 @@ func integrationFixture(t *testing.T) (*gorm.DB, map[int64]int64, map[int64]int6
 		dsn = "root:1234@tcp(127.0.0.1:3306)/gowms?parseTime=true&timeout=2s"
 	}
 	db := testutil.OpenIsolatedMySQL(t, dsn, &basicmodel.Warehouse{}, &basicmodel.SKU{}, &model.ShipmentOrder{}, &model.ShipmentOrderDetail{})
-	if err := tenant.RegisterGORMCallbacks(db); err != nil {
-		t.Fatal(err)
-	}
 	warehouses, skus := make(map[int64]int64), make(map[int64]int64)
 	// 外租户先插入，确保缺失租户条件的 First 会选中错误对象。
 	for _, id := range []int64{22, 0, 11} {

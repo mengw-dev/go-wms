@@ -25,9 +25,6 @@ func TestTenantRolePermissionBoundary(t *testing.T) {
 		dsn = "root:1234@tcp(127.0.0.1:3306)/gowms?parseTime=true&timeout=2s"
 	}
 	db := testutil.OpenIsolatedMySQL(t, dsn, &model.SysRole{}, &model.SysUser{}, &model.SysUserRole{})
-	if err := tenant.RegisterGORMCallbacks(db); err != nil {
-		t.Fatal(err)
-	}
 	s := New(repository.New(db), "unused", 1)
 	ctx := tenant.WithTenant(context.Background(), 11)
 
@@ -104,9 +101,6 @@ func TestCreateRoleConflictMapsToBusinessError(t *testing.T) {
 		dsn = "root:1234@tcp(127.0.0.1:3306)/gowms?parseTime=true&timeout=2s"
 	}
 	db := testutil.OpenIsolatedMySQL(t, dsn, &model.SysRole{}, &model.SysUser{}, &model.SysUserRole{})
-	if err := tenant.RegisterGORMCallbacks(db); err != nil {
-		t.Fatal(err)
-	}
 	s := New(repository.New(db), "unused", 1)
 	ctx := tenant.WithTenant(context.Background(), 11)
 
@@ -158,9 +152,6 @@ func TestUpdateMissingRoleReturnsNotFound(t *testing.T) {
 		dsn = "root:1234@tcp(127.0.0.1:3306)/gowms?parseTime=true&timeout=2s"
 	}
 	db := testutil.OpenIsolatedMySQL(t, dsn, &model.SysRole{}, &model.SysUser{}, &model.SysUserRole{})
-	if err := tenant.RegisterGORMCallbacks(db); err != nil {
-		t.Fatal(err)
-	}
 	s := New(repository.New(db), "unused", 1)
 	ctx := tenant.WithTenant(context.Background(), 11)
 

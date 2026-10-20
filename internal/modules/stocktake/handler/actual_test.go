@@ -29,9 +29,6 @@ func TestActualQuantityMustBeExplicit(t *testing.T) {
 		dsn = "root:1234@tcp(127.0.0.1:3306)/gowms?parseTime=true&timeout=2s"
 	}
 	db := testutil.OpenIsolatedMySQL(t, dsn, &model.StocktakeOrder{}, &model.StocktakeDetail{})
-	if err := tenant.RegisterGORMCallbacks(db); err != nil {
-		t.Fatal(err)
-	}
 	ctx := tenant.WithTenant(context.Background(), 11)
 	order := model.StocktakeOrder{Base: modelbase.Base{ID: 1}, OrderNo: "ACTUAL-REQUIRED", Status: model.OrderDraft}
 	detail := model.StocktakeDetail{Base: modelbase.Base{ID: 2}, OrderID: 1, BookQty: 10}

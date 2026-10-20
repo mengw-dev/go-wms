@@ -15,7 +15,6 @@ import (
 	sysmodel "gowms/internal/modules/system/model"
 	taskmodel "gowms/internal/modules/task/model"
 	"gowms/internal/pkg/config"
-	"gowms/internal/pkg/tenant"
 	"gowms/internal/testutil"
 )
 
@@ -35,9 +34,6 @@ func newPersonalTestDB(t *testing.T) *gorm.DB {
 		&outboundmodel.ShipmentOrder{}, &outboundmodel.ShipmentOrderDetail{}, &outboundmodel.Allocation{},
 		&stocktakemodel.StocktakeOrder{}, &stocktakemodel.StocktakeDetail{},
 	)
-	if err := tenant.RegisterGORMCallbacks(db); err != nil {
-		t.Fatalf("register tenant callbacks: %v", err)
-	}
 	return db
 }
 

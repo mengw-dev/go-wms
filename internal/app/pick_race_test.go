@@ -72,9 +72,6 @@ func newPickRaceStack(t *testing.T) *pickRaceStack {
 		&invmodel.Inventory{}, &invmodel.InventoryTrans{},
 		&outmodel.ShipmentOrder{}, &outmodel.ShipmentOrderDetail{}, &outmodel.Allocation{},
 		&taskmodel.Task{}, &idempotency.Record{})
-	if err := tenant.RegisterGORMCallbacks(db); err != nil {
-		t.Fatal(err)
-	}
 	if err := snowflake.Init(1); err != nil {
 		t.Fatal(err)
 	}

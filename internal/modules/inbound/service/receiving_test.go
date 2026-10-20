@@ -37,9 +37,6 @@ func TestReceiveCountsDefectiveGoodsOnce(t *testing.T) {
 				dsn = "root:1234@tcp(127.0.0.1:3306)/gowms?parseTime=true&timeout=2s"
 			}
 			db := testutil.OpenIsolatedMySQL(t, dsn, &model.ReceiptOrder{}, &model.ReceiptOrderDetail{}, &taskmodel.Task{})
-			if err := tenant.RegisterGORMCallbacks(db); err != nil {
-				t.Fatal(err)
-			}
 			ctx := tenant.WithTenant(context.Background(), 11)
 			repo := repository.New()
 			tasks := taskservice.New(taskrepo.New(), db)

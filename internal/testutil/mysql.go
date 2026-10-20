@@ -13,11 +13,10 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 	"gorm.io/gorm/schema"
+
+	"gowms/internal/pkg/tenant"
 )
 
-// OpenIsolatedMySQL creates a temporary schema, migrates only the requested models,
-// and drops the schema when the test finishes. It never writes test data into the
-// developer's working database.
 // parseTestDSN keeps test databases on the same time scanning semantics as the
 // application. Tests must not silently change behavior just because a caller's
 // DSN omitted parseTime or an environment wrapper dropped it.
@@ -31,6 +30,9 @@ func parseTestDSN(t *testing.T, baseDSN string) *mysqlDriver.Config {
 	return cfg
 }
 
+// OpenIsolatedMySQL creates a temporary schema, registers application tenant
+// callbacks, migrates only the requested models, and drops it after the test.
+// It never writes test data into the developer's working database.
 func OpenIsolatedMySQL(t *testing.T, baseDSN string, models ...any) *gorm.DB {
 	t.Helper()
 
@@ -86,6 +88,10 @@ func OpenIsolatedMySQL(t *testing.T, baseDSN string, models ...any) *gorm.DB {
 	// go test 会并行运行多个包；保留真实事务并发，但不要让单个测试耗尽服务器连接。
 	sqlDB.SetMaxOpenConns(8)
 	sqlDB.SetMaxIdleConns(2)
+	// 与 bootstrap.InitDB 使用同一套回调；业务 fixture 不应各自决定是否启用租户隔离。
+	if err := tenant.RegisterGORMCallbacks(db); err != nil {
+		t.Fatalf("register tenant callbacks: %v", err)
+	}
 
 	if len(models) > 0 {
 		if err := db.AutoMigrate(models...); err != nil {

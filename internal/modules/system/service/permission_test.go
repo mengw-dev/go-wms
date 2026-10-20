@@ -20,9 +20,6 @@ func TestTokenTenantAndExpiredPermissionCache(t *testing.T) {
 		dsn = "root:1234@tcp(127.0.0.1:3306)/gowms?parseTime=true&timeout=2s"
 	}
 	db := testutil.OpenIsolatedMySQL(t, dsn, &model.SysUser{}, &model.SysRole{}, &model.SysUserRole{})
-	if err := tenant.RegisterGORMCallbacks(db); err != nil {
-		t.Fatal(err)
-	}
 	for _, row := range []any{
 		&model.SysUser{Base: model.Base{ID: 42}, TenantID: 11, Username: "test", PasswordHash: "unused", Status: 1, TokenVersion: 1},
 		&model.SysRole{Base: model.Base{ID: 10}, TenantID: 11, Name: "role", Perms: "wms:test"},
@@ -69,9 +66,6 @@ func TestHasPermDoesNotTrustUserIDOne(t *testing.T) {
 		dsn = "root:1234@tcp(127.0.0.1:3306)/gowms?parseTime=true&timeout=2s"
 	}
 	db := testutil.OpenIsolatedMySQL(t, dsn, &model.SysUser{}, &model.SysRole{}, &model.SysUserRole{})
-	if err := tenant.RegisterGORMCallbacks(db); err != nil {
-		t.Fatal(err)
-	}
 	for _, row := range []any{
 		&model.SysUser{Base: model.Base{ID: 1}, TenantID: 11, Username: "ordinary-id-one", PasswordHash: "unused", Status: 1},
 		&model.SysUser{Base: model.Base{ID: 2}, TenantID: 0, Username: "admin", PasswordHash: "unused", Status: 1},

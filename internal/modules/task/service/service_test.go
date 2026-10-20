@@ -28,9 +28,6 @@ func taskFixture(t *testing.T) (*Service, *gorm.DB, context.Context) {
 		dsn = "root:1234@tcp(127.0.0.1:3306)/gowms?parseTime=true&timeout=2s"
 	}
 	db := testutil.OpenIsolatedMySQL(t, dsn, &model.Task{})
-	if err := tenant.RegisterGORMCallbacks(db); err != nil {
-		t.Fatal(err)
-	}
 	return New(repository.New(), db), db, tenant.WithTenant(context.Background(), 99)
 }
 

@@ -36,9 +36,6 @@ func stocktakeFixture(t *testing.T) (*Service, *gorm.DB, context.Context, *invmo
 		dsn = "root:1234@tcp(127.0.0.1:3306)/gowms?parseTime=true"
 	}
 	db := testutil.OpenIsolatedMySQL(t, dsn, &basicmodel.SKU{}, &basicmodel.Location{}, &invmodel.Inventory{}, &invmodel.InventoryTrans{}, &model.StocktakeOrder{}, &model.StocktakeDetail{}, &idempotency.Record{})
-	if err := tenant.RegisterGORMCallbacks(db); err != nil {
-		t.Fatal(err)
-	}
 	if err := snowflake.Init(1); err != nil {
 		t.Fatal(err)
 	}
