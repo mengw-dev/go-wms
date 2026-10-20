@@ -31,6 +31,7 @@ Invoke-Step "Go formatting" {
     }
 }
 Invoke-Step "Go build" { go build ./... }
+Invoke-Step "Go dependency direction" { go run ./scripts/check-dependencies }
 Invoke-Step "Go tests" {
     & (Join-Path $PSScriptRoot "test-go.ps1") -AllowSkippedIntegration:$AllowSkippedIntegration
 }

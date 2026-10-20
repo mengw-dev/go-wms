@@ -1,12 +1,18 @@
 import js from '@eslint/js'
 import pluginVue from 'eslint-plugin-vue'
 import tseslint from 'typescript-eslint'
+import businessDemoBoundary from './eslint-rules/business-demo-boundary.mjs'
 
 export default tseslint.config(
   { ignores: ['dist/**', 'node_modules/**', 'coverage/**', 'playwright-report/**', 'test-results/**'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   ...pluginVue.configs['flat/essential'],
+  {
+    files: ['src/**/*.{js,mjs,cjs,jsx,ts,mts,cts,tsx,vue}'],
+    plugins: { architecture: { rules: { 'business-demo-boundary': businessDemoBoundary } } },
+    rules: { 'architecture/business-demo-boundary': 'error' },
+  },
   {
     languageOptions: {
       globals: {

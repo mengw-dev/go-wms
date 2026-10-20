@@ -48,7 +48,7 @@
 跨模块关键落点（仅记位置，细节以代码为准）：
 
 - 库存一致性与并发：`internal/modules/inventory/repository`（悲观锁 + 条件更新 CAS）。
-- 出库 FIFO：`internal/modules/outbound/service` → `internal/modules/inventory/service`。
+- 出库 FIFO：`internal/modules/outbound/service` → `internal/modules/inventory/api`，具体 Service 由 `internal/app` 装配。
 - 拣货：`internal/modules/outbound/service/pick.go`。
 - Excel 异步导入：`internal/modules/inbound/service`（导入 worker + `run_token` 防重复）。
 - 收货/上架联动：`internal/modules/inbound/service/{receiving,putaway}.go`。
@@ -125,12 +125,13 @@
 ## 五、测试、脚本与部署
 
 - 后端单测：`**/*_test.go`（`internal/**`），依赖 MySQL/Redis 时由 `internal/testutil` 创建独立测试库。运行方式见 [development.md](development.md)。
-- 前端单测：`web/src/**/*.spec.ts`（Vitest，配置 `web/vitest.config.ts`）。
+- 前端单测：`web/src/**/*.spec.ts`、工具规则回归 `web/eslint-rules/**/*.spec.mjs`（Vitest，配置 `web/vitest.config.ts`）。
 - 端到端：`web/tests/e2e/**`（Playwright，`support/api.ts` 为共享工具层，配置 `web/playwright.config.ts`）；入口脚本 `scripts/e2e.ps1`。
 - 脚本：`scripts/windows/*.ps1`（起栈、停止、重置、验证、打包、k6、监控等，多数附 `.cmd` 双击入口）、`scripts/wms-common.ps1`、`scripts/e2e.ps1`。
 - 压测：`scripts/k6/*.js`（业务流程与压力场景）与 `loadtest/01-hello.js`；说明见 [load-testing.md](load-testing.md)。
 - 部署：`deploy/`（`docker-compose.yaml`、`docker-compose.dev.yaml`、`Caddyfile`、Prometheus、Grafana）、根 `Dockerfile`、`web/Dockerfile`、`Makefile`、`start.cmd`；说明见 [deployment.md](deployment.md)。
 - CI：`.github/workflows/ci.yml`、`.github/workflows/deploy.yml`。验证门禁：`scripts/windows/test-go.ps1`（测试依赖与跳过判定）、`scripts/check-vulns/`（扫描执行与报告策略），回归见 `scripts/tests/verification-gates.tests.ps1`、`scripts/check-vulns/main_test.go`。
+- 依赖护栏：`scripts/check-dependencies/`（全量 Go 直接导入检查，接入 CI/verify/Go 测试）、`web/eslint-rules/`（业务与 Demo/Guide 边界，接入 ESLint/Vitest）；合法例外与范围见 [Go 约定](go-style.md)。
 - 发布：`scripts/deploy.sh`（指定提交、镜像 digest 与就绪/版本核对）、`scripts/lib/deploy-services.sh`（先迁移再切换应用）、`deploy/docker-compose.release.yaml`；回归见 `scripts/tests/deploy.tests.sh`、`scripts/tests/deploy-containers.sh`。
 - 文档：`docs/*.md` 与 `docs/index.html`（架构展示页，源文件 `web/public/overview.html`，在 `web/` 执行 `npm run sync:overview` 同步）。
 

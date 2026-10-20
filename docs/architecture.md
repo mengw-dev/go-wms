@@ -26,6 +26,8 @@ flowchart TD
 - `api` 是进程内 Go 接口，不是 HTTP 或 RPC 接口。已有接口可以保留，没有必要给每个具体类型再加一层接口。
 - demo 作为场景编排模块直接依赖业务 Service；库存和盘点还有明确的跨表联查。因此“所有模块都只通过接口访问自己的表”不是当前代码的事实。
 
+直接导入边界由全量 Go AST 检查与前端 ESLint 规则守护，均接入现有校验入口。Demo Service 编排、跨 model 协作和 system 聚合短事务是明确保留的设计；前端业务与 Demo/Guide 通过业务事件交互，登录/路由/Layout 等属于装配入口。规则、合法例外及静态检查范围统一见 [Go 约定](go-style.md)。
+
 ## 2. 库存规则和事务
 
 库存行按 `(tenant_id, warehouse_id, location_id, sku_id, batch_no)` 唯一。正常业务需保持：

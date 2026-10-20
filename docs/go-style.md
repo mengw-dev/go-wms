@@ -14,10 +14,25 @@
 
 - `handler → service → repository` 表示主要调用方向，不要求 DTO、model、错误码也逐层转发。handler 不直接操作 Repository 或数据库；Repository 不反向依赖 service/handler。
 - `api` 可以使用稳定的请求/结果类型、状态枚举及现有事务参数，不依赖 service/repository/handler。跨模块优先复用既有 api；当前库存锁定基础资料等跨 model 访问是已存在的单库协作，修改前查调用链，不机械消除。
-- `internal/pkg` 不依赖业务模块；业务模块不依赖 demo；demo 允许编排业务 Service，依赖组装集中在 `internal/app`。导入依赖规则尚未由 lint 强制，见 [迭代路线](iterations.md)。
+- `internal/pkg` 不依赖业务模块；业务模块不依赖 demo；demo 允许编排业务 Service，依赖组装集中在 `internal/app`。这些直接导入边界已由 `scripts/check-dependencies` 全量检查和前端 ESLint 规则守护，入口及例外见下节。
 - 库存等跨模块写入由 Service 开事务，向 Repository 和跨模块 API 传递同一个 tx。system 的 `CreateUser`、`UpdateUser`、`DeleteUser`、`DeleteRole` 是既有聚合短事务例外；保留用户角色的原子性和共同锁协议。若新用例需要外层事务，再单独迁移，不把移动事务当作格式整理。
 - 新增 `Raw` / `Table` / `Exec` / `Scan` 要逐表检查租户与软删范围。系统级旁路说明用途和调用入口；覆盖精确租户 0、普通租户和关联条件，不能只靠 GORM 回调推定安全。
 - 需要调用前先锁行的 API，应注明锁对象、顺序、事务归属和失败语义，例如 `TaskAPI.AddProgress`。重构不能使调用方忘记这些前置条件。
+
+### 导入护栏与明确例外（D07）
+
+`go run ./scripts/check-dependencies` 用标准库 AST 扫描整个 `internal` 的 Go 导入，不依赖当前构建标签或 Git diff。它已接入 CI、Windows verify 和全量 Go 测试；目录读取/导入语法错误或空扫描会失败，违规报告具体文件、行和导入路径，CLI 返回非零。
+
+- 基础 `pkg` 禁止导入业务模块；普通业务模块禁止导入 Demo；Handler 禁止直接导入 Repository、GORM 和 database/sql。
+- API/model/DTO 禁止反向导入 Service/Repository/Handler；Repository 禁止反向导入 Service/Handler，model 禁止反向导入请求 DTO。
+- 跨模块实现调用通过现有 API，禁止跨模块 Repository/Service 导入；Demo Service 的场景编排保留。
+- app/bootstrap 是现有装配与初始化入口，testutil 和 `_test.go` 可以组装跨模块 fixture。既有跨 model 协作仍合法：库存 Repository 锁定基础资料、AI Repository 联查库存/货品、入库 Service 引用库位 model、入出库 DTO/Service 引用任务 model。system 自有 Repository 的聚合短事务不受影响。
+
+前端 `npm run lint` 对 `src` 下 JS/TS/Vue 的静态导入、再导出、字面量动态导入、require 和 TS import 类型执行依赖规则，规范化 `@/`、`/src/`、相对路径和查询后缀。业务代码不能直接依赖 Demo/Guide 的页面、组件、composable、store、API 或工具实现；业务事件层不能反向依赖 store，Demo/Guide 不能直接导入业务页面。业务代码的动态导入要求固定模块路径。
+
+前端合法入口：主装配、路由、Layout、登录页、DemoConsole 和 Demo/Guide 自身；公共 API 类型出口可以再导出 Demo DTO 契约。旧 `utils/events` 中业务代码仅能按名字导入/导出 `DATA_CHANGED_EVENT`、`emitDataChanged`、`onDataChanged`，不能借 namespace 或动态导入访问 Demo 控制事件。业务事实通过 `events/businessEvents` 交互。测试 fixture 明确豁免，实际规则配置的回归由 `web/eslint-rules/business-demo-boundary.spec.mjs` 验证。
+
+这些是直接导入检查，不证明运行时调用、Raw SQL、租户过滤或锁顺序正确，原有业务审查和校验仍需保留。新增合法例外应记录理由并补允许/拒绝回归，不通过全局 diff 过滤或大范围关规则避开检查。
 
 ### 拆分与复用的判断
 

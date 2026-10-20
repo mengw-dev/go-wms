@@ -48,6 +48,9 @@ jobs:
       - name: Check Go formatting
         run: test -z "$(gofmt -l .)"
 
+      - name: Check Go dependency direction (full internal tree)
+        run: go run ./scripts/check-dependencies
+
       - name: Lint
         uses: golangci/golangci-lint-action@v7
         with:
