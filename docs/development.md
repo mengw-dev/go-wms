@@ -9,10 +9,10 @@
 基线 `6eb6392`，承接已验收的演示修复。只增加导入检查、校验接线、工具测试和文档，不改业务实现、事务、迁移、依赖版本；原有未提交外部单功能保持原样。
 
 - Go：`go run ./scripts/check-dependencies` 使用标准库 parser 检查全部 internal Go 导入，不按 diff 或当前构建标签过滤。发布快照扫描 247 文件/1799 导入；测试涵盖真实目录扫描、带别名/空白/原始字符串导入、未启用构建标签、未来模块名、空/缺失/坏源码拒绝及现有装配/跨 model/短事务例外。实际构建 CLI 对临时违规树返回退出码 1；全仓生产树通过。CI 和 verify 先执行同一命令，Go 全量测试也检查真实仓库。
-- 前端：ESLint 本地规则规范化真实导入路径，覆盖 JS/TS/Vue、再导出、动态导入、require 和类型导入；27 个允许/拒绝回归使用真实配置与 Vue/TS parser，实际 CLI 反向依赖样本退出码 1。工具测试放在 eslint-rules，由 Vitest 显式纳入，避免 Node 工具类型进入浏览器应用；套件初始化加载配置/parser，保留默认超时与重试策略。
+- 前端：ESLint 本地规则规范化导入路径，覆盖 JS/TS/Vue、再导出、动态导入、require 和类型导入；27 个允许/拒绝回归使用真实配置与 Vue/TS parser，实际 CLI 反向依赖样本退出码 1。工具测试放在 eslint-rules，由 Vitest 显式纳入，避免 Node 工具类型进入浏览器应用；套件初始化加载配置/parser，保留默认超时与重试策略。
 - 独立源码快照：Go build/vet、全仓 lint（0 issues）、强制真实 MySQL23306/Redis26379 的全量测试通过（45 包、430 个含子测试 pass，0 fail/skip）；最后仅简化布尔谓词，专项回归与全仓 lint 再过。前端 lint、24 文件/249 单测、类型检查和 build 通过。actionlint v1.7.7（未启用外部 shellcheck/pyflakes）、修改脚本的 PowerShell 语法及差异检查通过。
 
-上述为本地实测，远端 CI/race/浏览器/容器与自动部署等待本提交执行后回填。没有连接生产数据库；导入护栏仅约束静态直接依赖，不代替业务事务、SQL 与租户审查，详细范围见 [Go 约定](go-style.md)。
+中文提交 `33a1892af3637fbf5b89265964c9d4736fc12b5b` 已推送。[CI](https://github.com/mengw-dev/go-wms/actions/runs/39368158887) 全部 success，新增全量导入检查实际通过，Backend/race/漏洞扫描、Frontend/249 单测、Containers、41 条 E2E 与额外 5 次零重试均成功，没有 flaky。[自动部署](https://github.com/mengw-dev/go-wms/actions/runs/39368910580) 全部成功，服务器日志确认前后端均为 `33a1892`，数据库就绪通过；D07 验收完成。本地专用 MySQL/Redis 已关闭，原有未提交 123 增/4 删及迁移/脚本等保留；本次验收补充为纯文档提交。没有连接生产数据库；导入护栏仅约束静态直接依赖，不代替业务事务、SQL 与租户审查，详细范围见 [Go 约定](go-style.md)。
 
 ## 2026-10-20 演示数据与流程 D15 / D17 / D18 / D19
 

@@ -200,7 +200,7 @@
 |D04|已修复 2026-10-19：部署探针|Web 新增 /readyz 代理后端数据库健康检查，发布同时解析就绪 JSON、后端版本与前端构建信息；HTTP/JSON/版本不通过会失败并输出诊断。静态 /healthz 不再单独决定发布成功。故障替身回归及 CI 真实容器故障检查入口见 development.md；没有执行生产部署。|
 |D05|已修复 2026-10-19：发布版本一致性|构建与部署使用同一完整提交号，runner 发送该提交的发布脚本，服务器获取并切换指定提交；工作区不干净则停止且保留修改。叠加 release Compose 使用构建输出的不可变镜像 digest，并核对镜像 revision 与实际前后端版本。真实 Git A/B 提交及未提交文件保护回归覆盖，不再同步最新 main。|
 |D06|已修复 2026-10-19：构建可追溯性|后端 Dockerfile 以 ldflags 注入 Version/Commit/BuildTime；前端生成 build-info.json，两个镜像提供 revision 标签。Deploy 传入本次完整 SHA 和 UTC 构建时间，探针逐项比对，dev/unknown 或错版拒绝。CI 容器检查运行真实构建产物；本地未启动 Docker，具体已执行/待执行范围见 development.md。|
-|D07|已修复 2026-10-20：依赖护栏|标准库 AST 命令全量扫描 internal 导入（含当前未启用构建标签），接入 CI/verify/Go 测试；拒绝基础包依赖业务、业务反向依赖 Demo、层级倒置及跨模块实现依赖。ESLint 覆盖 JS/TS/Vue 的静态/类型/动态导入和再导出，按真实路径检查业务与 Demo/Guide 事件边界。先盘点并保留 Demo Service 编排、跨 model 协作、system 聚合短事务、前端登录/路由/Layout/类型出口等合法路径；测试 fixture 明确豁免。实际 CLI 负向检查与回归证明违规返回非零，不使用全局 diff 过滤。具体规则及边界见 go-style.md，不代表运行时事务/SQL 正确性证明。|
+|D07|已修复 2026-10-20：依赖护栏|标准库 AST 命令全量扫描 internal 导入（含当前未启用构建标签），接入 CI/verify/Go 测试；拒绝基础包依赖业务、业务反向依赖 Demo、层级倒置及跨模块实现依赖。ESLint 覆盖 JS/TS/Vue 的静态/类型/动态导入和再导出，按规范化路径检查业务与 Demo/Guide 事件边界。先盘点并保留 Demo Service 编排、跨 model 协作、system 聚合短事务、前端登录/路由/Layout/类型出口等合法路径；测试 fixture 明确豁免。实际 CLI 负向检查与回归证明违规返回非零，不使用全局 diff 过滤。具体规则及边界见 go-style.md，不代表运行时事务/SQL 正确性证明。|
 |D08|维护债：lint 豁免|errcheck 对 Close 类错误的豁免较宽。针对写入/刷新资源判断关闭错误是否影响结果，不做机械全仓改写。|
 |D09|已确认：过期注释|`pkg/idempotency/idempotency.go` 仍要求事务内先 Find，可能诱导重引入 RR 旧快照；`000001_init.up.sql` 顶部仍写以 AutoMigrate 为准。更正文档/注释，不改已发布迁移语义。|
 |D10|已确认：文档状态漂移|交接和迭代旧段落仍混有“未提交”“收货尚无幂等”等过时状态；规范、架构、历史记录重复维护容易冲突。以代码和实际提交为准，旧段落标注历史，不复制为新待办。|
