@@ -8,6 +8,7 @@ import DemoRunViewer from '@/components/demo/DemoRunViewer.vue'
 import StagedDemoRunner from '@/components/demo/StagedDemoRunner.vue'
 import { useDemoRunner } from '@/composables/demo/useDemoRunner'
 import { useDemoSession } from '@/composables/demo/useDemoSession'
+import { useDemoDock } from '@/composables/demo/useDemoDock'
 import { useAuthStore } from '@/stores/auth'
 import { clearStagedDemo, executionSteps, loadStagedDemo } from '@/utils/stagedDemoState'
 import { GUIDE_SCENARIO_LABELS, useGuideStore } from '@/stores/guide'
@@ -25,6 +26,9 @@ const auth = useAuthStore()
 const guide = useGuideStore()
 const ARCHITECTURE_URL = '/overview.html'
 const visible = ref(false)
+const dockElement = ref<HTMLElement>()
+const floatingDock = computed(() => route.path !== '/demo')
+const dock = useDemoDock(dockElement, floatingDock)
 const resetting = ref(false)
 const stagedDialogVisible = ref(false)
 const stagedRunnerRef = ref<InstanceType<typeof StagedDemoRunner>>()
@@ -264,9 +268,14 @@ onBeforeUnmount(() => {
   <div
     v-if="auth.isDemo && auth.demoSessionId && (!visible || route.path === '/demo')"
     class="demo-statusbar"
+    ref="dockElement"
+    :style="dock.style.value"
+    :data-dragging="dock.dragging.value"
     :class="{ urgent: remaining <= 60, 'home-dock': route.path === '/demo' }"
     aria-label="演示环境状态"
   >
+    <button v-if="floatingDock" class="dock-handle" type="button" aria-label="拖动演示控制条（方向键可移动）" title="拖动调整位置，也可用方向键移动"
+      @pointerdown="dock.start" @pointermove="dock.move" @pointerup="dock.finish" @pointercancel="dock.finish" @lostpointercapture="dock.finish" @keydown="dock.keydown">⠿</button>
     <i aria-hidden="true"></i>
     <span>{{ sessionStatusText }} · 数据隔离已启用</span>
     <button
@@ -366,6 +375,7 @@ onBeforeUnmount(() => {
       </section>
 
       <section class="controller-footer">
+        <el-button v-if="floatingDock" text @click="dock.reset">恢复控制条位置</el-button>
         <el-button
           :icon="Refresh"
           :loading="resetting"
@@ -389,7 +399,7 @@ onBeforeUnmount(() => {
 
   <el-dialog
     v-model="stagedDialogVisible"
-    class="demo-staged-dialog"
+    class="demo-staged-dialog demo-scroll-dialog"
     title="分步执行演示"
     width="min(1120px, 96vw)"
     top="4vh"
@@ -408,7 +418,8 @@ onBeforeUnmount(() => {
 
   <el-dialog
     v-model="resultDialogVisible"
-    class="demo-result-dialog"
+    class="demo-result-dialog demo-scroll-dialog"
+    title="自动演示结果"
     width="min(1120px, 96vw)"
     top="4vh"
     append-to-body
@@ -424,7 +435,7 @@ onBeforeUnmount(() => {
 .demo-statusbar {
   position: fixed;
   right: 24px;
-  bottom: 20px;
+  bottom: 10px;
   z-index: 1700;
   display: inline-flex;
   align-items: center;
@@ -504,6 +515,9 @@ onBeforeUnmount(() => {
   cursor: not-allowed;
   opacity: 0.5;
 }
+.demo-statusbar .dock-handle { cursor: grab; touch-action: none; user-select: none; font-size: 19px; line-height: 20px; color: var(--el-text-color-secondary); background: transparent; padding: 2px 4px; }
+.demo-statusbar[data-dragging="true"] .dock-handle { cursor: grabbing; }
+.demo-statusbar button:focus-visible { outline: 2px solid var(--el-color-primary); outline-offset: 2px; }
 
 .controller-body {
   display: grid;
@@ -654,5 +668,38 @@ onBeforeUnmount(() => {
   .controller-footer .el-button {
     width: 100%;
   }
+}
+</style>
+
+<style>
+.demo-scroll-dialog.el-dialog {
+  display: flex; flex-direction: column; height: min(820px, calc(100dvh - 48px));
+  max-height: calc(100dvh - 48px); margin-top: 24px !important; margin-bottom: 24px;
+  padding: 0; max-width: calc(100vw - 24px);
+}
+.demo-scroll-dialog > .el-dialog__header { flex: none; padding: 16px 22px; }
+.demo-scroll-dialog > .el-dialog__body { flex: 1; min-height: 0; padding: 18px 22px; overflow: hidden; }
+.demo-scroll-dialog :is(.staged-runner, .run-viewer) { height: 100%; min-height: 0; grid-template-rows: auto auto minmax(0, 1fr); }
+.demo-scroll-dialog .run-viewer { grid-template-rows: auto auto minmax(0, 1fr) auto; }
+.demo-scroll-dialog :is(.staged-layout, .run-layout) { min-height: 0; }
+.demo-scroll-dialog :is(.stage-list, .stage-focus, .stage-facts) { min-height: 0; overflow: auto; overscroll-behavior: contain; }
+.demo-scroll-dialog .stage-focus { display: flex; flex-direction: column; overflow: hidden; }
+.demo-scroll-dialog :is(.panel-title, .next-step-card, .stage-focus__head) { flex: none; }
+.demo-scroll-dialog :is(.executed-list, .stage-step-list) { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; align-content: start; scrollbar-gutter: stable; }
+.demo-scroll-dialog .stage-focus > .el-result { flex: none; padding: 12px; }
+.demo-scroll-dialog .stage-focus .el-result__icon svg { width: 36px; height: 36px; }
+.demo-scroll-dialog .stage-facts { overflow: hidden; }
+.demo-scroll-dialog .stage-facts dl { min-height: 0; overflow-y: auto; flex: 1; align-content: start; }
+.demo-scroll-dialog .stage-actions { flex: none; }
+@media (max-width: 980px) {
+  .demo-scroll-dialog > .el-dialog__body { overflow: auto; }
+  .demo-scroll-dialog :is(.staged-runner, .run-viewer) { height: auto; }
+  .demo-scroll-dialog :is(.executed-list, .stage-step-list) { max-height: 260px; flex: auto; }
+}
+@media (max-width: 640px) {
+  .demo-scroll-dialog > .el-dialog__body { padding: 12px; }
+  .demo-scroll-dialog .stage-list { grid-template-columns: repeat(5, minmax(0, 1fr)); padding: 8px; }
+  .demo-scroll-dialog .stage-item { grid-template-columns: 1fr; padding: 6px; font-size: 11px; }
+  .demo-scroll-dialog .stage-item small, .demo-scroll-dialog .stage-item .el-icon { display: none; }
 }
 </style>

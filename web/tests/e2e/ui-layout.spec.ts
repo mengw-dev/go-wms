@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
+import { dashboardFixture } from './support/dashboard'
 
 // UI-only fixtures: every API request is intercepted; no business data is written.
 async function mockWorkspace(page: Page, theme: 'light' | 'dark', perms = ['*']) {
@@ -14,6 +15,7 @@ async function mockWorkspace(page: Page, theme: 'light' | 'dark', perms = ['*'])
     const path = url.pathname.replace('/api/v1', '')
     let data: unknown
     if (path === '/profile') data = user
+    else if (path === '/dashboard/overview') data = dashboardFixture()
     else if (path === '/basic/warehouses') data = { list: [{ id: '1', code: 'WH-SH', name: '上海中心仓', status: 1 }], total: 1 }
     else if (path === '/basic/skus') data = { list: [{ id: '1', code: 'SKU-001', name: '工业扫码终端', unit: '台' }], total: 1 }
     else if (path === '/inbound/imports') data = []
@@ -72,7 +74,7 @@ for (const theme of ['light', 'dark'] as const) {
     await page.setViewportSize({ width: 1440, height: 1000 })
     await mockWorkspace(page, theme)
     await page.goto('/dashboard')
-    await expect(page.locator('.stat')).toHaveCount(6)
+    await expect(page.locator('.metric')).toHaveCount(4)
     await expectContained(page)
     await page.screenshot({ path: testInfo.outputPath('dashboard.png'), fullPage: true, animations: 'disabled' })
     await page.getByRole('button', { name: '收起导航' }).click()
@@ -116,7 +118,7 @@ for (const theme of ['light', 'dark'] as const) {
     await page.setViewportSize({ width: 390, height: 844 })
     await mockWorkspace(page, theme)
     await page.goto('/dashboard')
-    await expect(page.locator('.stat')).toHaveCount(6)
+    await expect(page.locator('.metric')).toHaveCount(4)
     await expectContained(page)
     await page.screenshot({ path: testInfo.outputPath('dashboard-mobile.png'), fullPage: true, animations: 'disabled' })
     await page.getByRole('button', { name: '展开导航' }).click()

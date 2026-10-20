@@ -71,6 +71,7 @@ func (a *App) NewRouter() (*gin.Engine, error) {
 	}
 
 	a.SysHandler.RegisterRoutes(pub, auth, a.SystemAPI)
+	a.DashboardHandler.RegisterRoutes(auth, a.SystemAPI)
 	a.BasicHandler.RegisterRoutes(auth, a.SystemAPI)
 	a.InvHandler.RegisterRoutes(auth, a.SystemAPI)
 	a.TaskHandler.RegisterRoutes(auth, a.SystemAPI)

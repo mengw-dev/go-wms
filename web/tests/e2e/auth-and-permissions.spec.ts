@@ -61,7 +61,7 @@ test('personal space entry lists persistent accounts and signs in with the chose
   await account.click()
   await page.getByRole('button', { name: '进入 user1' }).click()
   await expect(page).toHaveURL(/\/dashboard$/)
-  await expect(page.getByRole('heading', { name: /欢迎回来/ })).toBeVisible()
+  await expect(page.getByRole('heading', { name: /仓储运营总览/ })).toBeVisible()
   // 持久账号不含 wms:demo：不应出现演示中心的悬浮入口
   await expect(page.getByText('演示中心')).toHaveCount(0)
 })

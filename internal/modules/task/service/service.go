@@ -184,7 +184,16 @@ func (s *Service) Get(ctx context.Context, taskID int64) (*model.Task, error) {
 
 // ListResponses 将任务实体转换为稳定的 HTTP 响应结构。
 func (s *Service) ListResponses(ctx context.Context, orderID int64, taskType, status, keyword string, page, size int) ([]*dto.TaskResp, int64, error) {
-	tasks, total, err := s.List(ctx, orderID, taskType, status, keyword, page, size)
+	return s.ListResponsesForWarehouse(ctx, 0, orderID, taskType, status, keyword, page, size)
+}
+
+// ListResponsesForWarehouse adds a read-only warehouse filter for dashboard drill-downs.
+func (s *Service) ListResponsesForWarehouse(ctx context.Context, warehouseID, orderID int64, taskType, status, keyword string, page, size int) ([]*dto.TaskResp, int64, error) {
+	db := s.db
+	if warehouseID > 0 {
+		db = db.Where("warehouse_id = ?", warehouseID)
+	}
+	tasks, total, err := s.repo.List(ctx, db, orderID, taskType, status, keyword, page, size)
 	if err != nil {
 		return nil, 0, err
 	}

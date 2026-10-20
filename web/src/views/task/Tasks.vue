@@ -2,6 +2,8 @@
 import BusinessListPage from '@/components/common/BusinessListPage.vue'
 import { onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
+import { loadWarehouseOptions, type IdOption } from '@/utils/options'
 import { useAutoRefresh } from '@/composables/autoRefresh'
 import { listTasks } from '@/api/task'
 import type { EntityID, TaskItem } from '@/api/types'
@@ -15,14 +17,18 @@ import {
 import { cleanParams, formatTime } from '@/utils'
 
 const route = useRoute()
+const auth = useAuthStore()
+const warehouses = ref<IdOption[]>([])
+onMounted(async () => { if (auth.hasPerm('wms:basic')) warehouses.value = await loadWarehouseOptions() })
 const loading = ref(false)
 const list = ref<TaskItem[]>([])
 const total = ref(0)
 const query = reactive({
   page: 1,
   page_size: 10,
-  task_type: '',
-  status: '',
+  warehouse_id: (typeof route.query.warehouse_id === 'string' ? route.query.warehouse_id : '') as EntityID | '',
+  task_type: typeof route.query.task_type === 'string' ? route.query.task_type : '',
+  status: typeof route.query.status === 'string' ? route.query.status : '',
   order_id: (typeof route.query.order_id === 'string' ? route.query.order_id : '') as EntityID | '',
 })
 
@@ -55,6 +61,9 @@ useAutoRefresh(() => load(true), 0)
   <BusinessListPage title="任务中心" description="集中查看收货、上架与拣货任务，跟进当前作业进度。" :total="total">
     <template #filters>
       <el-form inline class="query-form" @submit.prevent="search">
+        <el-form-item v-if="auth.hasPerm('wms:basic')" label="仓库">
+          <el-select v-model="query.warehouse_id" clearable placeholder="全部仓库" @change="search"><el-option v-for="w in warehouses" :key="w.id" :value="w.id" :label="w.label" /></el-select>
+        </el-form-item>
         <el-form-item label="任务类型">
           <el-select v-model="query.task_type" placeholder="全部" clearable style="width: 120px" @change="search">
             <el-option v-for="t in TASK_TYPE_OPTIONS" :key="t" :label="taskTypeText(t)" :value="t" />

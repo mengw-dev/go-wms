@@ -30,7 +30,7 @@ const detailTotal = ref(0)
 const detailQuery = reactive({
   page: 1,
   page_size: 10,
-  warehouse_id: '' as EntityID | '',
+  warehouse_id: (typeof route.query.warehouse_id === 'string' ? route.query.warehouse_id : '') as EntityID | '',
   sku_keyword: '',
   // 默认只看有货，隐藏已经清空的批次
   in_stock_only: true,
@@ -63,7 +63,7 @@ const summaryTotal = ref(0)
 const summaryQuery = reactive({
   page: 1,
   page_size: 10,
-  warehouse_id: '' as EntityID | '',
+  warehouse_id: (typeof route.query.warehouse_id === 'string' ? route.query.warehouse_id : '') as EntityID | '',
 })
 
 let summarySeq = 0
@@ -188,7 +188,7 @@ useAutoRefresh(refreshActiveTab, 0)
           <el-form-item label="SKU关键字">
             <el-input v-model="detailQuery.sku_keyword" placeholder="编码/名称/条码" clearable style="width: 160px" @keyup.enter="searchDetail" @clear="searchDetail" />
           </el-form-item>
-          <el-form-item label="只看有货">
+          <el-form-item label="只看有货" class="stock-toggle-filter">
             <el-switch v-model="detailQuery.in_stock_only" @change="searchDetail" />
           </el-form-item>
           <el-form-item>

@@ -146,7 +146,7 @@ async function onPutawaySuccess() {
     </el-page-header>
 
     <template v-if="data?.order">
-      <div class="page-card">
+      <div class="page-card detail-identity">
         <div class="detail-actions">
           <h1 class="document-id">{{ data.order.order_no }}</h1>
           <el-tag :type="statusTag(data.order.status)" size="large">{{ statusText(data.order.status) }}</el-tag>
@@ -168,6 +168,10 @@ async function onPutawaySuccess() {
           <el-button v-if="hasPendingReceive" v-permission="'wms:inbound:receive'" type="warning" plain @click="openReceive">恢复待确认收货</el-button>
           <el-button v-if="hasPendingPutaway" v-permission="'wms:inbound:putaway'" type="warning" plain @click="openPutaway()">恢复待确认上架</el-button>
         </div>
+      </div>
+      <div class="detail-scroll">
+      <div class="page-card">
+
 
         <el-alert v-if="data.order.created_by === 'system-seed'" title="历史演示样本，仅供展示，不代表完整业务链。" type="info" :closable="false" />
         <dl class="business-facts">
@@ -185,7 +189,7 @@ async function onPutawaySuccess() {
 
       <div class="page-card section">
         <h3 class="section-title">单据明细</h3>
-        <el-table :data="data.details ?? []" border stripe>
+        <el-table max-height="360" :data="data.details ?? []" border stripe>
           <el-table-column prop="sku_code" label="货品编码" min-width="130" />
           <el-table-column prop="sku_name" label="货品名称" min-width="160" show-overflow-tooltip />
           <el-table-column prop="expected_qty" label="应收数量" width="100" align="right" />
@@ -199,7 +203,7 @@ async function onPutawaySuccess() {
 
       <div class="page-card section" data-tour="inbound-tasks">
         <h3 class="section-title">关联任务</h3>
-        <el-table :data="data.tasks ?? []" border stripe>
+        <el-table max-height="360" :data="data.tasks ?? []" border stripe>
           <el-table-column prop="task_no" label="任务号" min-width="160" />
           <el-table-column label="类型" width="90">
             <template #default="{ row }">{{ taskTypeText(row.task_type) }}</template>
@@ -225,6 +229,7 @@ async function onPutawaySuccess() {
             </template>
           </el-table-column>
         </el-table>
+      </div>
       </div>
     </template>
 

@@ -23,6 +23,10 @@ func (h *Handler) RegisterRoutes(auth *gin.RouterGroup, checker middleware.Perms
 }
 
 func (h *Handler) list(c *gin.Context) {
+	warehouseID, ok := httpx.OptionalQueryID(c, "warehouse_id")
+	if !ok {
+		return
+	}
 	orderID, ok := httpx.OptionalQueryID(c, "order_id")
 	if !ok {
 		return
@@ -38,7 +42,7 @@ func (h *Handler) list(c *gin.Context) {
 	if !ok {
 		return
 	}
-	list, total, err := h.svc.ListResponses(c.Request.Context(), orderID, taskType, status, keyword, page, size)
+	list, total, err := h.svc.ListResponsesForWarehouse(c.Request.Context(), warehouseID, orderID, taskType, status, keyword, page, size)
 	if err != nil {
 		response.Fail(c, err)
 		return

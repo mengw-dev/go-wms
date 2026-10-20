@@ -2,7 +2,7 @@
 import { validOrderQuantities } from '@/utils/quantity'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useAutoRefresh } from '@/composables/autoRefresh'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown, CloseBold, Delete, Promotion, Select } from '@element-plus/icons-vue'
 import {
@@ -26,6 +26,7 @@ import PickDialog from '@/components/PickDialog.vue'
 import { BUSINESS_EVENTS, emitBusinessEvent } from '@/events/businessEvents'
 
 const router = useRouter()
+const route = useRoute()
 
 // ---------- 基础选项 ----------
 const warehouseOptions = ref<IdOption[]>([])
@@ -50,13 +51,13 @@ const total = ref(0)
 const query = reactive({
   page: 1,
   page_size: 10,
-  warehouse_id: '' as EntityID | '',
-  status: '',
+  warehouse_id: (typeof route.query.warehouse_id === 'string' ? route.query.warehouse_id : '') as EntityID | '',
+  status: typeof route.query.status === 'string' ? route.query.status : '',
   keyword: '',
-  created_at_from: '',
-  created_at_to: '',
+  created_at_from: typeof route.query.created_at_from === 'string' ? route.query.created_at_from : '',
+  created_at_to: typeof route.query.created_at_to === 'string' ? route.query.created_at_to : '',
 })
-const dateRange = ref<[string, string] | null>(null)
+const dateRange = ref<[string, string] | null>(typeof route.query.created_at_from === 'string' && typeof route.query.created_at_to === 'string' ? [route.query.created_at_from, route.query.created_at_to] : null)
 const dateRangeDefaultTime: [Date, Date] = [new Date(2000, 0, 1, 0, 0, 0), new Date(2000, 0, 1, 23, 59, 59)]
 
 let requestSeq = 0

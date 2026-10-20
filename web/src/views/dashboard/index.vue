@@ -1,610 +1,218 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
-import { useAutoRefresh } from '@/composables/autoRefresh'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { Refresh, ArrowRight } from '@element-plus/icons-vue'
+import { getDashboardOverview, type DashboardOverview, type DashboardOrders, type DashboardTask } from '@/api/dashboard'
+import { useAutoRefresh } from '@/composables/autoRefresh'
 import { useAuthStore } from '@/stores/auth'
-import { listInboundOrders } from '@/api/inbound'
-import { listOutboundOrders } from '@/api/outbound'
-import { listTasks } from '@/api/task'
-import type { TaskItem } from '@/api/types'
-import { Download, Upload, Clock, Warning } from '@element-plus/icons-vue'
+import { statusText, statusTag, taskTypeText } from '@/constants'
 
-const router = useRouter()
 const auth = useAuthStore()
+const router = useRouter()
+const warehouseId = ref('')
+const warehouses = ref<DashboardOverview['warehouses']>([])
+const data = ref<DashboardOverview>()
+const loading = ref(false)
+const error = ref(false)
+const trendDetails = ref(false)
+let sequence = 0
 
-// ---------- 今日零点时间（本地时间，避免 toISOString 的 UTC 偏移）----------
-function pad(n: number) { return String(n).padStart(2, '0') }
-function todayRange() {
-  const now = new Date()
-  const from = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} 00:00:00`
-  const to = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`
-  return { from, to }
-}
-const today = todayRange()
-
-// ---------- 统计卡 ----------
-interface StatCard {
-  key: string
-  label: string
-  icon: typeof Download
-  color: string
-  queryPromise: Promise<number>
-  path: string
-  /** 路径附加 query 用于点击跳转带筛选 */
-  pathQuery?: string
-}
-
-const cards = ref<StatCard[]>([])
-
-async function buildStatCards(silentError: boolean) {
-  const options = { silentError }
-  const cards: StatCard[] = []
-  if (auth.hasPerm('wms:inbound:view')) {
-    cards.push({
-      key: 'todayInbound', label: '今日入库单', icon: Download, color: 'var(--gowms-metric-inbound)',
-      path: '/inbound/orders',
-      queryPromise: listInboundOrders({ page: 1, page_size: 1, created_at_from: today.from, created_at_to: today.to }, options).then(r => r.total ?? 0),
-    })
-    cards.push({
-      key: 'abnormalInbound', label: '今日取消入库单', icon: Warning, color: 'var(--gowms-metric-danger)',
-      path: '/inbound/orders', pathQuery: '?status=CANCELLED',
-      queryPromise: listInboundOrders({ page: 1, page_size: 1, status: 'CANCELLED', created_at_from: today.from, created_at_to: today.to }, options).then(r => r.total ?? 0),
-    })
+async function load(silent = false) {
+  const seq = ++sequence
+  if (!silent) loading.value = true
+  try {
+    const result = await getDashboardOverview(warehouseId.value)
+    if (seq !== sequence) return
+    data.value = result
+    warehouses.value = result.warehouses || []
+    error.value = false
+  } catch {
+    if (seq === sequence) error.value = true
+  } finally {
+    if (seq === sequence) loading.value = false
   }
-  if (auth.hasPerm('wms:outbound:view')) {
-    cards.push({
-      key: 'todayOutbound', label: '今日出库单', icon: Upload, color: 'var(--gowms-metric-outbound)',
-      path: '/outbound/orders',
-      queryPromise: listOutboundOrders({ page: 1, page_size: 1, created_at_from: today.from, created_at_to: today.to }, options).then(r => r.total ?? 0),
-    })
-    cards.push({
-      key: 'abnormalOutbound', label: '今日取消出库单', icon: Warning, color: 'var(--gowms-metric-danger)',
-      path: '/outbound/orders', pathQuery: '?status=CANCELLED',
-      queryPromise: listOutboundOrders({ page: 1, page_size: 1, status: 'CANCELLED', created_at_from: today.from, created_at_to: today.to }, options).then(r => r.total ?? 0),
-    })
-  }
-  if (auth.hasPerm('wms:task')) {
-    cards.push({
-      key: 'runningTasks', label: '进行中任务', icon: Clock, color: 'var(--gowms-metric-warning)',
-      path: '/tasks', pathQuery: '?status=IN_PROGRESS',
-      queryPromise: listTasks({ page: 1, page_size: 1, status: 'IN_PROGRESS' }, options).then(r => r.total ?? 0),
-    })
-    cards.push({
-      key: 'pendingTasks', label: '待办任务', icon: Clock, color: 'var(--gowms-metric-warning)',
-      path: '/tasks', pathQuery: '?status=CREATED',
-      queryPromise: listTasks({ page: 1, page_size: 1, status: 'CREATED' }, options).then(r => r.total ?? 0),
-    })
-  }
-  return cards
 }
+watch(warehouseId, () => { data.value = undefined; void load() })
+onMounted(() => { void load() })
+onBeforeUnmount(() => { sequence++ })
+useAutoRefresh(() => load(true), 30000, () => document.visibilityState === 'visible')
 
-const stats = reactive<Record<string, number | null>>({})
+const count = (orders: DashboardOrders | undefined, status?: string, today = false) =>
+  (orders?.statuses || []).filter(row => !status || row.status === status).reduce((sum, row) => sum + (today ? row.today : row.total), 0)
+const pending = computed(() => (data.value?.task_counts || []).filter(row => row.status === 'CREATED').reduce((n, row) => n + row.total, 0))
+const running = computed(() => (data.value?.task_counts || []).filter(row => row.status === 'IN_PROGRESS').reduce((n, row) => n + row.total, 0))
+const aged = computed(() => (data.value?.task_counts || []).reduce((n, row) => n + row.older_24h, 0))
+const occupied = computed(() => data.value?.locations?.enabled ? Math.round(data.value.locations.occupied / data.value.locations.enabled * 100) : 0)
+const updated = computed(() => data.value ? new Date(data.value.generated_at).toLocaleTimeString('zh-CN', { hour12: false, timeZone: 'Asia/Shanghai' }) : '尚未更新')
+const date = computed(() => data.value?.today_from.slice(0, 10) || '')
+const inboundStates = ['DRAFT', 'SUBMITTED', 'APPROVED', 'RECEIVING', 'PUTAWAY', 'COMPLETED']
+const outboundStates = ['DRAFT', 'SUBMITTED', 'APPROVED', 'PICKING', 'SHIPPED']
 
-async function loadStats(silentError = false) {
-  const built = await buildStatCards(silentError)
-  cards.value = built
-  await Promise.all(built.map(async c => {
-    try { stats[c.key] = await c.queryPromise } catch { stats[c.key] = null }
-  }))
+function go(path: string, extra: Record<string, string> = {}) {
+  void router.push({ path, query: { ...(warehouseId.value ? { warehouse_id: warehouseId.value } : {}), ...extra } })
 }
-
-function go(card: StatCard) {
-  router.push(card.path + (card.pathQuery ?? ''))
+function todayOrders(path: string) {
+  if (data.value) go(path, { created_at_from: data.value.today_from, created_at_to: data.value.today_to })
 }
-
-// ---------- 待办任务 ----------
-const pendingTasks = ref<TaskItem[]>([])
-const pendingTotal = ref(0)
-const runningTasks = ref<TaskItem[]>([])
-
-const TASK_TYPE_LABEL: Record<string, string> = {
-  RECEIVE: '收货',
-  PUTAWAY: '上架',
-  PICK: '拣货',
+function cancelledOrders(path: string) {
+  if (data.value) go(path, { status: 'CANCELLED', created_at_from: data.value.today_from, created_at_to: data.value.today_to })
 }
-
-const taskGroups = computed(() => {
-  const groups: Record<string, TaskItem[]> = {}
-  for (const t of pendingTasks.value) {
-    const k = TASK_TYPE_LABEL[t.task_type] ?? t.task_type
-    if (!groups[k]) groups[k] = []
-    groups[k].push(t)
-  }
-  return Object.entries(groups)
+function openTask(task: DashboardTask) {
+  const outbound = task.task_type === 'PICK'
+  if (task.order_id !== '0' && auth.hasPerm(outbound ? 'wms:outbound:view' : 'wms:inbound:view')) {
+    go(`${outbound ? '/outbound' : '/inbound'}/orders/${task.order_id}`)
+  } else go('/tasks', { order_id: task.order_id, task_type: task.task_type, status: task.status })
+}
+function age(value: string) {
+  const minutes = Math.max(0, Math.floor((Date.parse(data.value?.generated_at || '') - Date.parse(value)) / 60000))
+  if (!Number.isFinite(minutes)) return '—'
+  if (minutes < 60) return `${minutes} 分钟`
+  if (minutes < 1440) return `${Math.floor(minutes / 60)} 小时`
+  return `${Math.floor(minutes / 1440)} 天`
+}
+function time(value: string) {
+  return new Date(value).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })
+}
+const taskTypes = computed(() => ['RECEIVE', 'PUTAWAY', 'PICK'].map(type => ({ type,
+  pending: (data.value?.task_counts || []).filter(row => row.task_type === type && row.status === 'CREATED').reduce((n, row) => n + row.total, 0) })))
+const recent = computed(() => [
+  ...(data.value?.inbound?.recent || []).map(row => ({ ...row, type: '入库', path: '/inbound/orders/' + row.id })),
+  ...(data.value?.outbound?.recent || []).map(row => ({ ...row, type: '出库', path: '/outbound/orders/' + row.id })),
+].sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at)).slice(0, 8))
+const trend = computed(() => {
+  if (!data.value) return []
+  const start = data.value.trend_from.slice(0, 10)
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(`${start}T00:00:00+08:00`)
+    d.setUTCDate(d.getUTCDate() + i)
+    const date = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d)
+    return { date, inbound: data.value?.inbound?.days.find(row => row.date === date)?.total || 0,
+      outbound: data.value?.outbound?.days.find(row => row.date === date)?.total || 0 }
+  })
 })
-
-async function loadTasks(silentError = false) {
-  try {
-    if (auth.hasPerm('wms:task')) {
-      const options = { silentError }
-      const [cre, run] = await Promise.all([
-        listTasks({ page: 1, page_size: 10, status: 'CREATED' }, options),
-        listTasks({ page: 1, page_size: 5, status: 'IN_PROGRESS' }, options),
-      ])
-      pendingTasks.value = cre.list ?? []
-      // 未完成总数 = 待办 + 进行中（不含 CANCELLED / COMPLETED）
-      pendingTotal.value = (cre.total ?? 0) + (run.total ?? 0)
-      runningTasks.value = run.list ?? []
-    }
-  } catch {
-    // 任务数据加载失败时保持空态，不影响仪表盘其余区域展示
-  }
-}
-
-function goTaskList(status?: string) {
-  router.push('/tasks' + (status ? `?status=${status}` : ''))
-}
-
-// ---------- 最近单据 ----------
-const recentInbound = ref<{ id: string; order_no: string; status: string; created_at: string }[]>([])
-const recentOutbound = ref<{ id: string; order_no: string; status: string; created_at: string }[]>([])
-
-const STATUS_TAG: Record<string, string> = {
-  DRAFT: '草稿', SUBMITTED: '待审核', APPROVED: '已审核', RECEIVING: '收货中',
-  PUTAWAY: '上架中', SHIPPED: '已发货', COMPLETED: '已完成', CANCELLED: '已取消',
-}
-
-const STATUS_TAG_CLASS: Record<string, string> = {
-  DRAFT: 'info', SUBMITTED: 'warning', APPROVED: 'primary', RECEIVING: 'primary',
-  PUTAWAY: 'warning', SHIPPED: 'success', COMPLETED: 'success', CANCELLED: 'danger',
-}
-
-function formatTime(s: string) {
-  if (!s) return ''
-  const d = new Date(s)
-  return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-}
-
-async function loadRecent(silentError = false) {
-  try {
-    const options = { silentError }
-    const jobs: Promise<void>[] = []
-    if (auth.hasPerm('wms:inbound:view')) {
-      jobs.push(listInboundOrders({ page: 1, page_size: 5 }, options).then(r => {
-        recentInbound.value = (r.list ?? []).map(o => ({
-          id: String(o.id), order_no: o.order_no, status: o.status, created_at: o.created_at,
-        }))
-      }))
-    }
-    if (auth.hasPerm('wms:outbound:view')) {
-      jobs.push(listOutboundOrders({ page: 1, page_size: 5 }, options).then(r => {
-        recentOutbound.value = (r.list ?? []).map(o => ({
-          id: String(o.id), order_no: o.order_no, status: o.status, created_at: o.created_at,
-        }))
-      }))
-    }
-    await Promise.all(jobs)
-  } catch {
-    // 最近单据加载失败时保持空列表展示
-  }
-}
-
-async function refreshDashboard(silentError = false) {
-  await Promise.all([loadStats(silentError), loadTasks(silentError), loadRecent(silentError)])
-}
-
-// 首次进入展示加载反馈，之后的定时/事件刷新静默失败，避免后台轮询反复弹错。
-onMounted(() => refreshDashboard())
-useAutoRefresh(() => refreshDashboard(true))
-
-// ---------- 欢迎区 ----------
-const todayDate = new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })
-</script>
-
-<template>
-  <div class="dash">
-    <!-- 欢迎区 -->
-    <div class="welcome">
-      <div>
-        <span class="dashboard-eyebrow">仓储工作台</span>
-        <h1>欢迎回来，{{ auth.displayName }}</h1>
-        <p>{{ todayDate }} · 掌握单据进度，安排今日作业</p>
-      </div>
-      <div v-if="auth.hasPerm('wms:task')" class="welcome-right">
-        <el-button type="primary" @click="router.push('/tasks')">
-          <el-icon class="btn-icon"><Clock /></el-icon>
-          任务中心
-          <el-badge v-if="pendingTotal > 0" :value="pendingTotal" class="task-badge" />
-        </el-button>
-      </div>
-    </div>
-
-    <!-- 统计卡：今日口径 -->
-    <p class="stats-caption">入出库按今日创建时间统计；任务展示当前待办与进行中数量。</p>
-    <div class="stats">
-      <div
-        v-for="card in cards"
-        :key="card.key"
-        class="stat"
-        :style="{ '--accent': card.color }"
-        role="button"
-        tabindex="0"
-        @click="go(card)"
-        @keyup.enter="go(card)"
-        @keydown.space.prevent="go(card)"
-      >
-        <div class="stat-icon" :style="{ color: card.color }">
-          <el-icon :size="20"><component :is="card.icon" /></el-icon>
-        </div>
-        <div class="stat-body">
-          <div class="label">{{ card.label }}</div>
-          <div class="num" :style="{ color: card.color }">{{ stats[card.key] ?? '—' }}</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- 下区：左待办 / 中最近入库 / 右最近出库 -->
-    <div class="grid-3">
-      <!-- 待办任务 -->
-      <div v-if="auth.hasPerm('wms:task')" class="card">
-        <div class="card-head">
-          <b>待办任务</b>
-          <el-button v-if="auth.hasPerm('wms:task')" link type="primary" @click="goTaskList('CREATED')">全部 →</el-button>
-        </div>
-        <div class="card-body">
-          <template v-if="taskGroups.length > 0">
-            <div v-for="[type, list] in taskGroups" :key="type" class="task-group">
-              <div class="task-type">
-                {{ type }}
-                <el-tag size="small" type="warning">{{ list.length }}</el-tag>
-              </div>
-              <div
-                v-for="t in list"
-                :key="t.id"
-                class="task-row"
-                role="link" tabindex="0"
-                @keydown.enter="router.push('/tasks')"
-                @click="router.push('/tasks')"
-              >
-                <span class="task-no">{{ t.task_no }}</span>
-                <span class="task-order">{{ t.order_no }}</span>
-                <el-tag size="small" type="info">{{ TASK_TYPE_LABEL[t.task_type] ?? t.task_type }}</el-tag>
-              </div>
-            </div>
-          </template>
-          <el-empty v-else description="暂无待办任务" :image-size="80" />
-        </div>
-      </div>
-
-      <!-- 最近入库单 -->
-      <div v-if="auth.hasPerm('wms:inbound:view')" class="card">
-        <div class="card-head">
-          <b>最近入库单</b>
-          <el-button v-if="auth.hasPerm('wms:inbound:view')" link type="primary" @click="router.push('/inbound/orders')">全部 →</el-button>
-        </div>
-        <div class="card-body">
-          <template v-if="recentInbound.length > 0">
-            <div
-              v-for="o in recentInbound"
-              :key="o.id"
-              class="list-row"
-              role="link" tabindex="0"
-              @keydown.enter="router.push('/inbound/orders/' + o.id)"
-              @click="router.push('/inbound/orders/' + o.id)"
-            >
-              <span class="row-no">{{ o.order_no }}</span>
-              <el-tag size="small" :type="STATUS_TAG_CLASS[o.status] ?? 'info'">{{ STATUS_TAG[o.status] ?? o.status }}</el-tag>
-              <span class="row-time">{{ formatTime(o.created_at) }}</span>
-            </div>
-          </template>
-          <el-empty v-else description="暂无入库单" :image-size="80" />
-        </div>
-      </div>
-
-      <!-- 最近出库单 -->
-      <div v-if="auth.hasPerm('wms:outbound:view')" class="card">
-        <div class="card-head">
-          <b>最近出库单</b>
-          <el-button v-if="auth.hasPerm('wms:outbound:view')" link type="primary" @click="router.push('/outbound/orders')">全部 →</el-button>
-        </div>
-        <div class="card-body">
-          <template v-if="recentOutbound.length > 0">
-            <div
-              v-for="o in recentOutbound"
-              :key="o.id"
-              class="list-row"
-              role="link" tabindex="0"
-              @keydown.enter="router.push('/outbound/orders/' + o.id)"
-              @click="router.push('/outbound/orders/' + o.id)"
-            >
-              <span class="row-no">{{ o.order_no }}</span>
-              <el-tag size="small" :type="STATUS_TAG_CLASS[o.status] ?? 'info'">{{ STATUS_TAG[o.status] ?? o.status }}</el-tag>
-              <span class="row-time">{{ formatTime(o.created_at) }}</span>
-            </div>
-          </template>
-          <el-empty v-else description="暂无出库单" :image-size="80" />
-        </div>
-      </div>
-    </div>
-
-    <!-- 快捷入口（保留，放在最下面） -->
-    <div class="card shortcuts-card">
-      <div class="card-head"><b>快捷入口</b></div>
-      <div class="shortcuts">
-        <div
-          v-for="s in shortcuts.filter((item) => auth.hasPerm(item.perm))"
-          :key="s.path"
-          class="shortcut"
-          role="button"
-          tabindex="0"
-          @keyup.enter="router.push(s.path)"
-          @keydown.space.prevent="router.push(s.path)"
-          @click="router.push(s.path)"
-        >
-          <el-icon :size="22"><component :is="s.icon" /></el-icon>
-          <b>{{ s.title }}</b>
-          <span>{{ s.desc }}</span>
-        </div>
-      </div>
-    </div>
-  </div>
-</template>
-
-<script lang="ts">
-// shortcuts 数据放在外层避免 template 里用 reactive
+const max = computed(() => Math.max(2, Math.ceil(Math.max(0, ...trend.value.flatMap(row => [row.inbound, row.outbound])) / 2) * 2))
+const x = (i: number) => 38 + i * 88
+const y = (value: number) => 122 - value / max.value * 96
+const points = (key: 'inbound' | 'outbound') => trend.value.map((row, i) => `${x(i)},${y(row[key])}`).join(' ')
 const shortcuts = [
-  { title: '入库单', desc: '创建 / 收货 / 上架', path: '/inbound/orders', icon: 'Download', perm: 'wms:inbound:view' },
-  { title: '出库单', desc: '审核分配 / 拣货', path: '/outbound/orders', icon: 'Upload', perm: 'wms:outbound:view' },
-  { title: '盘点单', desc: '快照 / 实盘 / 调整', path: '/stocktake/orders', icon: 'Tickets', perm: 'wms:stocktake:view' },
-  { title: '库存查询', desc: '明细 / 汇总 / 流水', path: '/inventory', icon: 'Coin', perm: 'wms:inventory' },
-  { title: '任务中心', desc: '收货 / 上架 / 拣货', path: '/tasks', icon: 'List', perm: 'wms:task' },
-  { title: '货品管理', desc: 'SKU / 条码', path: '/basic/skus', icon: 'Box', perm: 'wms:basic' },
+  { label: '入库单', path: '/inbound/orders', perm: 'wms:inbound:view' },
+  { label: '出库单', path: '/outbound/orders', perm: 'wms:outbound:view' },
+  { label: '盘点单', path: '/stocktake/orders', perm: 'wms:stocktake:view' },
+  { label: '库存查询', path: '/inventory', perm: 'wms:inventory' },
+  { label: '任务中心', path: '/tasks', perm: 'wms:task' },
+  { label: '货品管理', path: '/basic/skus', perm: 'wms:basic' },
 ]
 </script>
 
+<template>
+  <div class="operations-dashboard">
+    <header class="dashboard-heading">
+      <div><span class="eyebrow">WAREHOUSE / OVERVIEW</span><h1>仓储运营总览</h1><p>{{ date }} · 掌握进度，安排作业</p></div>
+      <div class="dashboard-tools">
+        <span class="updated" :class="{ stale: error }" role="status">{{ error ? '更新失败 · ' : '更新于 ' }}{{ updated }}</span>
+        <el-select v-if="auth.hasPerm('wms:basic')" v-model="warehouseId" aria-label="仪表盘仓库" placeholder="全部仓库" clearable filterable :disabled="!warehouses.length" style="width: 190px">
+          <el-option v-for="w in warehouses" :key="w.id" :label="w.code + ' · ' + w.name" :value="w.id" />
+        </el-select>
+        <el-button :icon="Refresh" :loading="loading" aria-label="刷新仪表盘" @click="load()">刷新</el-button>
+      </div>
+    </header>
+
+    <div v-if="!data" class="dashboard-placeholder">
+      <el-skeleton v-if="loading" :rows="10" animated />
+      <el-empty v-else description="仪表盘暂时无法加载，请刷新重试"><el-button type="primary" @click="load()">重新加载</el-button></el-empty>
+    </div>
+    <template v-else>
+      <div class="dashboard-metrics">
+        <button v-if="data.access.inbound" class="metric" @click="todayOrders('/inbound/orders')"><span>今日新建入库单 <el-icon><ArrowRight /></el-icon></span><strong>{{ count(data.inbound, undefined, true) }}<small>单</small></strong><p>按创建时间统计</p></button>
+        <button v-if="data.access.outbound" class="metric" @click="todayOrders('/outbound/orders')"><span>今日新建出库单 <el-icon><ArrowRight /></el-icon></span><strong>{{ count(data.outbound, undefined, true) }}<small>单</small></strong><p>按创建时间统计</p></button>
+        <button v-if="data.access.tasks" class="metric" @click="go('/tasks', { status: 'CREATED' })"><span>当前待执行任务 <el-icon><ArrowRight /></el-icon></span><strong>{{ pending }}<small>项</small></strong><p>另有 {{ running }} 项进行中</p></button>
+        <button v-if="data.access.basic" class="metric" :disabled="!warehouseId" title="占用库位 / 启用库位；选择具体仓库后可查看库位" @click="go('/basic/locations')"><span>启用库位占用率 <el-icon><ArrowRight /></el-icon></span><strong>{{ data.locations?.enabled ? occupied : '—' }}<small>%</small></strong><p>{{ data.locations?.occupied || 0 }} / {{ data.locations?.enabled || 0 }} 个启用库位</p></button>
+      </div>
+
+      <div class="dashboard-grid">
+        <section v-if="data.access.inbound || data.access.outbound" class="overview-panel workflow-panel">
+          <div class="panel-heading"><h2>作业状态分布</h2><span>当前单据 · 可点击核对</span></div>
+          <div class="panel-scroll workflow-body">
+            <div v-if="data.inbound" class="workflow"><b>入库</b><div class="phase-list"><button v-for="state in inboundStates" :key="state" @click="go('/inbound/orders', { status: state })"><span>{{ statusText(state) }}</span><strong>{{ count(data.inbound, state) }}</strong></button></div></div>
+            <div v-if="data.outbound" class="workflow"><b>出库</b><div class="phase-list"><button v-for="state in outboundStates" :key="state" @click="go('/outbound/orders', { status: state })"><span>{{ statusText(state) }}</span><strong>{{ count(data.outbound, state) }}</strong></button></div></div>
+            <div class="cancelled-notes"><span>今日新建后已取消</span><button v-if="data.inbound" class="text-action" @click="cancelledOrders('/inbound/orders')">入库 {{ count(data.inbound, 'CANCELLED', true) }} 单 ↗</button><button v-if="data.outbound" class="text-action" @click="cancelledOrders('/outbound/orders')">出库 {{ count(data.outbound, 'CANCELLED', true) }} 单 ↗</button></div>
+          </div>
+        </section>
+
+        <section v-if="data.access.tasks" class="overview-panel tasks-panel">
+          <div class="panel-heading"><h2>作业待办</h2><el-button link type="primary" @click="go('/tasks')">任务中心 ↗</el-button></div>
+          <div class="task-type-strip"><button v-for="item in taskTypes" :key="item.type" @click="go('/tasks', { task_type: item.type, status: 'CREATED' })">{{ taskTypeText(item.type) }} <b>{{ item.pending }}</b></button><button @click="go('/tasks', { status: 'IN_PROGRESS' })">进行中 <b>{{ running }}</b></button></div>
+          <div class="panel-scroll task-list">
+            <p v-if="aged" class="attention-note">{{ aged }} 项任务已创建超过 24 小时，尚未完成</p>
+            <button v-for="task in data.oldest_tasks || []" :key="task.id" class="pending-task" @click="openTask(task)"><span class="task-mark">{{ taskTypeText(task.task_type).slice(0, 1) }}</span><span class="task-copy"><b>{{ task.order_no || task.task_no }}</b><small>{{ statusText(task.status) }} · 已创建 {{ age(task.created_at) }}</small></span><el-icon><ArrowRight /></el-icon></button>
+            <p v-if="!data.oldest_tasks?.length" class="quiet-empty">当前没有待办，作业已处理完毕</p>
+          </div>
+        </section>
+
+        <section v-if="data.access.inbound || data.access.outbound" class="overview-panel trend-panel">
+          <div class="panel-heading"><h2>近 7 日业务趋势</h2><button class="text-action" @click="trendDetails = true">查看数据 ↗</button></div>
+          <div class="trend-legend"><span v-if="data.inbound" class="inbound-legend">入库新建单量</span><span v-if="data.outbound" class="outbound-legend">出库新建单量</span><small>单位：单 · 含取消单</small></div>
+          <svg class="trend-chart" viewBox="0 0 600 150" preserveAspectRatio="none" role="img" aria-label="近七日入库与出库新建单量，详细数值可点击查看数据">
+            <g v-for="fraction in [0, 0.5, 1]" :key="fraction"><line x1="38" :y1="y(max * fraction)" x2="566" :y2="y(max * fraction)" class="chart-grid" /><text x="28" :y="y(max * fraction) + 4" text-anchor="end">{{ Math.ceil(max * fraction) }}</text></g>
+            <polyline v-if="data.inbound" :points="points('inbound')" class="chart-inbound" />
+            <polyline v-if="data.outbound" :points="points('outbound')" class="chart-outbound" />
+            <g v-for="(day, i) in trend" :key="day.date"><text :x="x(i)" y="145" text-anchor="middle">{{ day.date.slice(5) }}</text><circle v-if="data.inbound" :cx="x(i)" :cy="y(day.inbound)" r="3" class="point-inbound"><title>{{ day.date }} 入库 {{ day.inbound }} 单</title></circle><circle v-if="data.outbound" :cx="x(i)" :cy="y(day.outbound)" r="3" class="point-outbound"><title>{{ day.date }} 出库 {{ day.outbound }} 单</title></circle></g>
+          </svg>
+        </section>
+
+        <section v-if="data.access.inventory || data.access.basic || data.access.stocktake" class="overview-panel inventory-panel">
+          <div class="panel-heading"><h2>库存与核对</h2><el-button v-if="data.access.inventory" link type="primary" @click="go('/inventory')">查看库存 ↗</el-button></div>
+          <div class="panel-scroll inventory-body">
+            <div v-if="data.inventory" class="inventory-facts"><div><strong>{{ data.inventory.skus }}</strong><span>有货 SKU</span></div><div><strong>{{ data.inventory.rows }}</strong><span>有货库存记录</span></div><div><strong>{{ data.inventory.allocated_rows }}</strong><span>含分配量记录</span></div></div>
+            <div v-if="data.locations" class="location-meter"><div><span>启用库位使用情况</span><b>{{ data.locations.enabled ? occupied + '%' : '暂无启用库位' }}</b></div><div class="meter-track"><i :style="{ width: occupied + '%' }"></i></div><small>占用 {{ data.locations.occupied }} 个 · 空闲 {{ data.locations.enabled - data.locations.occupied }} 个</small></div>
+            <button v-if="data.draft_stocktakes !== undefined" class="stocktake-link" @click="go('/stocktake/orders', { status: 'DRAFT' })"><span>待完成盘点单</span><b>{{ data.draft_stocktakes }} 单 ↗</b></button>
+          </div>
+        </section>
+        <p v-if="!Object.values(data.access).some(Boolean)" class="quiet-empty">当前账号暂无仓储业务查看权限</p>
+      </div>
+
+      <section class="overview-panel recent-panel">
+        <div class="panel-heading"><h2>最近新建单据</h2><nav class="shortcuts" aria-label="业务快捷入口"><button v-for="item in shortcuts.filter(item => auth.hasPerm(item.perm))" :key="item.path" class="text-action" @click="go(item.path)">{{ item.label }} ↗</button></nav></div>
+        <div class="panel-scroll recent-list"><button v-for="item in recent" :key="item.path" class="recent-row" @click="go(item.path)"><span class="record-type">{{ item.type }}</span><b>{{ item.order_no }}</b><el-tag :type="statusTag(item.status)" size="small" effect="plain">{{ statusText(item.status) }}</el-tag><time>{{ time(item.created_at) }}</time></button><p v-if="!recent.length" class="quiet-empty">当前范围暂无入出库单据</p></div>
+      </section>
+    </template>
+
+    <el-dialog v-model="trendDetails" class="business-dialog" title="近 7 日新建单量" width="600px" append-to-body>
+      <p class="trend-explanation">{{ warehouseId ? '当前所选仓库' : '全部仓库' }} · 按北京时间创建日期统计，包含已取消单据，不代表实际收发货数量。</p>
+      <el-table :data="trend" max-height="400"><el-table-column prop="date" label="日期" /><el-table-column v-if="data?.inbound" prop="inbound" label="新建入库单" /><el-table-column v-if="data?.outbound" prop="outbound" label="新建出库单" /></el-table>
+      <template #footer><el-button @click="trendDetails = false">关闭</el-button></template>
+    </el-dialog>
+  </div>
+</template>
+
 <style scoped>
-.welcome {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-}
-
-.welcome h1 {
-  margin: 0 0 4px;
-  font-size: 24px;
-  color: var(--el-text-color-primary);
-}
-
-.welcome p {
-  margin: 0;
-  color: var(--el-text-color-secondary);
-  font-size: 13px;
-}
-
-.task-badge {
-  margin-left: 6px;
-}
-.task-badge :deep(.el-badge__content) {
-  border: none !important;
-}
-
-/* ---------- 统计卡 ---------- */
-.stats {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-  margin-bottom: 16px;
-}
-
-.stat {
-  background: var(--el-bg-color);
-  border: 1px solid var(--el-border-color-light);
-  border-radius: var(--gowms-radius-card);
-  padding: 18px;
-  display: flex;
-  gap: 14px;
-  cursor: pointer;
-  transition: transform 0.2s, box-shadow 0.2s;
-  border-top: 3px solid var(--accent);
-}
-
-.stat:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--el-box-shadow);
-}
-
-.stat-icon {
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.stat-body { min-width: 0; }
-.stat .label { font-size: 12px; color: var(--el-text-color-secondary); }
-.stat .num {
-  font-family: var(--gowms-num-font);
-  font-size: 26px;
-  font-weight: 700;
-  line-height: 1.3;
-  font-variant-numeric: tabular-nums;
-}
-
-/* ---------- 3 列网格 ---------- */
-.grid-3 {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-  margin-bottom: 16px;
-}
-
-@media (max-width: 1100px) {
-  .grid-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
-
-@media (max-width: 700px) {
-  .grid-3 { grid-template-columns: 1fr; }
-}
-
-/* ---------- 卡片 ---------- */
-.card {
-  background: var(--el-bg-color);
-  border: 1px solid var(--el-border-color-light);
-  border-radius: var(--gowms-radius-card);
-  box-shadow: var(--el-box-shadow-light);
-  min-height: 240px;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.card-head {
-  padding: 14px 18px;
-  border-bottom: 1px solid var(--el-border-color-lighter);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.card-head b {
-  font-size: 14px;
-  color: var(--el-text-color-primary);
-}
-
-.card-body {
-  padding: 12px 0;
-  flex: 1;
-  overflow-y: auto;
-}
-
-/* ---------- 待办任务 ---------- */
-.task-group { margin-bottom: 10px; }
-.task-group:last-child { margin-bottom: 0; }
-
-.task-type {
-  padding: 4px 18px;
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.task-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 18px;
-  font-size: 13px;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-
-.task-row:hover {
-  background: var(--el-color-primary-light-9);
-}
-
-.task-no {
-  font-family: monospace;
-  color: var(--el-text-color-primary);
-}
-
-.task-order {
-  flex: 1;
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* ---------- 列表行（最近单据） ---------- */
-.list-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 18px;
-  font-size: 13px;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-
-.list-row:hover {
-  background: var(--el-color-primary-light-9);
-}
-
-.row-no {
-  flex: 1;
-  font-family: monospace;
-  color: var(--el-text-color-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.row-time {
-  font-size: 11px;
-  color: var(--el-text-color-secondary);
-}
-
-/* ---------- 快捷入口 ---------- */
-.shortcuts-card {
-  min-height: auto;
-}
-
-.shortcuts {
-  display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  gap: 12px;
-  padding: 16px;
-}
-
-@media (max-width: 1100px) {
-  .shortcuts { grid-template-columns: repeat(3, 1fr); }
-}
-
-@media (max-width: 640px) {
-  .shortcuts { grid-template-columns: repeat(2, 1fr); }
-}
-
-.shortcut {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  padding: 18px 8px 14px;
-  border-radius: 10px;
-  border: 1px solid var(--el-border-color-lighter);
-  cursor: pointer;
-  transition: all 0.2s;
-  color: var(--el-color-primary);
-}
-
-.shortcut:hover {
-  border-color: var(--el-color-primary-light-5);
-  background: var(--el-color-primary-light-9);
-  transform: translateY(-2px);
-}
-
-.shortcut b {
-  font-size: 13px;
-  color: var(--el-text-color-primary);
-}
-
-.shortcut span {
-  font-size: 11px;
-  color: var(--el-text-color-secondary);
-}
-.stats-caption { margin: 0 0 12px; color: var(--el-text-color-secondary); font-size: 12px; line-height: 1.6; }
-.dashboard-eyebrow { display: block; margin-bottom: 8px; color: var(--el-color-primary); font-size: 12px; font-weight: 700; letter-spacing: 0.08em; }
-.welcome { padding: 4px 0 8px; gap: 16px; }
-.stat .num { margin-top: 6px; font-size: 30px; }
-.list-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 10px; padding-top: 12px; padding-bottom: 12px; }
-.row-time { grid-column: 1 / -1; }
-.task-no { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-.task-order { min-width: 0; }
-@media (min-width: 1500px) { .stats { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
-@media (max-width: 640px) {
-  .welcome { align-items: flex-start; flex-direction: column; }
-  .welcome h1 { font-size: 21px; }
-  .welcome p { line-height: 1.7; }
-  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-  .stat { padding: 14px; gap: 10px; flex-direction: column; }
-  .stat-icon { width: 32px; height: 32px; border-radius: 8px; }
-}
+.operations-dashboard { --chart-secondary: var(--gowms-metric-outbound, #38bdf8); height: 100%; min-height: 0; display: grid; grid-template-rows: auto auto minmax(0, 1fr) 112px; gap: 14px; color: var(--el-text-color-primary); }
+.dashboard-heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.eyebrow { color: var(--el-color-primary); font-size: 10px; font-weight: 650; letter-spacing: .13em; }
+h1 { font-size: 23px; margin: 5px 0 4px; letter-spacing: -.035em; } .dashboard-heading p { margin: 0; font-size: 12px; color: var(--el-text-color-secondary); }
+.dashboard-tools { display: flex; gap: 10px; align-items: center; } .updated { font-size: 11px; color: var(--el-text-color-secondary); } .updated.stale { color: var(--el-color-warning); }
+.dashboard-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; }
+button { font: inherit; } .metric { min-width: 0; text-align: left; padding: 14px 18px; background: var(--el-bg-color); border: 1px solid var(--el-border-color-light); border-radius: 10px; color: inherit; cursor: pointer; }
+.metric > span { display: flex; justify-content: space-between; font-size: 12px; color: var(--el-text-color-secondary); } .metric strong { display: block; margin-top: 7px; font-family: var(--gowms-num-font); font-size: 29px; line-height: 1.1; font-weight: 650; font-variant-numeric: tabular-nums; } .metric strong small { font-family: inherit; font-size: 12px; font-weight: 400; margin-left: 7px; color: var(--el-text-color-secondary); } .metric p { margin: 7px 0 0; font-size: 11px; color: var(--el-text-color-secondary); }
+.metric:hover:not(:disabled) { border-color: var(--el-color-primary-light-5); } .metric:disabled { cursor: default; } button:focus-visible { outline: 2px solid var(--el-color-primary); outline-offset: 2px; }
+.dashboard-grid { display: grid; min-height: 0; gap: 14px; grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(0, 1.1fr); }
+.overview-panel { min-width: 0; min-height: 0; display: flex; flex-direction: column; border: 1px solid var(--el-border-color-light); border-radius: 10px; background: var(--el-bg-color); overflow: hidden; }
+.panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex: none; padding: 12px 16px 8px; min-height: 26px; } .panel-heading h2 { font-size: 13px; font-weight: 650; margin: 0; white-space: nowrap; } .panel-heading > span { font-size: 10px; color: var(--el-text-color-secondary); } .panel-heading .el-button { height: 20px; font-size: 11px; }
+.panel-scroll { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; } .workflow-body { display: grid; align-content: safe center; gap: 10px; padding: 4px 16px 12px; }
+.workflow { display: flex; align-items: center; gap: 14px; } .workflow > b { font-size: 12px; font-weight: 500; flex: none; color: var(--el-text-color-secondary); }
+.phase-list { display: flex; gap: 5px; flex: 1; } .phase-list button { min-width: 0; flex: 1; padding: 7px 4px; border: 0; border-radius: 6px; color: var(--el-text-color-primary); background: var(--el-fill-color-lighter); cursor: pointer; } .phase-list button:hover { background: var(--el-color-primary-light-9); } .phase-list span { display: block; font-size: 10px; color: var(--el-text-color-secondary); } .phase-list strong { display: block; margin-top: 4px; font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.cancelled-notes { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding-left: 38px; font-size: 10px; color: var(--el-text-color-secondary); }
+.task-type-strip { display: flex; gap: 8px; padding: 0 16px 6px; flex: none; } .task-type-strip button { flex: 1; padding: 4px 8px; font-size: 11px; border: 0; color: var(--el-text-color-secondary); background: var(--el-fill-color-lighter); border-radius: 5px; cursor: pointer; } .task-type-strip b { margin-left: 7px; color: var(--el-text-color-primary); }
+.task-list { padding: 0 16px 8px; } .attention-note { margin: 4px 0 6px; padding: 6px 8px; font-size: 11px; border-radius: 5px; background: var(--el-color-warning-light-9); color: var(--el-color-warning-dark-2, var(--el-color-warning)); }
+.pending-task { display: flex; align-items: center; gap: 9px; text-align: left; width: 100%; padding: 8px 0; color: inherit; background: transparent; border: 0; border-bottom: 1px solid var(--el-border-color-lighter); cursor: pointer; } .task-mark { width: 27px; height: 27px; display: grid; place-items: center; background: var(--el-color-primary-light-9); color: var(--el-color-primary); border-radius: 6px; font-size: 11px; flex: none; } .task-copy { flex: 1; min-width: 0; } .task-copy b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; font-weight: 500; } .task-copy small { display: block; font-size: 10px; margin-top: 4px; color: var(--el-text-color-secondary); } .pending-task > .el-icon { color: var(--el-text-color-placeholder); }
+.trend-legend { display: flex; align-items: center; gap: 12px; padding: 0 16px; font-size: 10px; flex: none; } .trend-legend span::before { content: ''; display: inline-block; width: 7px; height: 7px; margin-right: 5px; border-radius: 50%; background: var(--el-color-primary); } .trend-legend .outbound-legend::before { background: var(--chart-secondary); } .trend-legend small { margin-left: auto; color: var(--el-text-color-secondary); }
+.trend-chart { width: calc(100% - 24px); margin: 4px 12px 8px; flex: 1; min-height: 0; overflow: visible; } .trend-chart text { fill: var(--el-text-color-secondary); font-size: 10px; } .chart-grid { stroke: var(--el-border-color-lighter); stroke-dasharray: 3 4; } .chart-inbound, .chart-outbound { fill: none; stroke: var(--el-color-primary); stroke-width: 2; vector-effect: non-scaling-stroke; stroke-linejoin: round; } .chart-outbound { stroke: var(--chart-secondary); } .point-inbound { fill: var(--el-color-primary); } .point-outbound { fill: var(--chart-secondary); }
+.inventory-body { padding: 4px 16px 12px; } .inventory-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; } .inventory-facts strong { display: block; font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; } .inventory-facts span { display: block; margin-top: 5px; font-size: 10px; color: var(--el-text-color-secondary); }
+.location-meter { margin-top: 14px; } .location-meter > div:first-child { display: flex; justify-content: space-between; font-size: 10px; color: var(--el-text-color-secondary); } .location-meter b { color: var(--el-text-color-primary); font-weight: 500; } .meter-track { height: 6px; border-radius: 4px; background: var(--el-fill-color); overflow: hidden; margin: 7px 0 4px; } .meter-track i { display: block; height: 100%; background: var(--el-color-primary); border-radius: inherit; } .location-meter small { font-size: 10px; color: var(--el-text-color-secondary); }
+.stocktake-link { width: 100%; display: flex; justify-content: space-between; padding: 8px 0 0; margin-top: 9px; border: 0; border-top: 1px solid var(--el-border-color-lighter); background: transparent; color: var(--el-text-color-secondary); font-size: 11px; cursor: pointer; } .stocktake-link b { color: var(--el-color-primary); font-weight: 500; }
+.shortcuts { display: flex; flex-wrap: wrap; gap: 12px; } .text-action { background: transparent; border: 0; padding: 0; color: var(--el-color-primary); font-size: 11px; cursor: pointer; } .recent-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-content: start; gap: 0 24px; padding: 0 16px 8px; } .recent-row { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 8px 0; border: 0; border-bottom: 1px solid var(--el-border-color-lighter); text-align: left; background: transparent; color: inherit; cursor: pointer; } .record-type { font-size: 10px; color: var(--el-text-color-secondary); flex: none; } .recent-row b { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; font-weight: 500; } .recent-row time { color: var(--el-text-color-secondary); font-size: 10px; flex: none; } .recent-row .el-tag { font-size: 10px; height: 18px; }
+.quiet-empty { margin: auto; padding: 16px 0; font-size: 12px; color: var(--el-text-color-secondary); } .dashboard-placeholder { grid-column: 1 / -1; grid-row: 2 / -1; border-radius: 10px; padding: 24px; background: var(--el-bg-color); } .trend-explanation { font-size: 12px; color: var(--el-text-color-secondary); line-height: 1.7; }
+@media (min-width: 981px) and (max-height: 740px) { .operations-dashboard { gap: 10px; grid-template-rows: auto 76px minmax(0, 1fr) 72px; } .eyebrow, .dashboard-heading p { display: none; } h1 { margin: 0; font-size: 21px; } .metric { padding: 8px 14px; } .metric strong { margin-top: 4px; font-size: 24px; } .metric p { margin-top: 3px; } .dashboard-grid { gap: 10px; grid-template-rows: minmax(0, 1fr) minmax(0, 1.1fr); } .panel-heading { padding: 8px 12px 5px; min-height: 22px; } .workflow-body { padding: 0 12px 8px; gap: 7px; } .phase-list button { padding: 5px 2px; } .phase-list strong { font-size: 15px; margin-top: 2px; } .inventory-facts strong { font-size: 19px; } .location-meter { margin-top: 9px; } .recent-row { padding: 6px 0; } }
+@media (max-width: 980px) { .operations-dashboard { height: auto; grid-template-rows: auto auto auto auto; } .dashboard-heading { align-items: flex-start; flex-direction: column; } .dashboard-tools { flex-wrap: wrap; width: 100%; } .dashboard-tools .updated { margin-right: auto; } .dashboard-grid { grid-template-rows: 205px 225px; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); } .recent-panel { max-height: 210px; } .recent-list { grid-template-columns: 1fr; } .shortcuts { gap: 8px; } }
+@media (max-width: 680px) { .dashboard-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; } .metric { padding: 12px; } .metric strong { font-size: 26px; } .dashboard-grid { grid-template-columns: 1fr; grid-template-rows: none; grid-auto-rows: 220px; } .dashboard-tools .updated { flex-basis: 100%; } .panel-heading > span { font-size: 9px; } .recent-panel .panel-heading { align-items: flex-start; flex-direction: column; } .recent-row time { display: none; } }
 </style>

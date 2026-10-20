@@ -13,20 +13,20 @@ const location = { id: '1', warehouse_id: '1', code: 'A-01-01', zone: 'A', statu
 const role = { id: '2', name: '仓库操作员', perms: 'wms:inventory,wms:task', remark: '日常仓储作业', created_at: date }
 const inventory = { id: '1', warehouse_id: '1', location_id: '1', location_code: 'A-01-01', sku_id: '1', batch_no: 'B20261020', stock_quantity: 120, available_quantity: 90, allocated_quantity: 30, stock_in_time: date }
 
-async function mockBusiness(page: Page, theme: 'light' | 'dark', guided = false) {
+async function mockBusiness(page: Page, theme: 'light' | 'dark', guided = false, demo = false) {
   const state = { empty: false }
-  const profile = guided ? { ...user, perms: ['*', 'wms:demo'] } : user
-  await page.addInitScript(({ user, theme, guided }) => {
+  const profile = guided || demo ? { ...user, perms: ['*', 'wms:demo'] } : user
+  await page.addInitScript(({ user, theme, guided, demo }) => {
     localStorage.setItem('WMS_TOKEN', 'business-layout-token')
     localStorage.setItem('WMS_USER', JSON.stringify(user))
     localStorage.setItem('gowms_theme', theme)
-    if (guided) {
+    if (guided || demo) {
       sessionStorage.setItem('WMS_TOKEN', 'business-layout-token')
       sessionStorage.setItem('WMS_USER', JSON.stringify(user))
       sessionStorage.setItem('WMS_DEMO_SESSION', 'business-guide-session')
-      sessionStorage.setItem('wms-manual-guide-v1', JSON.stringify({ active: true, scenario: 'inbound', currentStep: 0, completed: false, startedAt: Date.now() }))
+      if (guided) sessionStorage.setItem('wms-manual-guide-v1', JSON.stringify({ active: true, scenario: 'inbound', currentStep: 0, completed: false, startedAt: Date.now() }))
     }
-  }, { user: profile, theme, guided })
+  }, { user: profile, theme, guided, demo })
   await page.route('**/api/v1/**', async route => {
     const path = new URL(route.request().url()).pathname.replace('/api/v1', '')
     if (!path.startsWith('/demo/session/')) expect(route.request().method()).toBe('GET')
@@ -62,6 +62,72 @@ async function mockBusiness(page: Page, theme: 'light' | 'dark', guided = false)
 async function contained(page: Page) {
   await expect.poll(() => page.locator('.main').evaluate(el => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1)
   expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1)
+}
+
+for (const theme of ['light', 'dark'] as const) {
+  test(`${theme}: demo evidence tables scroll locally with pagination outside results`, async ({ page }) => {
+    await page.setViewportSize({ width: 1366, height: 650 })
+    await mockBusiness(page, theme, false, true)
+    await page.route('**/api/v1/demo/activity*', route => route.fulfill({ json: { code: 0, msg: 'ok', data: {
+      inbound_orders: Array.from({ length: 25 }, (_, i) => ({ ...order, id: String(i + 1), order_no: `RK20261020${i}` })),
+      outbound_orders: [], stocktake_orders: [], tasks: [], inventory_trans: [], operations: [],
+    } } }))
+    await page.goto('/demo/activity')
+    await expect(page.locator('.evidence-tabs .el-table__body-wrapper tbody tr').first()).toBeVisible()
+    expect(await page.locator('.main').evaluate(el => el.scrollHeight - el.clientHeight)).toBeLessThanOrEqual(1)
+    await expect(page.locator('.evidence-tabs .el-pagination:visible')).toBeInViewport({ ratio: 1 })
+    const scroll = page.locator('.evidence-tabs .el-tab-pane:visible .el-scrollbar__wrap')
+    expect(await scroll.evaluate(el => el.scrollHeight - el.clientHeight)).toBeGreaterThan(10)
+  })
+
+  test(`${theme}: dock dragging, pagination clearance and compact inventory filters`, async ({ page }) => {
+    await page.setViewportSize({ width: 1366, height: 650 })
+    await mockBusiness(page, theme, false, true)
+    await page.goto('/inventory')
+    const dock = page.locator('.demo-statusbar')
+    const pagination = page.locator('.pagination:visible')
+    await expect(dock).toBeVisible()
+    await expect(pagination).toBeInViewport({ ratio: 1 })
+    expect((await pagination.boundingBox())!.y + (await pagination.boundingBox())!.height).toBeLessThan((await dock.boundingBox())!.y)
+    const toggle = page.locator('.stock-toggle-filter .el-switch')
+    const search = page.getByRole('button', { name: '查询', exact: true }).first()
+    expect((await search.boundingBox())!.x - ((await toggle.boundingBox())!.x + (await toggle.boundingBox())!.width)).toBeLessThan(40)
+    const handle = page.getByRole('button', { name: '拖动演示控制条（方向键可移动）', exact: true })
+    const before = (await dock.boundingBox())!
+    await handle.hover()
+    await page.mouse.down()
+    await page.mouse.move(before.x - 180, before.y - 180, { steps: 8 })
+    await page.mouse.up()
+    const moved = (await dock.boundingBox())!
+    expect(moved.y).toBeLessThan(before.y - 100)
+    await page.reload()
+    await expect(dock).toBeVisible()
+    expect(Math.abs((await dock.boundingBox())!.y - moved.y)).toBeLessThan(2)
+    await handle.focus()
+    await page.keyboard.press('ArrowUp')
+    expect((await dock.boundingBox())!.y).toBeLessThan(moved.y - 10)
+    await page.setViewportSize({ width: 700, height: 550 })
+    await expect(dock).toBeInViewport({ ratio: 1 })
+    await dock.getByRole('button', { name: '演示控制', exact: true }).click()
+    const drawer = page.getByRole('dialog', { name: '演示控制', exact: true })
+    await drawer.getByRole('button', { name: '恢复控制条位置', exact: true }).click()
+    expect(await page.evaluate(() => localStorage.getItem('WMS_DEMO_DOCK_POSITION_V1'))).toBeNull()
+  })
+
+  test(`${theme}: list rows scroll locally while filters and pagination stay visible`, async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 620 })
+    await mockBusiness(page, theme)
+    for (const path of ['/inbound/orders', '/outbound/orders']) {
+      await page.goto(path)
+      await expect(page.locator('.el-table__body-wrapper tbody tr').first()).toBeVisible()
+      expect(await page.locator('.main').evaluate(el => el.scrollHeight - el.clientHeight)).toBeLessThanOrEqual(1)
+      await expect(page.locator('.pagination')).toBeInViewport({ ratio: 1 })
+      const scroll = page.locator('.el-table__body-wrapper .el-scrollbar__wrap')
+      expect(await scroll.evaluate(el => el.scrollHeight - el.clientHeight)).toBeGreaterThan(30)
+      await scroll.evaluate(el => { el.scrollTop = el.scrollHeight })
+      await expect(page.getByRole('button', { name: '查询', exact: true }).first()).toBeInViewport()
+    }
+  })
 }
 
 const lists = [

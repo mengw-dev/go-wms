@@ -283,7 +283,7 @@ useAutoRefresh(
     </section>
   </div>
 
-  <el-dialog v-model="allocationDialogVisible" title="配置并发库存分配" width="min(760px, 94vw)" :close-on-click-modal="true">
+  <el-dialog class="business-dialog" v-model="allocationDialogVisible" title="配置并发库存分配" width="min(760px, 94vw)" :close-on-click-modal="true">
     <el-radio-group v-model="allocationMode" class="mode-switch">
       <el-radio-button value="sufficient">库存充足</el-radio-button>
       <el-radio-button value="shortage">供给不足</el-radio-button>
@@ -307,7 +307,7 @@ useAutoRefresh(
     </template>
   </el-dialog>
 
-  <el-dialog v-model="pickingDialogVisible" title="配置拣货作业验证" width="min(720px, 94vw)" :close-on-click-modal="true">
+  <el-dialog class="business-dialog" v-model="pickingDialogVisible" title="配置拣货作业验证" width="min(720px, 94vw)" :close-on-click-modal="true">
     <div class="config-grid">
       <label><span>并发拣货员</span><el-input-number v-model="pickingWorkers" :min="1" :max="50" /></label>
       <label><span>抢单 / 重复请求数</span><el-input-number v-model="pickingContenders" :min="0" :max="50" /></label>
@@ -328,7 +328,7 @@ useAutoRefresh(
     </template>
   </el-dialog>
 
-  <el-dialog v-model="mechanismDialogVisible" title="异步导入可靠性机制" width="min(680px, 94vw)" :close-on-click-modal="true">
+  <el-dialog class="business-dialog" v-model="mechanismDialogVisible" title="异步导入可靠性机制" width="min(680px, 94vw)" :close-on-click-modal="true">
     <div class="mechanism-grid">
       <div><b>任务领取</b><span>PENDING 任务由单消费者领取，使用执行标识防止旧 worker 覆盖新状态。</span></div>
       <div><b>行级幂等</b><span>以任务 ID 和 Excel 行号保证补偿重跑不会重复建单。</span></div>
@@ -431,6 +431,11 @@ useAutoRefresh(
 .runtime-list span { color: var(--el-text-color-secondary); font-size: 11px; }
 .runtime-list b { margin-top: 4px; font-size: 13px; }
 .experiment-records { min-height: 160px; }
+@media (min-width: 981px) and (min-height: 560px) {
+  .engineering-page { height: 100%; min-height: 0; gap: 14px; }
+  .engineering-grid { flex: 1; min-height: 0; }
+  .engineering-card { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+}
 .experiment-record { padding: 12px 0; border-bottom: 1px solid var(--el-border-color-lighter); }
 .experiment-record:last-child { border-bottom: 0; }
 .experiment-record__head, .experiment-record__meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; }

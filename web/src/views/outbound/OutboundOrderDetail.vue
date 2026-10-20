@@ -141,7 +141,7 @@ function canPick(task: { task_type: string; status: string }): boolean {
     </el-page-header>
 
     <template v-if="data?.order">
-      <div class="page-card">
+      <div class="page-card detail-identity">
         <div class="detail-actions">
           <h1 class="document-id">{{ data.order.order_no }}</h1>
           <el-tag data-tour="outbound-shipped" :type="statusTag(data.order.status)" size="large">{{ statusText(data.order.status) }}</el-tag>
@@ -158,6 +158,10 @@ function canPick(task: { task_type: string; status: string }): boolean {
           </template>
           <el-button v-if="hasPendingPick" v-permission="'wms:outbound:pick'" type="warning" plain @click="openPick()">恢复待确认拣货</el-button>
         </div>
+      </div>
+      <div class="detail-scroll">
+      <div class="page-card">
+
 
         <el-alert v-if="data.order.created_by === 'system-seed'" title="历史演示样本，仅供展示，不代表完整业务链。" type="info" :closable="false" />
         <dl class="business-facts">
@@ -175,7 +179,7 @@ function canPick(task: { task_type: string; status: string }): boolean {
 
       <div class="page-card section">
         <h3 class="section-title">单据明细</h3>
-        <el-table :data="data.details ?? []" border stripe>
+        <el-table max-height="360" :data="data.details ?? []" border stripe>
           <el-table-column prop="sku_code" label="货品编码" min-width="130" />
           <el-table-column prop="sku_name" label="货品名称" min-width="160" show-overflow-tooltip />
           <el-table-column prop="expected_qty" label="需求数量" width="100" align="right" />
@@ -186,7 +190,7 @@ function canPick(task: { task_type: string; status: string }): boolean {
 
       <div class="page-card section">
         <h3 class="section-title">分配明细</h3>
-        <el-table :data="data.allocations ?? []" border stripe>
+        <el-table max-height="360" :data="data.allocations ?? []" border stripe>
           <el-table-column prop="location_code" label="库位" min-width="120">
             <template #default="{ row }">{{ row.location_code || row.location_id }}</template>
           </el-table-column>
@@ -205,7 +209,7 @@ function canPick(task: { task_type: string; status: string }): boolean {
 
       <div class="page-card section" data-tour="outbound-tasks">
         <h3 class="section-title">关联任务</h3>
-        <el-table :data="data.tasks ?? []" border stripe>
+        <el-table max-height="360" :data="data.tasks ?? []" border stripe>
           <el-table-column prop="task_no" label="任务号" min-width="160" />
           <el-table-column label="类型" width="90">
             <template #default="{ row }">{{ taskTypeText(row.task_type) }}</template>
@@ -237,6 +241,7 @@ function canPick(task: { task_type: string; status: string }): boolean {
             </template>
           </el-table-column>
         </el-table>
+      </div>
       </div>
     </template>
 

@@ -31,7 +31,7 @@
 | --- | --- | --- | --- |
 | 入库 inbound | `internal/modules/inbound` | 入库单生命周期、收货、上架、Excel 异步导入 | `service/{order,receiving,query,import,import_security,import_cleanup,response,putaway_location_race,import_completed_cleanup}_test.go`、`dto/dto_test.go`、`handler/handler_test.go`、`model/model_test.go` |
 | 出库 outbound | `internal/modules/outbound` | 出库单生命周期、审核 + FIFO 分配、拣货、发货、集成下单 | `service/{order,response}_test.go`、`model/model_test.go`、`handler/handler_test.go` |
-| 任务 task | `internal/modules/task` | 收货/上架/拣货任务的状态与进度 | `service/{service,response}_test.go` |
+| 任务 task | `internal/modules/task` | 收货/上架/拣货任务的状态与进度 | `service/{service,response,dashboard_filter}_test.go` |
 | 库存 inventory | `internal/modules/inventory` | 库存汇总/明细、并发分配与扣减、调整、流水 | `service/{service,concurrency,response,availability}_test.go`、`repository/repository_test.go` |
 | 盘点 stocktake | `internal/modules/stocktake` | 盘点单、账面快照、实盘录入、差异、审核调整 | `service/{service,response}_test.go`、`handler/actual_test.go`、`model/model_test.go` |
 
@@ -59,6 +59,7 @@
 | --- | --- | --- | --- |
 | 系统 system | `internal/modules/system` | 鉴权（登录/JWT）、权限、用户、角色、操作日志 | `service/{auth,permission,user,role,login_limiter,builtin,audit,response,p2_auth}_test.go`、`dto/dto_test.go`、`model/model_test.go` |
 | 基础数据 basic | `internal/modules/basic` | 仓库、库位、SKU | `service/{sku,delete,rows_affected,conflict,response,location_limits}_test.go`、`dto/dto_test.go`、`handler/handler_test.go`、`repository/repository_test.go`、`model/model_json_test.go` |
+| 仪表盘 dashboard | `internal/modules/dashboard` | 按业务权限/仓库汇总当前状态、创建趋势、最早待办与库存/库位概况，只读事务 | `service/overview_test.go`；前端 E2E `dashboard-layout.spec.ts` |
 | AI ai | `internal/modules/ai` | 库存问答（智谱 BigModel） | `service/{service,low_stock}_test.go` |
 
 应用装配与启动：
@@ -102,7 +103,7 @@
 | `web/src/guide/**` | 引导定义、路由匹配、持久化、与业务事件的桥接 | `routeMatcher.spec.ts`、`businessBridge.spec.ts` |
 | `web/src/components/demo/**` | 演示/引导组件（`ManualGuide`、`DemoRunViewer`、`DemoTour`、`StagedDemoRunner`） | — |
 | `web/src/views/demo/**` | 演示页面（`index`、`Activity`、`Performance`） | E2E `web/tests/e2e/demo-console.spec.ts` |
-| `web/src/composables/demo/**` | 演示/引导组合式函数（会话、运行器、引导目标等） | `composables/demo/{useDemoRunner,useStagedDemoRunner}.spec.ts`、`api/demoExecution.spec.ts`、E2E `demo-console.spec.ts` |
+| `web/src/composables/demo/**` | 演示/引导组合式函数（会话、运行器、引导目标等） | `composables/demo/{useDemoRunner,useStagedDemoRunner}.spec.ts`、E2E `demo-scroll.spec.ts`、`api/demoExecution.spec.ts`、E2E `demo-console.spec.ts` |
 
 ## 四、前端（web/src）
 
@@ -114,7 +115,7 @@
 | `stores/` | Pinia 状态（`auth` 登录态、`guide` 运行态、`theme`） | `stores/auth.spec.ts`、`stores/guide.spec.ts` |
 | `router/` | 路由与登录/权限守卫（`router/index.ts`） | — |
 | `layouts/` | 布局与导航（`Layout.vue`、`WmsNavigation.vue`）；业务路由独立启用 `business-layout.css`，仪表盘/演示保持原样 | E2E `ui-layout.spec.ts`、`business-layout.spec.ts`、`demo-home-layout.spec.ts` |
-| `composables/` | 组合式函数：`autoRefresh`（防重叠轮询）、`inbound/*`（列表/表单/导入轮询）、`outbound/usePdaPick`、`demo/*` | `autoRefresh.spec.ts`、`inbound/useInboundImport.spec.ts`、`outbound/usePdaPick.spec.ts` |
+| `composables/` | 组合式函数：`autoRefresh`（防重叠轮询）、`demo/useDemoDock`（悬浮条拖拽与位置恢复）、`inbound/*`（列表/表单/导入轮询）、`outbound/usePdaPick`、`demo/*` | `autoRefresh.spec.ts`、`inbound/useInboundImport.spec.ts`、`outbound/usePdaPick.spec.ts` |
 | `events/` | 业务页面与 Guide/Demo 的唯一契约（`businessEvents.ts`） | `businessEvents.spec.ts` |
 | `utils/` | 前端工具（事件、演示证据/操作、分步检查点、options 等） | `utils/{demoOperations,demoEvidence,index}.spec.ts`、`composables/demo/useStagedDemoRunner.spec.ts` |
 | `views/` | 业务页面（`login`、`dashboard`、`basic`、`system`、`task`、`ai`、`inventory`、`inbound`、`outbound`、`stocktake`、`demo`） | E2E 见 `web/tests/e2e/**` |

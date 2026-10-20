@@ -181,7 +181,7 @@ async function onCancel() {
     </el-page-header>
 
     <template v-if="data?.order">
-      <div class="page-card">
+      <div class="page-card detail-identity">
         <div class="detail-actions">
           <h1 class="document-id">{{ data.order.order_no }}</h1>
           <el-tag :type="statusTag(data.order.status)" size="large">{{ statusText(data.order.status) }}</el-tag>
@@ -199,6 +199,10 @@ async function onCancel() {
           </template>
           <el-button v-if="data.order.status !== 'DRAFT' && approver.stateOf(orderId).pending" v-permission="'wms:stocktake:approve'" type="warning" plain @click="onApprove">恢复待确认审核</el-button>
         </div>
+      </div>
+      <div class="detail-scroll">
+      <div class="page-card">
+
 
         <dl class="business-facts">
           <div><dt>盘点单号</dt><dd>{{ data.order.order_no }}</dd></div>
@@ -234,7 +238,7 @@ async function onCancel() {
           盘点明细
           <el-tag v-if="isDraft()" type="warning" size="small" class="draft-tip">草稿状态可直接录入实盘数</el-tag>
         </h3>
-        <el-table :data="data.details ?? []" border stripe>
+        <el-table max-height="360" :data="data.details ?? []" border stripe>
           <el-table-column label="库位" min-width="120">
             <template #default="{ row }">{{ row.location_code || '-' }}</template>
           </el-table-column>
@@ -291,6 +295,7 @@ async function onCancel() {
             </template>
           </el-table-column>
         </el-table>
+      </div>
       </div>
     </template>
 

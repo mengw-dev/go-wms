@@ -130,7 +130,7 @@ export async function loginByUi(
   page: Page,
   username = adminAccount.username,
   password = adminAccount.password,
-  expectedHeading: string | RegExp = /欢迎回来/,
+  expectedHeading: string | RegExp = /仓储运营总览/,
 ): Promise<void> {
   await page.goto('/login')
   await page.getByPlaceholder('用户名').fill(username)

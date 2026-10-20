@@ -2,6 +2,21 @@
 
 > Base URL：`/api/v1` ｜ 数据格式：JSON ｜ 前后端同构：本仓库 `web/src/api/` 即可调用 SDK 参考
 
+## 2026-10-20 仪表盘只读汇总
+
+`GET /dashboard/overview?warehouse_id=<可选正整数>` 需要登录，并经过与其他业务路由相同的 Demo 会话校验。服务端逐块检查原有 `wms:inbound:view`、`wms:outbound:view`、`wms:task`、`wms:inventory`、`wms:basic`、`wms:stocktake:view` 权限；无权限的业务表不查询，相应字段不返回。无任何业务权限时只返回范围与权限元数据。
+
+- `generated_at`、`today_from/to`、`trend_from`：本次统计时点、今日创建时间范围、近七日起点。发布环境继续使用 `TZ=Asia/Shanghai`、MySQL `loc=Local` 与业务 DATETIME 的既有约定。
+- `inbound/outbound`：全部当前状态分组计数及其中今日创建数量、近七日按创建日期分组的单量、最近五条新建单据。包含取消单；不是实际收发货数量、完成量或准时率。每日空缺由前端补零。
+- `task_counts`：当前 CREATED/IN_PROGRESS 按类型与状态分组；`older_24h` 只表示创建超过 24 小时且未完成，不表示违反 SLA。`oldest_tasks` 最多八条，按创建时间和 ID 升序；仅返回展示和跳转字段，不返回领取凭证等内部字段。
+- `inventory`：现存量大于零的库存记录数、去重 SKU 数、其中含分配量的记录数。不把不同单位的商品数量混加。
+- `locations`：启用库位数、其中状态为占用的库位数，仅 basic 权限可见；不是按体积计算的仓容利用率。`warehouses` 是同一租户下的仓库选择项。
+- `draft_stocktakes`：当前 DRAFT 盘点单数，不推导未经定义的库存准确率。
+
+查询使用业务模型的租户/软删回调，在短只读 repeatable-read 事务内获取一致视图。沿用普通平台上下文的跨租户旁路语义；精确租户 0 仍只能查看租户 0。不存在的仓库返回空范围，非法 ID 返回 400，不进行业务写入或数据库迁移。
+
+`GET /tasks` 新增可选正整数 `warehouse_id`，可与原有 `order_id/task_type/status/keyword` 组合，列表和 total 使用同一过滤条件；不改变任务写入、领取、租约或幂等语义。
+
 ## 2026-10-18 参数与会话补充
 
 - 单次数量、单据总数量、单条库存现存量采用 0–2147483647 的 INT 范围；创建明细/收货/上架/拣货要求正整数，残品及实盘允许 0。明细合计和同一库存行累计超限也返回参数错误（400），事务不产生部分写入。跨库存行报表可使用 int64 汇总。

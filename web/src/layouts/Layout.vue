@@ -115,7 +115,7 @@ async function submitPassword() {
       <WmsNavigation />
     </el-aside>
 
-    <el-container class="workspace">
+    <el-container class="workspace" :class="{ 'workspace--demo-dock': auth.isDemo && auth.demoSessionId && route.path !== '/demo' }">
       <el-header class="header">
         <div class="header-left">
           <el-button
@@ -156,7 +156,7 @@ async function submitPassword() {
           </el-dropdown>
         </div>
       </el-header>
-      <el-main class="main" :class="{ 'main--demo-home': route.path === '/demo' }">
+      <el-main class="main" :class="{ 'main--demo-home': route.path === '/demo', 'main--dashboard': route.path === '/dashboard' }">
         <div class="page-stage">
           <!-- 路径包含单据 ID；对象变化时重建页面，避免复用旧 setup 中的操作目标。 -->
           <router-view :key="route.path" />
@@ -289,6 +289,11 @@ async function submitPassword() {
   margin: 0 auto;
 }
 .workspace { min-width: 0; }
+/* Reserve a footer lane so the default floating dock never covers pagination. */
+.workspace--demo-dock { padding-bottom: 64px; }
+@media (max-width: 520px) { .workspace--demo-dock { padding-bottom: 96px; } }
+@media (min-width: 981px) and (min-height: 560px) { .main:has(.activity-page, .engineering-page) { overflow: hidden; } }
+@media (min-width: 981px) and (min-height: 620px) { .main--dashboard { overflow: hidden; } }
 .main--demo-home { padding-bottom: 12px; }
 @media (max-height: 720px) and (min-width: 981px) {
   .main--demo-home { padding: 16px 20px 10px; }

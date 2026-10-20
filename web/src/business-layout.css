@@ -145,6 +145,31 @@ body.manual-guide-active .layout.layout--business .main {
 }
 .layout.layout--business .inventory-page .query-form { padding: 8px 0 16px; margin-bottom: 14px; }
 .layout.layout--business .inventory-page .el-tabs__header { margin-bottom: 8px; }
+.layout.layout--business .query-form .stock-toggle-filter { flex: 0 0 auto; }
+
+/* Desktop lists share the available height; only result rows scroll. */
+@media (min-width: 981px) and (min-height: 560px) {
+  .layout.layout--business .main:has(.business-list, .order-page, .inventory-page, .business-detail) { overflow: hidden; }
+  .layout.layout--business .app-page:is(.business-list, .order-page, .inventory-page) { height: 100%; min-height: 0; }
+  .layout.layout--business :is(.business-list, .order-page) > .app-card {
+    flex: 1; min-height: 0; display: flex; flex-direction: column;
+  }
+  .layout.layout--business .app-table-region { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .layout.layout--business :is(.query-form, .app-toolbar, .pagination, .page-header) { flex-shrink: 0; }
+  .layout.layout--business .app-table-region > .el-table,
+  .layout.layout--business .inventory-page .el-tab-pane > .el-table {
+    flex: 1; min-height: 0; height: 0 !important; max-height: none !important;
+  }
+  .layout.layout--business .inventory-page > .page-card { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .layout.layout--business .inventory-page .el-tabs { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .layout.layout--business .inventory-page .el-tabs__content { flex: 1; min-height: 0; }
+  .layout.layout--business .inventory-page .el-tab-pane { height: 100%; display: flex; flex-direction: column; }
+  .layout.layout--business .business-detail { height: 100%; min-height: 0; display: flex; flex-direction: column; }
+  .layout.layout--business .detail-header { flex: none; }
+  .layout.layout--business .detail-identity { flex: none; margin-bottom: 14px; }
+  .layout.layout--business .detail-identity .detail-actions { margin-bottom: 0; }
+  .layout.layout--business .detail-scroll { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; }
+}
 
 /* Dialog body scrolls; the title, context and confirmation stay easy to find. */
 .business-dialog.el-dialog {

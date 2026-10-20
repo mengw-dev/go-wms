@@ -4,6 +4,7 @@
  * 页面只做展示与交互，这里集中承担列表相关的请求编排。
  */
 import { computed, reactive, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   approveInboundOrder,
@@ -24,6 +25,7 @@ import { cleanParams } from '@/utils'
 import { loadSkuMap, loadWarehouseOptions, toOptionMap, type IdOption } from '@/utils/options'
 
 export function useInboundOrders() {
+  const route = useRoute()
   // ---------- 基础选项 ----------
   const warehouseOptions = ref<IdOption[]>([])
   const warehouseMap = ref<Record<EntityID, string>>({})
@@ -60,14 +62,14 @@ export function useInboundOrders() {
   const query = reactive({
     page: 1,
     page_size: 10,
-    warehouse_id: '' as EntityID | '',
-    status: '',
+    warehouse_id: (typeof route.query.warehouse_id === 'string' ? route.query.warehouse_id : '') as EntityID | '',
+    status: typeof route.query.status === 'string' ? route.query.status : '',
     keyword: '',
     import_task_id: '',
-    created_at_from: '',
-    created_at_to: '',
+    created_at_from: typeof route.query.created_at_from === 'string' ? route.query.created_at_from : '',
+    created_at_to: typeof route.query.created_at_to === 'string' ? route.query.created_at_to : '',
   })
-  const dateRange = ref<[string, string] | null>(null)
+  const dateRange = ref<[string, string] | null>(typeof route.query.created_at_from === 'string' && typeof route.query.created_at_to === 'string' ? [route.query.created_at_from, route.query.created_at_to] : null)
   const dateRangeDefaultTime: [Date, Date] = [new Date(2000, 0, 1, 0, 0, 0), new Date(2000, 0, 1, 23, 59, 59)]
 
   let requestSeq = 0

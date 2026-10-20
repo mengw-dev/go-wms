@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import BusinessListPage from '@/components/common/BusinessListPage.vue'
 import { onMounted, reactive, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import {
   batchCreateLocations,
@@ -13,6 +14,8 @@ import type { EntityID,  LocationItem, WarehouseItem } from '@/api/types'
 import { COMMON_STATUS, LOCATION_STATUS, locationStatusTag, locationStatusText } from '@/constants'
 import { cleanParams, formatTime } from '@/utils'
 import { loadAllPages } from '@/utils/pagination'
+
+const route = useRoute()
 
 // ---------- 仓库下拉 ----------
 const warehouseOptions = ref<WarehouseItem[]>([])
@@ -34,7 +37,7 @@ const total = ref(0)
 const query = reactive({
   page: 1,
   page_size: 10,
-  warehouse_id: '' as EntityID | '',
+  warehouse_id: (typeof route.query.warehouse_id === 'string' ? route.query.warehouse_id : '') as EntityID | '',
   zone: '',
   keyword: '',
   status: '' as number | '',
@@ -62,7 +65,7 @@ function search() {
 
 onMounted(async () => {
   await loadWarehouses()
-  if (warehouseOptions.value.length > 0) {
+  if (!query.warehouse_id && warehouseOptions.value.length > 0) {
     query.warehouse_id = warehouseOptions.value[0]!.id
   }
   load()

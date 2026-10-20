@@ -13,6 +13,9 @@ import (
 	basichandler "gowms/internal/modules/basic/handler"
 	basicrepo "gowms/internal/modules/basic/repository"
 	basicservice "gowms/internal/modules/basic/service"
+	dashboardhandler "gowms/internal/modules/dashboard/handler"
+	dashboardrepo "gowms/internal/modules/dashboard/repository"
+	dashboardservice "gowms/internal/modules/dashboard/service"
 	demohandler "gowms/internal/modules/demo/handler"
 	demoservice "gowms/internal/modules/demo/service"
 	inboundhandler "gowms/internal/modules/inbound/handler"
@@ -61,6 +64,7 @@ type App struct {
 	AIHandler        *aihandler.Handler
 	DemoService      *demoservice.Service
 	DemoHandler      *demohandler.Handler
+	DashboardHandler *dashboardhandler.Handler
 
 	// 供后台任务使用
 	SystemService  *sysservice.Service
@@ -119,6 +123,7 @@ func New(cfg *config.Config, db *gorm.DB, rdb *redis.Client, metrics *observabil
 		AIHandler:        aihandler.New(aiSvc),
 		DemoService:      demoSvc,
 		DemoHandler:      demohandler.New(demoSvc),
+		DashboardHandler: dashboardhandler.New(dashboardservice.New(dashboardrepo.New(db))),
 
 		InboundService: inboundSvc,
 		SystemService:  sysSvc,

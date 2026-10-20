@@ -2,7 +2,7 @@
 import BusinessListPage from '@/components/common/BusinessListPage.vue'
 import { onMounted, reactive, ref } from 'vue'
 import { useAutoRefresh } from '@/composables/autoRefresh'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   cancelStocktakeOrder,
@@ -17,6 +17,7 @@ import { BUSINESS_EVENTS, emitBusinessEvent } from '@/events/businessEvents'
 import { useStocktakeApprove } from '@/composables/stocktake/useStocktakeApprove'
 
 const router = useRouter()
+const route = useRoute()
 const approver = useStocktakeApprove()
 
 // ---------- 基础选项 ----------
@@ -36,8 +37,8 @@ const total = ref(0)
 const query = reactive({
   page: 1,
   page_size: 10,
-  warehouse_id: '' as EntityID | '',
-  status: '',
+  warehouse_id: (typeof route.query.warehouse_id === 'string' ? route.query.warehouse_id : '') as EntityID | '',
+  status: typeof route.query.status === 'string' ? route.query.status : '',
   keyword: '',
 })
 

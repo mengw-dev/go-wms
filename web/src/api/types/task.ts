@@ -22,6 +22,7 @@ export interface TaskItem {
 }
 
 export interface TaskListQuery extends PageQuery {
+  warehouse_id?: EntityID | ''
   order_id?: EntityID | ''
   task_type?: string
   status?: string

@@ -409,6 +409,16 @@ useAutoRefresh(() => load(true), 5000)
 .evidence-tabs :deep(.el-table__row) { cursor: pointer; }
 .up { color: var(--el-color-success); font-weight: 600; }
 .down { color: var(--el-color-danger); font-weight: 600; }
+@media (min-width: 981px) and (min-height: 560px) {
+  .activity-page { height: 100%; min-height: 0; gap: 14px; }
+  .activity-page > :not(.evidence-card) { flex-shrink: 0; }
+  .evidence-card { flex: 1; display: flex; flex-direction: column; }
+  .evidence-tabs { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+  .evidence-tabs :deep(.el-tabs__content) { flex: 1; min-height: 0; }
+  .evidence-tabs :deep(.el-tab-pane) { height: 100%; display: flex; flex-direction: column; }
+  .evidence-tabs :deep(.el-table) { flex: 1; min-height: 0; height: 0; }
+  .evidence-tabs :deep(.el-pagination) { flex: none; }
+}
 @media (max-width: 900px) { .summary-card { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 600px) { .summary-card { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 </style>
