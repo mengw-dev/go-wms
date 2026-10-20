@@ -277,7 +277,7 @@ onBeforeUnmount(() => {
     <button v-if="floatingDock" class="dock-handle" type="button" aria-label="拖动演示控制条（方向键可移动）" title="拖动调整位置，也可用方向键移动"
       @pointerdown="dock.start" @pointermove="dock.move" @pointerup="dock.finish" @pointercancel="dock.finish" @lostpointercapture="dock.finish" @keydown="dock.keydown">⠿</button>
     <i aria-hidden="true"></i>
-    <span>{{ sessionStatusText }} · 数据隔离已启用</span>
+    <span class="dock-status">{{ sessionStatusText }}<span class="dock-isolation"> · 数据隔离已启用</span></span>
     <button
       type="button"
       class="reset-action"
@@ -659,6 +659,11 @@ onBeforeUnmount(() => {
     right: 12px;
     bottom: 12px;
   }
+  .demo-statusbar:not(.home-dock) { flex-wrap: nowrap; width: auto; max-width: calc(100vw - 24px); gap: 6px; padding: 6px 8px; }
+  .demo-statusbar:not(.home-dock) .dock-status { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .demo-statusbar:not(.home-dock) :is(.dock-isolation, .reset-action) { display: none; }
+  .demo-statusbar:not(.home-dock) button { flex: none; min-height: 36px; }
+  .demo-statusbar:not(.home-dock) .dock-handle { min-width: 28px; }
 
   .controller-footer {
     flex-direction: column;

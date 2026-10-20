@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import BusinessFilters from '@/components/common/BusinessFilters.vue'
+import BusinessPagination from '@/components/common/BusinessPagination.vue'
+import { mobileTableCellStyle } from '@/utils/mobileTable'
 import { onMounted, ref } from 'vue'
 import { useAutoRefresh } from '@/composables/autoRefresh'
 import { useRouter } from 'vue-router'
@@ -93,7 +96,7 @@ useAutoRefresh(() => load(true), 0, () => selectedRows.value.length === 0)
     </PageHeader>
 
     <section class="app-card app-card--flush">
-    <el-form inline class="query-form app-filter-bar order-filters" @submit.prevent="search">
+    <BusinessFilters><el-form inline class="query-form app-filter-bar order-filters" @submit.prevent="search">
       <el-form-item label="单号">
         <el-input v-model="query.keyword" placeholder="单号模糊搜索" clearable style="width: 180px" @keyup.enter="search" @clear="search" />
       </el-form-item>
@@ -136,7 +139,7 @@ useAutoRefresh(() => load(true), 0, () => selectedRows.value.length === 0)
           />
         </el-select>
       </el-form-item>
-    </el-form>
+    </el-form></BusinessFilters>
 
     <div class="app-table-region">
       <div class="app-toolbar" :class="{ 'has-selection': selectedRows.length > 0 }">
@@ -166,7 +169,7 @@ useAutoRefresh(() => load(true), 0, () => selectedRows.value.length === 0)
       </div>
 
     <p class="table-scroll-hint">左右滑动表格可查看完整字段与操作</p>
-    <el-table max-height="var(--business-table-height)" ref="tableRef" v-loading="loading" :data="list" border stripe @selection-change="onSelectionChange">
+    <el-table class="mobile-record-table" :cell-style="mobileTableCellStyle" max-height="var(--business-table-height)" ref="tableRef" v-loading="loading" :data="list" border stripe @selection-change="onSelectionChange">
       <el-table-column type="selection" width="42" />
       <el-table-column prop="order_no" label="入库单号" min-width="170">
         <template #default="{ row }">
@@ -222,7 +225,7 @@ useAutoRefresh(() => load(true), 0, () => selectedRows.value.length === 0)
       </el-table-column>
     </el-table>
 
-    <el-pagination
+    <BusinessPagination
       v-model:current-page="query.page"
       v-model:page-size="query.page_size"
       class="pagination"

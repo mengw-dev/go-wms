@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import BusinessPagination from '@/components/common/BusinessPagination.vue'
+import { mobileTableCellStyle } from '@/utils/mobileTable'
 import BusinessListPage from '@/components/common/BusinessListPage.vue'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
@@ -213,7 +215,7 @@ async function onDelete(row: LocationItem) {
       </el-form>
     </template>
 
-    <el-table max-height="var(--business-table-height)" v-loading="loading" :data="list" border stripe>
+    <el-table class="mobile-record-table" :cell-style="mobileTableCellStyle" max-height="var(--business-table-height)" v-loading="loading" :data="list" border stripe>
       <el-table-column label="仓库" min-width="160">
         <template #default="{ row }">{{ warehouseMap[row.warehouse_id] || row.warehouse_id }}</template>
       </el-table-column>
@@ -256,7 +258,7 @@ async function onDelete(row: LocationItem) {
       </el-table-column>
     </el-table>
 
-    <el-pagination
+    <BusinessPagination
       v-model:current-page="query.page"
       v-model:page-size="query.page_size"
       class="pagination"

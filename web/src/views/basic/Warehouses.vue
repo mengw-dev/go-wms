@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import BusinessPagination from '@/components/common/BusinessPagination.vue'
+import { mobileTableCellStyle } from '@/utils/mobileTable'
 import BusinessListPage from '@/components/common/BusinessListPage.vue'
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
@@ -156,7 +158,7 @@ async function onDelete(row: WarehouseItem) {
       </el-form>
     </template>
 
-    <el-table max-height="var(--business-table-height)" v-loading="loading" :data="list" border stripe>
+    <el-table class="mobile-record-table" :cell-style="mobileTableCellStyle" max-height="var(--business-table-height)" v-loading="loading" :data="list" border stripe>
       <el-table-column prop="code" label="编码" min-width="110" />
       <el-table-column prop="name" label="名称" min-width="140" />
       <el-table-column prop="remark" label="备注" min-width="160" show-overflow-tooltip />
@@ -186,7 +188,7 @@ async function onDelete(row: WarehouseItem) {
       </el-table-column>
     </el-table>
 
-    <el-pagination
+    <BusinessPagination
       v-model:current-page="query.page"
       v-model:page-size="query.page_size"
       class="pagination"

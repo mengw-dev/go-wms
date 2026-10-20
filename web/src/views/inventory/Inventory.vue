@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import BusinessFilters from '@/components/common/BusinessFilters.vue'
+import BusinessPagination from '@/components/common/BusinessPagination.vue'
+import { mobileTableCellStyle } from '@/utils/mobileTable'
 import PageHeader from '@/components/common/PageHeader.vue'
 import { onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
@@ -179,7 +182,7 @@ useAutoRefresh(refreshActiveTab, 0)
     <p class="inventory-note">现存量 = 可用量 + 分配量；分配量为已被出库单占用、尚未扣减的库存。</p>
     <el-tabs v-model="activeTab" @tab-change="onTabChange">
       <el-tab-pane label="库存明细" name="detail">
-        <el-form inline class="query-form" @submit.prevent="searchDetail">
+        <BusinessFilters><el-form inline class="query-form" @submit.prevent="searchDetail">
           <el-form-item label="仓库">
             <el-select v-model="detailQuery.warehouse_id" placeholder="全部" clearable style="width: 200px" @change="searchDetail">
               <el-option v-for="w in warehouseOptions" :key="w.id" :label="w.label" :value="w.id" />
@@ -194,9 +197,9 @@ useAutoRefresh(refreshActiveTab, 0)
           <el-form-item>
             <el-button type="primary" plain @click="searchDetail">查询</el-button>
           </el-form-item>
-        </el-form>
+        </el-form></BusinessFilters>
 
-        <el-table max-height="var(--business-table-height)" v-loading="detailLoading" :data="detailList" border stripe>
+        <el-table class="mobile-record-table" :cell-style="mobileTableCellStyle" max-height="var(--business-table-height)" v-loading="detailLoading" :data="detailList" border stripe>
           <el-table-column label="仓库" min-width="150">
             <template #default="{ row }">{{ warehouseMap[row.warehouse_id] || row.warehouse_id }}</template>
           </el-table-column>
@@ -222,7 +225,7 @@ useAutoRefresh(refreshActiveTab, 0)
           </el-table-column>
         </el-table>
 
-        <el-pagination
+        <BusinessPagination
           v-model:current-page="detailQuery.page"
           v-model:page-size="detailQuery.page_size"
           class="pagination"
@@ -236,7 +239,7 @@ useAutoRefresh(refreshActiveTab, 0)
       </el-tab-pane>
 
       <el-tab-pane label="按SKU汇总" name="summary">
-        <el-form inline class="query-form" @submit.prevent="searchSummary">
+        <BusinessFilters><el-form inline class="query-form" @submit.prevent="searchSummary">
           <el-form-item label="仓库">
             <el-select v-model="summaryQuery.warehouse_id" placeholder="全部" clearable style="width: 200px" @change="searchSummary">
               <el-option v-for="w in warehouseOptions" :key="w.id" :label="w.label" :value="w.id" />
@@ -245,9 +248,9 @@ useAutoRefresh(refreshActiveTab, 0)
           <el-form-item>
             <el-button type="primary" plain @click="searchSummary">查询</el-button>
           </el-form-item>
-        </el-form>
+        </el-form></BusinessFilters>
 
-        <el-table max-height="var(--business-table-height)" v-loading="summaryLoading" :data="summaryList" border stripe>
+        <el-table class="mobile-record-table" :cell-style="mobileTableCellStyle" max-height="var(--business-table-height)" v-loading="summaryLoading" :data="summaryList" border stripe>
           <el-table-column prop="sku_code" label="货品编码" min-width="130" />
           <el-table-column prop="sku_name" label="货品名称" min-width="180" show-overflow-tooltip />
           <el-table-column prop="unit" label="单位" width="80">
@@ -258,7 +261,7 @@ useAutoRefresh(refreshActiveTab, 0)
           <el-table-column prop="allocated_quantity" label="分配量" width="110" align="right" />
         </el-table>
 
-        <el-pagination
+        <BusinessPagination
           v-model:current-page="summaryQuery.page"
           v-model:page-size="summaryQuery.page_size"
           class="pagination"
@@ -280,7 +283,7 @@ useAutoRefresh(refreshActiveTab, 0)
         ，货品：{{ skuLabel(transInventory.sku_id) }}
         ，批次：{{ transInventory.batch_no || '-' }}
       </div>
-      <el-form inline class="query-form" @submit.prevent="searchTrans">
+      <BusinessFilters><el-form inline class="query-form" @submit.prevent="searchTrans">
         <el-form-item label="单据号">
           <el-input v-model="transQuery.order_no" placeholder="单据号" clearable style="width: 180px" @keyup.enter="searchTrans" @clear="searchTrans" />
         </el-form-item>
@@ -292,9 +295,9 @@ useAutoRefresh(refreshActiveTab, 0)
         <el-form-item>
           <el-button type="primary" plain @click="searchTrans">查询</el-button>
         </el-form-item>
-      </el-form>
+      </el-form></BusinessFilters>
 
-      <el-table max-height="480" v-loading="transLoading" :data="transList" border stripe size="small">
+      <el-table class="mobile-record-table" :cell-style="mobileTableCellStyle" max-height="480" v-loading="transLoading" :data="transList" border stripe size="small">
         <el-table-column label="类型" width="90">
           <template #default="{ row }">
             <el-tag :type="statusTag(row.trans_type)" size="small">{{ statusText(row.trans_type) }}</el-tag>
@@ -327,7 +330,7 @@ useAutoRefresh(refreshActiveTab, 0)
         </el-table-column>
       </el-table>
 
-      <el-pagination
+      <BusinessPagination
         v-model:current-page="transQuery.page"
         v-model:page-size="transQuery.page_size"
         class="pagination"

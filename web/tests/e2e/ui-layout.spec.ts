@@ -114,7 +114,7 @@ for (const theme of ['light', 'dark'] as const) {
     await expect(page.locator('html')).toHaveClass(theme === 'dark' ? '' : 'dark')
   })
 
-  test(`${theme}: mobile navigation, horizontally scrollable tables and dialogs`, async ({ page }, testInfo) => {
+  test(`${theme}: mobile navigation, record cards and dialogs`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 390, height: 844 })
     await mockWorkspace(page, theme)
     await page.goto('/dashboard')
@@ -133,6 +133,7 @@ for (const theme of ['light', 'dark'] as const) {
     await expect(navigation).not.toBeVisible()
     await expect(page.locator('.table-summary')).toContainText('4')
     await expectContained(page)
+    await page.getByRole('button', { name: '搜索与筛选', exact: false }).click()
     await page.getByPlaceholder('开始日期').click()
     const calendar = page.locator('.el-date-range-picker:visible')
     await expect(calendar).toBeVisible()
@@ -140,11 +141,13 @@ for (const theme of ['light', 'dark'] as const) {
     expect(calendarBox.x).toBeGreaterThanOrEqual(0)
     expect(calendarBox.x + calendarBox.width).toBeLessThanOrEqual(390)
     await page.keyboard.press('Escape')
+    await page.getByRole('button', { name: '搜索与筛选', exact: false }).click()
     await page.screenshot({ path: testInfo.outputPath('inbound-mobile.png'), fullPage: true, animations: 'disabled' })
     const scroll = page.locator('.el-table__body-wrapper .el-scrollbar__wrap')
-    expect(await scroll.evaluate(el => el.scrollWidth > el.clientWidth)).toBe(true)
-    await scroll.evaluate(el => { el.scrollLeft = el.scrollWidth })
-    await expect(page.getByRole('button', { name: '详情', exact: true }).first()).toBeInViewport()
+    expect(await scroll.evaluate(el => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1)
+    const details = page.getByRole('button', { name: '详情', exact: true }).first()
+    await details.scrollIntoViewIfNeeded()
+    await expect(details).toBeInViewport()
     await page.getByRole('button', { name: '新建入库单' }).click()
     const dialog = page.getByRole('dialog', { name: '新建入库单' })
     await expect(dialog).toBeVisible()

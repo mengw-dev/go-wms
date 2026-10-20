@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { mobileTableCellStyle } from '@/utils/mobileTable'
 import { computed, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getInboundOrder } from '@/api/inbound'
@@ -133,7 +134,7 @@ defineExpose({ open })
       <p>核对货品与批次，填写本次收货数量；不良品数量计入本次收货。</p>
     </div>
     <el-alert v-if="storageError" :title="storageError" type="error" show-icon :closable="false" class="storage-tip" />
-    <el-table v-loading="loading" :data="details" border max-height="420">
+    <el-table class="mobile-record-table" :cell-style="mobileTableCellStyle" v-loading="loading" :data="details" border max-height="420">
       <el-table-column prop="sku_code" label="货品编码" min-width="110" />
       <el-table-column prop="sku_name" label="货品名称" min-width="130" show-overflow-tooltip />
       <el-table-column prop="expected_qty" label="应收" width="70" align="right" />

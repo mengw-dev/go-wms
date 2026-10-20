@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import PageHeader from './PageHeader.vue'
+import BusinessFilters from './BusinessFilters.vue'
 
 defineProps<{ title: string; description: string; total: number }>()
 </script>
@@ -10,7 +11,7 @@ defineProps<{ title: string; description: string; total: number }>()
       <template v-if="$slots.actions" #actions><slot name="actions" /></template>
     </PageHeader>
     <section class="app-card app-card--flush">
-      <slot name="filters" />
+      <BusinessFilters v-if="$slots.filters"><slot name="filters" /></BusinessFilters>
       <div class="app-table-region">
         <div class="app-toolbar">
           <span class="table-summary">{{ title }} · 共 <strong>{{ total }}</strong> 条</span>

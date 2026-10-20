@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import BusinessPagination from '@/components/common/BusinessPagination.vue'
+import { mobileTableCellStyle } from '@/utils/mobileTable'
 import BusinessListPage from '@/components/common/BusinessListPage.vue'
 import { passwordByteRule } from '@/utils/password'
 import { onMounted, reactive, ref } from 'vue'
@@ -228,7 +230,7 @@ async function onDelete(row: UserItem) {
       </el-form>
     </template>
 
-    <el-table max-height="var(--business-table-height)" v-loading="loading" :data="list" border stripe>
+    <el-table class="mobile-record-table" :cell-style="mobileTableCellStyle" max-height="var(--business-table-height)" v-loading="loading" :data="list" border stripe>
       <el-table-column label="用户名" min-width="150">
         <template #default="{ row }">
           <span class="user-name">{{ row.username }}</span>
@@ -289,7 +291,7 @@ async function onDelete(row: UserItem) {
       </el-table-column>
     </el-table>
 
-    <el-pagination
+    <BusinessPagination
       v-model:current-page="query.page"
       v-model:page-size="query.page_size"
       class="pagination"

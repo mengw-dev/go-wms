@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import BusinessPagination from '@/components/common/BusinessPagination.vue'
+import { mobileTableCellStyle } from '@/utils/mobileTable'
 import BusinessListPage from '@/components/common/BusinessListPage.vue'
 import { onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
@@ -83,7 +85,7 @@ useAutoRefresh(() => load(true), 0)
       </el-form>
     </template>
 
-    <el-table max-height="var(--business-table-height)" v-loading="loading" :data="list" border stripe>
+    <el-table class="mobile-record-table" :cell-style="mobileTableCellStyle" max-height="var(--business-table-height)" v-loading="loading" :data="list" border stripe>
       <el-table-column prop="task_no" label="任务号" min-width="170" />
       <el-table-column label="类型" width="90">
         <template #default="{ row }">{{ taskTypeText(row.task_type) }}</template>
@@ -112,7 +114,7 @@ useAutoRefresh(() => load(true), 0)
       </el-table-column>
     </el-table>
 
-    <el-pagination
+    <BusinessPagination
       v-model:current-page="query.page"
       v-model:page-size="query.page_size"
       class="pagination"

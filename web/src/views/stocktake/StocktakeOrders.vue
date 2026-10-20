@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import BusinessPagination from '@/components/common/BusinessPagination.vue'
+import { mobileTableCellStyle } from '@/utils/mobileTable'
 import BusinessListPage from '@/components/common/BusinessListPage.vue'
 import { onMounted, reactive, ref } from 'vue'
 import { useAutoRefresh } from '@/composables/autoRefresh'
@@ -222,7 +224,7 @@ useAutoRefresh(() => load(true), 0)
       </el-form>
     </template>
 
-    <el-table max-height="var(--business-table-height)" v-loading="loading" :data="list" border stripe>
+    <el-table class="mobile-record-table" :cell-style="mobileTableCellStyle" max-height="var(--business-table-height)" v-loading="loading" :data="list" border stripe>
       <el-table-column prop="order_no" label="盘点单号" min-width="170">
         <template #default="{ row }">
           <el-link type="primary" @click="goDetail(row)">{{ row.order_no }}</el-link>
@@ -261,7 +263,7 @@ useAutoRefresh(() => load(true), 0)
       </el-table-column>
     </el-table>
 
-    <el-pagination
+    <BusinessPagination
       v-model:current-page="query.page"
       v-model:page-size="query.page_size"
       class="pagination"

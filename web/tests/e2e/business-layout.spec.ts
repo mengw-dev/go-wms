@@ -138,6 +138,108 @@ const lists = [
 ]
 
 for (const theme of ['light', 'dark'] as const) {
+  for (const width of [320, 390, 430, 768]) {
+    test(`${theme}: ${width}px business records show fields, actions and aligned pagination without horizontal scrolling`, async ({ page }, testInfo) => {
+      await page.setViewportSize({ width, height: 844 })
+      await mockBusiness(page, theme, false, true)
+      for (const [path, title] of lists) {
+        await page.goto(path!)
+        await expect(page.getByRole('heading', { name: title!, exact: true })).toBeVisible()
+        const table = page.locator('.mobile-record-table:visible').first()
+        const row = table.locator('.el-table__body-wrapper tbody tr').first()
+        await expect(row).toBeVisible()
+        await contained(page)
+        expect(await table.locator('.el-scrollbar__wrap').evaluate(el => el.scrollWidth - el.clientWidth), path).toBeLessThanOrEqual(1)
+        expect(await page.locator('.main').evaluate(el => el.scrollHeight - el.clientHeight), path).toBeLessThanOrEqual(1)
+        const cells = await row.locator('td:not(.el-table-column--selection)').evaluateAll(els => els.map(el => ({
+          width: el.getBoundingClientRect().width, label: getComputedStyle(el, '::before').content,
+        })))
+        expect(cells.length).toBeGreaterThan(2)
+        for (const cell of cells) {
+          expect(cell.width).toBeLessThan(width - 16)
+          expect(cell.label).not.toBe('none')
+          expect(cell.label).not.toBe('""')
+        }
+        const pagination = page.locator('.business-pagination:visible').first()
+        await expect(pagination).toBeInViewport({ ratio: 1 })
+        const prev = (await pagination.locator('.btn-prev').boundingBox())!
+        const next = (await pagination.locator('.btn-next').boundingBox())!
+        expect(Math.abs(prev.y - next.y)).toBeLessThan(1)
+        const dock = (await page.locator('.demo-statusbar').boundingBox())!
+        const pager = (await pagination.boundingBox())!
+        expect(pager.y + pager.height).toBeLessThan(dock.y)
+        expect(dock.height).toBeLessThan(width <= 520 ? 60 : 100)
+        await page.getByRole('button', { name: '搜索与筛选', exact: false }).first().click()
+        await expect(page.getByRole('button', { name: '查询', exact: true }).first()).toBeVisible()
+        await page.getByRole('button', { name: '搜索与筛选', exact: false }).first().click()
+        if (width === 390 && ['/inbound/orders', '/inventory', '/system/users'].includes(path!)) {
+          await page.screenshot({ path: testInfo.outputPath(`${path!.replaceAll('/', '-')}-${theme}.png`) })
+        }
+      }
+    })
+  }
+
+  test(`${theme}: phone selection, paging, detail and receiving reuse the existing controls`, async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    await mockBusiness(page, theme, false, true)
+    await page.route('**/api/v1/inbound/orders?*', route => route.fulfill({ json: { code: 0, msg: 'ok', data: {
+      list: Array.from({ length: 10 }, (_, i) => ({ ...order, id: String(i + 1) })), total: 35,
+    } } }))
+    await page.goto('/inbound/orders')
+    await page.locator('.el-table__header-wrapper .el-checkbox').click()
+    await expect(page.getByRole('button', { name: '批量操作', exact: true })).toBeEnabled()
+    await expect(page.locator('.selected-hint')).toContainText('10')
+    await page.getByRole('button', { name: '清除选择', exact: true }).click()
+    await expect(page.locator('.selected-hint')).toHaveClass(/is-hidden/)
+    const request = page.waitForRequest(req => new URL(req.url()).pathname.endsWith('/inbound/orders') && new URL(req.url()).searchParams.get('page') === '2')
+    await page.locator('.business-pagination .btn-next').click()
+    await request
+    const details = page.locator('.el-table__body-wrapper tbody tr').first().getByRole('button', { name: '详情', exact: true })
+    await details.scrollIntoViewIfNeeded()
+    await details.click()
+    await expect(page.locator('.document-id')).toHaveText(longNo)
+    await page.locator('.detail-actions').getByRole('button', { name: '收货', exact: true }).click()
+    const dialog = page.getByRole('dialog', { name: '收货', exact: true })
+    await expect(dialog.locator('.el-dialog__footer')).toBeInViewport({ ratio: 1 })
+    const receive = dialog.getByRole('button', { name: '收货', exact: true })
+    await receive.scrollIntoViewIfNeeded()
+    // Browser scrolling can leave a fractional CSS pixel at the scroll boundary.
+    await expect(receive).toBeInViewport({ ratio: 0.98 })
+    await receive.click({ trial: true })
+    expect(await dialog.locator('.el-table .el-scrollbar__wrap').evaluate(el => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1)
+    await dialog.getByRole('button', { name: '关闭', exact: true }).click()
+    await expect(dialog).not.toBeVisible()
+  })
+
+  test(`${theme}: phone create forms and date filters stay within the viewport`, async ({ page }) => {
+    await mockBusiness(page, theme)
+    for (const width of [320, 390]) {
+      await page.setViewportSize({ width, height: 740 })
+      for (const [path, title] of [
+        ['/basic/warehouses', '新增仓库'], ['/basic/skus', '新增货品'], ['/basic/locations', '批量生成库位'],
+        ['/system/users', '新增用户'], ['/system/roles', '新增角色'], ['/stocktake/orders', '新建盘点单'],
+        ['/inbound/orders', '新建入库单'], ['/outbound/orders', '新建出库单'],
+      ]) {
+        await page.goto(path!)
+        await page.getByRole('button', { name: title!, exact: true }).click()
+        const dialog = page.getByRole('dialog', { name: title!, exact: true })
+        await expect(dialog.locator('.el-dialog__footer')).toBeInViewport({ ratio: 1 })
+        expect(await dialog.evaluate(el => el.scrollWidth - el.clientWidth), title).toBeLessThanOrEqual(1)
+        expect(await dialog.locator('.el-dialog__body').evaluate(el => el.scrollWidth - el.clientWidth), title).toBeLessThanOrEqual(1)
+        await dialog.getByRole('button', { name: '取消', exact: true }).click()
+      }
+    }
+    await page.goto('/inbound/orders')
+    await page.getByRole('button', { name: '搜索与筛选', exact: false }).click()
+    await page.getByPlaceholder('开始日期', { exact: true }).click()
+    const picker = page.locator('.order-date-picker:visible')
+    await expect(picker).toBeVisible()
+    expect(await picker.evaluate(el => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1)
+    const box = (await picker.boundingBox())!
+    expect(box.x).toBeGreaterThanOrEqual(0)
+    expect(box.x + box.width).toBeLessThanOrEqual(391)
+  })
+
   test(`${theme}: guide status strip leaves business actions clickable`, async ({ page }) => {
     await page.setViewportSize({ width: 1366, height: 650 })
     await mockBusiness(page, theme, true)

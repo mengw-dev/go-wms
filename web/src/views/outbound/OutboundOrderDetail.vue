@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { mobileTableCellStyle } from '@/utils/mobileTable'
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -179,7 +180,7 @@ function canPick(task: { task_type: string; status: string }): boolean {
 
       <div class="page-card section">
         <h3 class="section-title">单据明细</h3>
-        <el-table max-height="360" :data="data.details ?? []" border stripe>
+        <el-table class="mobile-record-table" :cell-style="mobileTableCellStyle" max-height="360" :data="data.details ?? []" border stripe>
           <el-table-column prop="sku_code" label="货品编码" min-width="130" />
           <el-table-column prop="sku_name" label="货品名称" min-width="160" show-overflow-tooltip />
           <el-table-column prop="expected_qty" label="需求数量" width="100" align="right" />
@@ -190,7 +191,7 @@ function canPick(task: { task_type: string; status: string }): boolean {
 
       <div class="page-card section">
         <h3 class="section-title">分配明细</h3>
-        <el-table max-height="360" :data="data.allocations ?? []" border stripe>
+        <el-table class="mobile-record-table" :cell-style="mobileTableCellStyle" max-height="360" :data="data.allocations ?? []" border stripe>
           <el-table-column prop="location_code" label="库位" min-width="120">
             <template #default="{ row }">{{ row.location_code || row.location_id }}</template>
           </el-table-column>
@@ -209,7 +210,7 @@ function canPick(task: { task_type: string; status: string }): boolean {
 
       <div class="page-card section" data-tour="outbound-tasks">
         <h3 class="section-title">关联任务</h3>
-        <el-table max-height="360" :data="data.tasks ?? []" border stripe>
+        <el-table class="mobile-record-table" :cell-style="mobileTableCellStyle" max-height="360" :data="data.tasks ?? []" border stripe>
           <el-table-column prop="task_no" label="任务号" min-width="160" />
           <el-table-column label="类型" width="90">
             <template #default="{ row }">{{ taskTypeText(row.task_type) }}</template>

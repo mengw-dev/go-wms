@@ -291,7 +291,7 @@ async function submitPassword() {
 .workspace { min-width: 0; }
 /* Reserve a footer lane so the default floating dock never covers pagination. */
 .workspace--demo-dock { padding-bottom: 64px; }
-@media (max-width: 520px) { .workspace--demo-dock { padding-bottom: 96px; } }
+@media (max-width: 520px) { .workspace--demo-dock { padding-bottom: max(72px, calc(60px + env(safe-area-inset-bottom))); } }
 @media (min-width: 981px) and (min-height: 560px) { .main:has(.activity-page, .engineering-page) { overflow: hidden; } }
 @media (min-width: 981px) and (min-height: 620px) { .main--dashboard { overflow: hidden; } }
 .main--demo-home { padding-bottom: 12px; }

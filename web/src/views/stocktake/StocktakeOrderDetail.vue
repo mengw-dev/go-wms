@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { mobileTableCellStyle } from '@/utils/mobileTable'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -238,7 +239,7 @@ async function onCancel() {
           盘点明细
           <el-tag v-if="isDraft()" type="warning" size="small" class="draft-tip">草稿状态可直接录入实盘数</el-tag>
         </h3>
-        <el-table max-height="360" :data="data.details ?? []" border stripe>
+        <el-table class="mobile-record-table" :cell-style="mobileTableCellStyle" max-height="360" :data="data.details ?? []" border stripe>
           <el-table-column label="库位" min-width="120">
             <template #default="{ row }">{{ row.location_code || '-' }}</template>
           </el-table-column>
