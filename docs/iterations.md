@@ -2,7 +2,11 @@
 
 本文档记录项目在持续审查中的修复进展与后续计划，分两部分：已经完成的修复，以及待完成的迭代事项。当前能力与边界以 [需求与已知边界](requirements.md)、[API 文档](api.md) 与实际代码为准。
 
-> 更新日期：2026-10-19。工程规范统一见 [Go 约定](go-style.md)，本文件记录实施顺序与验收条件；未完成事项以各项状态标注为准。
+> 更新日期：2026-10-20。工程规范统一见 [Go 约定](go-style.md)，本文件记录实施顺序与验收条件；未完成事项以各项状态标注为准。
+
+## 2026-10-20 演示数据与流程：D15 / D17 / D18 / D19 已修复
+
+演示种子改为有明确来源的期初库存，停止伪造完成态业务主单，历史样本在列表/详情标记来源。可选 JSON 不再依赖 ContentLength 判断非法输入；旧运行器完整流程只调用后端 full 一次，删除无调用方的拼接工具。分步运行器先保存检查点和操作意图，再发送真实业务请求；数量操作原 key 回放，其他写入未知结果只读核对，刷新恢复暂停，关闭/销毁/身份切换停止后续请求。验证记录和恢复边界见 [开发与验证](development.md)、[演示说明](demo.md)。剩余尚未整体关闭的 D 项为 15 项（含部分完成项）。
 
 ## 2026-10-18 幂等专项：已完成
 
@@ -190,7 +194,7 @@ F7/F9/F12/F13/F14/F15/F16/F20/F21/F22 十项登记 P2 已完成，覆盖认证�
 - `demo` 作为外挂编排层处理，不补 `repository` / `dto` / `api`。`demo` 可以编排业务 `service`、可以有自己的响应结构；业务模块不能依赖 `demo`，`demo` 也不作为领域分层的范例。
 - `OrderTaskResp` 暂不合并：两者部分字段相似，outbound 另有 `claimed_by` / `lease_expire_at`，契约已经有差异。确认稳定的公共任务协议后才评估复用，不新建 `common/dto`、`common/response` 这类包。
 - `batchOper` 在两处重复，暂留，等出现第三个真实调用方再抽。
-- 前端 demo 相关文件移入 `src/demo/`：`utils/events.ts` 中的 demo 事件、`utils/demoEvidence.ts`、`utils/demoOperations.ts`、`utils/demoScenario.ts`，以及 `components/DemoConsole.vue` → `components/demo/`。
+- 前端 Demo 工具目录归属后续渐进整理：`utils/events.ts` 中的 Demo 事件、`utils/demoEvidence.ts`、`utils/demoOperations.ts`、`utils/stagedDemoState.ts` 和 `components/DemoConsole.vue`。原无调用方的 `utils/demoScenario.ts` 已随 D18 删除，不再登记迁移它。
 - 命名统一只从新增和改动的文件开始，不做全量重命名。
 
 ## 三、工程约定与能力边界

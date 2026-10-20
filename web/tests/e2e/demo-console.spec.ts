@@ -201,6 +201,77 @@ test('start demo supports staged real execution', async ({ page }) => {
   await expect(stagedDialog).toBeVisible()
 })
 
+test('staged demo recovers committed create, receive, putaway and pick after response loss and refresh', async ({ page }) => {
+  await loginDemo(page)
+  await page.getByRole('button', { name: '开始自动演示', exact: true }).click()
+  await page.getByRole('dialog', { name: '选择自动演示方式' }).getByRole('button', { name: /分步执行/ }).click()
+  const runner = page.getByRole('dialog', { name: '分步执行演示' })
+  let writes = 0
+  page.on('request', (request) => { if (request.method() === 'POST' && /\/api\/v1\/(inbound|outbound)\//.test(request.url())) writes++ })
+
+  async function next(index: number) {
+    await runner.getByRole('button', { name: '执行下一步', exact: true }).click()
+    await expect(runner.locator('.executed-item')).toHaveCount(index)
+  }
+  async function loseAndRestore(pattern: string, index: number, keyed: boolean) {
+    let originalKey = '', originalBody = '', path = ''
+    let committed!: () => void
+    const done = new Promise<void>((resolve) => { committed = resolve })
+    await page.route(pattern, async (route) => {
+      if (route.request().method() !== 'POST') { await route.continue(); return }
+      path = new URL(route.request().url()).pathname
+      originalKey = route.request().headers()['idempotency-key'] || ''
+      originalBody = route.request().postData() || ''
+      const response = await route.fetch()
+      expect(response.ok()).toBeTruthy()
+      expect((await response.json()).code).toBe(0)
+      await route.abort('failed'); committed()
+    }, { times: 1 })
+    await runner.getByRole('button', { name: '执行下一步', exact: true }).click()
+    await done
+    await expect(runner.locator('.el-alert--error')).toBeVisible()
+    await page.reload()
+    await page.getByRole('button', { name: '演示控制', exact: true }).click()
+    await page.getByRole('dialog', { name: '演示控制' }).getByRole('button', { name: '继续分步演示', exact: true }).click()
+    await expect(runner.getByText(/演示已暂停/)).toBeVisible()
+    await expect(runner.locator('.executed-item')).toHaveCount(index - 1)
+    const before = writes
+    if (keyed) {
+      expect(originalKey).not.toBe('')
+      const replayPromise = page.waitForResponse((response) => new URL(response.url()).pathname === path && response.request().method() === 'POST')
+      await next(index)
+      const replay = await replayPromise
+      expect(replay.request().headers()['idempotency-key']).toBe(originalKey)
+      expect(replay.request().postData()).toBe(originalBody)
+      expect((await replay.json()).code).toBe(0)
+    } else {
+      await next(index)
+      expect(writes).toBe(before)
+    }
+  }
+
+  await loseAndRestore('**/api/v1/inbound/orders', 1, false)
+  const inboundNo = (await runner.locator('.stage-facts dd').first().textContent())!.trim()
+  await next(2); await next(3)
+  await loseAndRestore('**/api/v1/inbound/orders/*/receive', 4, true)
+  await loseAndRestore('**/api/v1/inbound/tasks/*/putaway', 5, true)
+  await next(6); await next(7)
+  const outboundNo = (await runner.locator('.stage-facts dd').first().textContent())!.trim()
+  await next(8); await next(9)
+  await loseAndRestore('**/api/v1/outbound/tasks/*/pick', 10, true)
+  await expect(runner.getByText('全部流程已完成', { exact: true })).toBeVisible()
+  const receipts = await requestDemoJson<PageData<{ id: string; order_no: string }>>(page, 'get', '/inbound/orders?page=1&page_size=100')
+  expect(receipts.list.filter((row) => row.order_no === inboundNo)).toHaveLength(1)
+  const receipt = await requestDemoJson<{ order: { received_qty: number; status: string }; tasks: TaskRow[] }>(page, 'get', `/inbound/orders/${receipts.list.find((row) => row.order_no === inboundNo)!.id}`)
+  expect(receipt.order.received_qty).toBe(10); expect(receipt.order.status).toBe('COMPLETED')
+  expect(receipt.tasks.filter((task) => task.task_type === 'PUTAWAY')).toHaveLength(1)
+  const shipments = await requestDemoJson<PageData<OutboundOrderRow>>(page, 'get', '/outbound/orders?page=1&page_size=100')
+  const shipment = await requestDemoJson<{ order: { picked_qty: number; status: string } }>(page, 'get', `/outbound/orders/${shipments.list.find((row) => row.order_no === outboundNo)!.id}`)
+  expect(shipment.order.picked_qty).toBe(20); expect(shipment.order.status).toBe('SHIPPED')
+  const trans = await requestDemoJson<PageData<{ quantity_change: number; trans_type: string }>>(page, 'get', `/inventory/trans?order_no=${outboundNo}&page_size=100`)
+  expect(trans.list.filter((row) => row.trans_type === 'SHIP').reduce((sum, row) => sum + row.quantity_change, 0)).toBe(-20)
+})
+
 test('one-click demo executes all real stages without replay controls', async ({ page }) => {
   await loginDemo(page)
   const inboundCreated = page.waitForResponse((response) =>

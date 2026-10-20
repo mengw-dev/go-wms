@@ -150,8 +150,7 @@ func (h *Handler) runConcurrent(c *gin.Context) {
 		Concurrency int `json:"concurrency" binding:"omitempty,min=1,max=100"`
 		QtyPerOrder int `json:"qty_per_order" binding:"omitempty,min=1,max=10"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil && c.Request.ContentLength > 0 {
-		response.Fail(c, errcode.ParamError)
+	if !bindOptionalJSON(c, &req) {
 		return
 	}
 	result, err := h.svc.RunConcurrentAllocation(c.Request.Context(), demoSessionID(c), req.Concurrency, req.QtyPerOrder)
@@ -167,8 +166,7 @@ func (h *Handler) runConcurrentShortage(c *gin.Context) {
 		Concurrency int `json:"concurrency" binding:"omitempty,min=2,max=100"`
 		QtyPerOrder int `json:"qty_per_order" binding:"omitempty,min=1,max=10"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil && c.Request.ContentLength > 0 {
-		response.Fail(c, errcode.ParamError)
+	if !bindOptionalJSON(c, &req) {
 		return
 	}
 	result, err := h.svc.RunConcurrentShortageValidation(c.Request.Context(), demoSessionID(c), req.Concurrency, req.QtyPerOrder)
@@ -184,8 +182,7 @@ func (h *Handler) runConcurrentPicking(c *gin.Context) {
 		Workers    int `json:"workers" binding:"omitempty,min=1,max=100"`
 		Contenders int `json:"contenders" binding:"omitempty,min=0,max=50"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil && c.Request.ContentLength > 0 {
-		response.Fail(c, errcode.ParamError)
+	if !bindOptionalJSON(c, &req) {
 		return
 	}
 	result, err := h.svc.RunConcurrentPicking(c.Request.Context(), demoSessionID(c), req.Workers, req.Contenders)
@@ -200,8 +197,7 @@ func (h *Handler) runRestock(c *gin.Context) {
 	var req struct {
 		Qty int `json:"qty" binding:"omitempty,min=1,max=2000"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil && c.Request.ContentLength > 0 {
-		response.Fail(c, errcode.ParamError)
+	if !bindOptionalJSON(c, &req) {
 		return
 	}
 	result, err := h.svc.RestockDemo(c.Request.Context(), demoSessionID(c), req.Qty)
@@ -236,8 +232,7 @@ func (h *Handler) activity(c *gin.Context) {
 
 func (h *Handler) runWithOptions(c *gin.Context, scenario string) {
 	var req service.ScenarioOptions
-	if err := c.ShouldBindJSON(&req); err != nil && c.Request.ContentLength > 0 {
-		response.Fail(c, errcode.ParamError)
+	if !bindOptionalJSON(c, &req) {
 		return
 	}
 	result, err := h.svc.RunScenario(c.Request.Context(), demoSessionID(c), scenario, req)
@@ -249,6 +244,10 @@ func (h *Handler) runWithOptions(c *gin.Context, scenario string) {
 }
 
 func (h *Handler) runScenario(c *gin.Context, scenario string) {
+	var req struct{}
+	if !bindOptionalJSON(c, &req) {
+		return
+	}
 	result, err := h.svc.RunScenario(c.Request.Context(), demoSessionID(c), scenario)
 	if err != nil {
 		writeScenarioFailure(c, result, err)

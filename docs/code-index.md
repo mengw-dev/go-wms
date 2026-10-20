@@ -98,11 +98,11 @@
 
 | 位置 | 职责 | 对应测试 |
 | --- | --- | --- |
-| `internal/modules/demo` | 演示账号会话与租约、场景编排、并发实验、活动证据、性能数据 | `handler/handler_test.go`、`service/{session,tenant_lock,scenario,activity,identity,experiment_allocation}_test.go` |
+| `internal/modules/demo` | 演示账号会话与租约、场景编排、并发实验、活动证据、性能数据 | `handler/{handler,json}_test.go`、`service/{session,tenant_lock,scenario,activity,identity,experiment_allocation}_test.go`；种子 `internal/bootstrap/{seed_demo,reset}_test.go` |
 | `web/src/guide/**` | 引导定义、路由匹配、持久化、与业务事件的桥接 | `routeMatcher.spec.ts`、`businessBridge.spec.ts` |
 | `web/src/components/demo/**` | 演示/引导组件（`ManualGuide`、`DemoRunViewer`、`DemoTour`、`StagedDemoRunner`） | — |
 | `web/src/views/demo/**` | 演示页面（`index`、`Activity`、`Performance`） | E2E `web/tests/e2e/demo-console.spec.ts` |
-| `web/src/composables/demo/**` | 演示/引导组合式函数（会话、运行器、引导目标等） | — |
+| `web/src/composables/demo/**` | 演示/引导组合式函数（会话、运行器、引导目标等） | `composables/demo/{useDemoRunner,useStagedDemoRunner}.spec.ts`、`api/demoExecution.spec.ts`、E2E `demo-console.spec.ts` |
 
 ## 四、前端（web/src）
 
@@ -116,7 +116,7 @@
 | `layouts/` | 布局与导航（`Layout.vue`、`WmsNavigation.vue`） | — |
 | `composables/` | 组合式函数：`autoRefresh`（防重叠轮询）、`inbound/*`（列表/表单/导入轮询）、`outbound/usePdaPick`、`demo/*` | `autoRefresh.spec.ts`、`inbound/useInboundImport.spec.ts`、`outbound/usePdaPick.spec.ts` |
 | `events/` | 业务页面与 Guide/Demo 的唯一契约（`businessEvents.ts`） | `businessEvents.spec.ts` |
-| `utils/` | 前端工具（事件、演示证据/操作/场景、options 等） | `utils/{demoOperations,demoScenario,demoEvidence,index}.spec.ts` |
+| `utils/` | 前端工具（事件、演示证据/操作、分步检查点、options 等） | `utils/{demoOperations,demoEvidence,index}.spec.ts`、`composables/demo/useStagedDemoRunner.spec.ts` |
 | `views/` | 业务页面（`login`、`dashboard`、`basic`、`system`、`task`、`ai`、`inventory`、`inbound`、`outbound`、`stocktake`、`demo`） | E2E 见 `web/tests/e2e/**` |
 | `components/` | 组件（`DemoConsole`、`demo/*`、`PickDialog`、`PutawayDialog`、`ReceiveDialog`、`common/PageHeader`） | — |
 | `directives/` | `permission` 指令（按权限控制显示） | — |

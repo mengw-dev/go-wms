@@ -9,6 +9,7 @@ import StagedDemoRunner from '@/components/demo/StagedDemoRunner.vue'
 import { useDemoRunner } from '@/composables/demo/useDemoRunner'
 import { useDemoSession } from '@/composables/demo/useDemoSession'
 import { useAuthStore } from '@/stores/auth'
+import { clearStagedDemo, executionSteps, loadStagedDemo } from '@/utils/stagedDemoState'
 import { GUIDE_SCENARIO_LABELS, useGuideStore } from '@/stores/guide'
 import {
   emitDataChanged,
@@ -108,6 +109,7 @@ function onOpenDemoConsole() {
 }
 
 function onOpenStagedDemo(event: globalThis.Event) {
+  if (busy.value) return
   const detail = (event as globalThis.CustomEvent<{ mode?: 'auto' | 'step'; scope?: 'full' | 'inbound' | 'outbound' }>).detail
   if (guide.active || guide.completed) guide.cancel()
   visible.value = false
@@ -126,9 +128,24 @@ function onStagedState(state: { started: boolean; active: boolean; completed: bo
 watch(
   () => guide.active,
   (active) => {
-    if (active) clearStagedRun()
+    if (active) {
+      stagedRunnerRef.value?.pause()
+      stagedDialogVisible.value = false
+    }
   },
 )
+
+// 弹窗为懒加载；刷新后先恢复控制台入口，打开时运行器再读取完整检查点。
+watch([() => auth.user?.user_id, () => auth.demoSessionId, () => auth.isDemo], () => {
+  stagedRunnerRef.value?.pause()
+  stagedDialogVisible.value = false
+  const saved = auth.isDemo && auth.demoSessionId
+    ? loadStagedDemo({ userId: String(auth.user?.user_id || ''), sessionId: auth.demoSessionId })
+    : { snapshot: null, error: '' }
+  const value = saved.snapshot
+  onStagedState({ started: !!value || !!saved.error, active: !!value && !value.completedAt,
+    completed: !!value?.completedAt, progress: value ? Math.round(value.index / executionSteps(value.scope).length * 100) : 0, running: false })
+}, { immediate: true, flush: 'sync' })
 
 function openDemoControl() {
   visible.value = true
@@ -153,7 +170,10 @@ function clearStagedRun(): void {
 }
 
 function startScenario(scenario: DemoConsoleScenario) {
-  if (busy.value) return
+  if (busy.value || stagedRunning.value || stagedStarted.value) {
+    ElMessage.warning('请先暂停并重置当前分步演示，再运行其他自动场景。')
+    return
+  }
   void runScenario(scenario)
 }
 
@@ -164,6 +184,7 @@ function onRunDemoScenario(event: unknown) {
 }
 
 async function navigateTo(path: string) {
+  stagedRunnerRef.value?.pause()
   resultDialogVisible.value = false
   stagedDialogVisible.value = false
   visible.value = false
@@ -186,8 +207,17 @@ async function resetData() {
     return
   }
   resetting.value = true
+  stagedRunnerRef.value?.pause()
+  const resetIdentity = { userId: String(auth.user?.user_id || ''), sessionId: auth.demoSessionId }
   try {
     await resetDemoData()
+    if (String(auth.user?.user_id || '') !== resetIdentity.userId || auth.demoSessionId !== resetIdentity.sessionId) return
+    try {
+      clearStagedDemo(resetIdentity)
+    } catch {
+      ElMessage.error('服务端已重置，但浏览器进度未能清除，请清理当前标签页存储后重新进入演示。')
+      return
+    }
     clearResult()
     guide.cancel()
     clearStagedRun()
@@ -366,6 +396,7 @@ onBeforeUnmount(() => {
     append-to-body
     :close-on-click-modal="true"
     aria-label="分步执行演示"
+    @close="stagedRunnerRef?.pause()"
   >
     <StagedDemoRunner
       :key="stagedRunnerKey"

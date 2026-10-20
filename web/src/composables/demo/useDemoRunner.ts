@@ -11,7 +11,6 @@ import { runDemoScenario as requestDemoScenario } from '@/api/demo'
 import { ApiError } from '@/api/request'
 import type { DemoScenarioResult } from '@/api/types'
 import { rememberDemoEvidence } from '@/utils/demoEvidence'
-import { mergeDemoScenarioResults } from '@/utils/demoScenario'
 import type { DemoConsoleScenario } from '@/utils/events'
 
 export interface UseDemoRunnerOptions {
@@ -21,20 +20,6 @@ export interface UseDemoRunnerOptions {
   onBeforeRun?: () => void
   /** 一次执行结束后触发（成功或失败），用于刷新页面数据 */
   onSettled?: () => void
-}
-
-/** 完整闭环由入出库两次真实调用拼成，第二次失败时保留第一次的结果。 */
-async function runFullScenario(): Promise<DemoScenarioResult> {
-  const inbound = await requestDemoScenario('inbound')
-  try {
-    const outbound = await requestDemoScenario('outbound')
-    return mergeDemoScenarioResults([inbound, outbound])
-  } catch (error) {
-    if (error instanceof ApiError && isDemoScenarioResult(error.data)) {
-      return mergeDemoScenarioResults([inbound, error.data])
-    }
-    throw error
-  }
 }
 
 function isDemoScenarioResult(value: unknown): value is DemoScenarioResult {
@@ -75,7 +60,8 @@ export function useDemoRunner(options: UseDemoRunnerOptions = {}) {
     resultDialogVisible.value = false
     const startedAt = new Date().toISOString()
     try {
-      const demoResult = scenario === 'full' ? await runFullScenario() : await requestDemoScenario(scenario)
+      // 完整场景由后端一次编排，避免两个独立场景之间的重置清掉前一段证据。
+      const demoResult = await requestDemoScenario(scenario)
       applyResult(demoResult, startedAt)
       if (demoResult.status !== 'failed') {
         ElMessage.success(demoResult.summary)

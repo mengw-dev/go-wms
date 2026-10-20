@@ -168,6 +168,7 @@ async function onPutawaySuccess() {
           <el-button v-if="hasPendingPutaway" v-permission="'wms:inbound:putaway'" type="warning" plain @click="openPutaway()">恢复待确认上架</el-button>
         </div>
 
+        <el-alert v-if="data.order.created_by === 'system-seed'" title="历史演示样本，仅供展示，不代表完整业务链。" type="info" :closable="false" />
         <el-descriptions :column="3" border>
           <el-descriptions-item label="入库单号">{{ data.order.order_no }}</el-descriptions-item>
           <el-descriptions-item label="仓库">{{ warehouseMap[data.order.warehouse_id] || data.order.warehouse_id }}</el-descriptions-item>

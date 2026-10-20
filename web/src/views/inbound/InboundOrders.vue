@@ -169,6 +169,7 @@ useAutoRefresh(() => load(true), 0, () => selectedRows.value.length === 0)
       <el-table-column prop="order_no" label="入库单号" min-width="170">
         <template #default="{ row }">
           <el-link type="primary" @click="goDetail(row)">{{ row.order_no }}</el-link>
+            <el-tag v-if="row.created_by === 'system-seed'" type="info" size="small">历史演示样本</el-tag>
         </template>
       </el-table-column>
       <el-table-column label="仓库" min-width="150">

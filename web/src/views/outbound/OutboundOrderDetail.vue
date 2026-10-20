@@ -158,6 +158,7 @@ function canPick(task: { task_type: string; status: string }): boolean {
           <el-button v-if="hasPendingPick" v-permission="'wms:outbound:pick'" type="warning" plain @click="openPick()">恢复待确认拣货</el-button>
         </div>
 
+        <el-alert v-if="data.order.created_by === 'system-seed'" title="历史演示样本，仅供展示，不代表完整业务链。" type="info" :closable="false" />
         <el-descriptions :column="3" border>
           <el-descriptions-item label="出库单号">{{ data.order.order_no }}</el-descriptions-item>
           <el-descriptions-item label="业务订单号">{{ data.order.biz_order_no }}</el-descriptions-item>

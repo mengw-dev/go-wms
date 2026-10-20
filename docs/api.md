@@ -320,6 +320,10 @@ API Key 在服务端配置中绑定 `WMS_INTEGRATION_TENANT_ID`，请求体、�
 
 演示接口都需要 `wms:demo` 权限；除 `session/acquire` 外，还必须携带请求头 `X-Demo-Session`。
 
+`/demo/run/*` 的可选请求体只接受空输入（含空白）或单个 JSON 对象。非法、截断、数组、标量、`null`、拼接/尾随 JSON 及字段类型/绑定校验失败均返回参数错误（HTTP 400），不执行默认场景；不依赖 `Content-Length`。空体与 `{}` 仍沿用服务默认值与数量上限。完整场景只通过一次 `/demo/run/full` 编排，避免分段场景各自重置数据。
+
+首页分步运行器调用真实业务接口，收货、上架、后台拣货均携带 `Idempotency-Key`；检查点、响应丢失核对与暂停边界见 [演示说明](demo.md#初始数据与分步恢复)。初始化流水新增 `OPENING` 类型（期初库存，`order_no=SEED-*`），不是收货或盘点单据。
+
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | POST | `/demo/session/acquire` | 获取单实例演示会话；已有会话时返回 HTTP 423 |

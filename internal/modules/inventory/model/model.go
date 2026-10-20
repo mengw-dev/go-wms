@@ -30,6 +30,7 @@ func (Inventory) TableName() string { return "wms_inventory" }
 type TransType string
 
 const (
+	TransOpening  TransType = "OPENING"  // 演示期初库存，不代表收货或盘点业务
 	TransReceive  TransType = "RECEIVE"  // 上架入库 +
 	TransAllocate TransType = "ALLOCATE" // 分配锁定：available- allocated+
 	TransShip     TransType = "SHIP"     // 发货扣减：stock- allocated-

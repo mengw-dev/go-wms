@@ -47,6 +47,7 @@ const STATUS_TEXT_MAP: Record<string, string> = {
   ALLOCATED: '已分配',
   PICKED: '已拣货',
   RECEIVE: '入库',
+  OPENING: '期初库存',
   ALLOCATE: '分配',
   SHIP: '发货',
   RELEASE: '释放',
@@ -138,4 +139,4 @@ export const TASK_STATUS_OPTIONS = ['CREATED', 'IN_PROGRESS', 'COMPLETED', 'CANC
 export const TASK_TYPE_OPTIONS = ['RECEIVE', 'PUTAWAY', 'PICK']
 
 /** 流水类型集合 */
-export const TRANS_TYPE_OPTIONS = ['RECEIVE', 'ALLOCATE', 'SHIP', 'RELEASE', 'ADJUST']
+export const TRANS_TYPE_OPTIONS = ['OPENING', 'RECEIVE', 'ALLOCATE', 'SHIP', 'RELEASE', 'ADJUST']

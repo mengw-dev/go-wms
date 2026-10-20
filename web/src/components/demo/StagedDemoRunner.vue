@@ -14,6 +14,7 @@ const emit = defineEmits<{
 
 const {
   mode,
+  paused,
   currentIndex,
   results,
   running,
@@ -27,25 +28,29 @@ const {
   groupStates,
   start,
   executeNext,
+  resume,
+  pause,
   validateCurrentPage,
 } = useStagedDemoRunner({
   onStateChange: (state) => emit('state-change', state),
 })
 
 async function openCurrentPage(): Promise<void> {
+  pause()
   if (await validateCurrentPage()) {
     emit('navigate', lastResult.value?.route || '/demo')
   }
 }
 
 function openLogs(): void {
+  pause()
   const params = new globalThis.URLSearchParams({ tab: 'operations', source: 'staged', scenario: 'full' })
   if (runStartedAt.value) params.set('started_at', runStartedAt.value)
   if (runCompletedAt.value) params.set('completed_at', runCompletedAt.value)
   emit('navigate', '/demo/activity?' + params.toString())
 }
 
-defineExpose({ start })
+defineExpose({ start, pause })
 </script>
 
 <template>
@@ -79,7 +84,14 @@ defineExpose({ start })
           <p>{{ currentStep?.description }}</p>
           <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon />
           <el-button v-if="mode === 'step'" type="primary" :icon="VideoPlay" :loading="running" @click="executeNext">执行下一步</el-button>
-          <el-tag v-else type="primary" effect="plain">自动执行中，每步间隔约 0.9 秒</el-tag>
+          <template v-else>
+            <el-button v-if="paused || error" type="primary" :loading="running" @click="resume">继续自动执行</el-button>
+            <template v-else>
+              <el-tag type="primary" effect="plain">自动执行中，每步间隔约 0.9 秒</el-tag>
+              <el-button size="small" @click="pause">暂停演示</el-button>
+            </template>
+          </template>
+          <p v-if="paused">演示已暂停，进度已保存在当前标签页。继续时会先核对上次请求；已提交的操作不会因暂停而回滚。</p>
         </div>
         <el-result v-else icon="success" title="分步流程已完成" sub-title="所有步骤均调用真实业务接口完成。" />
 

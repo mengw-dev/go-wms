@@ -7,10 +7,7 @@ import (
 	"gorm.io/gorm"
 
 	"gowms/internal/modules/basic/model"
-	inboundmodel "gowms/internal/modules/inbound/model"
 	invmodel "gowms/internal/modules/inventory/model"
-	outboundmodel "gowms/internal/modules/outbound/model"
-	"gowms/internal/pkg/log"
 )
 
 // demoPlacement 描述一条演示库存：仓库序号-库位编码-SKU序号-批次-数量-入库时间。
@@ -23,7 +20,7 @@ type demoPlacement struct {
 	stockIn   time.Time
 }
 
-// seedDemoData 写入演示用基础资料与库存（仓库、库位、SKU、库存、入库流水、演示单据）。
+// seedDemoData 只写基础资料及明确标记来源的期初库存，不伪造已完成业务单据。
 // 仅当系统中尚不存在任何仓库时执行，避免覆盖使用者自行创建的业务数据。
 func seedDemoData(db *gorm.DB) error {
 	var warehouseCount int64
@@ -33,17 +30,6 @@ func seedDemoData(db *gorm.DB) error {
 	if warehouseCount > 0 {
 		return nil
 	}
-
-	// 幂等：已存在任何入库/出库单则跳过单据种入
-	var existingInbound int64
-	var existingOutbound int64
-	if err := db.Model(&inboundmodel.ReceiptOrder{}).Count(&existingInbound).Error; err != nil {
-		log.L().Warn("count existing inbound orders failed, skip demo order seeding", "err", err)
-	}
-	if err := db.Model(&outboundmodel.ShipmentOrder{}).Count(&existingOutbound).Error; err != nil {
-		log.L().Warn("count existing outbound orders failed, skip demo order seeding", "err", err)
-	}
-	seedDemoOrders := existingInbound == 0 && existingOutbound == 0
 
 	warehouses := []model.Warehouse{
 		{Code: "WH01", Name: "华东一号仓", Remark: "演示数据：上海中心仓", Status: 1},
@@ -125,10 +111,10 @@ func seedDemoData(db *gorm.DB) error {
 			}
 			occupied[locationID] = struct{}{}
 
-			orderNo := fmt.Sprintf("RK%s%06d", p.stockIn.Format("20060102"), i+1)
+			orderNo := fmt.Sprintf("SEED-%s-%06d", p.stockIn.Format("20060102"), i+1)
 			trans := invmodel.InventoryTrans{
 				InventoryID:     inventory.ID,
-				TransType:       invmodel.TransReceive,
+				TransType:       invmodel.TransOpening,
 				QuantityChange:  p.qty,
 				BeforeQuantity:  0,
 				AfterQuantity:   p.qty,
@@ -147,39 +133,7 @@ func seedDemoData(db *gorm.DB) error {
 		for id := range occupied {
 			occupiedIDs = append(occupiedIDs, id)
 		}
-		if err := tx.Model(&model.Location{}).Where("id IN ?", occupiedIDs).
-			Update("status", model.LocationStatusOccupied).Error; err != nil {
-			return err
-		}
-
-		// ---- 演示单据（仅在系统里完全没单据时种入） ----
-		if !seedDemoOrders {
-			return nil
-		}
-
-		inboundOrders := []inboundmodel.ReceiptOrder{
-			{
-				OrderNo: "RK20260901000001", WarehouseID: warehouses[0].ID,
-				Status: inboundmodel.OrderCompleted, Source: "MANUAL",
-				Remark: "演示数据：SKU000001 农夫山泉", ExpectedQty: 100, ReceivedQty: 100, CreatedBy: "system-seed",
-			},
-			{
-				OrderNo: "RK20260905000001", WarehouseID: warehouses[0].ID,
-				Status: inboundmodel.OrderCompleted, Source: "MANUAL",
-				Remark: "演示数据：SKU000002 可口可乐", ExpectedQty: 50, ReceivedQty: 50, CreatedBy: "system-seed",
-			},
-		}
-		for _, o := range inboundOrders {
-			if err := tx.Create(&o).Error; err != nil {
-				return err
-			}
-		}
-
-		outboundOrder := outboundmodel.ShipmentOrder{
-			OrderNo: "CK20260915000001", BizOrderNo: "CUST20260915001", WarehouseID: warehouses[0].ID,
-			Status: outboundmodel.OrderShipped, Remark: "演示数据：客户订单 CUST20260915001",
-			ExpectedQty: 30, AllocatedQty: 30, PickedQty: 30, CreatedBy: "system-seed",
-		}
-		return tx.Create(&outboundOrder).Error
+		return tx.Model(&model.Location{}).Where("id IN ?", occupiedIDs).
+			Update("status", model.LocationStatusOccupied).Error
 	})
 }

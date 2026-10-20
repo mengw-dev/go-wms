@@ -84,7 +84,7 @@ erDiagram
 | 字段 | 说明 |
 | --- | --- |
 | inventory_id | 关联库存行 |
-| trans_type | `RECEIVE / ALLOCATE / SHIP / RELEASE / ADJUST` |
+| trans_type | `OPENING / RECEIVE / ALLOCATE / SHIP / RELEASE / ADJUST` |
 | quantity_change / before_quantity / after_quantity | 存量三段 |
 | available_before / available_after | 可用两段（分配类型时与存量变化方向相反） |
 | order_no / task_no / operator | 追溯到单据与操作人 |
@@ -199,4 +199,4 @@ erDiagram
 
 正式 `migrate up` 在执行迁移前运行相同只读审计；历史数据不满足约束时保留数据及原版本，不自动修正数量。每个 ALTER 仍检查当时的数据；MySQL DDL 非跨表事务，发生其他 DDL 故障可能留下 dirty 状态和部分约束，处理流程见部署文档。`down` 仅删除本轮三个 CHECK，不改变业务数据和库存原有约束。
 
-新增演示出库种子同步设置分配量，避免新样本违反进度约束；旧演示行不自动回填。此变更没有补齐演示单据明细/任务/流水，D15 仍保留。
+2026-10-19 曾将演示出库种子分配量与已拣量对齐，避免新样本违反进度约束。2026-10-20 的 D15 修复进一步停止生成没有业务链的完成态主单，改为明确的 `OPENING` 期初库存流水及 `SEED-*` 来源；已有历史单据保留并在界面标注来源，不在启动时自动改账。`trans_type` 现有 VARCHAR(16) 可容纳新增类型，无需修改已发布迁移。
