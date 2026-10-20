@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 
-// UI fixtures only. All writes are rejected; real business flows remain in lifecycle E2E.
+// UI fixtures only. Business writes are rejected; real flows remain in lifecycle E2E.
 const date = '2026-10-20T09:30:00+08:00'
 const longNo = 'RK202610201234567890123456789012345678901234567890'
 const user = { user_id: '42', username: 'operator', nickname: '仓库管理员', roles: ['operator'], perms: ['*'] }
@@ -13,16 +13,23 @@ const location = { id: '1', warehouse_id: '1', code: 'A-01-01', zone: 'A', statu
 const role = { id: '2', name: '仓库操作员', perms: 'wms:inventory,wms:task', remark: '日常仓储作业', created_at: date }
 const inventory = { id: '1', warehouse_id: '1', location_id: '1', location_code: 'A-01-01', sku_id: '1', batch_no: 'B20261020', stock_quantity: 120, available_quantity: 90, allocated_quantity: 30, stock_in_time: date }
 
-async function mockBusiness(page: Page, theme: 'light' | 'dark') {
+async function mockBusiness(page: Page, theme: 'light' | 'dark', guided = false) {
   const state = { empty: false }
-  await page.addInitScript(({ user, theme }) => {
+  const profile = guided ? { ...user, perms: ['*', 'wms:demo'] } : user
+  await page.addInitScript(({ user, theme, guided }) => {
     localStorage.setItem('WMS_TOKEN', 'business-layout-token')
     localStorage.setItem('WMS_USER', JSON.stringify(user))
     localStorage.setItem('gowms_theme', theme)
-  }, { user, theme })
+    if (guided) {
+      sessionStorage.setItem('WMS_TOKEN', 'business-layout-token')
+      sessionStorage.setItem('WMS_USER', JSON.stringify(user))
+      sessionStorage.setItem('WMS_DEMO_SESSION', 'business-guide-session')
+      sessionStorage.setItem('wms-manual-guide-v1', JSON.stringify({ active: true, scenario: 'inbound', currentStep: 0, completed: false, startedAt: Date.now() }))
+    }
+  }, { user: profile, theme, guided })
   await page.route('**/api/v1/**', async route => {
-    expect(route.request().method()).toBe('GET')
     const path = new URL(route.request().url()).pathname.replace('/api/v1', '')
+    if (!path.startsWith('/demo/session/')) expect(route.request().method()).toBe('GET')
     const lists: Record<string, unknown[]> = {
       '/basic/warehouses': [warehouse], '/basic/skus': [sku], '/basic/locations': [location],
       '/system/users': [{ id: '2', username: 'warehouse01', nickname: '仓库操作员', status: 1, role_ids: ['2'], created_at: date }],
@@ -34,7 +41,9 @@ async function mockBusiness(page: Page, theme: 'light' | 'dark') {
       '/outbound/orders': Array.from({ length: 10 }, (_, i) => ({ ...order, id: String(i + 1), order_no: `CK20261020000${i + 1}` })),
     }
     let data: unknown
-    if (path === '/profile') data = user
+    if (path === '/profile') data = profile
+    else if (path.startsWith('/demo/session/')) data = { session_id: 'business-guide-session', expires_in: 300 }
+    else if (path === '/demo/activity') data = { operations: [], inbound_orders: [], outbound_orders: [], stocktake_orders: [], tasks: [], inventory_trans: [] }
     else if (path === '/system/roles/all') data = [role]
     else if (path === '/inbound/imports') data = [{ task_id: 'batch-001', status: 'COMPLETED', success_rows: 10, total_rows: 10, created_at: date }]
     else if (/\/(inbound|outbound|stocktake)\/orders\/1$/.test(path)) data = {
@@ -63,6 +72,23 @@ const lists = [
 ]
 
 for (const theme of ['light', 'dark'] as const) {
+  test(`${theme}: guide status strip leaves business actions clickable`, async ({ page }) => {
+    await page.setViewportSize({ width: 1366, height: 650 })
+    await mockBusiness(page, theme, true)
+    await page.goto('/inbound/orders')
+    const strip = page.getByRole('region', { name: '手动演示状态' })
+    await expect(strip).toBeVisible()
+    await page.getByRole('button', { name: '业务操作记录', exact: true }).click()
+    const records = page.getByRole('dialog', { name: '本次业务操作记录' })
+    await records.getByRole('button', { name: '关闭此对话框' }).click()
+    await expect(page.locator('.guide-bubble')).toBeVisible()
+    const create = page.locator('[data-tour="inbound-create"]')
+    const stripBox = (await strip.boundingBox())!
+    expect((await create.boundingBox())!.y).toBeGreaterThan(stripBox.y + stripBox.height)
+    await create.click()
+    await expect(page.getByRole('dialog', { name: '新建入库单', exact: true })).toBeVisible()
+  })
+
   test(`${theme}: all business lists preserve filters, data, empty states and table scrolling`, async ({ page }, testInfo) => {
     const errors: string[] = []
     page.on('pageerror', error => errors.push(error.message))

@@ -6,6 +6,11 @@
 }
 
 .layout.layout--business .main { padding: 22px 28px; }
+/* Keep the existing guide strip's reserved space when business padding becomes compact. */
+body.manual-guide-active .layout.layout--business .main {
+  padding-top: 76px;
+  --business-table-height: max(240px, calc(100dvh - 454px));
+}
 .layout.layout--business .page-stage { max-width: 1680px; }
 .layout.layout--business .header { height: 52px; }
 .layout.layout--business .logo { height: 52px; }
