@@ -21,7 +21,9 @@
 
 同分支同事件的新提交取消过时 CI，部署仍保持不取消的串行锁。没有在路径过滤处跳过整个工作流，因此文档提交仍会产生明确的最终检查结果。
 
-本地验证：`node --test scripts/ci/policy.test.mjs`（范围分流、失败/取消/误跳过门禁、部署条件及真实 Git 多提交/重命名/缺失基线），`actionlint` 检查 CI/CD YAML。后续云端验收记录补充在本节。
+本地验证：`node --test scripts/ci/policy.test.mjs`（4 组策略与真实 Git CLI 回归，覆盖范围分流、失败/取消/误跳过门禁、多提交、重命名与缺失基线），`actionlint v1.7.12` 检查 CI/CD YAML 通过。实际前端提交 `50bdb47` 被识别为 backend=false / frontend=true，历史文档提交 `240738a` 被识别为两者 false。
+
+中文提交 `b74457f` 的[完整 CI](https://github.com/mengw-dev/go-wms/actions/runs/39422953309) 成功：Change scope 自测、前后端检查、容器、53 项 E2E 与额外 5 次零重试演示均通过，本轮没有 flaky；`CI result` 正确汇总通过。工作流与脚本本身改动按共享范围完整检查，后续前端或文档提交按分流执行。[自动部署](https://github.com/mengw-dev/go-wms/actions/runs/39424328407) 成功，新增发布资格门禁正确放行业务提交；服务器核对前后端版本 `b74457fbce5af572e29a3669d5f4d709ebd7fa43` 与数据库就绪均通过。本段验收记录仅修改文档，不带 `[skip ci]`，用于云端核对四项重任务和生产部署按规则跳过。
 
 ## 2026-10-20 测试装配与隔离 D14 / D16
 
