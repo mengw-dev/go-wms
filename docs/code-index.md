@@ -29,7 +29,7 @@
 
 | 模块 | 目录 | 职责 | 对应测试 |
 | --- | --- | --- | --- |
-| 入库 inbound | `internal/modules/inbound` | 入库单生命周期、收货、上架、Excel 异步导入 | `service/{order,receiving,query,import,import_cleanup,response,putaway_location_race,import_completed_cleanup}_test.go`、`dto/dto_test.go`、`handler/handler_test.go`、`model/model_test.go` |
+| 入库 inbound | `internal/modules/inbound` | 入库单生命周期、收货、上架、Excel 异步导入 | `service/{order,receiving,query,import,import_security,import_cleanup,response,putaway_location_race,import_completed_cleanup}_test.go`、`dto/dto_test.go`、`handler/handler_test.go`、`model/model_test.go` |
 | 出库 outbound | `internal/modules/outbound` | 出库单生命周期、审核 + FIFO 分配、拣货、发货、集成下单 | `service/{order,response}_test.go`、`model/model_test.go`、`handler/handler_test.go` |
 | 任务 task | `internal/modules/task` | 收货/上架/拣货任务的状态与进度 | `service/{service,response}_test.go` |
 | 库存 inventory | `internal/modules/inventory` | 库存汇总/明细、并发分配与扣减、调整、流水 | `service/{service,concurrency,response,availability}_test.go`、`repository/repository_test.go` |
