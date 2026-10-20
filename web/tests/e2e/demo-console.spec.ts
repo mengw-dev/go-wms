@@ -203,12 +203,21 @@ test('start demo supports staged real execution', async ({ page }) => {
 
 test('one-click demo executes all real stages without replay controls', async ({ page }) => {
   await loginDemo(page)
+  const inboundCreated = page.waitForResponse((response) =>
+    response.request().method() === 'POST' &&
+    new URL(response.url()).pathname === '/api/v1/inbound/orders',
+  )
   const runner = await startScenarioFromHome(page, 'full')
   await expect(runner.getByText('自动执行中，每步间隔约 0.9 秒', { exact: true })).toBeVisible()
   await expect(runner.getByText('全部流程已完成', { exact: true })).toBeVisible({ timeout: 60_000 })
   await expect(runner.locator('.stage-item')).toHaveCount(5)
   await expect(runner.getByText('盘点', { exact: true })).toHaveCount(0)
   await expect(runner.getByRole('button', { name: '重新播放', exact: true })).toHaveCount(0)
+  const response = await inboundCreated
+  expect(response.ok()).toBeTruthy()
+  const created = await response.json() as ApiEnvelope<{ order_no: string }>
+  expect(created.code).toBe(0)
+  expect(created.data.order_no).toMatch(/^RK/)
 
   await runner.getByRole('button', { name: '关闭此对话框' }).click()
   await page.getByRole('button', { name: '演示控制', exact: true }).click()
@@ -220,8 +229,22 @@ test('one-click demo executes all real stages without replay controls', async ({
   await expect(page).toHaveURL(/\/demo\/activity\?tab=operations/)
   await expect(page.getByRole('heading', { name: '本次业务执行证据', exact: true })).toBeVisible()
   await expect(page.getByRole('tab', { name: '业务操作记录', exact: true })).toHaveClass(/is-active/)
-  await expect(page.getByText('创建入库单', { exact: true }).first()).toBeVisible({ timeout: 10_000 })
-  await expect(page.getByText('POST 业务操作', { exact: true })).toHaveCount(0)
+  // 关闭的运行器会保留同名步骤；只核对操作记录面板中的真实表格行。
+  const retainedStep = page.locator('.demo-staged-dialog .executed-list').getByText('创建入库单', { exact: true })
+  await expect(retainedStep).toHaveCount(1)
+  await expect(retainedStep).toBeHidden()
+  const operations = page.getByRole('tabpanel', { name: '业务操作记录', exact: true })
+  await expect(operations).toBeVisible()
+  await expect(operations.getByRole('cell', { name: '完成拣货', exact: true }).first()).toBeVisible()
+  // 记录倒序排列，创建操作在末页，不能假定它在当前首页。
+  const pagination = operations.locator('.el-pagination')
+  await expect(pagination).toBeVisible()
+  await pagination.locator('.el-pager .number').last().click()
+  const creationRow = operations.getByRole('row').filter({
+    has: page.getByRole('cell', { name: '创建入库单', exact: true }),
+  })
+  await expect(creationRow.getByRole('cell', { name: created.data.order_no, exact: true })).toBeVisible()
+  await expect(operations.getByText('POST 业务操作', { exact: true })).toHaveCount(0)
 })
 
 test('home scoped auto demos execute their own real business APIs', async ({ page }) => {

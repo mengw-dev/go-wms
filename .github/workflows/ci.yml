@@ -251,6 +251,10 @@ jobs:
         working-directory: web
         run: npm run test:e2e
 
+      - name: Repeat one-click demo without retries
+        working-directory: web
+        run: npm run test:e2e -- tests/e2e/demo-console.spec.ts --grep "one-click demo executes all real stages without replay controls$" --repeat-each=5 --retries=0 --output=test-results/demo-stability --reporter=line
+
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4
