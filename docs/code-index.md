@@ -129,7 +129,7 @@
 - 前端单测：`web/src/**/*.spec.ts`、工具规则回归 `web/eslint-rules/**/*.spec.mjs`（Vitest，配置 `web/vitest.config.ts`）。
 - 端到端：`web/tests/e2e/**`（Playwright，`support/api.ts` 为共享工具层，配置 `web/playwright.config.ts`）；入口脚本 `scripts/e2e.ps1`。
 - 脚本：`scripts/windows/*.ps1`（起栈、停止、重置、验证、打包、k6、监控等，多数附 `.cmd` 双击入口）、`scripts/wms-common.ps1`、`scripts/e2e.ps1`。
-- 压测：`scripts/k6/*.js`（业务流程与压力场景）与 `loadtest/01-hello.js`；说明见 [load-testing.md](load-testing.md)。
+- 压测：`scripts/k6/*.js`（业务流程与压力场景、分配证明后的范围清理）与 `loadtest/01-hello.js`；清理回归 `scripts/k6/cleanup-allocation{,.k6}.test.mjs`（Node隔离夹具与真实k6回环HTTP）；说明见 [load-testing.md](load-testing.md)。
 - 部署：`deploy/`（`docker-compose.yaml`、`docker-compose.dev.yaml`、`Caddyfile`、Prometheus、Grafana）、根 `Dockerfile`、`web/Dockerfile`、`Makefile`、`start.cmd`；说明见 [deployment.md](deployment.md)。
 - CI：`.github/workflows/ci.yml`、`.github/workflows/deploy.yml`；`scripts/ci/{changes,policy}.mjs` 负责变更分流、最终结果和部署门禁，回归 `scripts/ci/policy.test.mjs`。验证门禁：`scripts/windows/test-go.ps1`（测试依赖与跳过判定）、`scripts/check-vulns/`（扫描执行与报告策略），回归见 `scripts/tests/verification-gates.tests.ps1`、`scripts/check-vulns/main_test.go`。
 - Go 静态检查：`.golangci.yml`（错误返回、资源、依赖代码质量）；资源关闭策略与例外见 [Go 约定](go-style.md)。

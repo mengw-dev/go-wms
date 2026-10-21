@@ -115,6 +115,38 @@ k6 run -e BASE_URL=http://127.0.0.1:8080 -e WAREHOUSE_ID=21 -e SKU_ID=69 scripts
 - 没有负库存
 - 并发重复拣货被业务拒绝，不会超拣
 
+## 并发分配证明后的清理（D22）
+
+`allocation-proof.js` 故意留下分配占用，清理入口为 `scripts/k6/cleanup-allocation.js`。它仅通过已有业务取消接口释放分配，保留单据、任务和流水；不执行 SQL、不删除单据、不补货。只在专用本地/测试环境使用，运行前停止目标范围的压测、建单、编辑和拣货。使用明确指定的持久普通测试账号；平台租户 0 会被拒绝，原有 API 仍执行服务端签名、权限及租户校验。
+
+先只读预览（默认不取消）：
+
+```powershell
+k6 run -e BASE_URL=http://127.0.0.1:8080 -e K6_USERNAME=user1 -e WAREHOUSE_ID=21 -e SKU_ID=69 scripts/k6/cleanup-allocation.js
+```
+
+需要执行取消时显式设置开关；账号密码沿用公共脚本的 `K6_PASSWORD` 配置：
+
+```powershell
+k6 run -e BASE_URL=http://127.0.0.1:8080 -e K6_USERNAME=user1 -e WAREHOUSE_ID=21 -e SKU_ID=69 -e CLEANUP_EXECUTE=1 scripts/k6/cleanup-allocation.js
+```
+
+- 仓库和 SKU 必填，按正 int64 字符串处理，不能使用模糊 ID 或 JavaScript 数值转换。可用 `CLEANUP_PREFIX` 缩小已存在的测试单号前缀，必须以 `K6PROOF` 开头，默认 `K6PROOF`。前缀是测试数据约定，不是服务端不可变的来源证明。
+- 订单/库存均按接口 total 完整分页，检查缺页、重复、总数变化和响应形状；每类最多 100000 行，超出预算明确失败而非静默截断。服务端关键词是模糊查询，客户端再次核对精确前缀、租户、仓库，并读取每张候选单的全部明细；其他 SKU 或混合 SKU 整单排除，不能按其中一行命中就取消。
+- 已取消单可重复预览且不再取消；已发货、已有拣货/任务进度、主单与分配明细不一致时停止。目标 SKU 总分配必须恰好等于候选单的活动分配之和，否则表明其他占用或数据不完整，停止且不扩大取消范围。
+- 执行前按固定顺序的业务字段再读核对，每批最多 200 单。检查批次成功/失败计数和错误明细，逐单确认 CANCELLED，再完整分页复核现存量不变、分配清零、可用量按取消量回补。候选预览最多打印前 20 个 ID，完整数量和计划释放量另行打印。
+- 失败通过 checks 阈值及 `execution.test.abort` 返回非零退出码。网络/非 JSON/批次部分成功/取消响应未知均停止后续操作，不自动重试、不回滚此前成功批次；先查询业务结果，再重新预览。日志不输出 token 或整段登录响应。
+- 当前取消 API 只接受 ID，客户端两次核对与服务端取消之间仍有时间间隙，不能宣称能在并发编辑中原子锁住范围。停止其他写入是运行前提；服务端原有取消事务与锁内未拣货校验保持不变。
+
+无 WMS 或数据库也可运行脚本回归：
+
+```powershell
+node --experimental-vm-modules --test scripts/k6/cleanup-allocation.test.mjs
+node --test scripts/k6/cleanup-allocation.k6.test.mjs
+```
+
+第二条需要 PATH 中有 k6，或设置 `K6_BIN` 指向本机可执行文件；它启动回环 HTTP 夹具并运行真实 k6，不连接实际 WMS。覆盖大 ID、超过 10 页、库存超过 100 条、混合范围排除、分批部分失败及实际进程退出码。VM 模块开关仅用于 Node 测试，不是 k6 运行要求。
+
 ## 接入 Prometheus + Grafana
 
 启动监控：
