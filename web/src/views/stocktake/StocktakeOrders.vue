@@ -57,7 +57,7 @@ async function load(silent = false) {
     const restoreError = approver.restoreForOrders(list.value.map((item) => item.id))
     if (restoreError) ElMessage.error(restoreError)
   } finally {
-    if (!silent && seq === requestSeq) loading.value = false
+    if (seq === requestSeq) loading.value = false
   }
 }
 

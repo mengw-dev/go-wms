@@ -22,6 +22,8 @@ export interface TaskItem {
 }
 
 export interface TaskListQuery extends PageQuery {
+  /** 任务号或来源单号包含匹配 */
+  keyword?: string
   warehouse_id?: EntityID | ''
   order_id?: EntityID | ''
   task_type?: string

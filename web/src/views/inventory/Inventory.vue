@@ -50,7 +50,7 @@ async function loadDetail(silent = false) {
     detailList.value = data.list ?? []
     detailTotal.value = data.total ?? 0
   } finally {
-    if (!silent && seq === detailSeq) detailLoading.value = false
+    if (seq === detailSeq) detailLoading.value = false
   }
 }
 
@@ -80,7 +80,7 @@ async function loadSummary(silent = false) {
     summaryList.value = data.list ?? []
     summaryTotal.value = data.total ?? 0
   } finally {
-    if (!silent && seq === summarySeq) summaryLoading.value = false
+    if (seq === summarySeq) summaryLoading.value = false
   }
 }
 
@@ -133,7 +133,7 @@ async function loadTrans(silent = false) {
       transTotal: transTotal.value,
     })
   } finally {
-    if (!silent && seq === transSeq) transLoading.value = false
+    if (seq === transSeq) transLoading.value = false
   }
 }
 

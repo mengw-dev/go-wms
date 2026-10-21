@@ -165,7 +165,7 @@ API Key 在服务端配置中绑定 `WMS_INTEGRATION_TENANT_ID`，请求体、�
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/tasks` | 任务列表（task_type: RECEIVE/PUTAWAY/PICK、status、order_id 过滤）；已领取任务返回 `claimed_by` 与 `lease_expire_at` |
+| GET | `/tasks` | 任务列表（task_type: RECEIVE/PUTAWAY/PICK、status、order_id、warehouse_id过滤；keyword按任务号或来源单号包含匹配）；已领取任务返回 `claimed_by` 与 `lease_expire_at` |
 | GET | `/tasks/:id` | 任务详情（含租约字段，未领取时省略） |
 
 ## 6. 入库管理

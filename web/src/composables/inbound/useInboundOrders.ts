@@ -83,7 +83,7 @@ export function useInboundOrders() {
       list.value = data.list ?? []
       total.value = data.total ?? 0
     } finally {
-      if (!silent && seq === requestSeq) loading.value = false
+      if (seq === requestSeq) loading.value = false
     }
   }
 

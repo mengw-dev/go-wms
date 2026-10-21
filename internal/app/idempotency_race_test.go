@@ -62,7 +62,7 @@ func TestSameKeyConcurrentPartialPick(t *testing.T) {
 
 	gateA := newTaskUpdateGate(t, stack.db, "race:idem_part_a")
 	aDone := make(chan error, 1)
-	go func() { _, err := stack.out.Pick(stack.ctx, task.ID, 1, "picker", scan, "", key); aDone <- err }()
+	stack.run(func() { _, err := stack.out.Pick(stack.ctx, task.ID, 1, "picker", scan, "", key); aDone <- err })
 	waitClosed(t, "A holds task row", gateA.arrived)
 
 	bRead := make(chan struct{})
@@ -70,12 +70,12 @@ func TestSameKeyConcurrentPartialPick(t *testing.T) {
 	var bResult *outdto.PickResult
 	var bErr error
 	bDone := make(chan struct{})
-	go func() {
+	stack.run(func() {
 		bResult, bErr = stack.out.Pick(stack.ctx, task.ID, 1, "picker", scan, "", key)
 		close(bDone)
-	}()
+	})
 	waitClosed(t, "B has read idempotency record", bRead)
-	close(gateA.release)
+	gateA.open()
 
 	if err := waitError(t, "A", aDone); err != nil {
 		t.Fatalf("A should succeed: %v", err)
@@ -111,7 +111,7 @@ func TestSameKeyConcurrentPickFullRemaining(t *testing.T) {
 
 	gateA := newTaskUpdateGate(t, stack.db, "race:idem_full_a")
 	aDone := make(chan error, 1)
-	go func() { _, err := stack.out.Pick(stack.ctx, task.ID, 1, "picker", scan, "", key); aDone <- err }()
+	stack.run(func() { _, err := stack.out.Pick(stack.ctx, task.ID, 1, "picker", scan, "", key); aDone <- err })
 	waitClosed(t, "A holds task row", gateA.arrived)
 
 	bRead := make(chan struct{})
@@ -119,12 +119,12 @@ func TestSameKeyConcurrentPickFullRemaining(t *testing.T) {
 	var bResult *outdto.PickResult
 	var bErr error
 	bDone := make(chan struct{})
-	go func() {
+	stack.run(func() {
 		bResult, bErr = stack.out.Pick(stack.ctx, task.ID, 1, "picker", scan, "", key)
 		close(bDone)
-	}()
+	})
 	waitClosed(t, "B has read idempotency record", bRead)
-	close(gateA.release)
+	gateA.open()
 
 	if err := waitError(t, "A", aDone); err != nil {
 		t.Fatalf("A should succeed: %v", err)
@@ -160,7 +160,7 @@ func TestSameKeyConcurrentDifferentContent(t *testing.T) {
 
 	gateA := newTaskUpdateGate(t, stack.db, "race:idem_diff_a")
 	aDone := make(chan error, 1)
-	go func() { _, err := stack.out.Pick(stack.ctx, task.ID, 2, "picker", scan, "", key); aDone <- err }()
+	stack.run(func() { _, err := stack.out.Pick(stack.ctx, task.ID, 2, "picker", scan, "", key); aDone <- err })
 	waitClosed(t, "A holds task row", gateA.arrived)
 
 	bRead := make(chan struct{})
@@ -168,12 +168,12 @@ func TestSameKeyConcurrentDifferentContent(t *testing.T) {
 	var bResult *outdto.PickResult
 	var bErr error
 	bDone := make(chan struct{})
-	go func() {
+	stack.run(func() {
 		bResult, bErr = stack.out.Pick(stack.ctx, task.ID, 1, "picker", scan, "", key)
 		close(bDone)
-	}()
+	})
 	waitClosed(t, "B has read idempotency record", bRead)
-	close(gateA.release)
+	gateA.open()
 
 	if err := waitError(t, "A", aDone); err != nil {
 		t.Fatalf("A should succeed: %v", err)
@@ -202,15 +202,15 @@ func TestSameKeyConcurrentClaimKeepsFirstToken(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(2)
 	for i := range 2 {
-		go func(idx int) {
+		stack.run(func() {
 			defer wg.Done()
 			<-barrier
-			results[idx], errs[idx] = stack.out.ClaimPickTask(stack.ctx, task.ID, "picker", key)
-		}(i)
+			results[i], errs[i] = stack.out.ClaimPickTask(stack.ctx, task.ID, "picker", key)
+		})
 	}
 	close(barrier)
 	done := make(chan struct{})
-	go func() { wg.Wait(); close(done) }()
+	stack.run(func() { wg.Wait(); close(done) })
 	waitClosed(t, "claim pair", done)
 
 	for i := range 2 {

@@ -51,10 +51,11 @@ const (
 
 // pickRaceStack 与 app.New 相同的组装方式，用真实 MySQL 构建拣货链路。
 type pickRaceStack struct {
-	db    *gorm.DB
-	out   *outservice.Service
-	tasks *taskservice.Service
-	ctx   context.Context
+	workers sync.WaitGroup
+	db      *gorm.DB
+	out     *outservice.Service
+	tasks   *taskservice.Service
+	ctx     context.Context
 
 	warehouseID int64
 	skuID       int64
@@ -82,7 +83,18 @@ func newPickRaceStack(t *testing.T) *pickRaceStack {
 	taskSvc := taskservice.New(taskrepo.New(), db)
 	outSvc := outservice.New(outrepo.New(), tm, orderno.New(nil), basicSvc, invSvc, taskSvc, config.LimitsConfig{})
 
-	s := &pickRaceStack{db: db, out: outSvc, tasks: taskSvc, ctx: tenant.WithTenant(context.Background(), raceTenantID)}
+	ctx, cancel := context.WithCancel(tenant.WithTenant(context.Background(), raceTenantID))
+	s := &pickRaceStack{db: db, out: outSvc, tasks: taskSvc, ctx: ctx}
+	t.Cleanup(func() {
+		cancel()
+		done := make(chan struct{})
+		go func() { s.workers.Wait(); close(done) }()
+		select {
+		case <-done:
+		case <-time.After(raceTimeout):
+			t.Error("race workers did not stop before database cleanup")
+		}
+	})
 	s.warehouseID = snowflake.Next()
 	s.skuID = snowflake.Next()
 	s.locationID = snowflake.Next()
@@ -212,21 +224,35 @@ func requireCode(t *testing.T, label string, err error, want *errcode.Error) {
 // txGate 在匹配表的下一条 UPDATE 前暂停目标事务：
 // arrived 关闭表示「目标事务已持有任务行锁且尚未提交」，release 关闭后放行。
 type txGate struct {
-	once    sync.Once
-	arrived chan struct{}
-	release chan struct{}
+	releaseOnce sync.Once
+	once        sync.Once
+	arrived     chan struct{}
+	release     chan struct{}
+}
+
+func (g *txGate) open() { g.releaseOnce.Do(func() { close(g.release) }) }
+
+// run owns the workers whose completion must precede fixture database cleanup.
+func (s *pickRaceStack) run(work func()) {
+	s.workers.Add(1)
+	go func() { defer s.workers.Done(); work() }()
 }
 
 func newTaskUpdateGate(t *testing.T, db *gorm.DB, name string) *txGate {
 	t.Helper()
 	gate := &txGate{arrived: make(chan struct{}), release: make(chan struct{})}
+	t.Cleanup(gate.open)
 	if err := db.Callback().Update().Before("gorm:update").Register(name, func(query *gorm.DB) {
 		if query.Statement == nil || query.Statement.Table != "wms_task" {
 			return
 		}
 		gate.once.Do(func() {
 			close(gate.arrived)
-			<-gate.release
+			select {
+			case <-gate.release:
+			case <-query.Statement.Context.Done():
+				_ = query.AddError(query.Statement.Context.Err())
+			}
 		})
 	}); err != nil {
 		t.Fatal(err)
@@ -255,12 +281,12 @@ func TestPickCancelRaceCancelFirst(t *testing.T) {
 	gate := newTaskUpdateGate(t, stack.db, "race:cancel_first")
 
 	cancelDone := make(chan error, 1)
-	go func() { cancelDone <- stack.out.Cancel(stack.ctx, order.ID, "tester") }()
+	stack.run(func() { cancelDone <- stack.out.Cancel(stack.ctx, order.ID, "tester") })
 	waitClosed(t, "cancel holds task rows", gate.arrived)
 
 	pickDone := make(chan error, 1)
-	go func() { _, err := stack.out.Pick(stack.ctx, task.ID, 2, "picker", nil, "", ""); pickDone <- err }()
-	close(gate.release)
+	stack.run(func() { _, err := stack.out.Pick(stack.ctx, task.ID, 2, "picker", nil, "", ""); pickDone <- err })
+	gate.open()
 
 	if err := waitError(t, "cancel", cancelDone); err != nil {
 		t.Fatalf("cancel should win: %v", err)
@@ -295,13 +321,13 @@ func TestPickCancelRacePickFirst(t *testing.T) {
 	signalTaskRowLock(t, stack.db, "race:pick_first_lock", lockAttempt)
 
 	pickDone := make(chan error, 1)
-	go func() { _, err := stack.out.Pick(stack.ctx, task.ID, 1, "picker", nil, "", ""); pickDone <- err }()
+	stack.run(func() { _, err := stack.out.Pick(stack.ctx, task.ID, 1, "picker", nil, "", ""); pickDone <- err })
 	waitClosed(t, "pick holds task row", gate.arrived)
 
 	cancelDone := make(chan error, 1)
-	go func() { cancelDone <- stack.out.Cancel(stack.ctx, order.ID, "tester") }()
+	stack.run(func() { cancelDone <- stack.out.Cancel(stack.ctx, order.ID, "tester") })
 	waitClosed(t, "cancel waits on task row", lockAttempt)
-	close(gate.release)
+	gate.open()
 
 	if err := waitError(t, "pick", pickDone); err != nil {
 		t.Fatalf("pick should win: %v", err)
@@ -337,19 +363,19 @@ func TestPickCancelRaceSimultaneous(t *testing.T) {
 		var wg sync.WaitGroup
 		var pickErr, cancelErr error
 		wg.Add(2)
-		go func() {
+		stack.run(func() {
 			defer wg.Done()
 			<-barrier
 			_, pickErr = stack.out.Pick(stack.ctx, task.ID, 2, "picker", nil, "", "")
-		}()
-		go func() {
+		})
+		stack.run(func() {
 			defer wg.Done()
 			<-barrier
 			cancelErr = stack.out.Cancel(stack.ctx, order.ID, "tester")
-		}()
+		})
 		close(barrier)
 		done := make(chan struct{})
-		go func() { wg.Wait(); close(done) }()
+		stack.run(func() { wg.Wait(); close(done) })
 		waitClosed(t, "pick/cancel round", done)
 
 		switch {

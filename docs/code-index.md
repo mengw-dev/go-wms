@@ -66,7 +66,7 @@
 
 | 路径 | 职责 | 对应测试 |
 | --- | --- | --- |
-| `internal/app` | 依赖组装与路由注册 | `router_test.go`、`integration_test.go`、`pick_race_test.go`、`order_references_test.go`、`order_quantity_test.go`、`task_pagination_test.go`、`external_identity_test.go`、`schema_contract_test.go`、`fingerprint_compatibility_test.go`（领取/拣货旧记录回放及字段移位拒绝） |
+| `internal/app` | 依赖组装与路由注册 | `router_test.go`、`integration_test.go`、`list_contract_test.go`（业务列表HTTP/SQL契约）、`race_cleanup_test.go`（门闩/取消/worker回收）、`pick_race_test.go`、`order_references_test.go`、`order_quantity_test.go`、`task_pagination_test.go`、`external_identity_test.go`、`schema_contract_test.go`、`fingerprint_compatibility_test.go`（领取/拣货旧记录回放及字段移位拒绝） |
 | `internal/bootstrap` | DB/Redis 初始化、迁移、种子（管理员/演示/体验账号）、演示数据重置 | `seed_test.go`、`personal_test.go`、`reset_test.go`、`quantity_test.go`、`checks_test.go` |
 | `cmd/wms` | 服务入口、`.env` 加载、优雅关停、后台 worker 启动 | `dotenv_test.go`、`server_test.go` |
 | `cmd/migrate` | 迁移工具与管理员/应用账户初始化 | `preflight_test.go` |
@@ -115,7 +115,7 @@
 | `stores/` | Pinia 状态（`auth` 登录态、`guide` 运行态、`theme`） | `stores/auth.spec.ts`、`stores/guide.spec.ts` |
 | `router/` | 路由与登录/权限守卫（`router/index.ts`） | — |
 | `layouts/` | 布局与导航（`Layout.vue`、`WmsNavigation.vue`）；业务路由独立启用 `business-layout.css`，仪表盘/演示保持原样 | E2E `ui-layout.spec.ts`、`business-layout.spec.ts`、`demo-home-layout.spec.ts` |
-| `composables/` | 组合式函数及幂等公共支持：`operationLifecycle`、`autoRefresh`、`demo/useDemoDock`、`inbound/*`、`stocktake/useStocktakeApprove`、`outbound/usePdaPick`、`demo/*` | `operationLifecycle.spec.ts`、`autoRefresh.spec.ts`、`inbound/{useReceive,usePutaway,useInboundImport}.spec.ts`、`stocktake/useStocktakeApprove.spec.ts`、`outbound/usePdaPick.spec.ts` |
+| `composables/` | 组合式函数及幂等公共支持：`operationLifecycle`、`autoRefresh`、`demo/useDemoDock`、`inbound/*`、`stocktake/useStocktakeApprove`、`outbound/usePdaPick`、`demo/*` | `operationLifecycle.spec.ts`、`autoRefresh.spec.ts`、`inbound/useInboundOrders.spec.ts`（手动/后台查询交错）、`inbound/{useReceive,usePutaway,useInboundImport}.spec.ts`、`stocktake/useStocktakeApprove.spec.ts`、`outbound/usePdaPick.spec.ts` |
 | `events/` | 业务页面与 Guide/Demo 的唯一契约（`businessEvents.ts`） | `businessEvents.spec.ts` |
 | `utils/` | 前端工具（事件、演示证据/操作、分步检查点、options、手机表格字段标签等） | `utils/{demoOperations,demoEvidence,index}.spec.ts`、`composables/demo/useStagedDemoRunner.spec.ts`；E2E `business-layout.spec.ts` |
 | `views/` | 业务页面（`login`、`dashboard`、`basic`、`system`、`task`、`ai`、`inventory`、`inbound`、`outbound`、`stocktake`、`demo`） | E2E 见 `web/tests/e2e/**` |
