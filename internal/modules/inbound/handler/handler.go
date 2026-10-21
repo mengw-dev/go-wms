@@ -266,7 +266,8 @@ func (h *Handler) importExcel(c *gin.Context) {
 		response.Fail(c, errcode.ImportFileInvalid)
 		return
 	}
-	defer f.Close()
+	// multipart 源文件只读；读取失败由 ReadAll 返回，关闭不决定导入写入结果。
+	defer func() { _ = f.Close() }()
 	fileData, err := io.ReadAll(f)
 	if err != nil {
 		if httpx.IsBodyTooLarge(err) {

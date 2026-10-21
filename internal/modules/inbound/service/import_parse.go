@@ -53,7 +53,12 @@ func (s *Service) doImport(ctx context.Context, task *model.ImportTask) (result 
 		}
 		return importResult{Message: "打开文件失败，请确认文件存在且格式正确"}
 	}
-	defer func() { _ = f.Close() }()
+	defer func() {
+		// 工作簿只读，Close 清理解析临时文件；不能把已提交的逐行建单改报为业务失败。
+		if err := f.Close(); err != nil {
+			log.WithContext(ctx).Warn("close import workbook failed", "task_id", task.TaskID, "err", err)
+		}
+	}()
 	rows, err := f.GetRows(f.GetSheetName(0))
 	if err != nil || len(rows) < 2 {
 		return importResult{Message: errcode.ImportTemplateHeader.Msg}

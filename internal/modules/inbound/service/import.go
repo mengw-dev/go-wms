@@ -78,7 +78,12 @@ func (s *Service) removeImportFile(ctx context.Context, task *model.ImportTask) 
 		return
 	}
 	if root != nil {
-		defer root.Close()
+		defer func() {
+			// 目录句柄关闭失败只记录告警，不撤销已提交的导入结果。
+			if err := root.Close(); err != nil {
+				log.WithContext(ctx).Warn("close import cleanup directory failed", "task_id", task.TaskID, "err", err)
+			}
+		}()
 		if err := root.Remove(relative); err != nil && !errors.Is(err, os.ErrNotExist) {
 			log.WithContext(ctx).Warn("remove completed import file failed", "task_id", task.TaskID, "err", err)
 			return

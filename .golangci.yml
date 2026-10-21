@@ -41,12 +41,6 @@ linters:
       - path: _test\.go
         linters:
           - errcheck
-      # 排除 errcheck 的 .Close() 未检查：Go 社区 defer f.Close() 是常见写法
-      - path: .*
-        linters:
-          - errcheck
-        text: "Close"
-
       # 排除 ST1000 包注释缺失：练手项目暂不强求 GoDoc 风格
       - path: .*
         linters:

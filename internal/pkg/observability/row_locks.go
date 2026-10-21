@@ -51,7 +51,9 @@ func (c *rowLockCollector) read(ctx context.Context) (map[string]float64, error)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	// Next 耗尽时自动关闭并由 rows.Err 报告错误；提前返回的 Scan/解析错误已使采集失败。
+	// 此处只做只读游标兜底释放，不覆盖原采集错误。
+	defer func() { _ = rows.Close() }()
 	values := make(map[string]float64, 3)
 	for rows.Next() {
 		var name, text string
