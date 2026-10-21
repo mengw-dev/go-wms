@@ -2,7 +2,7 @@
 import BusinessPagination from '@/components/common/BusinessPagination.vue'
 import { mobileTableCellStyle } from '@/utils/mobileTable'
 import BusinessListPage from '@/components/common/BusinessListPage.vue'
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, onScopeDispose, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import {
@@ -46,14 +46,24 @@ const query = reactive({
   status: (typeof route.query.status === 'string' && ['0', '1', '2'].includes(route.query.status) ? Number(route.query.status) : '') as number | '',
 })
 
+let loadSeq = 0
+let disposed = false
+onScopeDispose(() => {
+  disposed = true
+  loadSeq++
+})
+
 async function load() {
+  if (disposed) return
+  const seq = ++loadSeq
   loading.value = true
   try {
     const data = await listLocations(cleanParams({ ...query }))
+    if (seq !== loadSeq) return
     list.value = data.list ?? []
     total.value = data.total ?? 0
   } finally {
-    loading.value = false
+    if (seq === loadSeq) loading.value = false
   }
 }
 

@@ -2,7 +2,7 @@
 import BusinessPagination from '@/components/common/BusinessPagination.vue'
 import { mobileTableCellStyle } from '@/utils/mobileTable'
 import BusinessListPage from '@/components/common/BusinessListPage.vue'
-import { onMounted, reactive, ref } from 'vue'
+import { onMounted, onScopeDispose, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import {
   createWarehouse,
@@ -21,14 +21,24 @@ const list = ref<WarehouseItem[]>([])
 const total = ref(0)
 const query = reactive({ page: 1, page_size: 10, keyword: '', status: '' as number | '' })
 
+let loadSeq = 0
+let disposed = false
+onScopeDispose(() => {
+  disposed = true
+  loadSeq++
+})
+
 async function load() {
+  if (disposed) return
+  const seq = ++loadSeq
   loading.value = true
   try {
     const data = await listWarehouses(cleanParams({ ...query }))
+    if (seq !== loadSeq) return
     list.value = data.list ?? []
     total.value = data.total ?? 0
   } finally {
-    loading.value = false
+    if (seq === loadSeq) loading.value = false
   }
 }
 

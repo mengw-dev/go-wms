@@ -118,7 +118,7 @@
 | `composables/` | 组合式函数及幂等公共支持：`operationLifecycle`、`autoRefresh`、`demo/useDemoDock`、`inbound/*`、`stocktake/useStocktakeApprove`、`outbound/usePdaPick`、`demo/*` | `operationLifecycle.spec.ts`、`autoRefresh.spec.ts`、`inbound/useInboundOrders.spec.ts`（手动/后台查询交错）、`inbound/{useReceive,usePutaway,useInboundImport}.spec.ts`、`stocktake/useStocktakeApprove.spec.ts`、`outbound/usePdaPick.spec.ts` |
 | `events/` | 业务页面与 Guide/Demo 的唯一契约（`businessEvents.ts`） | `businessEvents.spec.ts` |
 | `utils/` | 前端工具（事件、演示证据/操作、分步检查点、options、手机表格字段标签等） | `utils/{demoOperations,demoEvidence,index}.spec.ts`、`composables/demo/useStagedDemoRunner.spec.ts`；E2E `business-layout.spec.ts` |
-| `views/` | 业务页面（`login`、`dashboard`、`basic`、`system`、`task`、`ai`、`inventory`、`inbound`、`outbound`、`stocktake`、`demo`） | E2E 见 `web/tests/e2e/**` |
+| `views/` | 业务页面（`login`、`dashboard`、`basic`、`system`、`task`、`ai`、`inventory`、`inbound`、`outbound`、`stocktake`、`demo`） | `adminListConcurrency.spec.ts`（基础/系统六列表真实SFC请求交错及销毁）；E2E 见 `web/tests/e2e/**` |
 | `components/` | 组件（`DemoConsole`、`demo/*`、`PickDialog`、`PutawayDialog`、`ReceiveDialog`、`common/{PageHeader,BusinessListPage,BusinessFilters,BusinessPagination}`）；筛选折叠/手机分页只管理呈现，业务事件继续转发 | E2E `business-layout.spec.ts` |
 | `directives/` | `permission` 指令（按权限控制显示） | — |
 | `main.ts` / `App.vue` / `style.css` / `constants.ts` | 应用装配、根组件、全局样式与常量 | — |
