@@ -41,7 +41,7 @@ func (s *Service) Receive(ctx context.Context, orderID, detailID int64, req *dto
 		return errcode.ParamError
 	}
 	tenantID := tenant.FromContext(ctx)
-	var requestHash string
+	var requestHash idempotency.RequestFingerprint
 	if idempotencyKey != "" {
 		// 批次按既有业务口径参与指纹（精确字符串比较，不含空格/大小写归一化），不改变收货语义。
 		requestHash = receiveRequestHash(orderID, detailID, req)
@@ -58,7 +58,7 @@ func (s *Service) Receive(ctx context.Context, orderID, detailID int64, req *dto
 			return err
 		}
 		if record != nil {
-			if record.RequestHash != requestHash {
+			if !requestHash.Matches(record.RequestHash) {
 				return errcode.IdempotencyKeyReused
 			}
 			// 回放此前成功提交的空成功标记；标记缺失/损坏按内部错误处理，
@@ -173,7 +173,7 @@ func (s *Service) Receive(ctx context.Context, orderID, detailID int64, req *dto
 			record := &idempotency.Record{
 				ID: snowflake.Next(), TenantID: tenantID,
 				Scope: receiveIdempotencyScope, IdempotencyKey: idempotencyKey,
-				RequestHash: requestHash, ObjectID: orderID,
+				RequestHash: requestHash.String(), ObjectID: orderID,
 				ResultJSON: idempotency.EmptySuccessJSON,
 			}
 			if err := idempotency.Insert(tx, record); err != nil {
@@ -199,7 +199,7 @@ func (s *Service) Receive(ctx context.Context, orderID, detailID int64, req *dto
 // receiveRequestHash 收货指纹：单据 ID、明细 ID、收货量、残品量与批次号。
 // 批次号按业务既有口径（精确比较）参与，不做 trim/大小写归一化，避免改变收货语义；
 // 时间戳、操作人等每次请求可变的字段不参与。
-func receiveRequestHash(orderID, detailID int64, req *dto.ReceiveReq) string {
+func receiveRequestHash(orderID, detailID int64, req *dto.ReceiveReq) idempotency.RequestFingerprint {
 	return idempotency.Fingerprint(
 		strconv.FormatInt(orderID, 10),
 		strconv.FormatInt(detailID, 10),
@@ -212,7 +212,7 @@ func receiveRequestHash(orderID, detailID int64, req *dto.ReceiveReq) string {
 // reconcileReceive 业务事务回滚后，用新读核对已提交的同 key 幂等记录（语义与拣货一致）：
 // 命中且指纹一致且空成功标记合法 → 回放成功；指纹不同 → 409；记录损坏 → 内部错误；
 // 未命中 → handled=false；读取失败/请求已取消 → 结果未知，保留原 key。
-func (s *Service) reconcileReceive(ctx context.Context, tenantID int64, idempotencyKey, requestHash string) (error, bool) {
+func (s *Service) reconcileReceive(ctx context.Context, tenantID int64, idempotencyKey string, requestHash idempotency.RequestFingerprint) (error, bool) {
 	if cancelErr := ctx.Err(); cancelErr != nil {
 		// 请求已取消：不发起核对查询；返回结果未知，不能用原业务拒绝证明该 key 尚未成功。
 		return errcode.Wrap(cancelErr, errcode.IdempotencyResultUnknown), true
@@ -224,7 +224,7 @@ func (s *Service) reconcileReceive(ctx context.Context, tenantID int64, idempote
 	if record == nil {
 		return nil, false
 	}
-	if record.RequestHash != requestHash {
+	if !requestHash.Matches(record.RequestHash) {
 		return errcode.IdempotencyKeyReused, true
 	}
 	if err := idempotency.ValidateEmptySuccess(record.ResultJSON); err != nil {

@@ -19,6 +19,8 @@ package idempotency
 
 import (
 	"crypto/sha256"
+	"encoding/base64"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -85,11 +87,41 @@ func isDuplicateKey(err error) bool {
 	return errors.As(err, &mysqlErr) && mysqlErr.Number == 1062
 }
 
-// Fingerprint 计算请求指纹：对业务语义字段（如 task_id + qty）做 SHA-256。
+// RequestFingerprint 同时持有新写入值与安全的旧格式候选，供快路径和回滚后核对一致使用。
+// 字段不导出，避免把旧格式候选写入数据库。
+type RequestFingerprint struct {
+	value  string
+	legacy string
+}
+
+// String 返回供 Record.RequestHash 保存的 v2 指纹（46 字节，兼容现有 VARCHAR(64)）。
+func (f RequestFingerprint) String() string { return f.value }
+
+// Matches 比较已保存的指纹。旧格式仅在固定字段数且所有字段不含分隔符时兼容；
+// 含分隔符的旧记录无法通用地证明字段边界，拒绝回放而不是冒险认作成功。
+// 调用方必须保持各 scope 的字段数、顺序与既有业务规范化规则不变。
+func (f RequestFingerprint) Matches(stored string) bool {
+	return f.value != "" && (stored == f.value || (f.legacy != "" && stored == f.legacy))
+}
+
+// Fingerprint 对字段数、各字段字节长度与原始字节进行 SHA-256，消除分隔符、空字段
+// 及任意二进制/UTF-8 内容带来的编码歧义；v2 前缀与旧 64 位十六进制格式明确区分。
 // 不要包含时间戳、随机数等每次请求都会变化的字段。
-func Fingerprint(parts ...string) string {
-	sum := sha256.Sum256([]byte(strings.Join(parts, "\x1f")))
-	return hex.EncodeToString(sum[:])
+func Fingerprint(parts ...string) RequestFingerprint {
+	payload := binary.BigEndian.AppendUint64([]byte("gowms:idempotency:v2\x00"), uint64(len(parts)))
+	legacySafe := len(parts) > 0
+	for _, part := range parts {
+		payload = binary.BigEndian.AppendUint64(payload, uint64(len(part)))
+		payload = append(payload, part...)
+		legacySafe = legacySafe && !strings.Contains(part, "\x1f")
+	}
+	sum := sha256.Sum256(payload)
+	f := RequestFingerprint{value: "v2:" + base64.RawURLEncoding.EncodeToString(sum[:])}
+	if legacySafe {
+		legacySum := sha256.Sum256([]byte(strings.Join(parts, "\x1f")))
+		f.legacy = hex.EncodeToString(legacySum[:])
+	}
+	return f
 }
 
 // EmptySuccessJSON 无返回值命令（HTTP 层 data:null）的成功回放固定表示：

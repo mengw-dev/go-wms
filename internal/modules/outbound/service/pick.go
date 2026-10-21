@@ -66,7 +66,7 @@ func (s *Service) Pick(ctx context.Context, taskID int64, qty int, operator stri
 		return nil, errcode.ParamError
 	}
 	tenantID := tenant.FromContext(ctx)
-	var requestHash string
+	var requestHash idempotency.RequestFingerprint
 	if idempotencyKey != "" {
 		requestHash = pickRequestHash(taskID, qty, scan)
 	}
@@ -82,7 +82,7 @@ func (s *Service) Pick(ctx context.Context, taskID int64, qty int, operator stri
 				return err
 			}
 			if record != nil {
-				if record.RequestHash != requestHash {
+				if !requestHash.Matches(record.RequestHash) {
 					return errcode.IdempotencyKeyReused
 				}
 				// 回放首次成功快照；快照缺失或损坏按内部错误处理，不用当前进度兜底
@@ -200,7 +200,7 @@ func (s *Service) Pick(ctx context.Context, taskID int64, qty int, operator stri
 			record := &idempotency.Record{
 				ID: snowflake.Next(), TenantID: tenantID,
 				Scope: pickIdempotencyScope, IdempotencyKey: idempotencyKey,
-				RequestHash: requestHash, ObjectID: taskID,
+				RequestHash: requestHash.String(), ObjectID: taskID,
 				ResultJSON: string(payload),
 			}
 			if err := idempotency.Insert(tx, record); err != nil {
@@ -243,7 +243,7 @@ func (s *Service) ClaimPickTask(ctx context.Context, taskID int64, operator, ide
 		return nil, errcode.ParamError
 	}
 	tenantID := tenant.FromContext(ctx)
-	var requestHash string
+	var requestHash idempotency.RequestFingerprint
 	if idempotencyKey != "" {
 		requestHash = idempotency.Fingerprint(strconv.FormatInt(taskID, 10), operator)
 	}
@@ -257,7 +257,7 @@ func (s *Service) ClaimPickTask(ctx context.Context, taskID int64, operator, ide
 				return err
 			}
 			if record != nil {
-				if record.RequestHash != requestHash {
+				if !requestHash.Matches(record.RequestHash) {
 					return errcode.IdempotencyKeyReused
 				}
 				replayed, err := replayClaimResult(record.ResultJSON)
@@ -292,7 +292,7 @@ func (s *Service) ClaimPickTask(ctx context.Context, taskID int64, operator, ide
 			record := &idempotency.Record{
 				ID: snowflake.Next(), TenantID: tenantID,
 				Scope: claimIdempotencyScope, IdempotencyKey: idempotencyKey,
-				RequestHash: requestHash, ObjectID: taskID,
+				RequestHash: requestHash.String(), ObjectID: taskID,
 				ResultJSON: string(payload),
 			}
 			if err := idempotency.Insert(tx, record); err != nil {
@@ -323,7 +323,7 @@ func (s *Service) ClaimPickTask(ctx context.Context, taskID int64, operator, ide
 //
 // 新读使用事务外连接（每次查询建立新快照），既不复用已回滚事务，
 // 也不用旧快照证明「无记录」；请求已取消时直接放弃核对，不发起额外查询。
-func (s *Service) reconcilePick(ctx context.Context, tenantID int64, idempotencyKey, requestHash string) (*dto.PickResult, error, bool) {
+func (s *Service) reconcilePick(ctx context.Context, tenantID int64, idempotencyKey string, requestHash idempotency.RequestFingerprint) (*dto.PickResult, error, bool) {
 	if cancelErr := ctx.Err(); cancelErr != nil {
 		// 请求已取消：不发起核对查询；返回结果未知，不能用原业务拒绝证明该 key 尚未成功。
 		return nil, errcode.Wrap(cancelErr, errcode.IdempotencyResultUnknown), true
@@ -335,7 +335,7 @@ func (s *Service) reconcilePick(ctx context.Context, tenantID int64, idempotency
 	if record == nil {
 		return nil, nil, false
 	}
-	if record.RequestHash != requestHash {
+	if !requestHash.Matches(record.RequestHash) {
 		return nil, errcode.IdempotencyKeyReused, true
 	}
 	replayed, err := replayPickResult(record.ResultJSON)
@@ -346,7 +346,7 @@ func (s *Service) reconcilePick(ctx context.Context, tenantID int64, idempotency
 }
 
 // reconcileClaim 领取命令的延迟核对，语义与 reconcilePick 一致。
-func (s *Service) reconcileClaim(ctx context.Context, tenantID int64, idempotencyKey, requestHash string) (*dto.ClaimResult, error, bool) {
+func (s *Service) reconcileClaim(ctx context.Context, tenantID int64, idempotencyKey string, requestHash idempotency.RequestFingerprint) (*dto.ClaimResult, error, bool) {
 	if cancelErr := ctx.Err(); cancelErr != nil {
 		// 请求已取消：不发起核对查询；返回结果未知，不能用原业务拒绝证明该 key 尚未成功。
 		return nil, errcode.Wrap(cancelErr, errcode.IdempotencyResultUnknown), true
@@ -358,7 +358,7 @@ func (s *Service) reconcileClaim(ctx context.Context, tenantID int64, idempotenc
 	if record == nil {
 		return nil, nil, false
 	}
-	if record.RequestHash != requestHash {
+	if !requestHash.Matches(record.RequestHash) {
 		return nil, errcode.IdempotencyKeyReused, true
 	}
 	replayed, err := replayClaimResult(record.ResultJSON)
@@ -464,7 +464,7 @@ func (s *Service) pickSnapshotTx(ctx context.Context, tx *gorm.DB, taskID int64)
 // 扫码内容按实际校验口径规范化（去首尾空格 + 大小写折叠），同一次扫描不因大小写差异被误判为新请求；
 // 入口类型区分 PDA 严格入口与后台宽松入口；claim_token 不参与指纹——
 // 租约过期换人接手后重放同一请求，仍应回放首次成功结果。
-func pickRequestHash(taskID int64, qty int, scan *PickScan) string {
+func pickRequestHash(taskID int64, qty int, scan *PickScan) idempotency.RequestFingerprint {
 	entry, location, batch := "backend", "", ""
 	if scan != nil {
 		if scan.Strict {

@@ -29,11 +29,11 @@
 
 | 模块 | 目录 | 职责 | 对应测试 |
 | --- | --- | --- | --- |
-| 入库 inbound | `internal/modules/inbound` | 入库单生命周期、收货、上架、Excel 异步导入及队列观测 | `service/{order,receiving,query,import,import_security,import_cleanup,import_recovery,import_metrics,response,putaway_location_race,import_completed_cleanup}_test.go`、`dto/dto_test.go`、`handler/handler_test.go`、`model/model_test.go` |
+| 入库 inbound | `internal/modules/inbound` | 入库单生命周期、收货、上架、Excel 异步导入及队列观测 | `service/{order,receiving,query,import,import_security,import_cleanup,import_recovery,import_metrics,response,putaway_location_race,import_completed_cleanup,fingerprint_compatibility}_test.go`、`dto/dto_test.go`、`handler/handler_test.go`、`model/model_test.go` |
 | 出库 outbound | `internal/modules/outbound` | 出库单生命周期、审核 + FIFO 分配、拣货、发货、集成下单 | `service/{order,response}_test.go`、`model/model_test.go`、`handler/handler_test.go` |
 | 任务 task | `internal/modules/task` | 收货/上架/拣货任务的状态与进度 | `service/{service,response,dashboard_filter}_test.go` |
 | 库存 inventory | `internal/modules/inventory` | 库存汇总/明细、并发分配与扣减、调整、流水 | `service/{service,concurrency,response,availability}_test.go`、`repository/repository_test.go` |
-| 盘点 stocktake | `internal/modules/stocktake` | 盘点单、账面快照、实盘录入、差异、审核调整 | `service/{service,response}_test.go`、`handler/actual_test.go`、`model/model_test.go` |
+| 盘点 stocktake | `internal/modules/stocktake` | 盘点单、账面快照、实盘录入、差异、审核调整 | `service/{service,response,fingerprint_compatibility}_test.go`、`handler/actual_test.go`、`model/model_test.go` |
 
 核心基础设施（同样禁止随意重构）：
 
@@ -42,7 +42,7 @@
 | 多租户隔离 | `internal/pkg/tenant` | 租户上下文与 GORM 过滤；区分平台旁路和精确租户（包括租户 0） | `gorm_test.go` |
 | 分布式锁 | `internal/pkg/lock` | 基于 Redis 的锁（`SET NX EX` + Lua 校验持有者释放） | — |
 | 事务与重试 | `internal/pkg/tx` | 事务管理器、死锁重试与退避及耗时/重试观测 | `tx_test.go`、`mysql_test.go`、`metrics_test.go` |
-| 请求幂等 | `internal/pkg/idempotency` | 幂等记录写入/查询及有批数/时间预算的过期清理（表 `wms_idempotency`） | `cleanup_test.go`（分批/隔离/并发/超时/恢复/调度指标）、`internal/app/pick_race_test.go`（领取/拣货/清理集成测试） |
+| 请求幂等 | `internal/pkg/idempotency` | 幂等记录写入/查询及有批数/时间预算的过期清理（表 `wms_idempotency`） | `fingerprint_test.go`（版本/字节边界/旧格式安全兼容）、`cleanup_test.go`（分批/隔离/并发/超时/恢复/调度指标）、`internal/app/pick_race_test.go`（领取/拣货/清理集成测试） |
 | 数据库迁移 | `migrations/**` | 版本化 SQL 迁移，`embed.go` 内嵌 `versions/*.sql` | `migrations_test.go`、`quantity_test.go`、`checks_test.go` |
 
 跨模块关键落点（仅记位置，细节以代码为准）：
@@ -66,7 +66,7 @@
 
 | 路径 | 职责 | 对应测试 |
 | --- | --- | --- |
-| `internal/app` | 依赖组装与路由注册 | `router_test.go`、`integration_test.go`、`pick_race_test.go`、`order_references_test.go`、`order_quantity_test.go`、`task_pagination_test.go`、`external_identity_test.go`、`schema_contract_test.go` |
+| `internal/app` | 依赖组装与路由注册 | `router_test.go`、`integration_test.go`、`pick_race_test.go`、`order_references_test.go`、`order_quantity_test.go`、`task_pagination_test.go`、`external_identity_test.go`、`schema_contract_test.go`、`fingerprint_compatibility_test.go`（领取/拣货旧记录回放及字段移位拒绝） |
 | `internal/bootstrap` | DB/Redis 初始化、迁移、种子（管理员/演示/体验账号）、演示数据重置 | `seed_test.go`、`personal_test.go`、`reset_test.go`、`quantity_test.go`、`checks_test.go` |
 | `cmd/wms` | 服务入口、`.env` 加载、优雅关停、后台 worker 启动 | `dotenv_test.go`、`server_test.go` |
 | `cmd/migrate` | 迁移工具与管理员/应用账户初始化 | `preflight_test.go` |

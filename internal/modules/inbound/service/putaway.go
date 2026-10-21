@@ -33,7 +33,7 @@ func (s *Service) Putaway(ctx context.Context, taskID, locationID int64, qty int
 		return errcode.ParamError
 	}
 	tenantID := tenant.FromContext(ctx)
-	var requestHash string
+	var requestHash idempotency.RequestFingerprint
 	if idempotencyKey != "" {
 		requestHash = putawayRequestHash(taskID, locationID, qty)
 	}
@@ -54,7 +54,7 @@ func (s *Service) Putaway(ctx context.Context, taskID, locationID int64, qty int
 			return err
 		}
 		if record != nil {
-			if record.RequestHash != requestHash {
+			if !requestHash.Matches(record.RequestHash) {
 				return errcode.IdempotencyKeyReused
 			}
 			return idempotency.ValidateEmptySuccess(record.ResultJSON)
@@ -142,7 +142,7 @@ func (s *Service) Putaway(ctx context.Context, taskID, locationID int64, qty int
 			record := &idempotency.Record{
 				ID: snowflake.Next(), TenantID: tenantID,
 				Scope: putawayIdempotencyScope, IdempotencyKey: idempotencyKey,
-				RequestHash: requestHash, ObjectID: taskID,
+				RequestHash: requestHash.String(), ObjectID: taskID,
 				ResultJSON: idempotency.EmptySuccessJSON,
 			}
 			if err := idempotency.Insert(tx, record); err != nil {
@@ -167,7 +167,7 @@ func (s *Service) Putaway(ctx context.Context, taskID, locationID int64, qty int
 // putawayRequestHash 上架指纹：任务 ID、库位 ID 与上架数量。
 // 批号由任务↔明细绑定决定、单据与明细归属由任务路由决定，均不重复参与；
 // 时间戳、操作人等每次请求可变的字段不参与。
-func putawayRequestHash(taskID, locationID int64, qty int) string {
+func putawayRequestHash(taskID, locationID int64, qty int) idempotency.RequestFingerprint {
 	return idempotency.Fingerprint(
 		strconv.FormatInt(taskID, 10),
 		strconv.FormatInt(locationID, 10),
@@ -178,7 +178,7 @@ func putawayRequestHash(taskID, locationID int64, qty int) string {
 // reconcilePutaway 业务事务回滚后，用新读核对已提交的同 key 幂等记录（语义与拣货一致）：
 // 命中且指纹一致且空成功标记合法 → 回放成功；指纹不同 → 409；记录损坏 → 内部错误；
 // 未命中 → handled=false；读取失败/请求已取消 → 结果未知，保留原 key。
-func (s *Service) reconcilePutaway(ctx context.Context, tenantID int64, idempotencyKey, requestHash string) (error, bool) {
+func (s *Service) reconcilePutaway(ctx context.Context, tenantID int64, idempotencyKey string, requestHash idempotency.RequestFingerprint) (error, bool) {
 	if cancelErr := ctx.Err(); cancelErr != nil {
 		// 请求已取消：不发起核对查询；返回结果未知，不能用原业务拒绝证明该 key 尚未成功。
 		return errcode.Wrap(cancelErr, errcode.IdempotencyResultUnknown), true
@@ -190,7 +190,7 @@ func (s *Service) reconcilePutaway(ctx context.Context, tenantID int64, idempote
 	if record == nil {
 		return nil, false
 	}
-	if record.RequestHash != requestHash {
+	if !requestHash.Matches(record.RequestHash) {
 		return errcode.IdempotencyKeyReused, true
 	}
 	if err := idempotency.ValidateEmptySuccess(record.ResultJSON); err != nil {
