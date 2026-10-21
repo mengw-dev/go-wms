@@ -12,8 +12,9 @@ const safeRejectCodes = {
   'inbound.receive': new Set([400, 40001, 40002, 40004, 40008, 40014]),
   'inbound.putaway': new Set([400, 40001, 40002, 40005, 40006, 40007, 40008, 20002, 20005, 20011, 20014]),
   'stocktake.approve': new Set([400, 60001, 60002, 60004, 60006]),
-  'outbound.pick': new Set([400, 40006, 40018, 40019, 50008, 50009, 50010, 50011]),
-  'outbound.claim': new Set([400, 40006, 40007, 40017]),
+  'outbound.pick': new Set([400, 40006, 40018, 40019, 50008, 50009, 50010, 50011, 50408]),
+  'outbound.claim': new Set([400, 40006, 40007, 40017, 50408]),
+  'outbound.wave': new Set([400, 50401, 50402, 50403, 50404, 50405, 50406, 50407, 50408, 50409]),
 } as const
 
 export type OperationScope = keyof typeof safeRejectCodes

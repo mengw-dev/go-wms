@@ -5,9 +5,11 @@
 
 数量字段（库存三数量、库存流水前后量、单据及明细进度、分配、任务、盘点）统一为有符号 INT；业务非负量最大 2147483647，差异和流水变化允许负数。Go 模型显式指定 `type:int;size:32`，避免 64 位 Go 的默认 int 被映射为 BIGINT。正式 SQL 已是 INT，本轮不修改已发布迁移，也不新增收窄生产字段的迁移。
 
+波次汇总行 `wms_wave_line.target_qty/picked_qty` 是跨订单汇总，使用 BIGINT；分货项数量仍为 INT。二者有独立进度 CHECK，正式启动同时验证，详见[波次设计与迁移](wave-picking.md)。
+
 开发 AutoMigrate 在任何改表前跨租户检查已有数量字段（包含软删数据）；发现不适合 INT 的历史值立即返回错误，保留原结构与数据，交由人工审计。开发迁移期间须停止其他写入进程。生产结构由版本化初始化迁移及后续增量迁移共同定义；本文件提供设计说明，实际执行语句以迁移文件为准。000001 顶部的历史说明已更正，未改变任何 SQL 语句。
 
-## 1. 表清单总览（19 张业务与系统表，不含 schema_migrations）
+## 1. 表清单总览（23 张业务与系统表，不含 schema_migrations）
 
 | 分组 | 表 | 说明 |
 | --- | --- | --- |
@@ -27,6 +29,10 @@
 | 出库 | `wms_shipment_order` | 出库单（`biz_order_no` 幂等） |
 | | `wms_shipment_order_detail` | 出库单明细 |
 | | **`wms_allocation`** | **分配明细（锁库行，FIFO 拆批次）** |
+| 波次 | `wms_wave` | 波次状态与作业员租约 |
+| | `wms_wave_order` | 原出库单、软件槽位和发货记录 |
+| | `wms_wave_line` | 按来源库存行汇总的拣货需求与进度 |
+| | `wms_wave_item` | 原任务/分配行对应的槽位分货进度 |
 | 盘点 | `wms_stocktake_order` | 盘点单 |
 | | `wms_stocktake_detail` | 盘点明细（快照/实盘/差异） |
 | 请求去重 | `wms_idempotency` | 拣货与任务领取的首次成功结果（迁移 000009） |

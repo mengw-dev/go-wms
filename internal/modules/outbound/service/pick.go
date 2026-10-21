@@ -103,6 +103,9 @@ func (s *Service) Pick(ctx context.Context, taskID int64, qty int, operator stri
 		if t.Status != taskmodel.TaskCreated && t.Status != taskmodel.TaskInProgress {
 			return errcode.TaskStatusWrong
 		}
+		if t.WaveID != 0 {
+			return errcode.WaveOrderLocked
+		}
 		// 领取凭证校验：PDA 提交必须持有效凭证；后台入口不传凭证则保持宽松
 		if err := checkPickClaim(claimToken, t); err != nil {
 			return err
@@ -376,6 +379,9 @@ func (s *Service) claimFailure(ctx context.Context, tx *gorm.DB, taskID int64) e
 	t, err := s.taskAPI.GetForUpdate(ctx, tx, taskID)
 	if err != nil {
 		return err
+	}
+	if t.WaveID != 0 {
+		return errcode.WaveOrderLocked
 	}
 	if t.TaskType != taskmodel.TaskPick ||
 		(t.Status != taskmodel.TaskCreated && t.Status != taskmodel.TaskInProgress) {

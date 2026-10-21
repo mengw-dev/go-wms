@@ -61,6 +61,8 @@ type TaskAPI interface {
 	// ListByOrderForUpdate 事务内按单据升序锁定全部任务行：取消前校验是否已有任务开工，
 	// 并与拣货在任务行上互斥（双方都先锁任务行）。
 	ListByOrderForUpdate(ctx context.Context, tx *gorm.DB, orderID int64) ([]*model.Task, error)
+	// ListForWave reads a bounded set of PICK tasks, optionally locking by ascending ID.
+	ListForWave(ctx context.Context, tx *gorm.DB, orderIDs []int64, limit int, lock bool) ([]*model.Task, error)
 	// CancelByOrder 取消单据下所有未完成任务（同事务调用）。
 	CancelByOrder(ctx context.Context, tx *gorm.DB, orderID int64) error
 	// GetForUpdate 事务内行锁读取任务：执行拣货/上架前在同一事务内锁定并校验任务状态，

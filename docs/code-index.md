@@ -31,6 +31,7 @@
 | --- | --- | --- | --- |
 | 入库 inbound | `internal/modules/inbound` | 入库单生命周期、收货、上架、Excel 异步导入、资源清理及队列观测 | `service/{order,receiving,query,import,import_security,import_cleanup,import_recovery,import_metrics,response,putaway_location_race,import_completed_cleanup,fingerprint_compatibility}_test.go`、`dto/dto_test.go`、`handler/handler_test.go`、`model/model_test.go` |
 | 出库 outbound | `internal/modules/outbound` | 出库单生命周期、审核 + FIFO 分配、拣货、发货、集成下单 | `service/{order,response}_test.go`、`model/model_test.go`、`handler/handler_test.go` |
+| 波次与播种 | `internal/modules/outbound/{service,repository,model,handler}`，`web/src/views/outbound` | 同仓人工/规则选单、汇总拣货、槽位分货、显式发货；边界见 [波次设计](wave-picking.md) | `internal/app/wave_test.go`、`handler/wave_test.go`、`migrations/wave_test.go`、`web/src/composables/outbound/useWaveCommands.spec.ts` |
 | 任务 task | `internal/modules/task` | 收货/上架/拣货任务的状态与进度 | `service/{service,response,dashboard_filter}_test.go` |
 | 库存 inventory | `internal/modules/inventory` | 库存汇总/明细、并发分配与扣减、调整、流水 | `service/{service,concurrency,response,availability}_test.go`、`repository/repository_test.go` |
 | 盘点 stocktake | `internal/modules/stocktake` | 盘点单、账面快照、实盘录入、差异、审核调整 | `service/{service,response,fingerprint_compatibility}_test.go`、`handler/{actual,list}_test.go`（实盘参数与列表查询契约）、`model/model_test.go` |

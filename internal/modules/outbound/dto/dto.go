@@ -146,6 +146,7 @@ type AllocationResp struct {
 }
 
 type OrderTaskResp struct {
+	WaveID       int64                `json:"wave_id,string"`
 	ID           int64                `json:"id,string"`
 	TenantID     int64                `json:"tenant_id,string"`
 	TaskNo       string               `json:"task_no"`

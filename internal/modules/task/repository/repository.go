@@ -85,7 +85,7 @@ func (r *Repository) CancelByOrder(tx *gorm.DB, orderID int64) error {
 func (r *Repository) Claim(tx *gorm.DB, taskID int64, operator, token string, expireAt time.Time) (int64, error) {
 	now := time.Now()
 	res := tx.Model(&model.Task{}).
-		Where("id = ? AND task_type = ?", taskID, model.TaskPick).
+		Where("id = ? AND task_type = ? AND wave_id = 0", taskID, model.TaskPick).
 		Where("status IN ?", []model.TaskStatus{model.TaskCreated, model.TaskInProgress}).
 		Where("(lease_expire_at IS NULL OR lease_expire_at < ? OR claimed_by = ?)", now, operator).
 		Updates(map[string]any{

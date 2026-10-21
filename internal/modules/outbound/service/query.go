@@ -113,6 +113,7 @@ func orderTaskResponses(tasks []*taskmodel.Task) []*dto.OrderTaskResp {
 	resp := make([]*dto.OrderTaskResp, 0, len(tasks))
 	for _, task := range tasks {
 		resp = append(resp, &dto.OrderTaskResp{
+			WaveID:        task.WaveID,
 			ID:            task.ID,
 			TenantID:      task.TenantID,
 			TaskNo:        task.TaskNo,

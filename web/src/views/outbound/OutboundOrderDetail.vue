@@ -30,6 +30,7 @@ const orderId = String(route.params.id)
 
 const loading = ref(false)
 const data = ref<OutboundDetailData | null>(null)
+const activeWaveID = computed(() => data.value?.order.status === 'PICKING' ? data.value.tasks.find(t => t.wave_id && t.wave_id !== '0')?.wave_id : undefined)
 const warehouseMap = ref<Record<EntityID, string>>({})
 
 function pendingPickTask() {
@@ -128,8 +129,8 @@ function openPick(taskId?: EntityID) {
   pickRef.value?.open(orderId, task)
 }
 
-function canPick(task: { task_type: string; status: string }): boolean {
-  return task.task_type === 'PICK' && (task.status === 'CREATED' || task.status === 'IN_PROGRESS')
+function canPick(task: { task_type: string; status: string; wave_id?: EntityID }): boolean {
+  return (!task.wave_id || task.wave_id === '0') && task.task_type === 'PICK' && (task.status === 'CREATED' || task.status === 'IN_PROGRESS')
 }
 </script>
 
@@ -154,8 +155,9 @@ function canPick(task: { task_type: string; status: string }): boolean {
             <el-button v-permission="'wms:outbound:cancel'" type="danger" plain @click="onCancel">取消</el-button>
           </template>
           <template v-else-if="data.order.status === 'APPROVED' || data.order.status === 'PICKING'">
-            <el-button v-permission="'wms:outbound:pick'" data-tour="outbound-pick" type="primary" plain @click="openPick()">拣货</el-button>
-            <el-button v-permission="'wms:outbound:cancel'" type="danger" plain @click="onCancel">取消</el-button>
+            <el-button v-if="activeWaveID" type="primary" @click="router.push(`/outbound/waves/${activeWaveID}`)">进入波次工作台</el-button>
+            <el-button v-else v-permission="'wms:outbound:pick'" data-tour="outbound-pick" type="primary" plain @click="openPick()">拣货</el-button>
+            <el-button v-if="!activeWaveID" v-permission="'wms:outbound:cancel'" type="danger" plain @click="onCancel">取消</el-button>
           </template>
           <el-button v-if="hasPendingPick" v-permission="'wms:outbound:pick'" type="warning" plain @click="openPick()">恢复待确认拣货</el-button>
         </div>

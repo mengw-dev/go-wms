@@ -21,6 +21,7 @@ func New(svc *service.Service) *Handler { return &Handler{svc: svc} }
 
 func (h *Handler) RegisterRoutes(auth *gin.RouterGroup, checker middleware.PermsChecker) {
 	g := auth.Group("/outbound")
+	h.registerWaves(g, checker)
 	perm := func(action string) gin.HandlerFunc {
 		return middleware.Permission(checker, "wms:outbound:"+action)
 	}
