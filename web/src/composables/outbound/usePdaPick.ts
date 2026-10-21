@@ -1,16 +1,16 @@
-import { getCurrentScope, onScopeDispose, reactive, ref } from 'vue'
-import { claimPdaTask, pickPdaTask } from '@/api/outbound'
-import type { ApiError } from '@/api/request'
-import type { ClaimResult, EntityID, PickParams, PickResult } from '@/api/types'
-import { useAuthStore } from '@/stores/auth'
+import { reactive, ref } from 'vue'
 import {
-  PENDING_SCHEMA_VERSION,
+  classifyOperationError, getOperationContext, onOperationStorageChange,
+  operationErrorMessage, operationStateKey, prepareOperation,
+} from '@/composables/operationLifecycle'
+import { claimPdaTask, pickPdaTask } from '@/api/outbound'
+import type { ClaimResult, EntityID, PickParams, PickResult } from '@/api/types'
+import {
   findPending,
   isStale,
   loadPending,
   removePending,
   upsertPending,
-  type OperationIdentity,
   type PendingOperation,
 } from '@/utils/pendingOperations'
 
@@ -88,8 +88,7 @@ export function usePdaPick() {
 
   /** 取（或创建）任务状态：所有展示字段都从这里读，保证切换任务即切换展示。 */
   function stateOf(taskId: EntityID): TaskPickState {
-    const auth = useAuthStore()
-    const key = JSON.stringify([auth.user?.user_id, auth.demoSessionId, String(taskId)])
+    const key = operationStateKey(taskId)
     let st = states.get(key)
     if (!st) {
       st = emptyState()
@@ -99,26 +98,7 @@ export function usePdaPick() {
   }
 
   /** 当前登录身份与对应存储介质：演示账号用 sessionStorage（随会话失效），普通账号用 localStorage（支持关闭重开恢复）。 */
-  function currentContext(): { ctx: { identity: OperationIdentity; storage: Storage } | null; error: string } {
-    const auth = useAuthStore()
-    if (!auth.token || !auth.user?.user_id) {
-      return { ctx: null, error: '登录状态无效，无法进行拣货操作' }
-    }
-    const isDemo = (auth.user.perms ?? []).includes('wms:demo')
-    let storage: Storage
-    try {
-      storage = isDemo ? sessionStorage : localStorage
-    } catch {
-      return { ctx: null, error: '浏览器存储不可用，无法记录待确认操作' }
-    }
-    return {
-      ctx: {
-        identity: { userId: auth.user.user_id, sessionNamespace: isDemo ? auth.demoSessionId || '' : '' },
-        storage,
-      },
-      error: '',
-    }
-  }
+  const currentContext = () => getOperationContext('拣货')
 
   function findOp(taskId: EntityID, scope: string): PendingOperation | null {
     const c = currentContext()
@@ -145,59 +125,6 @@ export function usePdaPick() {
     if (!existing) return
     const saved = upsertPending(c.ctx.identity, c.ctx.storage, { ...existing, state: 'uncertain' })
     if (!saved.ok) storageError.value = saved.error
-  }
-
-  /** 新建操作：先落盘（prepared → sending），任一步失败都不发送请求。 */
-  function beginOperation(ctx: { identity: OperationIdentity; storage: Storage }, scope: string, taskId: EntityID, operationKey: string, businessPayload: Record<string, unknown> | null): string {
-    const base: PendingOperation = {
-      schemaVersion: PENDING_SCHEMA_VERSION,
-      userId: ctx.identity.userId,
-      sessionNamespace: ctx.identity.sessionNamespace,
-      scope,
-      objectId: taskId,
-      operationKey,
-      businessPayload,
-      createdAt: new Date().toISOString(),
-      state: 'prepared',
-    }
-    const prepared = upsertPending(ctx.identity, ctx.storage, base)
-    if (!prepared.ok) return prepared.error
-    const sending = upsertPending(ctx.identity, ctx.storage, { ...base, state: 'sending' })
-    if (!sending.ok) {
-      removePending(ctx.identity, ctx.storage, scope, taskId, operationKey)
-      return sending.error
-    }
-    return ''
-  }
-
-  /**
-   * 错误分类：服务端语义可以确认「本次内容没有执行任何写入」才进入 rejected；
-   * 401/403、5xx、网络错误、以及可能与同 key 并发成功竞争的状态类/数量类错误，
-   * 一律按 uncertain 保留原 key 原参数，绝不借错误分类替用户删记录。
-   */
-  type ErrorOutcome = 'uncertain' | 'rejected' | 'conflict'
-
-  /** 拣货：静态校验类错误码，这些校验在执行任何写入之前、且不受并发提交影响。 */
-  const PICK_SAFE_REJECT_CODES = new Set([400, 40006, 40018, 40019, 50008, 50009, 50010, 50011])
-  /** 领取：参数/任务不存在/任务状态/已被他人领取，均发生在写入之前。 */
-  const CLAIM_SAFE_REJECT_CODES = new Set([400, 40006, 40007, 40017])
-
-  function classify(error: unknown, safeCodes: Set<number>): ErrorOutcome {
-    if (!error || typeof error !== 'object') return 'uncertain'
-    const api = error as { code?: unknown; status?: unknown; kind?: unknown; message?: unknown }
-    if (api.code === 40901) return 'conflict'
-    if (api.kind === 'network') return 'uncertain'
-    if (api.status === 401 || api.status === 403) return 'uncertain'
-    if (typeof api.status === 'number' && api.status >= 500) return 'uncertain'
-    if (typeof api.code === 'number' && safeCodes.has(api.code)) return 'rejected'
-    return 'uncertain'
-  }
-
-  function errorMessage(error: unknown): string {
-    if (error && typeof error === 'object' && typeof (error as Pick<ApiError, 'message'>).message === 'string') {
-      return (error as Pick<ApiError, 'message'>).message
-    }
-    return '操作失败'
   }
 
   function samePickPayload(a: unknown, b: PickBusinessPayload): boolean {
@@ -255,7 +182,7 @@ export function usePdaPick() {
       return await sendClaim(taskId, existing.operationKey)
     }
     const operationKey = crypto.randomUUID()
-    const saveError = beginOperation(c.ctx, CLAIM_SCOPE, taskId, operationKey, {})
+    const saveError = prepareOperation(c.ctx, CLAIM_SCOPE, taskId, operationKey, {})
     if (saveError) {
       storageError.value = saveError
       st.lastError = saveError
@@ -321,8 +248,8 @@ export function usePdaPick() {
       return true
     } catch (error) {
       if (stateOf(taskId) !== st) return false
-      const outcome = classify(error, CLAIM_SAFE_REJECT_CODES)
-      const message = errorMessage(error)
+      const outcome = classifyOperationError(error, CLAIM_SCOPE)
+      const message = operationErrorMessage(error, '操作失败')
       if (st.claimFlight === seq) {
         const data = (error as { data?: unknown } | null)?.data
         if (data && typeof data === 'object') st.snapshot = data as PickResult
@@ -385,7 +312,7 @@ export function usePdaPick() {
       return await sendPick(taskId, existing.operationKey, data)
     }
     const operationKey = crypto.randomUUID()
-    const saveError = beginOperation(c.ctx, PICK_SCOPE, taskId, operationKey, data as Record<string, unknown>)
+    const saveError = prepareOperation(c.ctx, PICK_SCOPE, taskId, operationKey, data as Record<string, unknown>)
     if (saveError) {
       storageError.value = saveError
       st.lastError = saveError
@@ -450,8 +377,8 @@ export function usePdaPick() {
       return result
     } catch (error) {
       if (stateOf(taskId) !== st) throw error
-      const outcome = classify(error, PICK_SAFE_REJECT_CODES)
-      const message = errorMessage(error)
+      const outcome = classifyOperationError(error, PICK_SCOPE)
+      const message = operationErrorMessage(error, '操作失败')
       if (st.pickFlight === seq) {
         const dataPayload = (error as { data?: unknown } | null)?.data
         if (dataPayload && typeof dataPayload === 'object') st.snapshot = dataPayload as PickResult
@@ -528,13 +455,9 @@ export function usePdaPick() {
 
   // 其他标签页写入存储时，本地横幅同步绑定最新状态；
   // 这不是跨标签页互斥，两个标签页仍然可能各自发送请求，最终由服务端 key 级去重兜底。
-  if (typeof window !== 'undefined' && getCurrentScope()) {
-    const onStorage = () => {
-      if (knownTaskIds.length > 0) restoreForTasks(knownTaskIds)
-    }
-    window.addEventListener('storage', onStorage)
-    onScopeDispose(() => window.removeEventListener('storage', onStorage))
-  }
+  onOperationStorageChange(() => {
+    if (knownTaskIds.length > 0) restoreForTasks(knownTaskIds)
+  })
 
   return {
     stateOf,

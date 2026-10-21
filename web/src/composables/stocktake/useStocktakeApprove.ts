@@ -1,15 +1,16 @@
-import { getCurrentScope, onScopeDispose, reactive, ref } from 'vue'
+import { reactive, ref } from 'vue'
+import {
+  classifyOperationError, getOperationContext, onOperationStorageChange,
+  operationErrorMessage, operationStateKey, prepareOperation,
+} from '@/composables/operationLifecycle'
 import { approveStocktakeOrder } from '@/api/stocktake'
 import type { EntityID } from '@/api/types'
-import { useAuthStore } from '@/stores/auth'
 import {
-  PENDING_SCHEMA_VERSION,
   findPending,
   isStale,
   loadPending,
   removePending,
   upsertPending,
-  type OperationIdentity,
   type PendingOperation,
 } from '@/utils/pendingOperations'
 
@@ -42,33 +43,10 @@ export function useStocktakeApprove() {
   const storageError = ref('')
   let knownOrderIds: EntityID[] = []
 
-  /** 服务端语义可确认「本次内容没有执行任何写入」的校验类错误码（含已终态/未录全）。 */
-  const APPROVE_SAFE_REJECT_CODES = new Set([400, 60001, 60002, 60004, 60006])
-
-  function currentContext(): { ctx: { identity: OperationIdentity; storage: Storage } | null; error: string } {
-    const auth = useAuthStore()
-    if (!auth.token || !auth.user?.user_id) {
-      return { ctx: null, error: '登录状态无效，无法进行审核操作' }
-    }
-    const isDemo = (auth.user.perms ?? []).includes('wms:demo')
-    let storage: Storage
-    try {
-      storage = isDemo ? sessionStorage : localStorage
-    } catch {
-      return { ctx: null, error: '浏览器存储不可用，无法记录待确认操作' }
-    }
-    return {
-      ctx: {
-        identity: { userId: auth.user.user_id, sessionNamespace: isDemo ? auth.demoSessionId || '' : '' },
-        storage,
-      },
-      error: '',
-    }
-  }
+  const currentContext = () => getOperationContext('审核')
 
   function stateOf(orderId: EntityID): OrderState {
-    const auth = useAuthStore()
-    const key = JSON.stringify([auth.user?.user_id, auth.demoSessionId, String(orderId)])
+    const key = operationStateKey(orderId)
     let st = states.get(key)
     if (!st) {
       st = { submitting: false, flight: 0, pending: null, blocked: false, blockedReason: '', lastError: '' }
@@ -104,49 +82,6 @@ export function useStocktakeApprove() {
     if (!saved.ok) storageError.value = saved.error
   }
 
-  function beginOperation(ctx: { identity: OperationIdentity; storage: Storage }, orderId: EntityID, operationKey: string): string {
-    const base: PendingOperation = {
-      schemaVersion: PENDING_SCHEMA_VERSION,
-      userId: ctx.identity.userId,
-      sessionNamespace: ctx.identity.sessionNamespace,
-      scope: APPROVE_SCOPE,
-      objectId: orderId,
-      operationKey,
-      // 审核接口没有业务参数，空对象即「原内容」。
-      businessPayload: {},
-      createdAt: new Date().toISOString(),
-      state: 'prepared',
-    }
-    const prepared = upsertPending(ctx.identity, ctx.storage, base)
-    if (!prepared.ok) return prepared.error
-    const sending = upsertPending(ctx.identity, ctx.storage, { ...base, state: 'sending' })
-    if (!sending.ok) {
-      removePending(ctx.identity, ctx.storage, APPROVE_SCOPE, orderId, operationKey)
-      return sending.error
-    }
-    return ''
-  }
-
-  type ErrorOutcome = 'uncertain' | 'rejected' | 'conflict'
-
-  function classify(error: unknown): ErrorOutcome {
-    if (!error || typeof error !== 'object') return 'uncertain'
-    const api = error as { code?: unknown; status?: unknown; kind?: unknown }
-    if (api.code === 40901) return 'conflict'
-    if (api.kind === 'network') return 'uncertain'
-    if (api.status === 401 || api.status === 403) return 'uncertain'
-    if (typeof api.status === 'number' && api.status >= 500) return 'uncertain'
-    if (typeof api.code === 'number' && APPROVE_SAFE_REJECT_CODES.has(api.code)) return 'rejected'
-    return 'uncertain'
-  }
-
-  function errorMessage(error: unknown): string {
-    if (error && typeof error === 'object' && typeof (error as Pick<Error, 'message'>).message === 'string') {
-      return (error as Pick<Error, 'message'>).message
-    }
-    return '审核失败'
-  }
-
   function toPendingInfo(operation: PendingOperation, stale: boolean): PendingApproveInfo {
     return { operationKey: operation.operationKey, createdAt: operation.createdAt, stale }
   }
@@ -180,7 +115,7 @@ export function useStocktakeApprove() {
       return await sendApprove(orderId, existing.operationKey)
     }
     const operationKey = crypto.randomUUID()
-    const saveError = beginOperation(c.ctx, orderId, operationKey)
+    const saveError = prepareOperation(c.ctx, APPROVE_SCOPE, orderId, operationKey, {})
     if (saveError) {
       storageError.value = saveError
       st.lastError = saveError
@@ -223,9 +158,9 @@ export function useStocktakeApprove() {
       st.pending = null
     } catch (error) {
       if (stateOf(orderId) !== st) throw error
-      const outcome = classify(error)
+      const outcome = classifyOperationError(error, APPROVE_SCOPE)
       if (st.flight === seq) {
-        st.lastError = errorMessage(error)
+        st.lastError = operationErrorMessage(error, '审核失败')
       }
       if (outcome === 'rejected') {
         endOperation(orderId, operationKey)
@@ -279,13 +214,9 @@ export function useStocktakeApprove() {
   }
 
   // 其他标签页写入存储时，本地状态同步绑定最新记录；这不是跨标签页互斥。
-  if (typeof window !== 'undefined' && getCurrentScope()) {
-    const onStorage = () => {
-      if (knownOrderIds.length > 0) restoreForOrders(knownOrderIds)
-    }
-    window.addEventListener('storage', onStorage)
-    onScopeDispose(() => window.removeEventListener('storage', onStorage))
-  }
+  onOperationStorageChange(() => {
+    if (knownOrderIds.length > 0) restoreForOrders(knownOrderIds)
+  })
 
   return {
     stateOf,

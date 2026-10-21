@@ -1,15 +1,16 @@
-import { getCurrentScope, onScopeDispose, reactive, ref } from 'vue'
+import { reactive, ref } from 'vue'
+import {
+  classifyOperationError, getOperationContext, onOperationStorageChange,
+  operationErrorMessage, operationStateKey, prepareOperation,
+} from '@/composables/operationLifecycle'
 import { receiveInbound } from '@/api/inbound'
 import type { EntityID, ReceiveParams } from '@/api/types'
-import { useAuthStore } from '@/stores/auth'
 import {
-  PENDING_SCHEMA_VERSION,
   findPending,
   isStale,
   loadPending,
   removePending,
   upsertPending,
-  type OperationIdentity,
   type PendingOperation,
 } from '@/utils/pendingOperations'
 
@@ -49,33 +50,10 @@ export function useReceive() {
   const storageError = ref('')
   let knownDetailIds: EntityID[] = []
 
-  /** 服务端语义可确认「本次内容没有执行任何写入」的静态校验类错误码。 */
-  const RECEIVE_SAFE_REJECT_CODES = new Set([400, 40001, 40002, 40004, 40008, 40014])
-
-  function currentContext(): { ctx: { identity: OperationIdentity; storage: Storage } | null; error: string } {
-    const auth = useAuthStore()
-    if (!auth.token || !auth.user?.user_id) {
-      return { ctx: null, error: '登录状态无效，无法进行收货操作' }
-    }
-    const isDemo = (auth.user.perms ?? []).includes('wms:demo')
-    let storage: Storage
-    try {
-      storage = isDemo ? sessionStorage : localStorage
-    } catch {
-      return { ctx: null, error: '浏览器存储不可用，无法记录待确认操作' }
-    }
-    return {
-      ctx: {
-        identity: { userId: auth.user.user_id, sessionNamespace: isDemo ? auth.demoSessionId || '' : '' },
-        storage,
-      },
-      error: '',
-    }
-  }
+  const currentContext = () => getOperationContext('收货')
 
   function stateOf(detailId: EntityID): RowState {
-    const auth = useAuthStore()
-    const key = JSON.stringify([auth.user?.user_id, auth.demoSessionId, String(detailId)])
+    const key = operationStateKey(detailId)
     let st = states.get(key)
     if (!st) {
       st = { submitting: false, flight: 0, pending: null, blocked: false, blockedReason: '', lastError: '' }
@@ -109,48 +87,6 @@ export function useReceive() {
     if (!existing) return
     const saved = upsertPending(c.ctx.identity, c.ctx.storage, { ...existing, state: 'uncertain' })
     if (!saved.ok) storageError.value = saved.error
-  }
-
-  function beginOperation(ctx: { identity: OperationIdentity; storage: Storage }, detailId: EntityID, operationKey: string, businessPayload: ReceiveBusinessPayload): string {
-    const base: PendingOperation = {
-      schemaVersion: PENDING_SCHEMA_VERSION,
-      userId: ctx.identity.userId,
-      sessionNamespace: ctx.identity.sessionNamespace,
-      scope: RECEIVE_SCOPE,
-      objectId: detailId,
-      operationKey,
-      businessPayload,
-      createdAt: new Date().toISOString(),
-      state: 'prepared',
-    }
-    const prepared = upsertPending(ctx.identity, ctx.storage, base)
-    if (!prepared.ok) return prepared.error
-    const sending = upsertPending(ctx.identity, ctx.storage, { ...base, state: 'sending' })
-    if (!sending.ok) {
-      removePending(ctx.identity, ctx.storage, RECEIVE_SCOPE, detailId, operationKey)
-      return sending.error
-    }
-    return ''
-  }
-
-  type ErrorOutcome = 'uncertain' | 'rejected' | 'conflict'
-
-  function classify(error: unknown): ErrorOutcome {
-    if (!error || typeof error !== 'object') return 'uncertain'
-    const api = error as { code?: unknown; status?: unknown; kind?: unknown }
-    if (api.code === 40901) return 'conflict'
-    if (api.kind === 'network') return 'uncertain'
-    if (api.status === 401 || api.status === 403) return 'uncertain'
-    if (typeof api.status === 'number' && api.status >= 500) return 'uncertain'
-    if (typeof api.code === 'number' && RECEIVE_SAFE_REJECT_CODES.has(api.code)) return 'rejected'
-    return 'uncertain'
-  }
-
-  function errorMessage(error: unknown): string {
-    if (error && typeof error === 'object' && typeof (error as Pick<Error, 'message'>).message === 'string') {
-      return (error as Pick<Error, 'message'>).message
-    }
-    return '收货失败'
   }
 
   /** 参数一致性按业务口径精确比较（批次不做 trim/大小写归一化，与服务端一致）。 */
@@ -203,7 +139,7 @@ export function useReceive() {
       return await sendReceive(orderId, detailId, existing.operationKey, data)
     }
     const operationKey = crypto.randomUUID()
-    const saveError = beginOperation(c.ctx, detailId, operationKey, data)
+    const saveError = prepareOperation(c.ctx, RECEIVE_SCOPE, detailId, operationKey, data)
     if (saveError) {
       storageError.value = saveError
       st.lastError = saveError
@@ -263,9 +199,9 @@ export function useReceive() {
       st.pending = null
     } catch (error) {
       if (stateOf(detailId) !== st) throw error
-      const outcome = classify(error)
+      const outcome = classifyOperationError(error, RECEIVE_SCOPE)
       if (st.flight === seq) {
-        st.lastError = errorMessage(error)
+        st.lastError = operationErrorMessage(error, '收货失败')
       }
       if (outcome === 'rejected') {
         endOperation(detailId, operationKey)
@@ -319,13 +255,9 @@ export function useReceive() {
   }
 
   // 其他标签页写入存储时，本地横幅同步绑定最新状态；这不是跨标签页互斥。
-  if (typeof window !== 'undefined' && getCurrentScope()) {
-    const onStorage = () => {
-      if (knownDetailIds.length > 0) restoreForDetails(knownDetailIds)
-    }
-    window.addEventListener('storage', onStorage)
-    onScopeDispose(() => window.removeEventListener('storage', onStorage))
-  }
+  onOperationStorageChange(() => {
+    if (knownDetailIds.length > 0) restoreForDetails(knownDetailIds)
+  })
 
   return {
     stateOf,
