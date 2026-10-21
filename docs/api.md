@@ -328,14 +328,18 @@ API Key 在服务端配置中绑定 `WMS_INTEGRATION_TENANT_ID`，请求体、�
 
 | 方法 | 路径 | 权限 | 说明 |
 | --- | --- | --- | --- |
-| GET | `/stocktake/orders` | 登录 | 盘点单列表 |
-| GET | `/stocktake/orders/:id` | 登录 | 详情（含明细快照/实盘/差异） |
+| GET | `/stocktake/orders` | `wms:stocktake:view` | 盘点单列表，可按单号keyword、warehouse_id、status组合筛选 |
+| GET | `/stocktake/orders/:id` | `wms:stocktake:view` | 详情（含明细快照/实盘/差异） |
 | POST | `/stocktake/orders` | `wms:stocktake:create` | 创建即快照 `{warehouse_id, location_id?}` |
 | POST | `/stocktake/orders/:id/actual` | `wms:stocktake:stocktake` | 录入实盘 `{detail_id, actual_qty}`（逐行）；数量必填且 ≥0，0 合法，缺失/null 拒绝且不改明细 |
 | POST | `/stocktake/orders/:id/approve` | `wms:stocktake:approve` | 审核：锁内重算差异，调整库存 + ADJUST 流水 |
+| POST | `/stocktake/orders/:id/cancel` | `wms:stocktake:cancel` | 取消 |
+
+`keyword` 按单号包含匹配，`%`、`_`、反斜杠按字面值转义，与入出库列表一致；空关键字不加此条件。`page`默认1，`page_size`默认10、上限100；结果按ID倒序，total与列表使用相同过滤及租户/软删规则。
+
+详情保持 `{order, details}`，`order.id`及明细关联ID为字符串；内部version/deleted_at不返回。明细 `actual_qty: null` 表示未盘，`0` 表示明确盘零，不能互相替代。
 
 **盘点审核幂等**：请求头可选携带 `Idempotency-Key`（项目自带客户端全部携带）。同一 key 重试回放空成功（`data` 仍为 `null`）——审核成功但响应丢失后的重试不会因「已终态」被误报为业务失败；同 key 用于其他盘点单返回 409 / 40901；幂等记录与差异调整、ADJUST 流水、明细标记、状态推进同事务提交，业务失败整体回滚不留记录；未携带 key 的调用方保持旧契约但**不提供请求级去重**。终态防重复调整仍由状态机与明细 `adjusted` 标记保证。幂等窗口与 PDA 一致（7 天保留期）。
-| POST | `/stocktake/orders/:id/cancel` | `wms:stocktake:cancel` | 取消 |
 
 ## 9. 演示模式
 

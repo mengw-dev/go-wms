@@ -13,6 +13,7 @@ type CreateOrderReq struct {
 type OrderQuery struct {
 	WarehouseID int64  `form:"warehouse_id"`
 	Status      string `form:"status"`
+	Keyword     string `form:"keyword"` // 按单号包含匹配；与入出库列表一致
 	Page        int    `form:"page,default=1" binding:"min=1"`
 	PageSize    int    `form:"page_size,default=10" binding:"min=1,max=100"`
 }

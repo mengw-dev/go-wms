@@ -7,6 +7,7 @@ import (
 	"gorm.io/gorm/clause"
 
 	"gowms/internal/modules/stocktake/model"
+	"gowms/internal/pkg/dbutil"
 	"gowms/internal/pkg/tenant"
 )
 
@@ -47,13 +48,16 @@ func (r *Repository) UpdateStatus(tx *gorm.DB, id int64, from, to model.OrderSta
 	return res.RowsAffected, res.Error
 }
 
-func (r *Repository) ListOrders(ctx context.Context, db *gorm.DB, warehouseID int64, status string, page, size int) ([]*model.StocktakeOrder, int64, error) {
+func (r *Repository) ListOrders(ctx context.Context, db *gorm.DB, warehouseID int64, status, keyword string, page, size int) ([]*model.StocktakeOrder, int64, error) {
 	q := db.WithContext(ctx).Model(&model.StocktakeOrder{})
 	if warehouseID > 0 {
 		q = q.Where("warehouse_id = ?", warehouseID)
 	}
 	if status != "" {
 		q = q.Where("status = ?", status)
+	}
+	if keyword != "" {
+		q = q.Where("order_no LIKE ?", "%"+dbutil.LikePattern(keyword)+"%")
 	}
 	var total int64
 	if err := q.Count(&total).Error; err != nil {

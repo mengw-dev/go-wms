@@ -33,7 +33,7 @@ func (s *Service) Get(ctx context.Context, id int64) (*OrderDetail, error) {
 }
 
 func (s *Service) List(ctx context.Context, q *dto.OrderQuery) ([]*model.StocktakeOrder, int64, error) {
-	return s.repo.ListOrders(ctx, s.tm.DB(), q.WarehouseID, q.Status, q.Page, q.PageSize)
+	return s.repo.ListOrders(ctx, s.tm.DB(), q.WarehouseID, q.Status, q.Keyword, q.Page, q.PageSize)
 }
 
 // GetResponse 返回盘点详情的 HTTP 响应结构。
