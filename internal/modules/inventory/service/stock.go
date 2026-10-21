@@ -155,6 +155,9 @@ func (s *Service) Allocate(ctx context.Context, tx *gorm.DB, req *api.AllocateRe
 			if inv.AvailableQty <= 0 {
 				continue
 			}
+			if req.MaxRows > 0 && len(allocation.Rows) >= req.MaxRows {
+				return nil, errcode.AllocationScaleExceeded
+			}
 			take := min(remaining, inv.AvailableQty)
 			affected, err := s.repo.AllocateQty(tx, inv.ID, take)
 			if err != nil {

@@ -18,11 +18,12 @@ type Service struct {
 	basic   basicapi.BasicAPI
 	inv     invapi.InventoryAPI
 	taskAPI taskapi.TaskAPI
-	limits  config.LimitsConfig // 公开租户数据量配额（防止访客无限建单）
+	limits  config.LimitsConfig // 租户配额与所有租户生效的单据规模上限
 }
 
 func New(repo *repository.Repository, tm *tx.Manager, no *orderno.Generator,
 	basic basicapi.BasicAPI, inv invapi.InventoryAPI, taskAPI taskapi.TaskAPI,
 	limits config.LimitsConfig) *Service {
+	limits.ApplyShipmentScaleDefaults()
 	return &Service{repo: repo, tm: tm, no: no, basic: basic, inv: inv, taskAPI: taskAPI, limits: limits}
 }

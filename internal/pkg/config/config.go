@@ -17,6 +17,8 @@ func Load(path string) (*Config, error) {
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
 	v.SetDefault("integration.tenant_id", int64(0))
+	v.SetDefault("limits.max_shipment_details", DefaultMaxShipmentDetails)
+	v.SetDefault("limits.max_allocation_rows", DefaultMaxAllocationRows)
 
 	if err := v.ReadInConfig(); err != nil {
 		return nil, err
@@ -149,6 +151,7 @@ func Load(path string) (*Config, error) {
 	if cfg.Limits.MaxLocations <= 0 {
 		cfg.Limits.MaxLocations = 500
 	}
+	cfg.Limits.ApplyShipmentScaleDefaults()
 	if cfg.Limits.MaxImportRows <= 0 {
 		cfg.Limits.MaxImportRows = 200
 	}

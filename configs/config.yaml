@@ -62,9 +62,11 @@ personal:
   instances: 3            # 账号数量：user1~user3（可与演示账号并存）
   # 密码由 WMS_PERSONAL_PASSWORD 提供（debug 缺省 user123456，release 开启时必须显式设置）。
 
-# 公开租户数据量配额：演示/持久账号都对外开放，防止访客无限写入把数据库塞爆。
-# 仅对租户 ID > 0 生效；平台租户（admin，tenant_id=0）不受限。
+# 总数据量配额只对 tenant_id > 0 生效，防止公开账号无限写入。
+# 单张出库明细/单次分配行属于所有租户的规模边界，平台租户也受限。
 limits:
+  max_shipment_details: 200 # 所有租户单张出库单明细上限
+  max_allocation_rows: 1000 # 所有租户单次审核分配行/拣货任务上限
   max_receipt_orders: 200    # 每租户入库单上限
   max_shipment_orders: 200   # 每租户出库单上限
   max_stocktake_orders: 100  # 每租户盘点单上限

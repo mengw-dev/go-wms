@@ -76,6 +76,13 @@ func (r *Repository) ListDetails(tx *gorm.DB, orderID int64) ([]*model.ShipmentO
 	return list, err
 }
 
+// ListDetailsForApproval 最多读取上限加一行，用于识别历史超限单；其他读取仍返回完整明细。
+func (r *Repository) ListDetailsForApproval(tx *gorm.DB, orderID int64, maxDetails int) ([]*model.ShipmentOrderDetail, error) {
+	var list []*model.ShipmentOrderDetail
+	err := tx.Where("order_id = ?", orderID).Order("id").Limit(maxDetails + 1).Find(&list).Error
+	return list, err
+}
+
 // GetDetailForUpdate 锁定明细行。
 func (r *Repository) GetDetailForUpdate(tx *gorm.DB, detailID int64) (*model.ShipmentOrderDetail, error) {
 	var d model.ShipmentOrderDetail

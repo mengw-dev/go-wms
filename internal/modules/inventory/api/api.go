@@ -26,6 +26,7 @@ type AllocateReq struct {
 	Quantity    int
 	OrderNo     string
 	Operator    string
+	MaxRows     int // 本次可占用的库存行预算；0 保持不限行，出库审核必须传剩余正预算
 }
 
 // AllocateRow 分配结果行：指向被锁定的具体库存行。

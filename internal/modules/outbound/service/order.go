@@ -33,6 +33,9 @@ func (s *Service) CreateResponse(ctx context.Context, req *dto.CreateOrderReq, o
 }
 
 func (s *Service) Create(ctx context.Context, req *dto.CreateOrderReq, operator string) (*model.ShipmentOrder, error) {
+	if err := s.checkDetailCount(len(req.Details)); err != nil {
+		return nil, err
+	}
 	// 公开租户配额：手动建单与集成推送建单（CreateExternal 复用本方法）都在此拦截。
 	if err := quota.Guard(ctx, s.tm.DB(), &model.ShipmentOrder{}, s.limits.MaxShipmentOrders, 1, "出库单"); err != nil {
 		return nil, err
@@ -126,8 +129,11 @@ func (s *Service) Approve(ctx context.Context, id int64, operator string) error 
 		if o.Status != model.OrderSubmitted {
 			return errcode.ShipOrderStatusWrong
 		}
-		details, err := s.repo.ListDetails(tx, id)
+		details, err := s.repo.ListDetailsForApproval(tx, id, s.limits.MaxShipmentDetails)
 		if err != nil {
+			return err
+		}
+		if err := s.checkDetailCount(len(details)); err != nil {
 			return err
 		}
 		// 审核之间按相同 SKU 顺序加锁；与盘点等其他业务交错仍可能死锁，由外层整事务重试。
@@ -136,9 +142,13 @@ func (s *Service) Approve(ctx context.Context, id int64, operator string) error 
 		// 逐明细 FIFO 分配（失败即整体回滚）
 		allocations := make([]*model.Allocation, 0, len(details))
 		for _, d := range details {
+			remainingRows := s.limits.MaxAllocationRows - len(allocations)
+			if remainingRows <= 0 {
+				return errcode.AllocationScaleExceeded
+			}
 			result, err := s.inv.Allocate(ctx, tx, &invapi.AllocateReq{
 				WarehouseID: o.WarehouseID, SKUID: d.SKUID,
-				Quantity: d.ExpectedQty, OrderNo: o.OrderNo, Operator: operator,
+				Quantity: d.ExpectedQty, OrderNo: o.OrderNo, Operator: operator, MaxRows: remainingRows,
 			})
 			if err != nil {
 				return err // 可用不足：明确报错"需要N，实际可用M"，事务回滚

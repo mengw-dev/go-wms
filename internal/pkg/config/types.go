@@ -137,9 +137,11 @@ func (p PersonalConfig) AccountIndexByUsername(username string) int {
 	return 0
 }
 
-// LimitsConfig 公开租户（演示/持久账号）的数据量配额：防止访客无限写入撑爆数据库。
-// 仅对租户 ID > 0 的租户生效；平台租户（tenant_id=0，如 admin）不受限。
+// LimitsConfig 包含公开租户数据量配额与所有租户的单据规模边界。
+// 总数据量配额只对 tenant_id > 0 生效；单据明细/分配行上限也约束平台租户。
 type LimitsConfig struct {
+	MaxShipmentDetails int `mapstructure:"max_shipment_details"` // 单张出库单明细上限，所有租户生效
+	MaxAllocationRows  int `mapstructure:"max_allocation_rows"`  // 单次审核分配行/拣货任务上限，所有租户生效
 	MaxReceiptOrders   int `mapstructure:"max_receipt_orders"`   // 每租户入库单上限
 	MaxShipmentOrders  int `mapstructure:"max_shipment_orders"`  // 每租户出库单上限
 	MaxStocktakeOrders int `mapstructure:"max_stocktake_orders"` // 每租户盘点单上限

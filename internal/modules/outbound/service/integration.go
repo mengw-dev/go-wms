@@ -44,18 +44,33 @@ func (s *Service) CreateExternal(ctx context.Context, req *dto.ExternalCreateOrd
 	// 非 HTTP 调用同样只操作一个租户，不能将平台 0 当作跨租户通行证。
 	ctx = tenant.WithExactTenant(ctx, tenant.FromContext(ctx))
 
-	// 先解析并规范化内容：命中已存在订单时也要用同一份内容核对，保证两条路径口径一致。
+	// 新单先检查规模，避免超长请求逐条查 SKU；历史同号回放仍核对完整内容。
+	existing, lookupErr := s.repo.GetOrderByBizNo(ctx, s.tm.DB(), req.BizOrderNo)
+	if lookupErr != nil {
+		if !errors.Is(lookupErr, gorm.ErrRecordNotFound) {
+			return nil, false, lookupErr
+		}
+		if err := s.checkDetailCount(len(req.Details)); err != nil {
+			return nil, false, err
+		}
+	}
+	if lookupErr == nil && len(req.Details) > s.limits.MaxShipmentDetails {
+		// 只有与历史单实际规模相等的超限请求才进入回放核对；
+		// 不能通过复用一个普通业务号绕过新单的逐项解析预算。
+		details, err := s.repo.ListDetails(s.tm.DB().WithContext(ctx), existing.ID)
+		if err != nil {
+			return nil, false, err
+		}
+		if len(details) != len(req.Details) {
+			return nil, false, s.checkDetailCount(len(req.Details))
+		}
+	}
 	content, err := s.resolveExternalContent(ctx, req)
 	if err != nil {
 		return nil, false, err
 	}
-
-	existing, err := s.repo.GetOrderByBizNo(ctx, s.tm.DB(), req.BizOrderNo)
-	if err == nil {
+	if lookupErr == nil {
 		return s.replayExternalOrder(ctx, existing, content)
-	}
-	if !errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, false, err
 	}
 
 	items := make([]dto.OrderDetailItem, 0, len(content.details))
