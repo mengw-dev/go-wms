@@ -53,6 +53,7 @@ const activeMenu = computed(() => (route.meta.activeMenu as string | undefined) 
           <span>库存管理</span>
         </template>
         <el-menu-item v-if="auth.hasPerm('wms:inventory')" index="/inventory">库存查询</el-menu-item>
+        <el-menu-item v-if="auth.hasPerm('wms:inventory')" index="/inventory/alerts">库存预警</el-menu-item>
         <el-menu-item v-if="auth.hasPerm('wms:inventory')" index="/ai">AI 问答</el-menu-item>
         <el-menu-item v-if="auth.hasPerm('wms:task')" index="/tasks">任务中心</el-menu-item>
       </el-sub-menu>

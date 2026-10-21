@@ -20,6 +20,11 @@ func New(svc *service.Service) *Handler { return &Handler{svc: svc} }
 func (h *Handler) RegisterRoutes(auth *gin.RouterGroup, checker middleware.PermsChecker) {
 	g := auth.Group("/inventory")
 	read := middleware.Permission(checker, "wms:inventory")
+	manageAlerts := middleware.Permission(checker, "wms:inventory:alert:manage")
+	g.GET("/alerts", read, h.listAlerts)
+	g.GET("/alert-options", manageAlerts, h.alertOptions)
+	g.PUT("/alert-rules", manageAlerts, h.saveAlertRule)
+	g.DELETE("/alert-rules/:id", manageAlerts, h.deleteAlertRule)
 	{
 		g.GET("", read, h.list)
 		g.GET("/summary", read, h.summary)

@@ -23,6 +23,7 @@ var quantityChecks = []quantityCheck{
 	{"wms_task", "chk_task_quantity_progress", "(target_qty >= 0) AND (done_qty >= 0) AND (done_qty <= target_qty)", []string{"target_qty", "done_qty"}},
 	{"wms_allocation", "chk_allocation_quantity_progress", "(allocated_qty >= 0) AND (picked_qty >= 0) AND (picked_qty <= allocated_qty)", []string{"allocated_qty", "picked_qty"}},
 	{"wms_shipment_order", "chk_shipment_quantity_progress", "(expected_qty >= 0) AND (allocated_qty >= 0) AND (picked_qty >= 0) AND (picked_qty <= allocated_qty) AND (allocated_qty <= expected_qty)", []string{"expected_qty", "allocated_qty", "picked_qty"}},
+	{"wms_inventory_alert_rule", "chk_alert_min_qty", "min_available_qty > 0", []string{"min_available_qty"}},
 }
 
 // AuditQuantityChecks 只读审计全部租户及软删行，并拒绝同名异定义或未启用的 CHECK。

@@ -1,5 +1,9 @@
 # WMS API 接口文档
 
+## 2026-10-21 库存预警
+
+新增 `/inventory/alerts` 当前预警及规则查询、`/inventory/alert-options` 管理选项、`PUT /inventory/alert-rules` 与 `DELETE /inventory/alert-rules/:id`。规则按仓库+货品配置可用量下限，不改变库存；权限、参数、零库存与恢复口径见[库存预警](inventory-alerts.md)。
+
 > Base URL：`/api/v1` ｜ 数据格式：JSON ｜ 前后端同构：本仓库 `web/src/api/` 即可调用 SDK 参考
 
 ## 2026-10-21 出库单据规模

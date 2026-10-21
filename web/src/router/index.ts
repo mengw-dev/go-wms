@@ -82,6 +82,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '库存查询', perm: 'wms:inventory' },
       },
       {
+        path: 'inventory/alerts',
+        name: 'inventory-alerts',
+        component: () => import('@/views/inventory/Alerts.vue'),
+        meta: { title: '库存预警', perm: 'wms:inventory' },
+      },
+      {
         path: 'ai',
         name: 'ai',
         component: () => import('@/views/ai/index.vue'),
