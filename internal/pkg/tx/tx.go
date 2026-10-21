@@ -12,6 +12,7 @@ import (
 
 	"gowms/internal/pkg/errcode"
 	"gowms/internal/pkg/log"
+	"gowms/internal/pkg/observability"
 )
 
 const (
@@ -23,17 +24,25 @@ const (
 
 // Manager 提供业务事务边界；Repository 使用调用方传入的事务连接。
 type Manager struct {
-	db *gorm.DB
+	db      *gorm.DB
+	metrics *observability.Metrics
 }
 
 func New(db *gorm.DB) *Manager { return &Manager{db: db} }
+
+// SetMetrics attaches optional instrumentation before the manager is used.
+func (m *Manager) SetMetrics(metrics *observability.Metrics) { m.metrics = metrics }
 
 // DB 返回非事务连接，用于查询。
 func (m *Manager) DB() *gorm.DB { return m.db }
 
 // Tx 在事务内执行 fn，panic 或返回 error 时回滚。
 func (m *Manager) Tx(ctx context.Context, fn func(tx *gorm.DB) error) error {
+	start := time.Now()
+	outcome := "panic"
+	defer func() { m.metrics.RecordTransaction(outcome, time.Since(start)) }()
 	err := m.db.WithContext(ctx).Transaction(fn)
+	outcome = transactionOutcome(err)
 	var driverErr *mysql.MySQLError
 	if errors.As(err, &driverErr) && (driverErr.Number == 1205 || driverErr.Number == 1213) {
 		log.WithContext(ctx).Warn("transaction lock conflict", "mysql_code", driverErr.Number, "err", err)
@@ -65,6 +74,9 @@ func (m *Manager) TxRetry(ctx context.Context, maxAttempts int, fn func(tx *gorm
 		if i > 0 && !time.Now().Before(retryUntil) {
 			break
 		}
+		if i > 0 {
+			m.metrics.RecordTransactionRetry(transactionOutcome(err))
+		}
 		err = m.Tx(ctx, fn)
 		if err == nil {
 			return nil
@@ -89,6 +101,28 @@ func (m *Manager) TxRetry(ctx context.Context, maxAttempts int, fn func(tx *gorm
 		}
 	}
 	return err
+}
+
+func transactionOutcome(err error) string {
+	if err == nil {
+		return "success"
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return "canceled"
+	}
+	var driverErr *mysql.MySQLError
+	if errors.As(err, &driverErr) {
+		switch driverErr.Number {
+		case 1213:
+			return "deadlock"
+		case 1205:
+			return "lock_timeout"
+		}
+	}
+	if errcode.IsConflict(err) {
+		return "conflict"
+	}
+	return "error"
 }
 
 func retryDelay(attempt int) time.Duration {

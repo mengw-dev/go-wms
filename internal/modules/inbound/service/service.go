@@ -9,6 +9,7 @@ import (
 	invapi "gowms/internal/modules/inventory/api"
 	taskapi "gowms/internal/modules/task/api"
 	"gowms/internal/pkg/config"
+	"gowms/internal/pkg/observability"
 	"gowms/internal/pkg/orderno"
 	"gowms/internal/pkg/tx"
 )
@@ -21,6 +22,7 @@ type Service struct {
 	inv       invapi.InventoryAPI
 	taskAPI   taskapi.TaskAPI
 	uploadDir string
+	metrics   *observability.Metrics
 
 	failedFileRetention time.Duration       // 失败导入文件保留期，到期由后台清理删除
 	limits              config.LimitsConfig // 公开租户数据量配额（防止访客无限建单）

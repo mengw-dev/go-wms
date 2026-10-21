@@ -66,9 +66,23 @@ func (s *Service) removeImportFile(ctx context.Context, task *model.ImportTask) 
 	if task == nil || task.FilePath == "" {
 		return
 	}
-	if err := os.Remove(task.FilePath); err != nil && !errors.Is(err, os.ErrNotExist) {
-		log.WithContext(ctx).Warn("remove completed import file failed", "task_id", task.TaskID, "err", err)
+	relative, err := filepath.Rel(s.uploadDir, task.FilePath)
+	if err != nil || !filepath.IsLocal(relative) {
+		log.WithContext(ctx).Warn("completed import path outside upload directory", "task_id", task.TaskID)
 		return
+	}
+	// Keep deletion beneath the configured directory, including symlink traversal.
+	root, err := os.OpenRoot(s.uploadDir)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		log.WithContext(ctx).Warn("open import directory for cleanup failed", "task_id", task.TaskID, "err", err)
+		return
+	}
+	if root != nil {
+		defer root.Close()
+		if err := root.Remove(relative); err != nil && !errors.Is(err, os.ErrNotExist) {
+			log.WithContext(ctx).Warn("remove completed import file failed", "task_id", task.TaskID, "err", err)
+			return
+		}
 	}
 	if err := s.repo.ClearImportFilePath(ctx, s.tm.DB(), task.TaskID, task.FilePath); err != nil {
 		log.WithContext(ctx).Warn("clear completed import path failed", "task_id", task.TaskID, "err", err)

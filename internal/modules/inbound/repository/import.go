@@ -35,6 +35,23 @@ func (r *Repository) NextPendingImport(ctx context.Context, db *gorm.DB) (*model
 	return &task, nil
 }
 
+type ImportQueueStat struct {
+	Status model.ImportTaskStatus
+	Count  int64
+	Oldest time.Time
+}
+
+// ImportQueueStats is an internal monitoring query across tenants. No identifiers
+// or file paths are exported; Model retains the soft-delete scope.
+func (r *Repository) ImportQueueStats(ctx context.Context, db *gorm.DB) ([]ImportQueueStat, error) {
+	var stats []ImportQueueStat
+	err := db.WithContext(ctx).Model(&model.ImportTask{}).
+		Select("status, COUNT(*) AS count, MIN(created_at) AS oldest").
+		Where("status IN ?", []model.ImportTaskStatus{model.ImportPending, model.ImportProcessing}).
+		Group("status").Scan(&stats).Error
+	return stats, err
+}
+
 // ClaimImport 每次执行生成新 token；只有 PENDING 任务可以被领取。
 func (r *Repository) ClaimImport(db *gorm.DB, task *model.ImportTask, token string) (bool, error) {
 	res := db.Model(&model.ImportTask{}).Where("id = ? AND tenant_id = ? AND status = ?", task.ID, task.TenantID, model.ImportPending).

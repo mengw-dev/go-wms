@@ -74,6 +74,7 @@ type App struct {
 // New 按依赖顺序组装所有模块（无循环依赖：basic→inventory，inbound/outbound→basic+inventory+task）。
 func New(cfg *config.Config, db *gorm.DB, rdb *redis.Client, metrics *observability.Metrics) *App {
 	tm := tx.New(db)
+	tm.SetMetrics(metrics)
 	var no *orderno.Generator
 	if rdb == nil {
 		no = orderno.New(nil)
@@ -100,6 +101,7 @@ func New(cfg *config.Config, db *gorm.DB, rdb *redis.Client, metrics *observabil
 
 	// inbound / outbound / stocktake：依赖 basic + inventory + task 接口
 	inboundSvc := inboundservice.New(inboundrepo.New(), tm, no, basicSvc, invSvc, taskSvc, cfg.Upload, cfg.Limits)
+	inboundSvc.SetMetrics(metrics)
 	outSvc := outservice.New(outrepo.New(), tm, no, basicSvc, invSvc, taskSvc, cfg.Limits)
 	stocktakeSvc := stocktakeservice.New(stocktakerepo.New(), tm, no, invSvc, cfg.Limits)
 	aiSvc := aiservice.New(cfg.AI, db, rdb)

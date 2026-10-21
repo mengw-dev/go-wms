@@ -86,3 +86,36 @@ func TestCompletedImportCleanupRecoversAndRetries(t *testing.T) {
 		t.Fatalf("absent file not reconciled: %+v %v", retry, err)
 	}
 }
+
+func TestCompletedImportCleanupConfinesPathsAndHandlesMissingDirectory(t *testing.T) {
+	s, db, ctx := importFixture(t)
+	outside := filepath.Join(t.TempDir(), "outside.xlsx")
+	if err := os.WriteFile(outside, []byte("keep"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	task := &model.ImportTask{TaskID: "IMP-outside", Status: model.ImportCompleted, FilePath: outside}
+	if err := db.WithContext(ctx).Create(task).Error; err != nil {
+		t.Fatal(err)
+	}
+	s.removeImportFile(ctx, task)
+	if _, err := os.Stat(outside); err != nil {
+		t.Fatalf("outside file affected: %v", err)
+	}
+	stored, err := s.GetImport(ctx, task.TaskID)
+	if err != nil || stored.FilePath != outside {
+		t.Fatalf("refused path was cleared: %+v %v", stored, err)
+	}
+	// An already absent upload directory means the generated file is absent too;
+	// its persisted path still needs reconciliation after a crash.
+	missing := filepath.Join(s.uploadDir, "gone")
+	s.uploadDir = missing
+	if err := db.WithContext(ctx).Model(task).Update("file_path", filepath.Join(missing, "IMP-missing.xlsx")).Error; err != nil {
+		t.Fatal(err)
+	}
+	task.FilePath = filepath.Join(missing, "IMP-missing.xlsx")
+	s.removeImportFile(ctx, task)
+	stored, err = s.GetImport(ctx, task.TaskID)
+	if err != nil || stored.FilePath != "" {
+		t.Fatalf("absent directory not reconciled: %+v %v", stored, err)
+	}
+}

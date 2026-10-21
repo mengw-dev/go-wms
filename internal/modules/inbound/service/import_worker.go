@@ -53,6 +53,9 @@ func (s *Service) processImport(parent context.Context, task *model.ImportTask) 
 		return err
 	}
 	task.RunToken = token
+	start := time.Now()
+	outcome := "error"
+	defer func() { s.metrics.RecordImport(outcome, time.Since(start)) }()
 
 	heartbeatDone := make(chan struct{})
 	go func() {
@@ -67,7 +70,13 @@ func (s *Service) processImport(parent context.Context, task *model.ImportTask) 
 	defer finishCancel()
 	db := s.tm.DB().WithContext(finishCtx)
 	if parent.Err() != nil || errors.Is(ctx.Err(), context.Canceled) {
-		_, err := s.repo.ReleaseImport(db, task)
+		released, err := s.repo.ReleaseImport(db, task)
+		if err == nil {
+			outcome = "lost"
+			if released {
+				outcome = "released"
+			}
+		}
 		return err
 	}
 	var status model.ImportTaskStatus
@@ -80,9 +89,17 @@ func (s *Service) processImport(parent context.Context, task *model.ImportTask) 
 	}
 	finished, err := s.repo.FinishImport(db, task, status, result.Total, result.Success, result.Failed, message)
 	if err != nil || !finished {
+		if err == nil {
+			outcome = "lost"
+		}
 		return err
 	}
+	outcome = "failed"
 	if status == model.ImportCompleted {
+		outcome = "completed"
+		if result.Failed > 0 {
+			outcome = "partial"
+		}
 		s.removeImportFile(finishCtx, task)
 	}
 	return nil
@@ -139,6 +156,7 @@ func (s *Service) compensateOnce(ctx context.Context) {
 			continue
 		}
 		if reset {
+			s.metrics.RecordImportRecovery()
 			log.L().Warn("stale import returned to pending", "task_id", task.TaskID)
 		}
 	}

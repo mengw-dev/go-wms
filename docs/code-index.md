@@ -29,7 +29,7 @@
 
 | 模块 | 目录 | 职责 | 对应测试 |
 | --- | --- | --- | --- |
-| 入库 inbound | `internal/modules/inbound` | 入库单生命周期、收货、上架、Excel 异步导入 | `service/{order,receiving,query,import,import_security,import_cleanup,response,putaway_location_race,import_completed_cleanup}_test.go`、`dto/dto_test.go`、`handler/handler_test.go`、`model/model_test.go` |
+| 入库 inbound | `internal/modules/inbound` | 入库单生命周期、收货、上架、Excel 异步导入及队列观测 | `service/{order,receiving,query,import,import_security,import_cleanup,import_recovery,import_metrics,response,putaway_location_race,import_completed_cleanup}_test.go`、`dto/dto_test.go`、`handler/handler_test.go`、`model/model_test.go` |
 | 出库 outbound | `internal/modules/outbound` | 出库单生命周期、审核 + FIFO 分配、拣货、发货、集成下单 | `service/{order,response}_test.go`、`model/model_test.go`、`handler/handler_test.go` |
 | 任务 task | `internal/modules/task` | 收货/上架/拣货任务的状态与进度 | `service/{service,response,dashboard_filter}_test.go` |
 | 库存 inventory | `internal/modules/inventory` | 库存汇总/明细、并发分配与扣减、调整、流水 | `service/{service,concurrency,response,availability}_test.go`、`repository/repository_test.go` |
@@ -41,7 +41,7 @@
 | --- | --- | --- | --- |
 | 多租户隔离 | `internal/pkg/tenant` | 租户上下文与 GORM 过滤；区分平台旁路和精确租户（包括租户 0） | `gorm_test.go` |
 | 分布式锁 | `internal/pkg/lock` | 基于 Redis 的锁（`SET NX EX` + Lua 校验持有者释放） | — |
-| 事务与重试 | `internal/pkg/tx` | 事务管理器、死锁重试与退避 | `tx_test.go`、`mysql_test.go` |
+| 事务与重试 | `internal/pkg/tx` | 事务管理器、死锁重试与退避及耗时/重试观测 | `tx_test.go`、`mysql_test.go`、`metrics_test.go` |
 | 请求幂等 | `internal/pkg/idempotency` | 幂等记录写入/查询与过期清理（表 `wms_idempotency`） | `internal/app/pick_race_test.go`（领取/拣货/清理集成测试） |
 | 数据库迁移 | `migrations/**` | 版本化 SQL 迁移，`embed.go` 内嵌 `versions/*.sql` | `migrations_test.go`、`quantity_test.go`、`checks_test.go` |
 
@@ -85,7 +85,7 @@
 | `quota` | 租户配额守卫 | `quota_test.go` |
 | `snowflake` | 雪花 ID | `snowflake_test.go` |
 | `orderno` | 单号生成 | `orderno_test.go` |
-| `observability` | Prometheus 指标 | `metrics_test.go` |
+| `observability` | Prometheus HTTP/事务/导入指标与 MySQL 实例行锁观测 | `metrics_test.go`、`row_locks_test.go` |
 | `typex` | ID 集合类型（跨 JSON 数字与字符串场景） | `idlist_test.go` |
 | `modelbase` | GORM 模型基类 | — |
 | `dbutil` | 数据库查询辅助 | — |

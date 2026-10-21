@@ -2,7 +2,9 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
 	"runtime/debug"
 	"strconv"
 	"strings"
@@ -46,6 +48,9 @@ func (s *Service) doImport(ctx context.Context, task *model.ImportTask) (result 
 	f, err := excelize.OpenFile(task.FilePath, excelize.Options{UnzipSizeLimit: 64 << 20, UnzipXMLSizeLimit: 8 << 20})
 	if err != nil {
 		log.L().Warn("open import file failed", "task_id", task.TaskID, "err", err)
+		if errors.Is(err, os.ErrNotExist) {
+			return importResult{Message: "导入源文件已丢失，请联系管理员核对已生成单据后重新上传"}
+		}
 		return importResult{Message: "打开文件失败，请确认文件存在且格式正确"}
 	}
 	defer func() { _ = f.Close() }()

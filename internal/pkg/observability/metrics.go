@@ -17,10 +17,14 @@ import (
 )
 
 type Metrics struct {
-	registry       *prometheus.Registry
-	requestsTotal  *prometheus.CounterVec
-	requestSeconds *prometheus.HistogramVec
-	inFlight       prometheus.Gauge
+	registry         *prometheus.Registry
+	requestsTotal    *prometheus.CounterVec
+	requestSeconds   *prometheus.HistogramVec
+	inFlight         prometheus.Gauge
+	txSeconds        *prometheus.HistogramVec
+	txRetries        *prometheus.CounterVec
+	importSeconds    *prometheus.HistogramVec
+	importRecoveries prometheus.Counter
 }
 
 func New(db *gorm.DB, serviceName string) *Metrics {
@@ -36,11 +40,27 @@ func New(db *gorm.DB, serviceName string) *Metrics {
 			Namespace: "wms", Name: "http_requests_in_flight", Help: "Current number of in-flight HTTP requests.",
 		}),
 	}
+	m.txSeconds = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Name: "wms_transaction_attempt_duration_seconds", Help: "Business transaction attempt duration, including database lock waits.",
+		Buckets: prometheus.DefBuckets,
+	}, []string{"outcome"})
+	m.txRetries = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "wms_transaction_retries_total", Help: "Additional business transaction attempts actually started.",
+	}, []string{"reason"})
+	m.importSeconds = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Name: "wms_import_run_duration_seconds", Help: "Duration of claimed import executions, including resumed executions.",
+		Buckets: []float64{.1, .5, 1, 5, 15, 30, 60, 120, 300, 600},
+	}, []string{"outcome"})
+	m.importRecoveries = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "wms_import_recoveries_total", Help: "Stale import executions successfully returned to pending.",
+	})
 	m.registry.MustRegister(collectors.NewGoCollector(), collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 	m.registry.MustRegister(m.requestsTotal, m.requestSeconds, m.inFlight)
+	m.registry.MustRegister(m.txSeconds, m.txRetries, m.importSeconds, m.importRecoveries)
 	if db != nil {
 		if sqlDB, err := db.DB(); err == nil {
 			m.registry.MustRegister(newDBCollector(sqlDB))
+			m.registry.MustRegister(newRowLockCollector(sqlDB))
 		}
 	}
 	buildInfo := prometheus.NewGaugeVec(prometheus.GaugeOpts{
@@ -52,6 +72,31 @@ func New(db *gorm.DB, serviceName string) *Metrics {
 }
 
 func (m *Metrics) Registry() *prometheus.Registry { return m.registry }
+
+// RecordTransaction records a fixed outcome chosen by the transaction manager.
+func (m *Metrics) RecordTransaction(outcome string, elapsed time.Duration) {
+	if m != nil {
+		m.txSeconds.WithLabelValues(outcome).Observe(elapsed.Seconds())
+	}
+}
+
+func (m *Metrics) RecordTransactionRetry(reason string) {
+	if m != nil {
+		m.txRetries.WithLabelValues(reason).Inc()
+	}
+}
+
+func (m *Metrics) RecordImport(outcome string, elapsed time.Duration) {
+	if m != nil {
+		m.importSeconds.WithLabelValues(outcome).Observe(elapsed.Seconds())
+	}
+}
+
+func (m *Metrics) RecordImportRecovery() {
+	if m != nil {
+		m.importRecoveries.Inc()
+	}
+}
 
 func (m *Metrics) Handler() http.Handler {
 	return promhttp.HandlerFor(m.registry, promhttp.HandlerOpts{EnableOpenMetrics: true})
