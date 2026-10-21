@@ -2,23 +2,25 @@
 
 这份文档诚实列出当前项目已具备和尚未具备的生产级能力，不夸大个人项目的成熟度。部署前用于核对运行条件；历史验证记录不能替代目标环境验收。
 
-## 已完成
+> 状态核对：2026-10-21，源码基线 `0e23f68`。表格区分仓库实现/配置与目标环境验收；本轮未查询远端 CI 或生产部署。D25 规模验收和 D27 持续审查仍开放，见 [问题总表](review-findings.md)，逐次验证见 [开发与验证](development.md)。
+
+## 已实现的能力与验证入口
 
 | 能力 | 实现位置与说明 |
 | --- | --- |
-| CI | `.github/workflows/ci.yml`：Go 测试（含 race）、前端 lint/test/build、迁移验证 |
-| E2E | `scripts/e2e.ps1` 启动独立 Compose 项目运行 Playwright，覆盖登录/权限/库存全生命周期/外部集成 |
+| CI | `.github/workflows/ci.yml` 按改动范围执行 Go、前端与容器/E2E 门禁；纯文档跳过业务检查。配置存在不表示当前提交已在 GitHub 通过。 |
+| E2E | `scripts/e2e.ps1` 提供独立 Compose + Playwright 入口；历次真实业务与只读 UI fixture 的执行范围分别记录，不能用夹具测试替代真实库存写入验收。 |
 | 健康检查 | `internal/app/router.go` 的 `/healthz` 端点，Docker Compose healthcheck |
-| 结构化日志 | `internal/pkg/log`：JSON 格式，含 request_id、user_id、租户等字段 |
-| 指标 | `internal/pkg/observability`：Prometheus `/metrics`，Grafana 仪表盘（monitoring profile） |
+| 结构化日志 | `internal/pkg/log` 输出 JSON；请求上下文附 request_id/user_id，操作审计记录租户。并非所有日志行都自动包含这些字段，审计仍为 best effort。 |
+| 指标 | HTTP/连接池、事务尝试/重试、导入队列/恢复、实例行锁及幂等清理指标和 Grafana 配置已实现；D12/D26 本地验证范围见记录，生产采集/渲染及告警未据此验收。 |
 | Docker 部署 | `deploy/docker-compose.yaml`：多阶段构建、非 root 用户、持久化卷、健康检查 |
 | 版本化迁移 | `cmd/migrate` + golang-migrate，迁移容器独立执行，release 不运行 AutoMigrate |
 | 安全加固 | release 模式拒绝弱 JWT/默认 DSN/缺失密码；权限注册表白名单；演示重置按租户隔离 |
 | 多租户隔离 | GORM 回调注入 tenant_id；平台旁路与精确租户区分；裸表查询显式过滤 |
-| 并发安全 | MySQL 行锁 + FIFO 分配；k6 60 并发防超卖验证；任务执行权 run_token 校验 |
-| 压测 | `scripts/k6/`：并发分配防超卖、读取/出库/拣货压力模型 |
+| 并发控制 | MySQL 行锁、FIFO、条件更新和 run_token 已实现，并有历史并发回归；不据某次 60 VU 结果保证任意明细规模或锁竞争，D25 仍开放。 |
+| 压测 | 已有分配证明及读取/出库/拣货模型；D22 范围清理默认预览，真实 k6 回环夹具已验收，未执行真实清理，也未替代目标负载的性能验收。 |
 
-## 尚未完成
+## 仓库尚未提供或目标部署尚未验收
 
 | 能力 | 缺失原因与风险 |
 | --- | --- |
