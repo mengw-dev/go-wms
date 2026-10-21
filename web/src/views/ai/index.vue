@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import PageHeader from '@/components/common/PageHeader.vue'
-import { nextTick, ref } from 'vue'
+import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { Promotion } from '@element-plus/icons-vue'
 import { aiChat } from '@/api/ai'
+import { useAuthStore } from '@/stores/auth'
 
 interface ChatMessage {
   role: 'user' | 'assistant'
@@ -14,6 +15,16 @@ const messages = ref<ChatMessage[]>([])
 const input = ref('')
 const loading = ref(false)
 const listRef = ref<HTMLElement>()
+const auth = useAuthStore()
+let activeRequest: globalThis.AbortController | undefined
+
+function stop() {
+  activeRequest?.abort()
+  activeRequest = undefined
+  loading.value = false
+}
+onBeforeUnmount(stop)
+watch(() => auth.sessionVersion, () => { stop(); messages.value = [] })
 
 const suggestions = [
   '当前哪些 SKU 库存最多？',
@@ -33,16 +44,24 @@ async function send(text?: string) {
   input.value = ''
   messages.value.push({ role: 'user', content: question })
   loading.value = true
-  await scrollToBottom()
+  const controller = new globalThis.AbortController()
+  activeRequest = controller
   try {
-    const resp = await aiChat(question)
-    messages.value.push({ role: 'assistant', content: resp.answer })
-  } catch {
-    // 错误提示由 request.ts 拦截器统一 ElMessage 弹出，这里仅展示占位气泡
-    messages.value.push({ role: 'assistant', content: '回答失败，请稍后重试。' })
-  } finally {
-    loading.value = false
     await scrollToBottom()
+    if (controller.signal.aborted) return
+    const resp = await aiChat(question, controller.signal)
+    if (controller.signal.aborted || activeRequest !== controller) return
+    messages.value.push({ role: 'assistant', content: resp.answer })
+  } catch (error) {
+    if (controller.signal.aborted || activeRequest !== controller) return
+    const text = error instanceof Error ? error.message : '回答失败，请稍后重试。'
+    messages.value.push({ role: 'assistant', content: text })
+  } finally {
+    if (activeRequest === controller) {
+      activeRequest = undefined
+      loading.value = false
+      await scrollToBottom()
+    }
   }
 }
 
@@ -97,6 +116,7 @@ function onKeydown(e: KeyboardEvent) {
 
         <!-- 输入区 -->
         <div class="input-area">
+          <el-button v-if="loading" @click="stop">停止等待</el-button>
           <el-input
             v-model="input"
             type="textarea"

@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -76,6 +77,39 @@ func TestLoadReadsEnvironmentOverrides(t *testing.T) {
 	}
 	if cfg.Server.Mode != "release" || cfg.Server.Node != 9 || cfg.JWT.Secret != "0123456789abcdef0123456789abcdef" {
 		t.Fatalf("environment overrides were not applied: %+v", cfg)
+	}
+}
+
+func TestAIRequestBudgetFitsResponseWindow(t *testing.T) {
+	for _, tc := range []struct {
+		name, content string
+		want          int
+		reject        bool
+	}{
+		{"default", "", 25, false},
+		{"shorter", "ai:\n  request_timeout_seconds: 10\n", 10, false},
+		{"too-long", "ai:\n  request_timeout_seconds: 26\n", 0, true},
+		{"write-window", "server:\n  mode: debug\n  port: 8080\n  write_timeout_seconds: 20\nai:\n  request_timeout_seconds: 20\n", 0, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			content := tc.content
+			if !strings.HasPrefix(content, "server:") {
+				content = "server:\n  mode: debug\n  port: 8080\n" + content
+			}
+			cfg, err := Load(writeConfig(t, content))
+			if tc.reject {
+				if err == nil || !strings.Contains(err.Error(), "ai.request_timeout_seconds") {
+					t.Fatalf("expected AI budget validation, got %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if cfg.AI.RequestTimeoutSeconds != tc.want {
+				t.Fatalf("budget=%d", cfg.AI.RequestTimeoutSeconds)
+			}
+		})
 	}
 }
 

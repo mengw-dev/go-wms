@@ -60,7 +60,7 @@
 | 系统 system | `internal/modules/system` | 鉴权（登录/JWT）、权限、用户、角色、操作日志 | `service/{auth,permission,user,role,login_limiter,builtin,audit,response,p2_auth}_test.go`、`dto/dto_test.go`、`model/model_test.go` |
 | 基础数据 basic | `internal/modules/basic` | 仓库、库位、SKU | `service/{sku,delete,rows_affected,conflict,response,location_limits}_test.go`、`dto/dto_test.go`、`handler/handler_test.go`、`repository/repository_test.go`、`model/model_json_test.go` |
 | 仪表盘 dashboard | `internal/modules/dashboard` | 按业务权限/仓库汇总当前状态、创建趋势、最早待办与库存/库位概况，只读事务 | `service/overview_test.go`；前端 E2E `dashboard-layout.spec.ts` |
-| AI ai | `internal/modules/ai` | 库存问答（智谱 BigModel） | `service/{service,low_stock}_test.go` |
+| AI ai | `internal/modules/ai` | 库存问答、Redis 原子额度、整次预算及主备取消（智谱 BigModel） | `service/{service,low_stock,reliability}_test.go`；前端 E2E `ai-reliability.spec.ts` |
 
 应用装配与启动：
 

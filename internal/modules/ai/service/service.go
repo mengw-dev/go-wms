@@ -47,6 +47,9 @@ type Service struct {
 }
 
 func New(cfg config.AIConfig, db *gorm.DB, rdb *redis.Client) *Service {
+	if cfg.RequestTimeoutSeconds <= 0 || cfg.RequestTimeoutSeconds > 25 {
+		cfg.RequestTimeoutSeconds = 25
+	}
 	return &Service{
 		cfg:  cfg,
 		repo: repository.New(db),
@@ -57,6 +60,11 @@ func New(cfg config.AIConfig, db *gorm.DB, rdb *redis.Client) *Service {
 
 // Chat 处理一次提问：限流 → 检索库存快照 → 拼 Prompt → 主模型调用（失败降级备用）。
 func (s *Service) Chat(ctx context.Context, userID int64, question string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, time.Duration(s.cfg.RequestTimeoutSeconds)*time.Second)
+	defer cancel()
+	if ctx.Err() != nil {
+		return "", errcode.AIServiceUnavailable
+	}
 	if s.cfg.APIKey == "" {
 		return "", errcode.AIKeyMissing
 	}
@@ -66,9 +74,15 @@ func (s *Service) Chat(ctx context.Context, userID int64, question string) (stri
 	if !s.allowDailyQuota(ctx) {
 		return "", errcode.AIDailyLimited
 	}
+	if ctx.Err() != nil {
+		return "", errcode.AIServiceUnavailable
+	}
 
 	snapshot, err := s.buildSnapshot(ctx, question)
 	if err != nil {
+		if ctx.Err() != nil {
+			return "", errcode.AIServiceUnavailable
+		}
 		return "", err
 	}
 
@@ -77,7 +91,26 @@ func (s *Service) Chat(ctx context.Context, userID int64, question string) (stri
 		{Role: "user", Content: "【库存数据快照】\n" + snapshot + "\n\n【用户问题】\n" + question},
 	}
 
-	answer, err := s.llm.Chat(ctx, s.cfg.Model, messages, llmTemperature, llmMaxTokens)
+	return s.chatModels(ctx, messages)
+}
+
+// chatModels reserves half of the remaining request budget for a configured fallback.
+// A primary attempt timing out may fall back; canceling the whole request must not.
+func (s *Service) chatModels(ctx context.Context, messages []client.Message) (string, error) {
+	if ctx.Err() != nil {
+		return "", errcode.AIServiceUnavailable
+	}
+	hasBackup := s.cfg.BackupModel != "" && s.cfg.BackupModel != s.cfg.Model
+	primaryCtx := ctx
+	cancel := func() {}
+	if deadline, ok := ctx.Deadline(); ok && hasBackup {
+		primaryCtx, cancel = context.WithTimeout(ctx, time.Until(deadline)/2)
+	}
+	answer, err := s.llm.Chat(primaryCtx, s.cfg.Model, messages, llmTemperature, llmMaxTokens)
+	cancel()
+	if ctx.Err() != nil {
+		return "", errcode.AIServiceUnavailable
+	}
 	if err == nil {
 		return answer, nil
 	}
@@ -88,35 +121,38 @@ func (s *Service) Chat(ctx context.Context, userID int64, question string) (stri
 		log.WithContext(ctx).Error("ai chat primary model auth failed", "err", err)
 		return "", errcode.AIServiceUnavailable
 	}
-	if s.cfg.BackupModel == "" || s.cfg.BackupModel == s.cfg.Model {
+	if !hasBackup {
 		log.WithContext(ctx).Error("ai chat failed and no backup model", "err", err)
 		return "", errcode.AIServiceUnavailable
 	}
 	log.WithContext(ctx).Warn("ai chat primary model failed, fallback to backup", "err", err)
 	answer, backupErr := s.llm.Chat(ctx, s.cfg.BackupModel, messages, llmTemperature, llmMaxTokens)
-	if backupErr == nil {
+	if backupErr == nil && ctx.Err() == nil {
 		return answer, nil
 	}
 	log.WithContext(ctx).Error("ai chat backup model also failed", "primary_err", err, "backup_err", backupErr)
 	return "", errcode.AIServiceUnavailable
 }
 
-// allowRate 每用户每分钟限流（Redis INCR + EXPIRE）；Redis 不可用时降级放行。
+// The script also repairs counters left without a TTL by older versions.
+var quotaScript = redis.NewScript(`
+local n = redis.call('INCR', KEYS[1])
+if n == 1 or redis.call('PTTL', KEYS[1]) < 0 then
+    redis.call('PEXPIRE', KEYS[1], ARGV[1])
+end
+return n
+`)
+
+// allowRate 每用户每分钟限流（计数和 TTL 原子设置）；Redis 不可用时降级放行。
 func (s *Service) allowRate(ctx context.Context, userID int64) bool {
 	if s.rdb == nil {
 		return true
 	}
 	key := fmt.Sprintf("wms:ai:rl:%d", userID)
-	n, err := s.rdb.Incr(ctx, key).Result()
+	n, err := quotaScript.Run(ctx, s.rdb, []string{key}, time.Minute.Milliseconds()).Int64()
 	if err != nil {
 		// Redis 故障：降级不限流（与 bootstrap 的 Redis 降级策略一致）
 		return true
-	}
-	if n == 1 {
-		// 仅在键首次创建时设置 TTL；设置失败则删除键，避免留下永不过期的计数
-		if err := s.rdb.Expire(ctx, key, time.Minute).Err(); err != nil {
-			_ = s.rdb.Del(ctx, key).Err()
-		}
 	}
 	return n <= int64(s.cfg.RateLimitPerMin)
 }
@@ -134,14 +170,9 @@ func (s *Service) allowDailyQuota(ctx context.Context) bool {
 	}
 	// key 带日期：跨天自然失效，无需清理任务
 	key := fmt.Sprintf("wms:ai:daily:%d:%s", tid, time.Now().Format("20060102"))
-	n, err := s.rdb.Incr(ctx, key).Result()
+	n, err := quotaScript.Run(ctx, s.rdb, []string{key}, (24 * time.Hour).Milliseconds()).Int64()
 	if err != nil {
 		return true
-	}
-	if n == 1 {
-		if err := s.rdb.Expire(ctx, key, 24*time.Hour).Err(); err != nil {
-			_ = s.rdb.Del(ctx, key).Err()
-		}
 	}
 	return n <= int64(s.cfg.DailyLimitPerTenant)
 }

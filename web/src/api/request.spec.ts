@@ -1,8 +1,9 @@
-import { AxiosError, type InternalAxiosRequestConfig } from 'axios'
+import { AxiosError, CanceledError, type InternalAxiosRequestConfig } from 'axios'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAuthStore } from '@/stores/auth'
 import { get } from './request'
+import { aiChat } from './ai'
 
 const mocks = vi.hoisted(() => ({ adapter: vi.fn(), push: vi.fn(), error: vi.fn(), warning: vi.fn() }))
 vi.mock('axios', async (original) => {
@@ -57,5 +58,22 @@ describe('request authentication ownership', () => {
     await expect(get('/protected')).rejects.toMatchObject({ kind: 'demo' })
     expect(useAuthStore().token).toBe('')
     expect(mocks.warning).toHaveBeenCalledOnce()
+  })
+
+  it('AI retains a bounded timeout and forwards AbortSignal without cancel toasts', async () => {
+    let sent!: InternalAxiosRequestConfig
+    mocks.adapter.mockImplementation(config => {
+      sent = config
+      return new Promise((_, reject) => config.signal?.addEventListener('abort', () => reject(new CanceledError('canceled', config))))
+    })
+    const controller = new AbortController()
+    const answer = aiChat('库存总量', controller.signal).catch((error: unknown) => error)
+    await vi.waitFor(() => expect(sent).toBeDefined())
+    expect(sent.timeout).toBe(35000)
+    expect(sent.signal).toBe(controller.signal)
+    controller.abort()
+    expect(await answer).toBeInstanceOf(Error)
+    expect(mocks.error).not.toHaveBeenCalled()
+    expect(useAuthStore().token).toBe('old')
   })
 })

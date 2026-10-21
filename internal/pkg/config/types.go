@@ -153,12 +153,14 @@ type LimitsConfig struct {
 // APIKey 只从环境变量 ZHIPU_API_KEY 读取，绝不写入配置文件；
 // 模型名可被 ZHIPU_LLM_MODEL / ZHIPU_LLM_BACKUP_MODEL 环境变量覆盖。
 type AIConfig struct {
-	APIKey          string `mapstructure:"-"`
-	Model           string `mapstructure:"model"`        // 主模型（优先最强免费模型）
-	BackupModel     string `mapstructure:"backup_model"` // 备用模型：主模型拥堵(1305/429)时自动降级
-	TimeoutSeconds  int    `mapstructure:"timeout_seconds"`
-	BaseURL         string `mapstructure:"base_url"`
-	RateLimitPerMin int    `mapstructure:"rate_limit_per_min"` // 每用户每分钟提问上限（Redis 计数）
+	APIKey         string `mapstructure:"-"`
+	Model          string `mapstructure:"model"`        // 主模型（优先最强免费模型）
+	BackupModel    string `mapstructure:"backup_model"` // 备用模型：主模型拥堵(1305/429)时自动降级
+	TimeoutSeconds int    `mapstructure:"timeout_seconds"`
+	// RequestTimeoutSeconds covers Redis, snapshot queries and both model attempts.
+	RequestTimeoutSeconds int    `mapstructure:"request_timeout_seconds"`
+	BaseURL               string `mapstructure:"base_url"`
+	RateLimitPerMin       int    `mapstructure:"rate_limit_per_min"` // 每用户每分钟提问上限（Redis 计数）
 	// DailyLimitPerTenant 每租户每日提问上限：共享体验账号下防止单个访客刷爆当天额度；
 	// 仅对租户 ID > 0 生效（平台租户不限），Redis 不可用时降级放行。
 	DailyLimitPerTenant int `mapstructure:"daily_limit_per_tenant"`

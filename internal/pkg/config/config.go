@@ -176,6 +176,12 @@ func Load(path string) (*Config, error) {
 	if cfg.AI.TimeoutSeconds <= 0 {
 		cfg.AI.TimeoutSeconds = 30
 	}
+	if cfg.AI.RequestTimeoutSeconds <= 0 {
+		cfg.AI.RequestTimeoutSeconds = 25
+	}
+	if cfg.AI.RequestTimeoutSeconds > 25 || cfg.AI.RequestTimeoutSeconds >= cfg.Server.WriteTimeoutSeconds {
+		return nil, fmt.Errorf("ai.request_timeout_seconds must be <= 25 and less than server.write_timeout_seconds")
+	}
 	if cfg.AI.RateLimitPerMin <= 0 {
 		cfg.AI.RateLimitPerMin = 10
 	}

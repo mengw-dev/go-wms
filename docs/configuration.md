@@ -20,6 +20,10 @@
 | `WMS_SERVER_TRUSTED_PROXIES` | 可信反向代理 CIDR，逗号分隔 | 空 |
 | `WMS_MYSQL_DSN` | MySQL DSN | 本地开发配置 |
 | `WMS_REDIS_ADDR` | Redis 地址 | `127.0.0.1:6379` |
+| `WMS_AI_REQUEST_TIMEOUT_SECONDS` | 整次 AI 问答预算，含限流/检索/主备调用；须 <=25 且小于 HTTP 写超时 | `25` |
+| `WMS_AI_TIMEOUT_SECONDS` | 单次模型 HTTP 调用上限，同时受整次与该次剩余预算约束 | `30` |
+| `WMS_AI_RATE_LIMIT_PER_MIN` | 每用户每分钟 AI 提问次数，Redis 原子计数 | `10` |
+| `WMS_AI_DAILY_LIMIT_PER_TENANT` | 每正租户每日 AI 提问次数，Redis 原子计数；平台租户不限 | `100` |
 | `WMS_JWT_SECRET` | JWT 密钥，生产环境至少 32 字符 | 开发配置 |
 | `WMS_INTEGRATION_TENANT_ID` | 外部 API Key 绑定租户，0 表示精确平台租户 | `0` |
 | `WMS_INTEGRATION_API_KEY` | 外部 OMS/ERP API Key | 开发占位值 |
@@ -55,3 +59,11 @@
 `WMS_PERSONAL_ENABLED`、`WMS_PERSONAL_INSTANCES` 和 `WMS_PERSONAL_PASSWORD` 控制持久体验账号。release 模式开启时必须显式提供密码；真实业务部署应同时关闭演示与持久体验账号。
 
 监控启动和指标说明见 [monitoring.md](monitoring.md)，完整部署步骤见 [deployment.md](deployment.md)。
+
+## AI 时间预算与取消
+
+默认整次问答预算25秒，包含 Redis 计数、数据库快照与主备模型，不是每个模型各25秒。有独立备用模型时，主模型最多使用剩余总预算一半，为备用保留时间；仍受 `timeout_seconds` 单次 HTTP 上限约束。主模型认证失败不切备用；来访请求取消或总预算耗尽不再开始备用请求。
+
+默认 HTTP 服务写超时和 Web Nginx 代理读超时均30秒，AI 浏览器请求35秒。修改部署中的时间窗口时须保持后端总预算早于外层超时；新总预算配置在启动时校验，不通过单独提高浏览器超时掩盖后端继续运行。前端停止等待、离页或身份变化会主动取消，问答次数按尝试计数，不因模型失败或取消自动返还。
+
+AI 分钟窗口从首个计数开始60秒，日额度按服务端日期区分 key、24小时过期；两者原子设置 TTL 并修复旧版本遗留的无 TTL 计数，不在每次提问时延长有效窗口。Redis 故障时保留已有的降级放行策略，与登录的进程内限流区分。

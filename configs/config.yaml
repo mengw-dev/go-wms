@@ -80,6 +80,7 @@ ai:
   model: "glm-4.7-flash"              # 主模型（当前最强免费模型）
   backup_model: "glm-4-flash-250414"  # 备用模型：主模型拥堵（错误码 1305/429）时自动降级重试一次
   timeout_seconds: 30                 # 单次 LLM 调用超时
+  request_timeout_seconds: 25         # 整次问答预算（含检索/主备调用）；须 <=25 且小于服务端写超时
   base_url: "https://open.bigmodel.cn/api/paas/v4"
   rate_limit_per_min: 10              # 每用户每分钟提问上限（Redis 计数；Redis 不可用时自动放行）
   daily_limit_per_tenant: 100         # 每租户每日提问上限（共享体验账号防“一个人刷爆当天额度”；平台租户不限）
