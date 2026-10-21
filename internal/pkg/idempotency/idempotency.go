@@ -2,11 +2,16 @@
 // 以 (tenant_id, scope, idempotency_key) 为唯一键记录首次成功的执行结果，
 // 相同 key + 相同指纹视为重复成功，相同 key + 不同指纹视为误用拒绝。
 //
-// 使用约定（收货/上架/拣货/盘点审核共用同一套）：
-//   - 调用方在业务事务内先 Find；未命中则执行业务，最后 Insert；
+// 使用约定：
+//   - Find 是成功记录的只读快路径；命中后必须比较指纹、校验响应快照再回放；
+//   - 收货/上架/盘点审核在事务外预查询，避免提前固定 REPEATABLE READ 快照；
+//     拣货/领取保留各自事务内的快路径及锁协议，不要求所有命令统一查询位置；
+//   - 未命中才尝试执行业务并 Insert；Find 本身不锁定 key，也不授予执行权；
 //   - Insert 必须与业务写入同一事务提交，业务失败时记录随事务回滚，key 可复用；
-//   - 并发同 key 由唯一索引兜底：后到者插入冲突返回可重试冲突，
-//     重试后 Find 命中已有记录，回放首次结果。
+//   - 并发同 key 由唯一索引兜底；事务重试或业务拒绝后的核对遵循命令自身实现，
+//     必要时先回滚再通过事务外新读核对，不能依赖同一旧快照看到并发提交；
+//   - 核对查询失败应保留“结果未知”，不能伪装成确定的业务拒绝或成功；
+//   - 持有事务连接时，不得为预查询或核对再从同一连接池借第二条连接。
 //
 // 注意：Find 的租户条件显式传入，平台 tenant_id=0 也精确匹配，
 // 不依赖查询回调的旁路语义，避免跨租户 key 串用。
@@ -45,7 +50,8 @@ type Record struct {
 
 func (Record) TableName() string { return "wms_idempotency" }
 
-// Find 查询 (tenantID, scope, key) 幂等记录；未命中返回 (nil, nil)。
+// Find 普通读取 (tenantID, scope, key) 幂等记录；未命中返回 (nil, nil)。
+// 传入事务时遵循该事务的读视图，不是锁定读或强制最新读。
 func Find(db *gorm.DB, tenantID int64, scope, key string) (*Record, error) {
 	var record Record
 	err := db.Where("tenant_id = ? AND scope = ? AND idempotency_key = ?", tenantID, scope, key).
@@ -87,12 +93,13 @@ func Fingerprint(parts ...string) string {
 }
 
 // EmptySuccessJSON 无返回值命令（HTTP 层 data:null）的成功回放固定表示：
-// 严格等于 "{}" 的空对象。用固定值区分「合法空成功」与「损坏记录」，
+// 写入固定的 "{}" 空对象，回放时由 ValidateEmptySuccess 校验为空对象。
+// 用空对象区分「合法空成功」与「损坏记录」，
 // 不通过 ResultJSON 为空串或 "null" 表达成功。
 const EmptySuccessJSON = "{}"
 
 // ValidateEmptySuccess 校验空成功回放标记：
-// 仅接受严格等于 "{}" 的空 JSON 对象；空串、null、含字段或非法 JSON 均视为损坏。
+// 仅接受无字段的 JSON 对象（允许空白）；空串、null、含字段或非法 JSON 均视为损坏。
 func ValidateEmptySuccess(raw string) error {
 	fields, err := decodeResultFields(raw)
 	if err != nil {
