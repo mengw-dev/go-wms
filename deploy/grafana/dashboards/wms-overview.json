@@ -204,6 +204,36 @@
       "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "min by (__name__) ({__name__=~\"wms_import_queue_scrape_success|wms_mysql_row_lock_scrape_success\"})", "legendFormat": "{{__name__}}", "refId": "A"}],
       "title": "数据库观测采集状态",
       "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"drawStyle": "line", "fillOpacity": 12, "lineWidth": 2, "showPoints": "never"}, "unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 44},
+      "id": 20,
+      "options": {"legend": {"calcs": [], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum(rate(wms_idempotency_cleanup_deleted_rows_total[5m]))", "legendFormat": "已确认删除行/秒", "refId": "A"}],
+      "title": "幂等清理删除速率",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"drawStyle": "line", "fillOpacity": 12, "lineWidth": 2, "showPoints": "never"}, "unit": "s"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 44},
+      "id": 21,
+      "options": {"legend": {"calcs": [], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "histogram_quantile(0.95, sum by (le, outcome) (rate(wms_idempotency_cleanup_duration_seconds_bucket[24h])))", "legendFormat": "{{outcome}}", "refId": "A"}],
+      "title": "幂等清理 P95（近24小时）",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"drawStyle": "line", "fillOpacity": 12, "lineWidth": 2, "showPoints": "never"}, "unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 44},
+      "id": 22,
+      "options": {"legend": {"calcs": [], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum by (outcome) (increase(wms_idempotency_cleanup_duration_seconds_count[24h]))", "legendFormat": "{{outcome}}", "refId": "A"}],
+      "title": "幂等清理结果（近24小时）",
+      "type": "timeseries"
     }
   ],
   "refresh": "5s",
@@ -215,6 +245,6 @@
   "timezone": "browser",
   "title": "WMS Overview",
   "uid": "gowms-overview",
-  "version": 2,
+  "version": 3,
   "weekStart": ""
 }

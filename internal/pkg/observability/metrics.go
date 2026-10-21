@@ -17,14 +17,18 @@ import (
 )
 
 type Metrics struct {
-	registry         *prometheus.Registry
-	requestsTotal    *prometheus.CounterVec
-	requestSeconds   *prometheus.HistogramVec
-	inFlight         prometheus.Gauge
-	txSeconds        *prometheus.HistogramVec
-	txRetries        *prometheus.CounterVec
-	importSeconds    *prometheus.HistogramVec
-	importRecoveries prometheus.Counter
+	registry           *prometheus.Registry
+	requestsTotal      *prometheus.CounterVec
+	requestSeconds     *prometheus.HistogramVec
+	inFlight           prometheus.Gauge
+	txSeconds          *prometheus.HistogramVec
+	txRetries          *prometheus.CounterVec
+	importSeconds      *prometheus.HistogramVec
+	importRecoveries   prometheus.Counter
+	cleanupSeconds     *prometheus.HistogramVec
+	cleanupRows        prometheus.Counter
+	cleanupBatches     prometheus.Counter
+	cleanupLastSuccess prometheus.Gauge
 }
 
 func New(db *gorm.DB, serviceName string) *Metrics {
@@ -54,9 +58,23 @@ func New(db *gorm.DB, serviceName string) *Metrics {
 	m.importRecoveries = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "wms_import_recoveries_total", Help: "Stale import executions successfully returned to pending.",
 	})
+	m.cleanupSeconds = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Name: "wms_idempotency_cleanup_duration_seconds", Help: "Scheduled idempotency cleanup round duration.",
+		Buckets: []float64{.01, .1, .5, 1, 2, 5, 10, 30},
+	}, []string{"outcome"})
+	m.cleanupRows = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "wms_idempotency_cleanup_deleted_rows_total", Help: "Acknowledged deleted rows in scheduled cleanup rounds, including partial progress before errors.",
+	})
+	m.cleanupBatches = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "wms_idempotency_cleanup_batches_total", Help: "Successfully completed bounded delete statements in scheduled cleanup rounds.",
+	})
+	m.cleanupLastSuccess = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "wms_idempotency_cleanup_last_success_timestamp_seconds", Help: "Last round that completed without reaching the batch cap; zero until first completion in this process.",
+	})
 	m.registry.MustRegister(collectors.NewGoCollector(), collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 	m.registry.MustRegister(m.requestsTotal, m.requestSeconds, m.inFlight)
 	m.registry.MustRegister(m.txSeconds, m.txRetries, m.importSeconds, m.importRecoveries)
+	m.registry.MustRegister(m.cleanupSeconds, m.cleanupRows, m.cleanupBatches, m.cleanupLastSuccess)
 	if db != nil {
 		if sqlDB, err := db.DB(); err == nil {
 			m.registry.MustRegister(newDBCollector(sqlDB))
@@ -95,6 +113,18 @@ func (m *Metrics) RecordImport(outcome string, elapsed time.Duration) {
 func (m *Metrics) RecordImportRecovery() {
 	if m != nil {
 		m.importRecoveries.Inc()
+	}
+}
+
+func (m *Metrics) RecordIdempotencyCleanup(outcome string, rows int64, batches int, elapsed time.Duration) {
+	if m == nil {
+		return
+	}
+	m.cleanupSeconds.WithLabelValues(outcome).Observe(elapsed.Seconds())
+	m.cleanupRows.Add(float64(rows))
+	m.cleanupBatches.Add(float64(batches))
+	if outcome == "completed" {
+		m.cleanupLastSuccess.SetToCurrentTime()
 	}
 }
 

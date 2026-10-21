@@ -73,6 +73,34 @@ Grafana 管理员密码保存在 `.env` 的 `WMS_GRAFANA_ADMIN_PASSWORD`。
 
 ## 常用 PromQL
 
+### 幂等过期记录清理（D12）
+
+保留期仍为7天，后台启动立即清理一轮，正常完成后等待24小时。每批按 `created_at, id` 选取最多500个主键，再带过期条件删除，沿用 GORM 租户范围；后台使用平台上下文跨租户清理，精确租户0和普通租户调用仍保留隔离。每批独立提交，不把整轮放进一个长事务；批间暂停20毫秒，每轮最多20批（最多确认删除10000条）。每批的查询与删除共用2秒预算，整轮30秒，调用方更早取消/截止时间优先。
+
+达到批数上限或执行失败，下一轮等待 `min(正常间隔, 1分钟)` 再从最早的过期记录继续。`limited` 只表示本轮达到上限，不能据此精确计算余量；最后一批恰好500条也可能已经清空，下一轮会确认。失败或取消保留已提交的前批进度；并发清理者删除同一组选中主键时，实际删除数可能为0，不据此重复计数。主键候选/删除行数有界不代表 MySQL 只扫描或锁住同样数量的行，仍需结合行锁指标与 D25 压测分析。
+
+| 指标 | 口径 |
+| --- | --- |
+| `wms_idempotency_cleanup_duration_seconds{outcome}` | 每次后台清理轮次的耗时，outcome 固定为 completed/limited/error/timeout/canceled；不含等待下一轮的时间。 |
+| `wms_idempotency_cleanup_deleted_rows_total` | 后台轮次已收到成功确认的删除行数，包含发生错误前已完成的批次。网络故障导致提交结果未知时不保证计数与数据库物理变化完全一致。 |
+| `wms_idempotency_cleanup_batches_total` | 已成功完成的分批 DELETE 语句数，包括并发竞争后实际删除0条的批次。 |
+| `wms_idempotency_cleanup_last_success_timestamp_seconds` | 最近一次未报错且未达到上限的完成时间；空队列确认成功也会更新，进程启动到首次完成前为0。limited/失败/取消不更新。 |
+
+这些指标由后台 RunCleanup 记录，直接调用 Purge 不计入；进程重启归零，跨副本统计删除进度可相加，最后成功时间需按副本排查，不能拿某一副本成功掩盖另一副本故障。标签不含租户、单号、scope或key，沿用现有 Metrics 开关，不新增组件/依赖。
+
+Grafana 增加删除速率、近24小时P95耗时与结果次数3个面板。清理默认每天一次，短窗口可能没有足够样本；长时间无成功记录时先检查最后成功时间是否为0、error/timeout/limited及数据库连接/行锁等待，再排查应用日志。指标和边界说明不代表已经完成生产规模压测。
+
+```promql
+sum(rate(wms_idempotency_cleanup_deleted_rows_total[5m]))
+```
+
+```promql
+(time() - wms_idempotency_cleanup_last_success_timestamp_seconds)
+  and (wms_idempotency_cleanup_last_success_timestamp_seconds > 0)
+```
+
+### HTTP 与运行时
+
 ```promql
 sum(rate(wms_http_requests_total[1m]))
 ```

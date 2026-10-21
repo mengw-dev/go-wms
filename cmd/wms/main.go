@@ -98,7 +98,7 @@ func run() error {
 	workers.Go(func() { application.InboundService.RunImports(backgroundCtx) })
 	workers.Go(func() { application.InboundService.RunImportFileCleanup(backgroundCtx) })
 	workers.Go(func() {
-		idempotency.RunCleanup(backgroundCtx, db, idempotency.CleanupInterval, idempotency.RecordRetention)
+		idempotency.RunCleanup(backgroundCtx, db, idempotency.CleanupInterval, idempotency.RecordRetention, metrics)
 	})
 	defer func() {
 		cancelBackground()
