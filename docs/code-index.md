@@ -34,6 +34,7 @@
 | 任务 task | `internal/modules/task` | 收货/上架/拣货任务的状态与进度 | `service/{service,response,dashboard_filter}_test.go` |
 | 库存 inventory | `internal/modules/inventory` | 库存汇总/明细、并发分配与扣减、调整、流水 | `service/{service,concurrency,response,availability}_test.go`、`repository/repository_test.go` |
 | 库存预警 | `internal/modules/inventory`，`web/src/views/inventory` | 仓库+货品可用量下限配置、当前缺货/低库存与库存追溯 | `service/alert_test.go`、`handler/alert_test.go`、前端 `useInventoryAlerts.spec.ts`、E2E `inventory-alerts.spec.ts`；边界见[库存预警](inventory-alerts.md) |
+| Excel导出 | `internal/modules/{inventory,stocktake}`、`internal/pkg/xlsxexport`、`web/src/components/common/ExcelExportButton.vue` | 有上限的库存/流水/盘点明细XLSX，下载鉴权/取消；边界见[导出说明](excel-export.md) | 各模块`{handler,service}/export_test.go`、`pkg/xlsxexport/export_test.go`、前端`exportQuery.spec.ts`、E2E `excel-export.spec.ts` |
 | 盘点 stocktake | `internal/modules/stocktake` | 盘点单、账面快照、实盘录入、差异、审核调整 | `service/{service,response,fingerprint_compatibility}_test.go`、`handler/{actual,list}_test.go`（实盘参数与列表查询契约）、`model/model_test.go` |
 
 核心基础设施（同样禁止随意重构）：

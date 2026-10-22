@@ -21,6 +21,8 @@ func (h *Handler) RegisterRoutes(auth *gin.RouterGroup, checker middleware.Perms
 	g := auth.Group("/inventory")
 	read := middleware.Permission(checker, "wms:inventory")
 	manageAlerts := middleware.Permission(checker, "wms:inventory:alert:manage")
+	g.GET("/export", read, h.exportInventory)
+	g.GET("/trans/export", read, h.exportTransactions)
 	g.GET("/alerts", read, h.listAlerts)
 	g.GET("/alert-options", manageAlerts, h.alertOptions)
 	g.PUT("/alert-rules", manageAlerts, h.saveAlertRule)

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import ExcelExportButton from '@/components/common/ExcelExportButton.vue'
+import { useAuthStore } from '@/stores/auth'
 import BusinessPagination from '@/components/common/BusinessPagination.vue'
 import { mobileTableCellStyle } from '@/utils/mobileTable'
 import BusinessListPage from '@/components/common/BusinessListPage.vue'
@@ -18,6 +20,7 @@ import { loadLocationOptions, loadWarehouseOptions, toOptionMap, type IdOption }
 import { BUSINESS_EVENTS, emitBusinessEvent } from '@/events/businessEvents'
 import { useStocktakeApprove } from '@/composables/stocktake/useStocktakeApprove'
 
+const auth = useAuthStore()
 const router = useRouter()
 const route = useRoute()
 const approver = useStocktakeApprove()
@@ -27,9 +30,13 @@ const warehouseOptions = ref<IdOption[]>([])
 const warehouseMap = ref<Record<EntityID, string>>({})
 
 onMounted(async () => {
-  warehouseOptions.value = await loadWarehouseOptions()
-  warehouseMap.value = toOptionMap(warehouseOptions.value)
-  load()
+  await load()
+  if (auth.hasPerm('wms:basic')) {
+    try {
+      warehouseOptions.value = await loadWarehouseOptions()
+      warehouseMap.value = toOptionMap(warehouseOptions.value)
+    } catch { /* Optional warehouse names do not block read-only exports. */ }
+  }
 })
 
 // ---------- 列表 ----------
@@ -194,8 +201,9 @@ useAutoRefresh(() => load(true), 0)
 <template>
   <BusinessListPage title="盘点管理" description="创建盘点单、录入实盘数量，核对并处理库存差异。" :total="total">
     <template #actions>
+      <ExcelExportButton endpoint="/stocktake/orders/export" :params="{ ...query, differences_only: true }" title="盘点差异" label="导出盘点差异" />
       <el-button
-        v-permission="'wms:stocktake:create'"
+        v-if="auth.hasPerm('wms:stocktake:create')"
         data-tour="stocktake-create"
         type="primary"
         @click="openCreate"
@@ -252,11 +260,11 @@ useAutoRefresh(() => load(true), 0)
         <template #default="{ row }">
           <div class="table-oper">
             <el-button size="small" @click="goDetail(row)">详情</el-button>
-            <el-button v-if="row.status !== 'DRAFT' && approver.stateOf(row.id).pending" v-permission="'wms:stocktake:approve'" size="small" type="warning" plain @click="onApprove(row)">恢复审核</el-button>
+            <el-button v-if="(row.status !== 'DRAFT' && approver.stateOf(row.id).pending) && auth.hasPerm('wms:stocktake:approve')" size="small" type="warning" plain @click="onApprove(row)">恢复审核</el-button>
             <template v-if="row.status === 'DRAFT'">
-              <el-button v-permission="'wms:stocktake:stocktake'" size="small" type="primary" plain @click="goDetail(row)">录入实盘</el-button>
-              <el-button v-permission="'wms:stocktake:approve'" size="small" type="success" plain @click="onApprove(row)">审核</el-button>
-              <el-button v-permission="'wms:stocktake:cancel'" size="small" type="danger" plain @click="onCancel(row)">取消</el-button>
+              <el-button size="small" type="primary" plain @click="goDetail(row)" v-if="auth.hasPerm('wms:stocktake:stocktake')">录入实盘</el-button>
+              <el-button size="small" type="success" plain @click="onApprove(row)" v-if="auth.hasPerm('wms:stocktake:approve')">审核</el-button>
+              <el-button size="small" type="danger" plain @click="onCancel(row)" v-if="auth.hasPerm('wms:stocktake:cancel')">取消</el-button>
             </template>
           </div>
         </template>

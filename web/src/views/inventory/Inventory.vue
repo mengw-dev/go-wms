@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ExcelExportButton from '@/components/common/ExcelExportButton.vue'
 import BusinessFilters from '@/components/common/BusinessFilters.vue'
 import BusinessPagination from '@/components/common/BusinessPagination.vue'
 import { mobileTableCellStyle } from '@/utils/mobileTable'
@@ -198,6 +199,7 @@ useAutoRefresh(refreshActiveTab, 0)
           </el-form-item>
           <el-form-item>
             <el-button type="primary" plain @click="searchDetail">查询</el-button>
+            <ExcelExportButton endpoint="/inventory/export" :params="detailQuery" title="库存明细" />
           </el-form-item>
         </el-form></BusinessFilters>
 
@@ -296,6 +298,7 @@ useAutoRefresh(refreshActiveTab, 0)
         </el-form-item>
         <el-form-item>
           <el-button type="primary" plain @click="searchTrans">查询</el-button>
+          <ExcelExportButton endpoint="/inventory/trans/export" :params="transQuery" title="库存流水" />
         </el-form-item>
       </el-form></BusinessFilters>
 
