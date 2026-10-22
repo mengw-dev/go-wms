@@ -2,6 +2,10 @@
 
 [文档导航](README.md) · [项目首页](../README.md)
 
+## 本版迁移顺序
+
+本版依次包含库存预警`000013`、仓内移库`000014`和波次拣货`000015`。发布前备份、停写并核对实际迁移状态；创建首个波次前确保旧版API实例全部退出，旧版不识别wave_id。已有波次或移库历史时，不能直接回退旧应用或通过down清除历史。曾手工运行同号开发候选的库须单独核对，详见[波次迁移边界](wave-picking.md)和[收尾验收](release-acceptance.md)。
+
 ## Windows 一键启动
 
 只需要提前安装 [Docker Desktop](https://www.docker.com/products/docker-desktop/)。项目下载后不需要单独安装 Go、Node.js、MySQL 或 Redis。
@@ -140,7 +144,7 @@ make migrate-down
 
 历史演示种子可能存在 `picked_qty > allocated_qty`，不能根据这两个值自行推定应该如何补账。预检遇到不合规数据会停止，保留数量与原迁移版本，须先核对业务依据后再处理；本次只修正新建演示样本，没有批量修改历史数据。不要跳过检查、自动填平数量或用 `force` 掩盖失败。
 
-预检通过也不能保证后续 DDL 全部成功。MySQL ALTER 不构成跨表原子迁移；DDL 故障后先检查 `schema_migrations` 的 dirty 和实际已存在的约束，再按备份及目标版本制定恢复步骤。新 release 程序只读核对六个 CHECK，缺失、定义不符或未启用都会停止启动，须先完成迁移；回退约束也须配套回退应用。自动部署最终探针不能替代备份和停写安排。
+预检通过也不能保证后续 DDL 全部成功。MySQL ALTER 不构成跨表原子迁移；DDL 故障后先检查 `schema_migrations` 的 dirty 和实际已存在的约束，再按备份及目标版本制定恢复步骤。新 release 程序只读核对六项基础数量 CHECK 及预警、移库、波次新增约束（当前共10项，清单以 `internal/bootstrap/checks.go` 为准），缺失、定义不符或未启用都会停止启动，须先完成迁移；回退约束也须配套回退应用。自动部署最终探针不能替代备份和停写安排。
 
 若某个开发或部署环境曾手工执行过未发布的同号迁移，须先核对 `schema_migrations` 与实际表结构，不能仅通过重命名文件或 `force` 继续升级。
 

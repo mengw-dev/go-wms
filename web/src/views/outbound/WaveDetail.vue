@@ -149,14 +149,36 @@ p, small { color: var(--el-text-color-secondary); } p { margin: 8px 0; }
 @media (min-width: 981px) and (min-height: 620px) { .wave-workbench { height: 100%; } }
 @media (max-width: 980px), (max-height: 619px) { .wave-body { flex: none; height: min(52dvh, 520px); } }
 @media (max-width: 767px) { .wave-progress { grid-template-columns: 1fr 1fr; } .wave-body { min-height: 240px; } .wave-heading { justify-content: flex-start; } }
-@media print { .no-print { display: none !important; } .only-print, .print-only { display: block; } .wave-body, .wave-scroll { overflow: visible; } .wave-grid { min-width: 0; } .wave-grid .print-only { display: table-cell; } .wave-grid th { position: static; } }
+@media print {
+  .no-print { display: none !important; }
+  .only-print, .print-only { display: block; }
+  .wave-body, .wave-scroll { height: auto; min-height: 0; overflow: visible; }
+  .wave-grid { min-width: 0; table-layout: fixed; font-size: 11px; }
+  .wave-grid th, .wave-grid td { padding: 7px; overflow-wrap: anywhere; }
+  .wave-grid .print-only { display: table-cell; }
+  .wave-grid th { position: static; background: #f2f3f5; color: #111; }
+  .wave-grid thead { display: table-header-group; }
+  .wave-grid tr { break-inside: avoid; }
+}
 </style>
 
 <style>
+@page { size: A4; margin: 12mm; }
 @media print {
-  body:has(.wave-workbench) { color: #111 !important; background: white !important; }
-  body:has(.wave-workbench) .gowms-aside, body:has(.wave-workbench) .el-header, body:has(.wave-workbench) .demo-statusbar { display: none !important; }
-  body:has(.wave-workbench) .el-main, body:has(.wave-workbench) .el-container, body:has(.wave-workbench) .app-page, body:has(.wave-workbench) .page-stage { height: auto !important; overflow: visible !important; padding: 0 !important; max-width: none !important; }
-  body:has(.wave-workbench) .app-card { color: #111; background: white; box-shadow: none; border: 0; margin-bottom: 12px; }
+  html:has(.wave-workbench), body:has(.wave-workbench) {
+    color-scheme: light;
+    --el-bg-color: #fff;
+    --el-bg-color-page: #fff;
+    --el-text-color-primary: #111;
+    --el-text-color-regular: #333;
+    --el-text-color-secondary: #555;
+    --el-fill-color-light: #f2f3f5;
+    --el-border-color-lighter: #ddd;
+    transition: none !important;
+    color: #111 !important; background: white !important;
+  }
+  body:has(.wave-workbench) .gowms-aside, body:has(.wave-workbench) .el-header, body:has(.wave-workbench) .demo-statusbar, body:has(.wave-workbench) .el-overlay { display: none !important; }
+  body:has(.wave-workbench) #app, body:has(.wave-workbench) .layout, body:has(.wave-workbench) .el-main, body:has(.wave-workbench) .el-container, body:has(.wave-workbench) .app-page, body:has(.wave-workbench) .page-stage { display: block !important; height: auto !important; min-height: 0 !important; overflow: visible !important; padding: 0 !important; max-width: none !important; }
+  body:has(.wave-workbench) .app-card { color: #111; background: white; box-shadow: none; border: 0; border-radius: 0; margin-bottom: 12px; }
 }
 </style>

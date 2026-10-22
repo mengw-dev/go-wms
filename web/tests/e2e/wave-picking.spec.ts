@@ -105,6 +105,7 @@ for (const display of [
       const slot = page.locator('.wave-slots article').filter({ hasText: member.slot_code })
       await slot.getByRole('button', { name: '确认发货', exact: true }).click()
       await page.locator('.el-message-box').getByRole('button', { name: '确定', exact: true }).click()
+      await expect(page.locator('.el-message-box')).not.toBeVisible()
       await expect(slot).toContainText('已发货')
       const order = await requestApi<{ order: { status: string }; tasks: { done_qty: number; target_qty: number }[] }>(
         request, seed.token, 'GET', `/outbound/orders/${member.order_id}`)
@@ -120,8 +121,12 @@ for (const display of [
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     await page.screenshot({ path: testInfo.outputPath('completed.png'), fullPage: true })
     await page.emulateMedia({ media: 'print' })
+    await page.setViewportSize({ width: 794, height: 1123 })
     await expect(page.getByRole('heading', { name: '汇总拣货单（来源库位）', exact: true })).toBeVisible()
     await expect(page.locator('.wave-grid').first()).toContainText(seed.sku.name)
+    expect(await page.locator('body').evaluate(el => getComputedStyle(el).backgroundColor)).toBe('rgb(255, 255, 255)')
+    expect(await page.locator('.wave-grid th').first().evaluate(el => getComputedStyle(el).backgroundColor)).toBe('rgb(242, 243, 245)')
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     await page.screenshot({ path: testInfo.outputPath('print.png'), fullPage: true })
   })
 }
