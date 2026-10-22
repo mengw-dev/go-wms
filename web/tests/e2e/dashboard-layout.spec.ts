@@ -3,7 +3,7 @@ import { dashboardFixture } from './support/dashboard'
 
 async function setup(page: Page, theme: string, limited = false, demo = false) {
   const user = { user_id: '42', username: 'operator', nickname: '仓库管理员', roles: [], perms: demo ? ['*', 'wms:demo'] : limited ? ['wms:task'] : ['*'] }
-  const state = { fail: false }
+  const state = { fail: false, alertFail: false, alertRequests: 0 }
   await page.addInitScript(({ user, theme, demo }) => {
     localStorage.setItem('WMS_TOKEN', 'dashboard-test')
     localStorage.setItem('WMS_USER', JSON.stringify(user))
@@ -24,7 +24,11 @@ async function setup(page: Page, theme: string, limited = false, demo = false) {
     else if (path === '/dashboard/overview') {
       if (state.fail) { await route.fulfill({ status: 503, json: { code: 50300, msg: 'unavailable' } }); return }
       const fixture = dashboardFixture(url.searchParams.get('warehouse_id') || '0')
-      data = limited ? { ...fixture, access: { ...fixture.access, inbound: false, outbound: false, inventory: false, basic: false, stocktake: false }, inbound: undefined, outbound: undefined, inventory: undefined, locations: undefined, draft_stocktakes: undefined, warehouses: [] } : fixture
+      data = limited ? { ...fixture, access: { ...fixture.access, inbound: false, outbound: false, inventory: false, basic: false, stocktake: false }, inbound: undefined, outbound: undefined, inventory: undefined, locations: undefined, draft_stocktakes: undefined, activity: undefined, import_issues: undefined, warehouses: [] } : fixture
+    } else if (path === '/inventory/alerts') {
+      state.alertRequests++
+      if (state.alertFail) { await route.fulfill({ status: 503, json: { code: 50300, msg: 'unavailable' } }); return }
+      data = { list: [], total: 0, warehouses: dashboardFixture().warehouses, summary: { configured: 10, out_of_stock: 2, low: 3 }, checked_at: '2026-10-20T16:30:00+08:00' }
     } else if (path === '/basic/warehouses') data = { list: dashboardFixture().warehouses.map(w => ({ ...w, status: 1 })), total: 2 }
     else if (path === '/inbound/imports') data = []
     await route.fulfill({ json: { code: 0, msg: 'ok', data } })
@@ -133,12 +137,76 @@ test('dashboard drill-downs retain warehouse, status and creation date; failed r
 })
 
 test('task-only users do not see warehouse, order or inventory information', async ({ page }) => {
-  await setup(page, 'dark', true)
+  const state = await setup(page, 'dark', true)
   await page.goto('/dashboard')
   await expect(page.getByRole('heading', { name: '作业待办', exact: true })).toBeVisible()
   await expect(page.locator('.metric')).toHaveCount(1)
   await expect(page.locator('.workflow-panel, .trend-panel, .inventory-panel')).toHaveCount(0)
   await expect(page.getByRole('combobox', { name: '仪表盘仓库' })).toHaveCount(0)
+  expect(state.alertRequests).toBe(0)
+  await expect(page.locator('.activity-strip, .import-attention, .alert-summary')).toHaveCount(0)
+})
+
+for (const theme of ['light', 'dark']) {
+  test(`${theme}: alerts drill down with matching state and warehouse`, async ({ page }) => {
+    await setup(page, theme)
+    for (const [label, filter] of [['可用库存为零', 'OUT_OF_STOCK'], ['低库存', 'LOW']]) {
+      await page.goto('/dashboard')
+      await page.getByRole('combobox', { name: '仪表盘仓库' }).click()
+      await page.getByRole('option', { name: 'WH-HZ · 杭州仓' }).click()
+      await expect(page.locator('.alert-context')).toContainText('已配置 10')
+      const request = page.waitForRequest(req => new URL(req.url()).pathname.endsWith('/inventory/alerts') && new URL(req.url()).searchParams.get('state') === filter)
+      await page.locator('.alert-summary').getByRole('button', { name: new RegExp(label!) }).click()
+      const url = new URL((await request).url())
+      expect(url.searchParams.get('warehouse_id')).toBe('2')
+      expect(url.searchParams.get('state')).toBe(filter)
+      await expect(page).toHaveURL(new RegExp(`/inventory/alerts\\?.*state=${filter}`))
+    }
+  })
+
+  test(`${theme}: actual ledger and historical imports open bounded local details`, async ({ page }, testInfo) => {
+    await setup(page, theme)
+    await page.goto('/dashboard')
+    await page.getByRole('combobox', { name: '仪表盘仓库' }).click()
+    await page.getByRole('option', { name: 'WH-HZ · 杭州仓' }).click()
+    await page.locator('.activity-strip button').click()
+    const dialog = page.getByRole('dialog', { name: '今日库存作业', exact: true })
+    await expect(dialog).toContainText('不代表完成单量或任务数')
+    await expect(dialog.locator('.el-table__body-wrapper tbody tr')).toHaveCount(8)
+    const request = page.waitForRequest(req => new URL(req.url()).pathname.endsWith('/inventory/trans'))
+    await dialog.getByRole('button', { name: '批次流水 ↗' }).first().click()
+    expect(new URL((await request).url()).searchParams.get('inventory_id')).toBe('9')
+    await page.goto('/dashboard')
+    await page.setViewportSize({ width: 390, height: 700 })
+    await page.locator('.import-attention').click()
+    const imports = page.getByRole('dialog', { name: '近 7 日异常导入', exact: true })
+    await expect(imports).toBeVisible()
+    await expect(imports).toContainText('不随仓库筛选变化')
+    await expect(imports.locator('.import-issue')).toHaveCount(2)
+    await expect(imports).toContainText('<script>unsafe</script>')
+    expect(await imports.evaluate(el => el.scrollWidth-el.clientWidth)).toBeLessThanOrEqual(1)
+    await page.screenshot({ path: testInfo.outputPath(`imports-mobile-${theme}.png`), animations: 'disabled' })
+    await expect(imports).toBeInViewport({ ratio: 1 })
+    await imports.getByRole('button', { name: '关闭', exact: true }).click()
+    await page.locator('.activity-strip button').click()
+    await expect(dialog).toBeVisible()
+    expect(await dialog.evaluate(el => el.scrollWidth-el.clientWidth)).toBeLessThanOrEqual(1)
+  })
+}
+
+test('alert failure retains dated summary independently from dashboard, initial failure is not zero', async ({ page }) => {
+  const state = await setup(page, 'light')
+  await page.goto('/dashboard')
+  await expect(page.locator('.alert-context')).toContainText('已配置 10')
+  state.alertFail = true
+  await page.getByRole('button', { name: '刷新仪表盘', exact: true }).click()
+  await expect(page.locator('.alert-context')).toContainText('保留上次核对结果')
+  await expect(page.locator('.alert-summary')).toContainText('2')
+  await expect(page.locator('.metric').first()).toContainText('16')
+  await page.getByRole('combobox', { name: '仪表盘仓库' }).click()
+  await page.getByRole('option', { name: 'WH-HZ · 杭州仓' }).click()
+  await expect(page.locator('.alert-context')).toContainText('暂时无法加载')
+  await expect(page.locator('.alert-summary strong').first()).toHaveText('—项规则')
 })
 
 test('location browsing includes disabled warehouses but batch creation only offers enabled warehouses', async ({ page }) => {

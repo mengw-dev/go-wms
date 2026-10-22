@@ -1,5 +1,9 @@
 # WMS API 接口文档
 
+## 2026-10-22 仪表盘运营信息
+
+原 GET `/dashboard/overview` 补充 `activity`（wms:inventory 权限下的今日上架/发货流水数及最近8笔）和 `import_issues`（wms:inbound:view 权限下近七日创建的异常导入数及最近5次，全部仓库）。前者是流水数，后者是历史异常，均不推导未记录的任务完成时间或“未处理”状态。预警摘要复用已有 GET `/inventory/alerts`，使用独立 checked_at 和精确租户范围；口径、权限、范围与跳转详见[仪表盘运营信息](dashboard-operations.md)。
+
 ## 2026-10-22 Excel 导出
 
 新增GET `/inventory/export`、`/inventory/trans/export`、`/stocktake/orders/export`，成功返回完整XLSX附件，错误保持HTTP/JSON；按筛选导出全部匹配明细，最多10000行。权限、参数、精确租户0和盘点差异口径见[Excel导出](excel-export.md)。

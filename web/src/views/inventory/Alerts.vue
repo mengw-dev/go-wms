@@ -16,6 +16,8 @@ import { mobileTableCellStyle } from '@/utils/mobileTable'
 const route = useRoute(), router = useRouter()
 const auth = useAuthStore(), canManage = computed(() => auth.hasPerm('wms:inventory:alert:manage'))
 const { query, result, loading, error, load, search } = useInventoryAlerts(typeof route.query.warehouse_id === 'string' ? route.query.warehouse_id : '')
+// Dashboard drill-downs use the same state names as the filter and API.
+if (typeof route.query.state === 'string' && Object.hasOwn(ALERT_STATE_TEXT, route.query.state)) query.state = route.query.state as AlertState
 const warehouses = ref<IdOption[]>([]), skus = ref<{ id: string; label: string; unit: string }[]>([])
 const open = ref(false), saving = ref(false), editing = ref(false), optionsError = ref(false)
 const form = reactive({ warehouse_id: '', sku_id: '', min_available_qty: 10, enabled: true })

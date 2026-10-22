@@ -151,8 +151,10 @@ function skuLabel(skuId: EntityID): string {
 onMounted(async () => {
   const skuKeyword = typeof route.query.sku_keyword === 'string' ? route.query.sku_keyword : ''
   const orderNo = typeof route.query.order_no === 'string' ? route.query.order_no : ''
+  const inventoryID = typeof route.query.inventory_id === 'string' && /^[1-9]\d{0,18}$/.test(route.query.inventory_id) ? route.query.inventory_id : ''
   if (skuKeyword) detailQuery.sku_keyword = skuKeyword
-  if (orderNo) {
+  if (orderNo || inventoryID) {
+    transQuery.inventory_id = inventoryID
     transQuery.order_no = orderNo
     drawerVisible.value = true
   }

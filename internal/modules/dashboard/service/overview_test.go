@@ -37,7 +37,7 @@ func fixture(t *testing.T) (*gorm.DB, *service.Service, time.Time) {
 		dsn = "root:1234@tcp(127.0.0.1:3306)/gowms?parseTime=true&timeout=2s"
 	}
 	db := testutil.OpenIsolatedMySQL(t, dsn, &basicmodel.Warehouse{}, &basicmodel.Location{}, &invmodel.Inventory{},
-		&inboundmodel.ReceiptOrder{}, &outboundmodel.ShipmentOrder{}, &taskmodel.Task{}, &stocktakemodel.StocktakeOrder{})
+		&invmodel.InventoryTrans{}, &inboundmodel.ImportTask{}, &inboundmodel.ReceiptOrder{}, &outboundmodel.ShipmentOrder{}, &taskmodel.Task{}, &stocktakemodel.StocktakeOrder{})
 	now := time.Date(2026, 10, 20, 16, 30, 0, 0, time.FixedZone("Asia/Shanghai", 8*3600))
 	for _, tid := range []int64{0, 99, 77} {
 		q := db.WithContext(tenant.WithExactTenant(context.Background(), tid))
@@ -142,7 +142,7 @@ func (p permissions) HasPerm(_ context.Context, _ int64, perm string) bool { ret
 func TestOverviewDeniedSectionsDoNotQueryOrExposeBusinessTables(t *testing.T) {
 	db, svc, now := fixture(t)
 	// Removing a forbidden table proves the query is skipped, rather than merely hidden in JSON.
-	if err := db.Migrator().DropTable(&inboundmodel.ReceiptOrder{}, &outboundmodel.ShipmentOrder{}, &taskmodel.Task{}); err != nil {
+	if err := db.Migrator().DropTable(&inboundmodel.ReceiptOrder{}, &inboundmodel.ImportTask{}, &outboundmodel.ShipmentOrder{}, &taskmodel.Task{}); err != nil {
 		t.Fatal(err)
 	}
 	result, err := svc.Overview(tenant.WithExactTenant(context.Background(), 99), 1, dto.Access{Inventory: true}, now)
