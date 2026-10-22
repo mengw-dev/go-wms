@@ -1,5 +1,17 @@
 # WMS API 接口文档
 
+## 2026-10-22 Excel 导出
+
+新增GET `/inventory/export`、`/inventory/trans/export`、`/stocktake/orders/export`，成功返回完整XLSX附件，错误保持HTTP/JSON；按筛选导出全部匹配明细，最多10000行。权限、参数、精确租户0和盘点差异口径见[Excel导出](excel-export.md)。
+
+## 2026-10-22 单据打印与标签
+
+没有新增后端API。单据打印页面复用原入库/出库/盘点详情GET接口及查看权限；标签取基础资料已加载列表的原条码/库位编码。浏览器预览路径、数据快照、权限与规格见[单据打印与条码标签](document-printing.md)。
+
+## 2026-10-21 库存预警
+
+新增 `/inventory/alerts` 当前预警及规则查询、`/inventory/alert-options` 管理选项、`PUT /inventory/alert-rules` 与 `DELETE /inventory/alert-rules/:id`。规则按仓库+货品配置可用量下限，不改变库存；权限、参数、零库存与恢复口径见[库存预警](inventory-alerts.md)。
+
 > Base URL：`/api/v1` ｜ 数据格式：JSON ｜ 前后端同构：本仓库 `web/src/api/` 即可调用 SDK 参考
 
 ## 2026-10-21 出库单据规模

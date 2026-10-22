@@ -1,10 +1,12 @@
 <script setup lang="ts">
+import ExcelExportButton from '@/components/common/ExcelExportButton.vue'
 import BusinessFilters from '@/components/common/BusinessFilters.vue'
 import BusinessPagination from '@/components/common/BusinessPagination.vue'
 import { mobileTableCellStyle } from '@/utils/mobileTable'
 import PageHeader from '@/components/common/PageHeader.vue'
 import { onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
 import { useAutoRefresh } from '@/composables/autoRefresh'
 import { listInventory, listInventorySummary, listInventoryTrans } from '@/api/inventory'
 import type {
@@ -34,9 +36,9 @@ const detailQuery = reactive({
   page: 1,
   page_size: 10,
   warehouse_id: (typeof route.query.warehouse_id === 'string' ? route.query.warehouse_id : '') as EntityID | '',
-  sku_keyword: '',
+  sku_keyword: typeof route.query.sku_keyword === 'string' ? route.query.sku_keyword : '',
   // 默认只看有货，隐藏已经清空的批次
-  in_stock_only: true,
+  in_stock_only: route.query.in_stock_only !== 'false',
 })
 
 let detailSeq = 0
@@ -155,12 +157,13 @@ onMounted(async () => {
     drawerVisible.value = true
   }
 
+  await loadDetail()
+  if (drawerVisible.value) await loadTrans()
+  if (!useAuthStore().hasPerm('wms:basic')) return
   warehouseOptions.value = await loadWarehouseOptions()
   warehouseMap.value = toOptionMap(warehouseOptions.value)
   const map = await loadSkuMap()
   skuMap.value = Object.fromEntries(Object.entries(map).map(([k, v]) => [k, v.name]))
-  await loadDetail()
-  if (drawerVisible.value) await loadTrans()
 })
 
 function refreshActiveTab() {
@@ -196,6 +199,7 @@ useAutoRefresh(refreshActiveTab, 0)
           </el-form-item>
           <el-form-item>
             <el-button type="primary" plain @click="searchDetail">查询</el-button>
+            <ExcelExportButton endpoint="/inventory/export" :params="detailQuery" title="库存明细" />
           </el-form-item>
         </el-form></BusinessFilters>
 
@@ -294,6 +298,7 @@ useAutoRefresh(refreshActiveTab, 0)
         </el-form-item>
         <el-form-item>
           <el-button type="primary" plain @click="searchTrans">查询</el-button>
+          <ExcelExportButton endpoint="/inventory/trans/export" :params="transQuery" title="库存流水" />
         </el-form-item>
       </el-form></BusinessFilters>
 

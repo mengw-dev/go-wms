@@ -2,6 +2,8 @@
 import BusinessPagination from '@/components/common/BusinessPagination.vue'
 import { mobileTableCellStyle } from '@/utils/mobileTable'
 import BusinessListPage from '@/components/common/BusinessListPage.vue'
+import BarcodeLabelPreview from '@/components/printing/BarcodeLabelPreview.vue'
+import { locationBarcodeLabel } from '@/utils/barcodeLabels'
 import { computed, onMounted, onScopeDispose, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
@@ -37,6 +39,9 @@ async function loadWarehouses() {
 const loading = ref(false)
 const list = ref<LocationItem[]>([])
 const total = ref(0)
+const selectedRows = ref<LocationItem[]>([])
+const labels = ref<InstanceType<typeof BarcodeLabelPreview>>()
+function previewLabels(rows: LocationItem[]) { labels.value?.open(rows.map(row => locationBarcodeLabel(row, warehouseMap.value[row.warehouse_id] || row.warehouse_id))) }
 const query = reactive({
   page: 1,
   page_size: 10,
@@ -190,6 +195,7 @@ async function onDelete(row: LocationItem) {
 <template>
   <BusinessListPage title="库位管理" description="按仓库查看库区与库位，批量生成并管理作业空间。" :total="total">
     <template #actions>
+      <el-button :disabled="!list.length" @click="previewLabels(selectedRows.length ? selectedRows : list)">{{ selectedRows.length ? `所选标签（${selectedRows.length}）` : '本页标签预览' }}</el-button>
       <el-button v-permission="'wms:basic'" type="primary" @click="openBatch">批量生成库位</el-button>
     </template>
     <template #filters>
@@ -225,7 +231,8 @@ async function onDelete(row: LocationItem) {
       </el-form>
     </template>
 
-    <el-table class="mobile-record-table" :cell-style="mobileTableCellStyle" max-height="var(--business-table-height)" v-loading="loading" :data="list" border stripe>
+    <el-table class="mobile-record-table" :cell-style="mobileTableCellStyle" max-height="var(--business-table-height)" v-loading="loading" :data="list" row-key="id" border stripe @selection-change="selectedRows = $event">
+      <el-table-column type="selection" width="42" />
       <el-table-column label="仓库" min-width="160">
         <template #default="{ row }">{{ warehouseMap[row.warehouse_id] || row.warehouse_id }}</template>
       </el-table-column>
@@ -261,8 +268,9 @@ async function onDelete(row: LocationItem) {
       <el-table-column label="创建时间" width="170">
         <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="90" fixed="right">
+      <el-table-column label="操作" width="150" fixed="right">
         <template #default="{ row }">
+          <el-button size="small" @click="previewLabels([row])">标签</el-button>
           <el-button v-permission="'wms:basic'" size="small" type="danger" plain @click="onDelete(row)">删除</el-button>
         </template>
       </el-table-column>
@@ -279,6 +287,7 @@ async function onDelete(row: LocationItem) {
       @size-change="search"
     />
 
+    <BarcodeLabelPreview ref="labels" />
     <el-dialog class="business-dialog"
       v-model="batchDialog.visible"
       title="批量生成库位"

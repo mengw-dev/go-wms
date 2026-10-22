@@ -27,6 +27,7 @@ const PERMISSION_GROUPS: PermissionGroup[] = [
     label: '库存与任务',
     options: [
       { label: '库存查询', value: 'wms:inventory' },
+      { label: '库存预警规则管理', value: 'wms:inventory:alert:manage' },
       { label: '任务中心', value: 'wms:task' },
     ],
   },

@@ -119,8 +119,19 @@ service.interceptors.request.use((config) => {
 
 // 响应拦截器：统一处理业务码 / 401
 service.interceptors.response.use(
-  (response) => {
+  async (response) => {
     if (response.config.responseType === 'blob') {
+      const contentType = String(response.headers['content-type'] || '')
+      if (!contentType.includes('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')) {
+        let message = '下载失败：服务端没有返回Excel文件'
+        if (contentType.includes('json') && response.data instanceof Blob) {
+          try {
+            const body: unknown = JSON.parse(await response.data.text())
+            if (isApiResponseBody(body) && body.msg) message = body.msg
+          } catch { /* Keep the explicit download error; never save JSON as XLSX. */ }
+        }
+        return Promise.reject(new ApiError(message, undefined, response.status))
+      }
       return response.data
     }
     const body = response.data
@@ -134,7 +145,12 @@ service.interceptors.response.use(
     }
     return body
   },
-  (error) => {
+  async (error) => {
+    // Download failures are still JSON business/auth responses, wrapped as Blob by axios.
+    if (error?.response?.data instanceof Blob) {
+      try { error.response.data = JSON.parse(await error.response.data.text()) }
+      catch { /* The normal HTTP/network error below remains visible. */ }
+    }
     const status = error?.response?.status
     const code = error?.response?.data?.code
     // 后台自动刷新与轮询等场景可在请求级声明静默，失败时只抛错不提示。
@@ -196,4 +212,9 @@ export function upload<T = unknown>(url: string, formData: FormData): Promise<T>
   return client.post<T>(url, formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   })
+}
+
+/** Authenticated XLSX download; callers own cancellation and user feedback. */
+export function getExcel(url: string, params: Record<string, unknown>, signal: AbortSignal): Promise<Blob> {
+  return client.get<Blob>(url, { params, signal, responseType: 'blob', timeout: 15000, silentError: true })
 }

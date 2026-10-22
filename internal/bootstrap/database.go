@@ -80,6 +80,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&sysmodel.SysUser{}, &sysmodel.SysRole{}, &sysmodel.SysUserRole{}, &sysmodel.SysOperLog{},
 		&model.Warehouse{}, &model.Location{}, &model.SKU{},
 		&invmodel.Inventory{}, &invmodel.InventoryTrans{},
+		&invmodel.AlertRule{},
 		&taskmodel.Task{},
 		&inboundmodel.ReceiptOrder{}, &inboundmodel.ReceiptOrderDetail{}, &inboundmodel.ImportTask{},
 		&outboundmodel.ShipmentOrder{}, &outboundmodel.ShipmentOrderDetail{}, &outboundmodel.Allocation{},

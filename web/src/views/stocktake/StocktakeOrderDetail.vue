@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import ExcelExportButton from '@/components/common/ExcelExportButton.vue'
+import { useAuthStore } from '@/stores/auth'
 import { mobileTableCellStyle } from '@/utils/mobileTable'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -15,6 +17,7 @@ import { loadWarehouseOptions, toOptionMap } from '@/utils/options'
 import { BUSINESS_EVENTS, emitBusinessEvent } from '@/events/businessEvents'
 import { useStocktakeApprove } from '@/composables/stocktake/useStocktakeApprove'
 
+const auth = useAuthStore()
 const route = useRoute()
 const router = useRouter()
 const orderId = String(route.params.id)
@@ -101,8 +104,14 @@ async function load() {
 }
 
 onMounted(async () => {
-  warehouseMap.value = toOptionMap(await loadWarehouseOptions())
   await load()
+  if (auth.hasPerm('wms:basic')) {
+    try {
+      warehouseMap.value = toOptionMap(await loadWarehouseOptions())
+    } catch {
+      // 仓库名称是辅助信息，加载失败仍可凭单据仓库 ID 查看、打印。
+    }
+  }
 })
 
 // ---------- 录入实盘 ----------
@@ -184,11 +193,13 @@ async function onCancel() {
     <template v-if="data?.order">
       <div class="page-card detail-identity">
         <div class="detail-actions">
+          <ExcelExportButton endpoint="/stocktake/orders/export" :params="{ order_id: orderId }" title="盘点明细" label="导出盘点明细" />
+          <el-button @click="router.push(`/print/stocktake/${orderId}`)">打印预览</el-button>
           <h1 class="document-id">{{ data.order.order_no }}</h1>
           <el-tag :type="statusTag(data.order.status)" size="large">{{ statusText(data.order.status) }}</el-tag>
           <template v-if="data.order.status === 'DRAFT'">
             <el-button
-              v-permission="'wms:stocktake:approve'"
+              v-if="auth.hasPerm('wms:stocktake:approve')"
               data-tour="stocktake-approve"
               type="success"
               plain
@@ -196,9 +207,9 @@ async function onCancel() {
             >
               审核
             </el-button>
-            <el-button v-permission="'wms:stocktake:cancel'" type="danger" plain @click="onCancel">取消</el-button>
+            <el-button type="danger" plain @click="onCancel" v-if="auth.hasPerm('wms:stocktake:cancel')">取消</el-button>
           </template>
-          <el-button v-if="data.order.status !== 'DRAFT' && approver.stateOf(orderId).pending" v-permission="'wms:stocktake:approve'" type="warning" plain @click="onApprove">恢复待确认审核</el-button>
+          <el-button v-if="(data.order.status !== 'DRAFT' && approver.stateOf(orderId).pending) && auth.hasPerm('wms:stocktake:approve')" type="warning" plain @click="onApprove">恢复待确认审核</el-button>
         </div>
       </div>
       <div class="detail-scroll">
@@ -237,7 +248,7 @@ async function onCancel() {
       <div class="page-card section" data-tour="stocktake-snapshot">
         <h3 class="section-title">
           盘点明细
-          <el-tag v-if="isDraft()" type="warning" size="small" class="draft-tip">草稿状态可直接录入实盘数</el-tag>
+          <el-tag v-if="isDraft() && auth.hasPerm('wms:stocktake:stocktake')" type="warning" size="small" class="draft-tip">草稿状态可直接录入实盘数</el-tag>
         </h3>
         <el-table class="mobile-record-table" :cell-style="mobileTableCellStyle" max-height="360" :data="data.details ?? []" border stripe>
           <el-table-column label="库位" min-width="120">
@@ -251,7 +262,7 @@ async function onCancel() {
           <el-table-column prop="book_qty" label="账面数量" width="100" align="right" />
           <el-table-column label="实盘数量" width="200">
             <template #default="{ row }">
-              <template v-if="isDraft()">
+              <template v-if="isDraft() && auth.hasPerm('wms:stocktake:stocktake')">
                 <div class="actual-editor">
                   <el-input-number
                     v-model="actualInputs[row.id]"
@@ -260,7 +271,6 @@ async function onCancel() {
                     style="width: 120px"
                   />
                   <el-button
-                    v-permission="'wms:stocktake:stocktake'"
                     data-tour="stocktake-actual"
                     type="primary"
                     size="small"

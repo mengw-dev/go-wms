@@ -27,6 +27,7 @@ func resetTestDB(t *testing.T) *gorm.DB {
 	db := testutil.OpenIsolatedMySQL(t, dsn,
 		&model.Warehouse{}, &model.Location{}, &model.SKU{},
 		&invmodel.Inventory{}, &invmodel.InventoryTrans{},
+		&invmodel.AlertRule{},
 		&taskmodel.Task{},
 		&inboundmodel.ReceiptOrder{}, &inboundmodel.ReceiptOrderDetail{}, &inboundmodel.ImportTask{},
 		&outboundmodel.ShipmentOrder{}, &outboundmodel.ShipmentOrderDetail{}, &outboundmodel.Allocation{},
@@ -136,9 +137,30 @@ func TestResetDemoDataOnlyAffectsTargetTenant(t *testing.T) {
 		t.Fatal("sentinel warehouses should be created")
 	}
 	before := tenantCountsOf(ctxKeep, t, db)
+	for _, pair := range []struct {
+		ctx         context.Context
+		warehouseID int64
+	}{{ctxReset, resetWarehouseID}, {ctxKeep, keepWarehouseID}} {
+		var sku model.SKU
+		if err := db.WithContext(pair.ctx).First(&sku).Error; err != nil {
+			t.Fatal(err)
+		}
+		if err := db.WithContext(pair.ctx).Create(&invmodel.AlertRule{WarehouseID: pair.warehouseID, SKUID: sku.ID, MinAvailableQty: 3, Enabled: true, UpdatedBy: "test"}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
 
 	if err := ResetDemoData(context.Background(), db, resetTenantID); err != nil {
 		t.Fatalf("ResetDemoData: %v", err)
+	}
+	for _, pair := range []struct {
+		ctx  context.Context
+		want int64
+	}{{ctxReset, 0}, {ctxKeep, 1}} {
+		var count int64
+		if err := db.WithContext(pair.ctx).Model(&invmodel.AlertRule{}).Count(&count).Error; err != nil || count != pair.want {
+			t.Fatalf("reset alert rules: count=%d want=%d err=%v", count, pair.want, err)
+		}
 	}
 
 	// 被重置的租户：原有业务数据不再存在，且已替换为演示种子（不是只清空）。

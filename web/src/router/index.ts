@@ -4,6 +4,11 @@ import Layout from '@/layouts/Layout.vue'
 import { useAuthStore } from '@/stores/auth'
 
 const routes: RouteRecordRaw[] = [
+  ...(['inbound','outbound','stocktake'] as const).map(kind => ({
+    path: `/print/${kind}/:id`, name: `print-${kind}`,
+    component: () => import('@/views/printing/DocumentPrint.vue'), props: { kind },
+    meta: { title: '单据打印预览', perm: `wms:${kind}:view` },
+  })),
   {
     path: '/login',
     name: 'login',
@@ -80,6 +85,12 @@ const routes: RouteRecordRaw[] = [
         name: 'inventory',
         component: () => import('@/views/inventory/Inventory.vue'),
         meta: { title: '库存查询', perm: 'wms:inventory' },
+      },
+      {
+        path: 'inventory/alerts',
+        name: 'inventory-alerts',
+        component: () => import('@/views/inventory/Alerts.vue'),
+        meta: { title: '库存预警', perm: 'wms:inventory' },
       },
       {
         path: 'ai',
