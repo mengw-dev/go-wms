@@ -314,7 +314,19 @@ test('one-click demo executes all real stages without replay controls', async ({
   const creationRow = operations.getByRole('row').filter({
     has: page.getByRole('cell', { name: '创建入库单', exact: true }),
   })
-  await expect(creationRow.getByRole('cell', { name: created.data.order_no, exact: true })).toBeVisible()
+  try {
+    await expect(creationRow.getByRole('cell', { name: created.data.order_no, exact: true })).toBeVisible()
+  } catch (error) {
+    await test.info().attach('operation-evidence.json', {
+      contentType: 'application/json',
+      body: JSON.stringify({
+        expectedOrder: created.data.order_no,
+        context: await page.evaluate(() => sessionStorage.getItem('wms-demo-evidence-context-v1')),
+        activity: await requestDemoJson(page, 'get', '/demo/activity?limit=50'),
+      }),
+    })
+    throw error
+  }
   await expect(operations.getByText('POST 业务操作', { exact: true })).toHaveCount(0)
 })
 

@@ -51,7 +51,8 @@ async function searchLocations(keyword = '') {
   finally { if (alive && seq === locationsSeq) locationsLoading.value = false }
 }
 async function begin(id: string) {
-  if (busy.value || !canMove.value) return
+  // A retained source query must not reopen a new move over recovery controls.
+  if (busy.value || !canMove.value || pending.value.length) return
   const seq = ++sourceSeq, state = identity()
   source.value = undefined; sourceError.value = ''; sourceLoading.value = true; open.value = true
   locationsSeq++; locations.value = []; locationsError.value = ''; locationTotal.value = 0

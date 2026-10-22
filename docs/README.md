@@ -4,6 +4,9 @@
 
 ## 使用与部署
 
+- [仓储操作手册](warehouse-operations.md)：从基础资料到收发盘点、移库、扫码和未知结果核对。
+- [基础版收尾验收](release-acceptance.md)：交付范围、本地联调、分支状态与上线前核对。
+- [单实例备份与恢复](backup-recovery.md)：人工备份、隔离恢复和数据完整性检查。
 - [本地开发与验证](development.md)：开发环境、测试依赖、E2E 和交付打包。
 - [部署与升级](deployment.md)：Windows / Docker 启动、迁移、账户、HTTPS 和自动部署入口。
 - [配置参考](configuration.md)：常用环境变量和 Compose 账户配置。

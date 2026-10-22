@@ -16,6 +16,10 @@ async function mockWorkspace(page: Page, theme: 'light' | 'dark', perms = ['*'])
     let data: unknown
     if (path === '/profile') data = user
     else if (path === '/dashboard/overview') data = dashboardFixture()
+    else if (path === '/inventory/alerts') data = {
+      list: [], total: 0, warehouses: [], summary: { configured: 0, out_of_stock: 0, low: 0 },
+      checked_at: '2026-10-22T10:00:00+08:00',
+    }
     else if (path === '/basic/warehouses') data = { list: [{ id: '1', code: 'WH-SH', name: '上海中心仓', status: 1 }], total: 1 }
     else if (path === '/basic/skus') data = { list: [{ id: '1', code: 'SKU-001', name: '工业扫码终端', unit: '台' }], total: 1 }
     else if (path === '/inbound/imports') data = []

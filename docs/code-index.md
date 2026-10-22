@@ -133,6 +133,7 @@
 - 后端单测：`**/*_test.go`（`internal/**`），依赖 MySQL/Redis 时由 `internal/testutil` 创建独立测试库。运行方式见 [development.md](development.md)。
 - 前端单测：`web/src/**/*.spec.ts`、工具规则回归 `web/eslint-rules/**/*.spec.mjs`（Vitest，配置 `web/vitest.config.ts`）。
 - 端到端：`web/tests/e2e/**`（Playwright，`support/api.ts` 为共享工具层，配置 `web/playwright.config.ts`）；入口脚本 `scripts/e2e.ps1`。
+- 基础版收尾真实链路：`web/tests/e2e/warehouse-closeout.spec.ts`，日间桌面/夜间手机的扫码收货→上架→移库→分库位拣货发货，以及移库提交丢响应后的刷新核对；数据准备/核对均走真实JWT接口，不以布局夹具替代库存验证。
 - 脚本：`scripts/windows/*.ps1`（起栈、停止、重置、验证、打包、k6、监控等，多数附 `.cmd` 双击入口）、`scripts/wms-common.ps1`、`scripts/e2e.ps1`。
 - 压测：`scripts/k6/*.js`（业务流程与压力场景、分配证明后的范围清理）与 `loadtest/01-hello.js`；清理回归 `scripts/k6/cleanup-allocation{,.k6}.test.mjs`（Node隔离夹具与真实k6回环HTTP）；说明见 [load-testing.md](load-testing.md)。
 - 部署：`deploy/`（`docker-compose.yaml`、`docker-compose.dev.yaml`、`Caddyfile`、Prometheus、Grafana）、根 `Dockerfile`、`web/Dockerfile`、`Makefile`、`start.cmd`；说明见 [deployment.md](deployment.md)。
