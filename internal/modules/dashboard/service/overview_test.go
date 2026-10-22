@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	mysqldriver "github.com/go-sql-driver/mysql"
 	"gorm.io/gorm"
 
 	basicmodel "gowms/internal/modules/basic/model"
@@ -30,15 +31,33 @@ import (
 
 var all = dto.Access{Inbound: true, Outbound: true, Tasks: true, Inventory: true, Basic: true, Stocktake: true}
 
-func fixture(t *testing.T) (*gorm.DB, *service.Service, time.Time) {
+func dashboardDSN(t *testing.T) *mysqldriver.Config {
 	t.Helper()
 	dsn := os.Getenv("WMS_TEST_DSN")
 	if dsn == "" {
 		dsn = "root:1234@tcp(127.0.0.1:3306)/gowms?parseTime=true&timeout=2s"
 	}
-	db := testutil.OpenIsolatedMySQL(t, dsn, &basicmodel.Warehouse{}, &basicmodel.Location{}, &invmodel.Inventory{},
+	cfg, err := mysqldriver.ParseDSN(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return cfg
+}
+
+func fixture(t *testing.T) (*gorm.DB, *service.Service, time.Time) {
+	t.Helper()
+	location, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// These DATETIME fixtures use the same China wall clock as production.
+	// loc=Local would convert them to UTC on CI, moving both day boundaries
+	// and future timestamps while Overview still queries China business time.
+	cfg := dashboardDSN(t)
+	cfg.Loc = location
+	db := testutil.OpenIsolatedMySQL(t, cfg.FormatDSN(), &basicmodel.Warehouse{}, &basicmodel.Location{}, &invmodel.Inventory{},
 		&invmodel.InventoryTrans{}, &inboundmodel.ImportTask{}, &inboundmodel.ReceiptOrder{}, &outboundmodel.ShipmentOrder{}, &taskmodel.Task{}, &stocktakemodel.StocktakeOrder{})
-	now := time.Date(2026, 10, 20, 16, 30, 0, 0, time.FixedZone("Asia/Shanghai", 8*3600))
+	now := time.Date(2026, 10, 20, 16, 30, 0, 0, location)
 	for _, tid := range []int64{0, 99, 77} {
 		q := db.WithContext(tenant.WithExactTenant(context.Background(), tid))
 		for _, row := range []any{

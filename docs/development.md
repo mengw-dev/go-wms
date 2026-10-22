@@ -1,5 +1,19 @@
 # 本地开发与验证
 
+## 2026-10-22 修复UTC CI中的仪表盘测试时区
+
+基线67eb3c5的[CI39787824470](https://github.com/mengw-dev/go-wms/actions/runs/39787824470)仅后端race+MySQL步骤失败：`TestOperationsUseLedgerDatesTenantAndWarehouse`预期上架2/发货1，实际1/2。没有data race报告；前端通过，容器/E2E及部署因前置失败跳过。失败与生产服务器SSH或迁移无关。
+
+测试种子使用北京时间，连接却继承`loc=Local`；Ubuntu CI的Local为UTC，驱动写DATETIME时把北京零点和16:30换成前日16:00和08:30，而业务查询仍按北京零点到16:30，因而丢失零点记录、纳入当前时间之后的记录。生产Dockerfile已设置TZ=Asia/Shanghai，Overview契约也明确使用中国业务时间。
+
+只修改仪表盘测试fixture和回归：解析原测试DSN并保留其他配置，显式loc=Asia/Shanghai，固定测试时刻复用同一Location；原流水测试先强制传入UTC驱动设置，即使开发电脑使用北京时间也必须覆盖此问题。原租户/仓库、零点、未来记录、导入窗口和数量断言全部保留。不修改业务SQL、统计口径、迁移、CI工作流或跳过策略。
+
+专用本机MySQL23306/Memurai26379、Go1.26.10：修复前显式UTC驱动真实复现相同1/2失败；修复后UTC配置下仪表盘四项测试连续3轮全部通过。正常loc=Local配置的并行全仓`go test ./... -count=1 -json`49测试包706项含子测试通过、0失败/0测试跳过，另30包无测试文件；gofmt、vet、golangci0issues和build通过。无前端或业务代码变更，本轮不重跑前端/浏览器。Linux race由推送后的新CI核验，本地没有可用CGO编译器且Docker引擎未运行，没有把普通测试说成race通过。
+
+一次将整个北京本机测试连接都强制UTC的探索在移库HTTP回放测试出现同一时间的JSON时区表示不同；这不等同于CI进程UTC且驱动Local的运行条件，未据此修改或放宽移库断言。该轮不作全量通过结论，最终全量使用原loc=Local约定，而仪表盘本身仍强制UTC输入覆盖回归。
+
+材料位于忽略目录tmpgen/ci-fix-20261022：failed-backend.log、before-utc.log、after-utc.log、go-full-local.jsonl、local-report.json及静态检查日志。原13份未提交文件SHA保护通过；本轮中文提交后推送main，不连接生产数据库或人工部署。新CI的实际状态以GitHub运行记录为准。
+
 ## 2026-10-22 全部分支合并、迁移兼容与波次打印验收
 
 按用户最新授权，将全部已提交功能合入main，包括此前保留的波次/播种。main原基线3639ce2，先合入收尾b75f1b3（合并5c303af），再合入波次49339f0（合并a549c3c）；9c06477归并历史只读诊断分支，保留当前CI与部署工作流的全部内容，不恢复临时线上诊断脚本。全部本地和已获取远端分支提交均为main祖先；原工作区13份保护文件校验通过，未提交外部单、简历和个人文件保留。

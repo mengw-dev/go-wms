@@ -18,6 +18,11 @@ import (
 )
 
 func TestOperationsUseLedgerDatesTenantAndWarehouse(t *testing.T) {
+	// Reproduce the CI driver's UTC setting even on a China-time developer PC.
+	// The fixture must preserve business-clock DATETIME values independently.
+	cfg := dashboardDSN(t)
+	cfg.Loc = time.UTC
+	t.Setenv("WMS_TEST_DSN", cfg.FormatDSN())
 	db, svc, now := fixture(t)
 	day := time.Date(2026, 10, 20, 0, 0, 0, 0, now.Location())
 	for _, tid := range []int64{0, 99, 77} {
