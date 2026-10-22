@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ResizableTableArea from '@/components/common/ResizableTableArea.vue'
 import { computed, onMounted, onScopeDispose, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -79,6 +80,7 @@ function changeState(state: AlertState) { query.state = state; void search() }
     </div>
     <el-alert v-if="error || optionsError" :title="error || '基础资料选项加载失败，请刷新页面后配置规则'" type="error" :closable="false" />
     <p class="alert-note">仅监控已配置且启用的规则；可用库存低于下限时预警，等于下限即正常。未生成库存行按零计算，已分配库存不计入可用量。</p>
+    <ResizableTableArea storage-key="inventory-alerts">
     <el-table v-loading="loading" :data="result.list" class="mobile-record-table" :cell-style="mobileTableCellStyle" :max-height="480" row-key="id">
       <el-table-column label="货品" min-width="190"><template #default="{ row }"><strong>{{ row.sku_name || '货品已删除' }}</strong><div class="secondary">{{ row.sku_code || row.sku_id }}</div></template></el-table-column>
       <el-table-column label="仓库" min-width="170"><template #default="{ row }">{{ row.warehouse_name || '仓库已删除' }}<div class="secondary">{{ row.warehouse_code }}</div></template></el-table-column>
@@ -89,6 +91,7 @@ function changeState(state: AlertState) { query.state = state; void search() }
       <el-table-column label="操作" min-width="200"><template #default="{ row }"><el-button link type="primary" :disabled="row.state === 'UNAVAILABLE'" @click="inventory(row)">库存明细</el-button><el-button v-if="canManage" link type="primary" :disabled="saving || optionsError || row.state === 'UNAVAILABLE'" @click="edit(row)">规则</el-button><el-button v-if="canManage" link type="danger" :disabled="saving" @click="remove(row)">删除</el-button></template></el-table-column>
       <template #empty>{{ result.summary.configured ? '当前筛选条件下暂无预警记录' : '尚未配置预警规则，请先按仓库和货品设置下限' }}</template>
     </el-table>
+    </ResizableTableArea>
     <BusinessPagination v-model:current-page="query.page" v-model:page-size="query.page_size" class="pagination" :total="result.total" @change="load" />
     <el-dialog v-model="open" :title="editing ? '修改预警规则' : '配置预警规则'" width="520px" class="business-dialog" :close-on-click-modal="false" :close-on-press-escape="!saving">
       <el-form label-position="top" @submit.prevent="save">

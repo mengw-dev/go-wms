@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ResizableTableArea from '@/components/common/ResizableTableArea.vue'
 import BusinessFilters from '@/components/common/BusinessFilters.vue'
 import BusinessPagination from '@/components/common/BusinessPagination.vue'
 import { mobileTableCellStyle } from '@/utils/mobileTable'
@@ -169,6 +170,7 @@ useAutoRefresh(() => load(true), 0, () => selectedRows.value.length === 0)
       </div>
 
     <p class="table-scroll-hint">左右滑动表格可查看完整字段与操作</p>
+    <ResizableTableArea storage-key="inbound-orders">
     <el-table class="mobile-record-table" :cell-style="mobileTableCellStyle" max-height="var(--business-table-height)" ref="tableRef" v-loading="loading" :data="list" border stripe @selection-change="onSelectionChange">
       <el-table-column type="selection" width="42" />
       <el-table-column prop="order_no" label="入库单号" min-width="170">
@@ -224,6 +226,7 @@ useAutoRefresh(() => load(true), 0, () => selectedRows.value.length === 0)
         </template>
       </el-table-column>
     </el-table>
+    </ResizableTableArea>
 
     <BusinessPagination
       v-model:current-page="query.page"

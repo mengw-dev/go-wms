@@ -121,7 +121,7 @@
 | `events/` | 业务页面与 Guide/Demo 的唯一契约（`businessEvents.ts`） | `businessEvents.spec.ts` |
 | `utils/` | 前端工具（事件、演示证据/操作、分步检查点、options、手机表格字段标签等） | `utils/{demoOperations,demoEvidence,index}.spec.ts`、`composables/demo/useStagedDemoRunner.spec.ts`；E2E `business-layout.spec.ts` |
 | `views/` | 业务页面（`login`、`dashboard`、`basic`、`system`、`task`、`ai`、`inventory`、`inbound`、`outbound`、`stocktake`、`demo`） | `adminListConcurrency.spec.ts`（基础/系统六列表真实SFC请求交错及销毁）；E2E 见 `web/tests/e2e/**` |
-| `components/` | 组件（`DemoConsole`、`demo/*`、`PickDialog`、`PutawayDialog`、`ReceiveDialog`、`common/{PageHeader,BusinessListPage,BusinessFilters,BusinessPagination}`）；筛选折叠/手机分页只管理呈现，业务事件继续转发 | E2E `business-layout.spec.ts` |
+| `components/` | 组件（`DemoConsole`、`demo/*`、`PickDialog`、`PutawayDialog`、`ReceiveDialog`、`common/{PageHeader,BusinessListPage,BusinessFilters,BusinessPagination,ResizableTableArea}`）；筛选/分页/可选高度只管理呈现，业务事件继续转发；见[表格高度](business-table-height.md) | `utils/tableHeight.spec.ts`；E2E `business-layout.spec.ts` |
 | `views/printing`、`components/printing`、`utils/{documentPrint,barcodeLabels}` | 单据只读A4打印、基础资料Code128标签与显式分页；边界见[打印说明](document-printing.md) | `utils/{documentPrint,barcodeLabels}.spec.ts`、E2E `document-printing.spec.ts` |
 | `directives/` | `permission` 指令（按权限控制显示） | — |
 | `main.ts` / `App.vue` / `style.css` / `constants.ts` | 应用装配、根组件、全局样式与常量 | — |

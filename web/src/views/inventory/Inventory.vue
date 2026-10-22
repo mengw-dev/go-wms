@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ResizableTableArea from '@/components/common/ResizableTableArea.vue'
 import ExcelExportButton from '@/components/common/ExcelExportButton.vue'
 import BusinessFilters from '@/components/common/BusinessFilters.vue'
 import BusinessPagination from '@/components/common/BusinessPagination.vue'
@@ -205,6 +206,8 @@ useAutoRefresh(refreshActiveTab, 0)
           </el-form-item>
         </el-form></BusinessFilters>
 
+        <ResizableTableArea storage-key="inventory-detail" :active="activeTab === 'detail'">
+
         <el-table class="mobile-record-table" :cell-style="mobileTableCellStyle" max-height="var(--business-table-height)" v-loading="detailLoading" :data="detailList" border stripe>
           <el-table-column label="仓库" min-width="150">
             <template #default="{ row }">{{ warehouseMap[row.warehouse_id] || row.warehouse_id }}</template>
@@ -230,6 +233,7 @@ useAutoRefresh(refreshActiveTab, 0)
             </template>
           </el-table-column>
         </el-table>
+        </ResizableTableArea>
 
         <BusinessPagination
           v-model:current-page="detailQuery.page"
@@ -256,6 +260,8 @@ useAutoRefresh(refreshActiveTab, 0)
           </el-form-item>
         </el-form></BusinessFilters>
 
+        <ResizableTableArea storage-key="inventory-summary" :active="activeTab === 'summary'">
+
         <el-table class="mobile-record-table" :cell-style="mobileTableCellStyle" max-height="var(--business-table-height)" v-loading="summaryLoading" :data="summaryList" border stripe>
           <el-table-column prop="sku_code" label="货品编码" min-width="130" />
           <el-table-column prop="sku_name" label="货品名称" min-width="180" show-overflow-tooltip />
@@ -266,6 +272,7 @@ useAutoRefresh(refreshActiveTab, 0)
           <el-table-column prop="available_quantity" label="可用量" width="110" align="right" />
           <el-table-column prop="allocated_quantity" label="分配量" width="110" align="right" />
         </el-table>
+        </ResizableTableArea>
 
         <BusinessPagination
           v-model:current-page="summaryQuery.page"
