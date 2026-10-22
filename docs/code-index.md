@@ -33,6 +33,7 @@
 | 出库 outbound | `internal/modules/outbound` | 出库单生命周期、审核 + FIFO 分配、拣货、发货、集成下单 | `service/{order,response}_test.go`、`model/model_test.go`、`handler/handler_test.go` |
 | 任务 task | `internal/modules/task` | 收货/上架/拣货任务的状态与进度 | `service/{service,response,dashboard_filter}_test.go` |
 | 库存 inventory | `internal/modules/inventory` | 库存汇总/明细、并发分配与扣减、调整、流水 | `service/{service,concurrency,response,availability}_test.go`、`repository/repository_test.go` |
+| 扫码辅助作业 | `internal/modules/{inbound,outbound}/{handler,service,repository}`、`web/src/components/{ReceiveDialog,PutawayDialog,PickDialog}.vue` | 当前单据内货品精确核对、同仓库位选择，复用原确认与幂等；见[扫码说明](scan-assistance.md) | `internal/app/scanning_test.go`（真实HTTP/正式DDL/租户权限）；`useSkuScan.spec.ts`、E2E `scanning.spec.ts` |
 | 仓内移库 | `internal/modules/inventory`、`web/src/views/inventory/Moves.vue` | 同仓可用库存移动、成对流水和持久请求回放；见[移库说明](stock-movement.md) | `service/movement_test.go`、`handler/movement{,_integration}_test.go`、`migrations/movement_test.go`、前端 `useStockMove.spec.ts`、E2E `stock-moves.spec.ts` |
 | 库存预警 | `internal/modules/inventory`，`web/src/views/inventory` | 仓库+货品可用量下限配置、当前缺货/低库存与库存追溯 | `service/alert_test.go`、`handler/alert_test.go`、前端 `useInventoryAlerts.spec.ts`、E2E `inventory-alerts.spec.ts`；边界见[库存预警](inventory-alerts.md) |
 | Excel导出 | `internal/modules/{inventory,stocktake}`、`internal/pkg/xlsxexport`、`web/src/components/common/ExcelExportButton.vue` | 有上限的库存/流水/盘点明细XLSX，下载鉴权/取消；边界见[导出说明](excel-export.md) | 各模块`{handler,service}/export_test.go`、`pkg/xlsxexport/export_test.go`、前端`exportQuery.spec.ts`、E2E `excel-export.spec.ts` |

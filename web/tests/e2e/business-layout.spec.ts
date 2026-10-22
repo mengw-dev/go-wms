@@ -47,6 +47,7 @@ async function mockBusiness(page: Page, theme: 'light' | 'dark', guided = false,
     else if (path === '/system/roles/all') data = [role]
     else if (path === '/inbound/imports') data = [{ task_id: 'batch-001', status: 'COMPLETED', success_rows: 10, total_rows: 10, created_at: date }]
     else if (path === '/inventory/alerts') data = { list: [{ id: '1', warehouse_id: '1', warehouse_code: warehouse.code, warehouse_name: warehouse.name, sku_id: '1', sku_code: sku.code, sku_name: sku.name, unit: sku.unit, available_qty: 9, stock_quantity: 12, allocated_qty: 3, min_available_qty: 10, gap_qty: 1, enabled: true, state: 'LOW', updated_at: date }], total: 1, warehouses: [warehouse], summary: { configured: 1, low: 1, out_of_stock: 0 }, checked_at: date }
+    else if (path === '/inbound/orders/1/putaway-locations') data = { list: [location], total: 1 }
     else if (path === '/inventory/alert-options') data = { list: [], total: 0 }
     else if (/\/(inbound|outbound|stocktake)\/orders\/1$/.test(path)) data = {
       order: { ...order, status: path.includes('stocktake') ? 'DRAFT' : 'APPROVED' }, details: [line], allocations: [line],

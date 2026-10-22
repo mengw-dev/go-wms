@@ -478,3 +478,7 @@ wms:basic,wms:inventory,wms:task,wms:inbound:view,wms:inbound:receive
 ## 仓内移库
 
 新增GET `/inventory/moves`、GET `/inventory/move-source/:id`、GET `/inventory/move-locations` 与POST `/inventory/moves`。写操作必须同时拥有库存查看和 `wms:inventory:move` 权限，并传入 `Idempotency-Key`。同仓、批次、数量、持久回放和记录查询契约见[仓内移库](stock-movement.md)。
+
+## 扫码辅助作业
+
+新增只读GET `/inbound/orders/:id/scan-sku`、`/outbound/orders/:id/scan-sku` 与 `/inbound/orders/:id/putaway-locations`。按当前单据及精确租户核对货品或同仓启用库位，不自动提交业务；参数、权限、编码歧义及设备边界见[扫码说明](scan-assistance.md)。

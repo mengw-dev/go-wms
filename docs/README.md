@@ -10,6 +10,7 @@
 - [演示指南](demo.md)：体验流程、演示账号与会话边界。
 - [仓内移库](stock-movement.md)：同仓库可用库存移动、原请求恢复与流水追溯。
 - [库存预警](inventory-alerts.md)：规则配置、缺货/低库存与恢复口径。
+- [扫码辅助作业](scan-assistance.md)：收货定位明细、上架选择库位、拣货核对，扫码不自动写库存。
 - [单据打印与标签](document-printing.md)：打印入口、标签规格与实机边界。
 - [Excel导出](excel-export.md)：筛选、行数上限、字段格式与盘点差异。
 - [示例数据](../samples/README.md)：Excel 导入与外部系统推送样例。

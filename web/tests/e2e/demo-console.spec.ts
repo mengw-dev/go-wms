@@ -400,7 +400,9 @@ test('manual inbound guide completes through inventory evidence', async ({ page 
 
   await page.locator('[data-tour="inbound-putaway"]').first().click()
   const putawayDialog = page.getByRole('dialog', { name: '上架' })
-  await selectOption(page, putawayDialog, '选择空闲库位', 'A01-02-02')
+  await putawayDialog.getByRole('textbox', { name: '上架库位扫码', exact: true }).fill('A01-02-02')
+  await putawayDialog.getByRole('textbox', { name: '上架库位扫码', exact: true }).press('Enter')
+  await expect(putawayDialog.getByRole('button', { name: '确定上架', exact: true })).toBeEnabled()
   await putawayDialog.getByRole('button', { name: '确定上架' }).click()
   await expect(putawayDialog).not.toBeVisible()
 
