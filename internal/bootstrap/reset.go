@@ -28,6 +28,7 @@ func ResetDemoData(ctx context.Context, db *gorm.DB, tenantID int64) error {
 		models := []any{
 			&invmodel.Movement{},
 			&invmodel.AlertRule{},
+			&outboundmodel.WaveItem{}, &outboundmodel.WaveLine{}, &outboundmodel.WaveOrder{}, &outboundmodel.Wave{},
 			&taskmodel.Task{},
 			&outboundmodel.Allocation{},
 			&outboundmodel.ShipmentOrderDetail{},

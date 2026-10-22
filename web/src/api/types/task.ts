@@ -1,6 +1,8 @@
 import type { EntityID, PageQuery } from './common'
 
 export interface TaskItem {
+	/** 非零时由波次工作台处理；旧响应可缺省。 */
+  wave_id?: EntityID
   id: EntityID
   task_no: string
   task_type: string

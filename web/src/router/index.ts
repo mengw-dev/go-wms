@@ -117,6 +117,18 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '入库单详情', activeMenu: '/inbound/orders', perm: 'wms:inbound:view' },
       },
       {
+        path: 'outbound/waves',
+        name: 'outbound-waves',
+        component: () => import('@/views/outbound/Waves.vue'),
+        meta: { title: '波次与拣货', perm: 'wms:outbound:view' },
+      },
+      {
+        path: 'outbound/waves/:id',
+        name: 'outbound-wave-detail',
+        component: () => import('@/views/outbound/WaveDetail.vue'),
+        meta: { title: '波次工作台', activeMenu: '/outbound/waves', perm: 'wms:outbound:view' },
+      },
+      {
         path: 'outbound/orders',
         name: 'outbound-orders',
         component: () => import('@/views/outbound/OutboundOrders.vue'),

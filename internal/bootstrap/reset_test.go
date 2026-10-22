@@ -32,6 +32,7 @@ func resetTestDB(t *testing.T) *gorm.DB {
 		&taskmodel.Task{},
 		&inboundmodel.ReceiptOrder{}, &inboundmodel.ReceiptOrderDetail{}, &inboundmodel.ImportTask{},
 		&outboundmodel.ShipmentOrder{}, &outboundmodel.ShipmentOrderDetail{}, &outboundmodel.Allocation{},
+		&outboundmodel.Wave{}, &outboundmodel.WaveOrder{}, &outboundmodel.WaveLine{}, &outboundmodel.WaveItem{},
 		&stocktakemodel.StocktakeOrder{}, &stocktakemodel.StocktakeDetail{},
 	)
 	// 与生产一致：重置与种子都依赖租户回调做隔离/注入，测试库必须显式注册。

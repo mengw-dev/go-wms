@@ -240,6 +240,9 @@ func (s *Service) Cancel(ctx context.Context, id int64, operator string) error {
 			return err
 		}
 		for _, task := range tasks {
+			if task.WaveID != 0 {
+				return errcode.WaveOrderLocked
+			}
 			if task.DoneQty > 0 {
 				return errcode.ShipShippedForbidden
 			}

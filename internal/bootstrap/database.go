@@ -85,6 +85,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&taskmodel.Task{},
 		&inboundmodel.ReceiptOrder{}, &inboundmodel.ReceiptOrderDetail{}, &inboundmodel.ImportTask{},
 		&outboundmodel.ShipmentOrder{}, &outboundmodel.ShipmentOrderDetail{}, &outboundmodel.Allocation{},
+		&outboundmodel.Wave{}, &outboundmodel.WaveOrder{}, &outboundmodel.WaveLine{}, &outboundmodel.WaveItem{},
 		&stocktakemodel.StocktakeOrder{}, &stocktakemodel.StocktakeDetail{},
 		&idempotency.Record{},
 	); err != nil {

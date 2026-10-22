@@ -29,7 +29,7 @@ const picker = usePdaPick()
 const selectedTask = computed(() => tasks.value.find((t) => t.id === form.task_id))
 
 const pendingTasks = computed(() =>
-  tasks.value.filter((t) => t.task_type === 'PICK' && (t.status === 'CREATED' || t.status === 'IN_PROGRESS' || (picker.stateOf(t.id).pendingPick || picker.stateOf(t.id).pendingClaim))),
+  tasks.value.filter((t) => t.task_type === 'PICK' && (((!t.wave_id || t.wave_id === '0') && (t.status === 'CREATED' || t.status === 'IN_PROGRESS')) || picker.stateOf(t.id).pendingPick || picker.stateOf(t.id).pendingClaim)),
 )
 
 // 任务已指定批次时必须扫码核对，避免同一库位混放多个批次时拣错。

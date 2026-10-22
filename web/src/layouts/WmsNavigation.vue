@@ -46,6 +46,7 @@ const activeMenu = computed(() => (route.meta.activeMenu as string | undefined) 
           <span>出库管理</span>
         </template>
         <el-menu-item index="/outbound/orders">出库单</el-menu-item>
+        <el-menu-item index="/outbound/waves">波次与拣货</el-menu-item>
       </el-sub-menu>
       <el-sub-menu v-if="auth.hasPerm('wms:inventory') || auth.hasPerm('wms:task')" index="inventory">
         <template #title>

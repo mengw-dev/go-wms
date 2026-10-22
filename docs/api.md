@@ -15,6 +15,9 @@
 ## 2026-10-21 库存预警
 
 新增 `/inventory/alerts` 当前预警及规则查询、`/inventory/alert-options` 管理选项、`PUT /inventory/alert-rules` 与 `DELETE /inventory/alert-rules/:id`。规则按仓库+货品配置可用量下限，不改变库存；权限、参数、零库存与恢复口径见[库存预警](inventory-alerts.md)。
+## 2026-10-21 基础波次与播种拣货
+
+新增 `/outbound/waves` 列表、同仓候选预览、建波、领取、汇总拣货、槽位分货和显式发货接口。所有写操作要求 `Idempotency-Key`，返回字符串 wave_id；原出库详情任务补充字符串 wave_id，非零任务由波次工作台处理。完整参数、状态、权限和库存口径见[波次与播种拣货](wave-picking.md)。普通逐单拣货继续使用原接口。
 
 > Base URL：`/api/v1` ｜ 数据格式：JSON ｜ 前后端同构：本仓库 `web/src/api/` 即可调用 SDK 参考
 
