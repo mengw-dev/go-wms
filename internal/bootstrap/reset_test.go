@@ -28,6 +28,7 @@ func resetTestDB(t *testing.T) *gorm.DB {
 		&model.Warehouse{}, &model.Location{}, &model.SKU{},
 		&invmodel.Inventory{}, &invmodel.InventoryTrans{},
 		&invmodel.AlertRule{},
+		&invmodel.Movement{},
 		&taskmodel.Task{},
 		&inboundmodel.ReceiptOrder{}, &inboundmodel.ReceiptOrderDetail{}, &inboundmodel.ImportTask{},
 		&outboundmodel.ShipmentOrder{}, &outboundmodel.ShipmentOrderDetail{}, &outboundmodel.Allocation{},
@@ -145,6 +146,9 @@ func TestResetDemoDataOnlyAffectsTargetTenant(t *testing.T) {
 		if err := db.WithContext(pair.ctx).First(&sku).Error; err != nil {
 			t.Fatal(err)
 		}
+		if err := db.WithContext(pair.ctx).Create(&invmodel.Movement{OperationKey: "reset-move", RequestHash: "test", MoveNo: "YKTEST", Quantity: 1, StockInTime: time.Now()}).Error; err != nil {
+			t.Fatal(err)
+		}
 		if err := db.WithContext(pair.ctx).Create(&invmodel.AlertRule{WarehouseID: pair.warehouseID, SKUID: sku.ID, MinAvailableQty: 3, Enabled: true, UpdatedBy: "test"}).Error; err != nil {
 			t.Fatal(err)
 		}
@@ -157,6 +161,10 @@ func TestResetDemoDataOnlyAffectsTargetTenant(t *testing.T) {
 		ctx  context.Context
 		want int64
 	}{{ctxReset, 0}, {ctxKeep, 1}} {
+		var moves int64
+		if err := db.WithContext(pair.ctx).Model(&invmodel.Movement{}).Count(&moves).Error; err != nil || moves != pair.want {
+			t.Fatalf("reset moves count=%d want=%d err=%v", moves, pair.want, err)
+		}
 		var count int64
 		if err := db.WithContext(pair.ctx).Model(&invmodel.AlertRule{}).Count(&count).Error; err != nil || count != pair.want {
 			t.Fatalf("reset alert rules: count=%d want=%d err=%v", count, pair.want, err)

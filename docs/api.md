@@ -169,7 +169,7 @@ API Key 在服务端配置中绑定 `WMS_INTEGRATION_TENANT_ID`，请求体、�
 // 生成 A01-01-01 … A01-02-03，返回 {created: 6, skipped: 0}（已存在的编码自动跳过）
 ```
 
-## 4. 库存查询（只读，内部写接口不对外）
+## 4. 库存查询与仓内移库
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
@@ -474,3 +474,7 @@ wms:basic,wms:inventory,wms:task,wms:inbound:view,wms:inbound:receive
 - `429 / 80002`：分钟频率超限；`429 / 80004`：日额度耗尽；`503 / 80003`：未配置模型密钥；`503 / 80001`：模型不可用或问答预算耗尽。
 - 限流、快照和主备请求共用默认25秒预算；主模型有独立备用时最多使用剩余时间一半。取消或总预算到期不继续调用备用，主模型401/403也不切换备用。
 - 默认外层服务端/代理30秒、前端35秒。前端提供停止等待，并在离页/身份变化时取消；取消不撤销已提交的额度计数，也不承诺第三方模型退费。会话为单轮，前端对话历史只保存在当前页面内存。
+
+## 仓内移库
+
+新增GET `/inventory/moves`、GET `/inventory/move-source/:id`、GET `/inventory/move-locations` 与POST `/inventory/moves`。写操作必须同时拥有库存查看和 `wms:inventory:move` 权限，并传入 `Idempotency-Key`。同仓、批次、数量、持久回放和记录查询契约见[仓内移库](stock-movement.md)。

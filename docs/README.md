@@ -8,6 +8,7 @@
 - [部署与升级](deployment.md)：Windows / Docker 启动、迁移、账户、HTTPS 和自动部署入口。
 - [配置参考](configuration.md)：常用环境变量和 Compose 账户配置。
 - [演示指南](demo.md)：体验流程、演示账号与会话边界。
+- [仓内移库](stock-movement.md)：同仓库可用库存移动、原请求恢复与流水追溯。
 - [库存预警](inventory-alerts.md)：规则配置、缺货/低库存与恢复口径。
 - [单据打印与标签](document-printing.md)：打印入口、标签规格与实机边界。
 - [Excel导出](excel-export.md)：筛选、行数上限、字段格式与盘点差异。

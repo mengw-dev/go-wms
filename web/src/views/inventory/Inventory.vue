@@ -6,7 +6,7 @@ import BusinessPagination from '@/components/common/BusinessPagination.vue'
 import { mobileTableCellStyle } from '@/utils/mobileTable'
 import PageHeader from '@/components/common/PageHeader.vue'
 import { onMounted, reactive, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useAutoRefresh } from '@/composables/autoRefresh'
 import { listInventory, listInventorySummary, listInventoryTrans } from '@/api/inventory'
@@ -22,7 +22,7 @@ import { BUSINESS_EVENTS, emitBusinessEvent } from '@/events/businessEvents'
 import { loadSkuMap, loadWarehouseOptions, toOptionMap, type IdOption } from '@/utils/options'
 
 const activeTab = ref('detail')
-const route = useRoute()
+const route = useRoute(), router = useRouter(), auth = useAuthStore()
 
 // ---------- 仓库下拉 / 货品映射 ----------
 const warehouseOptions = ref<IdOption[]>([])
@@ -227,9 +227,10 @@ useAutoRefresh(refreshActiveTab, 0)
           <el-table-column label="入库时间" width="170">
             <template #default="{ row }">{{ formatTime(row.stock_in_time) }}</template>
           </el-table-column>
-          <el-table-column label="操作" width="90" fixed="right">
+          <el-table-column label="操作" width="150" fixed="right">
             <template #default="{ row }">
               <el-button size="small" type="primary" plain @click="openTrans(row)">流水</el-button>
+              <el-button v-if="auth.hasPerm('wms:inventory:move')" type="primary" link :disabled="row.available_quantity <= 0" @click="router.push({ path: '/inventory/moves', query: { source_inventory_id: row.id } })">移库</el-button>
             </template>
           </el-table-column>
         </el-table>

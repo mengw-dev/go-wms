@@ -81,6 +81,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&model.Warehouse{}, &model.Location{}, &model.SKU{},
 		&invmodel.Inventory{}, &invmodel.InventoryTrans{},
 		&invmodel.AlertRule{},
+		&invmodel.Movement{},
 		&taskmodel.Task{},
 		&inboundmodel.ReceiptOrder{}, &inboundmodel.ReceiptOrderDetail{}, &inboundmodel.ImportTask{},
 		&outboundmodel.ShipmentOrder{}, &outboundmodel.ShipmentOrderDetail{}, &outboundmodel.Allocation{},
