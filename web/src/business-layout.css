@@ -376,3 +376,31 @@ body.manual-guide-active .layout.layout--business .main {
   .layout.layout--business .detail-header { flex: none; }
   .layout.layout--business .detail-scroll { min-height: 0; flex: 1; overflow: auto; overscroll-behavior: contain; }
 }
+
+/* Result areas keep the original one-screen layout until the user opts into a
+   taller table. Filters and pagination stay outside the independently scrolling rows. */
+.business-table-area { display: flex; flex-direction: column; min-width: 0; min-height: 0; height: var(--business-table-height, 480px); flex: none; }
+.layout.layout--business .business-table-area > .el-table { flex: 1; min-height: 0; height: 0 !important; max-height: none !important; }
+.layout.layout--business .business-table-area > .el-table .el-table__body-wrapper > .el-scrollbar > .el-scrollbar__wrap { max-height: none !important; }
+.table-height-tools { display: flex; flex: none; align-items: center; gap: 5px; min-height: 28px; padding-top: 3px; color: var(--el-text-color-secondary); }
+.table-height-handle { display: flex; align-items: center; justify-content: center; gap: 8px; flex: 1; min-width: 32px; min-height: 28px; touch-action: none; cursor: ns-resize; border-radius: 4px; font-size: 10px; user-select: none; }
+.table-height-handle i { width: 26px; height: 4px; border-radius: 4px; background: var(--el-border-color-darker); }
+.table-height-handle:hover, .table-height-handle:focus-visible { background: var(--el-fill-color-light); outline: 1px solid var(--el-color-primary-light-5); }
+.table-height-tools button { flex: none; padding: 4px 6px; min-height: 28px; border: 0; border-radius: 4px; background: transparent; font: inherit; font-size: 11px; color: var(--el-text-color-secondary); cursor: pointer; }
+.table-height-tools button:hover:not(:disabled) { color: var(--el-color-primary); background: var(--el-color-primary-light-9); }
+.table-height-tools button:disabled { opacity: .45; cursor: default; }
+body.table-height-dragging, body.table-height-dragging * { cursor: ns-resize !important; user-select: none !important; }
+@media (min-width: 981px) and (min-height: 560px), (max-width: 768px) and (min-height: 560px) {
+  .layout.layout--business .app-table-region > .business-table-area,
+  .layout.layout--business .inventory-page .el-tab-pane > .business-table-area { flex: 1; height: 0; }
+}
+.layout.layout--business .business-table-area.is-resized { flex: none !important; height: var(--user-table-height) !important; }
+.layout.layout--business .main:has(.business-table-area.is-resized) { overflow-y: auto; }
+.layout.layout--business .app-page:has(.business-table-area.is-resized) { height: auto; min-height: 100%; }
+.layout.layout--business .app-page:has(.business-table-area.is-resized) > :is(.app-card, .page-card) { flex: none; }
+.layout.layout--business .inventory-page:has(.business-table-area.is-resized) :is(.el-tabs, .el-tabs__content) { flex: none; height: auto; overflow: visible; }
+.layout.layout--business .inventory-page .el-tab-pane:has(> .business-table-area.is-resized) { height: auto; }
+@media (max-width: 600px) {
+  .table-height-handle span { display: none; }
+  .table-height-handle, .table-height-tools button { min-height: 34px; }
+}

@@ -79,8 +79,11 @@ for (const theme of ['light', 'dark'] as const) {
     await page.screenshot({ path: testInfo.outputPath(`home-${theme}.png`), animations: 'disabled' })
     await page.getByRole('button', { name: theme === 'dark' ? '切换为浅色模式' : '切换为深色模式', exact: true }).click()
     expect(await page.evaluate(() => localStorage.getItem('gowms_theme'))).toBe(theme === 'dark' ? 'light' : 'dark')
+    // Finish the desktop interaction before measuring the mobile layout.
+    await page.getByRole('heading', { name: 'WMS 业务闭环', exact: true }).click()
+    await page.keyboard.press('Escape')
     await page.setViewportSize({ width: 320, height: 700 })
-    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320)
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320)
   })
 }
 

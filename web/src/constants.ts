@@ -52,6 +52,8 @@ const STATUS_TEXT_MAP: Record<string, string> = {
   SHIP: '发货',
   RELEASE: '释放',
   ADJUST: '调整',
+  MOVE_IN: '移库入',
+  MOVE_OUT: '移库出',
 }
 
 export function statusText(status?: string | null): string {
@@ -139,4 +141,4 @@ export const TASK_STATUS_OPTIONS = ['CREATED', 'IN_PROGRESS', 'COMPLETED', 'CANC
 export const TASK_TYPE_OPTIONS = ['RECEIVE', 'PUTAWAY', 'PICK']
 
 /** 流水类型集合 */
-export const TRANS_TYPE_OPTIONS = ['OPENING', 'RECEIVE', 'ALLOCATE', 'SHIP', 'RELEASE', 'ADJUST']
+export const TRANS_TYPE_OPTIONS = ['OPENING', 'RECEIVE', 'ALLOCATE', 'SHIP', 'RELEASE', 'ADJUST', 'MOVE_IN', 'MOVE_OUT']

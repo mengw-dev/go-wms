@@ -72,6 +72,39 @@ type Warehouse struct {
 	Name string `json:"name"`
 }
 
+// Activity counts immutable stock ledger records, never cross-SKU quantities or
+// task completions inferred from mutable updated_at timestamps.
+type Activity struct {
+	PutawayRecords  int64            `json:"putaway_records"`
+	ShipmentRecords int64            `json:"shipment_records"`
+	Recent          []ActivityRecord `json:"recent" gorm:"-"`
+}
+
+type ActivityRecord struct {
+	ID          int64     `json:"id,string"`
+	InventoryID int64     `json:"inventory_id,string"`
+	TransType   string    `json:"trans_type"`
+	OrderNo     string    `json:"order_no"`
+	TaskNo      string    `json:"task_no"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+type ImportIssue struct {
+	TaskID      string    `json:"task_id"`
+	FileName    string    `json:"file_name"`
+	Status      string    `json:"status"`
+	SuccessRows int       `json:"success_rows"`
+	FailRows    int       `json:"fail_rows"`
+	ErrorMsg    string    `json:"error_msg"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+// Imports spans warehouses: a single file can contain several warehouses.
+type Imports struct {
+	Total  int64         `json:"total"`
+	Recent []ImportIssue `json:"recent"`
+}
+
 type Overview struct {
 	GeneratedAt     time.Time   `json:"generated_at"`
 	TodayFrom       string      `json:"today_from"`
@@ -87,4 +120,6 @@ type Overview struct {
 	Inventory       *Inventory  `json:"inventory,omitempty"`
 	Locations       *Locations  `json:"locations,omitempty"`
 	DraftStocktakes *int64      `json:"draft_stocktakes,omitempty"`
+	Activity        *Activity   `json:"activity,omitempty"`
+	ImportIssues    *Imports    `json:"import_issues,omitempty"`
 }

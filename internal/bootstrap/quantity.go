@@ -12,6 +12,7 @@ import (
 // 只在应用启动、尚未接收写入时运行；生产始终使用版本化 SQL，不运行 AutoMigrate。
 func auditQuantityColumns(db *gorm.DB) error {
 	columns := map[string][]string{
+		"wms_inventory_movement":    {"quantity"},
 		"wms_inventory_alert_rule":  {"min_available_qty"},
 		"wms_inventory":             {"stock_quantity", "available_quantity", "allocated_quantity"},
 		"wms_inventory_trans":       {"quantity_change", "before_quantity", "after_quantity", "available_before", "available_after"},

@@ -4,11 +4,16 @@
 
 ## 使用与部署
 
+- [仓储操作手册](warehouse-operations.md)：从基础资料到收发盘点、移库、扫码和未知结果核对。
+- [基础版收尾验收](release-acceptance.md)：交付范围、本地联调、分支状态与上线前核对。
+- [单实例备份与恢复](backup-recovery.md)：人工备份、隔离恢复和数据完整性检查。
 - [本地开发与验证](development.md)：开发环境、测试依赖、E2E 和交付打包。
 - [部署与升级](deployment.md)：Windows / Docker 启动、迁移、账户、HTTPS 和自动部署入口。
 - [配置参考](configuration.md)：常用环境变量和 Compose 账户配置。
 - [演示指南](demo.md)：体验流程、演示账号与会话边界。
+- [仓内移库](stock-movement.md)：同仓库可用库存移动、原请求恢复与流水追溯。
 - [库存预警](inventory-alerts.md)：规则配置、缺货/低库存与恢复口径。
+- [扫码辅助作业](scan-assistance.md)：收货定位明细、上架选择库位、拣货核对，扫码不自动写库存。
 - [单据打印与标签](document-printing.md)：打印入口、标签规格与实机边界。
 - [Excel导出](excel-export.md)：筛选、行数上限、字段格式与盘点差异。
 - [示例数据](../samples/README.md)：Excel 导入与外部系统推送样例。

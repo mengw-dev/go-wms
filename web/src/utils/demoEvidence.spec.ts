@@ -68,6 +68,14 @@ describe('demo evidence focus', () => {
     expect(filterDemoActivity(manualSnapshot, focus).inbound_orders.map((item) => item.order_no)).toEqual(['IN-2'])
   })
 
+  it('staged focus reuses business identities only from the exact same execution', () => {
+    const query = { source: 'staged', scenario: 'inbound', started_at: context.startedAt, completed_at: context.completedAt }
+    expect(resolveDemoEvidenceFocus(query, context).orderIds.inbound).toEqual(['101'])
+    expect(resolveDemoEvidenceFocus({ ...query, started_at: '2026-09-24T03:00:00.000Z' }, context).orderIds).toEqual({})
+    expect(resolveDemoEvidenceFocus({ ...query, scenario: 'full' }, context).orderIds).toEqual({})
+    expect(resolveDemoEvidenceFocus({ ...query, completed_at: '2026-09-24T03:00:05.000Z' }, context).orderIds).toEqual({})
+  })
+
   it('shows only real evidence from the focused execution window', () => {
     const focus = resolveDemoEvidenceFocus({}, context)
     const filtered = filterDemoActivity(snapshot, focus)
@@ -108,4 +116,56 @@ describe('demo evidence focus', () => {
     const tasks = snapshot.tasks.map((item) => ({ ...item, order_no: 'IN-1' }))
     const filtered = filterDemoActivity({ ...snapshot, tasks } as DemoActivitySnapshot, focus)
     expect(filtered.tasks.map((item) => item.id)).toEqual(['201'])
+  })
+
+  it('excludes adjacent-run order operations inside the same execution time window', () => {
+    const operation = snapshot.operations[0]!
+    const closeSnapshot = {
+      ...snapshot,
+      operations: [
+        { ...operation, id: '1', result: JSON.stringify({ data: { id: '101', order_no: 'IN-1' } }) },
+        { ...operation, id: '2', result: JSON.stringify({ data: { id: '100', order_no: 'IN-OLD' } }) },
+        { ...operation, id: '3', path: '/api/v1/inbound/orders/101/submit' },
+        { ...operation, id: '4', path: '/api/v1/inbound/orders/100/submit' },
+        { ...operation, id: '5', path: '/api/v1/inbound/tasks/201/putaway' },
+        { ...operation, id: '6', path: '/api/v1/inbound/tasks/202/putaway' },
+      ],
+    } as DemoActivitySnapshot
+    const filtered = filterDemoActivity(closeSnapshot, resolveDemoEvidenceFocus({}, context))
+    expect(filtered.operations.map(item => item.id)).toEqual(['1', '3', '5'])
+  })
+
+  it('uses string ids for focused operations and retains the unscoped history', () => {
+    const id = '9007199254740993'
+    const operations = [
+      { ...snapshot.operations[0]!, id: '1', path: `/api/v1/inbound/orders/${id}/approve` },
+      { ...snapshot.operations[0]!, id: '2', path: '/api/v1/inbound/orders/9007199254740992/approve' },
+    ]
+    const current = { ...snapshot, operations }
+    const focus = resolveDemoEvidenceFocus({ source: 'manual', scenario: 'inbound', order_id: id }, null)
+    expect(filterDemoActivity(current, focus).operations.map(item => item.id)).toEqual(['1'])
+    expect(filterDemoActivity(current, resolveDemoEvidenceFocus({}, null)).operations).toEqual(operations)
+  })
+
+  it('full execution keeps outbound tasks and ledger when only inbound has a ledger link', () => {
+    const fullContext: DemoEvidenceContext = {
+      ...context, scenario: 'full', links: [...(context.links ?? []), { label: '出库单', path: '/outbound/orders/401' }],
+    }
+    const outboundTask = { ...snapshot.tasks[1]!, id: '402', order_id: '401', order_no: 'OUT-1' }
+    const outboundLedger = { ...snapshot.inventory_trans[1]!, order_no: 'OUT-1' }
+    const current = {
+      ...snapshot,
+      outbound_orders: [{ id: '401', order_no: 'OUT-1', created_at: '2026-09-24T01:00:02.000Z' }],
+      tasks: [...snapshot.tasks, outboundTask],
+      inventory_trans: [...snapshot.inventory_trans, outboundLedger],
+      operations: [
+        { ...snapshot.operations[0]!, id: '3', path: '/api/v1/outbound/tasks/402/pick' },
+        { ...snapshot.operations[0]!, id: '4', path: '/api/v1/outbound/tasks/202/pick' },
+      ],
+    } as DemoActivitySnapshot
+    const focus = resolveDemoEvidenceFocus({ source: 'staged', scenario: 'full', started_at: context.startedAt, completed_at: context.completedAt }, fullContext)
+    const result = filterDemoActivity(current, focus)
+    expect(result.tasks.map(task => task.id)).toEqual(['201', '402'])
+    expect(result.inventory_trans.map(row => row.order_no)).toEqual(['IN-1', 'OUT-1'])
+    expect(result.operations.map(row => row.id)).toEqual(['3'])
   })

@@ -36,6 +36,8 @@ const (
 	TransShip     TransType = "SHIP"     // 发货扣减：stock- allocated-
 	TransRelease  TransType = "RELEASE"  // 取消释放：available+ allocated-
 	TransAdjust   TransType = "ADJUST"   // 盘点调整
+	TransMoveIn   TransType = "MOVE_IN"  // 仓内移入，不表示新入库
+	TransMoveOut  TransType = "MOVE_OUT" // 仓内移出，不消耗已分配库存
 )
 
 // InventoryTrans 库存流水：只增不改，每次变动同事务写入。

@@ -1,4 +1,4 @@
-import type { DemoActivitySnapshot, DemoScenarioResult } from '@/api/types'
+import type { DemoActivitySnapshot, DemoOperationLog, DemoScenarioResult } from '@/api/types'
 import { isBusinessOperation } from '@/utils/demoOperations'
 
 const STORAGE_KEY = 'wms-demo-evidence-context-v1'
@@ -136,7 +136,12 @@ export function resolveDemoEvidenceFocus(
   context: DemoEvidenceContext | null,
 ): DemoEvidenceFocus {
   const requestedSource = queryText(query, 'source')
-  const useContext = requestedSource !== 'manual' && requestedSource !== 'staged' && Boolean(context)
+  const matchingStagedRun = requestedSource === 'staged' && Boolean(context) &&
+    queryText(query, 'started_at') === context?.startedAt &&
+    queryText(query, 'scenario') === context?.scenario &&
+    (!queryText(query, 'completed_at') || queryText(query, 'completed_at') === context?.completedAt)
+  const useContext = requestedSource !== 'manual' &&
+    (requestedSource !== 'staged' || matchingStagedRun) && Boolean(context)
   const base = useContext && context ? focusFromContext(context) : {
     scenario: '',
     source: '',
@@ -206,6 +211,43 @@ function orderMatches(
   return inExecutionWindow(item.created_at ?? '', focus)
 }
 
+function operationMatcher(
+  focus: DemoEvidenceFocus,
+  orders: Record<string, { id: string; order_no: string }[]>,
+  tasks: DemoActivitySnapshot['tasks'],
+): (operation: DemoOperationLog) => boolean {
+  // Time tolerance covers clocks/async audit, but two consecutive runs can
+  // overlap it. Prefer available business identities without rounding int64 IDs.
+  const ids = Object.fromEntries(Object.entries(orders).map(([kind, rows]) => [
+    kind, new Set([...(focus.orderIds[kind] ?? []), ...rows.map(row => String(row.id))]),
+  ]))
+  const orderNos = new Set([...focus.orderNos, ...Object.values(orders).flatMap(rows => rows.map(row => row.order_no))])
+  const taskIds = new Set([...focus.taskIds, ...tasks.map(task => String(task.id))])
+  const focused = Object.values(focus.orderIds).some(values => values.length) || focus.orderNos.length || focus.taskIds.length
+  return operation => {
+    if (!focused) return true
+    const path = operation.path.split('?')[0]!.replace(/\/+$/, '')
+    const order = path.match(/^\/(?:api\/v1\/)?(inbound|outbound|stocktake)\/orders\/(\d+)(?:\/|$)/)
+    if (order && ids[order[1]!]!.size) return ids[order[1]!]!.has(order[2]!)
+    const task = path.match(/^\/(?:api\/v1\/)?(?:inbound|outbound)\/tasks\/(\d+)(?:\/|$)/)
+    if (task && taskIds.size) return taskIds.has(task[1]!)
+    const create = path.match(/^\/(?:api\/v1\/)?(inbound|outbound|stocktake)\/orders$/)
+    if (create && operation.method.toUpperCase() === 'POST') {
+      try {
+        const result: unknown = JSON.parse(operation.result || '')
+        if (result && typeof result === 'object' && 'data' in result) {
+          const data = result.data
+          if (data && typeof data === 'object') {
+            if ('id' in data && typeof data.id === 'string' && ids[create[1]!]!.size) return ids[create[1]!]!.has(data.id)
+            if ('order_no' in data && typeof data.order_no === 'string' && orderNos.size) return orderNos.has(data.order_no)
+          }
+        }
+      } catch { /* Legacy/truncated audit payloads retain the time-window fallback. */ }
+    }
+    return true
+  }
+}
+
 export function filterDemoActivity(
   snapshot: DemoActivitySnapshot,
   focus: DemoEvidenceFocus,
@@ -229,6 +271,10 @@ export function filterDemoActivity(
   const inboundOrders = snapshot.inbound_orders.filter((item) => orderMatches(item, 'inbound', focus))
   const outboundOrders = snapshot.outbound_orders.filter((item) => orderMatches(item, 'outbound', focus))
   const stocktakeOrders = snapshot.stocktake_orders.filter((item) => orderMatches(item, 'stocktake', focus))
+  const hasOrderFocus = focus.orderNos.length || Object.values(focus.orderIds).some(ids => ids.length)
+  const focusedOrders = [...inboundOrders, ...outboundOrders, ...stocktakeOrders]
+  const orderNos = new Set(hasOrderFocus ? [...focus.orderNos, ...focusedOrders.map(order => order.order_no)] : [])
+  const orderIds = new Set(hasOrderFocus ? [...Object.values(focus.orderIds).flat(), ...focusedOrders.map(order => String(order.id))] : [])
   const tasks = snapshot.tasks.filter((item) => {
     const allowedTypes = taskTypes[focus.scenario]
     if (allowedTypes && allowedTypes.length > 0 && !allowedTypes.includes(item.task_type)) return false
@@ -236,20 +282,22 @@ export function filterDemoActivity(
     if (focus.taskIds.length > 0) {
       return (focus.taskIds.includes(String(item.id)) || focus.taskIds.includes(item.task_no)) && inExecutionWindow(item.created_at, focus)
     }
-    if (focus.orderNos.length > 0 && !focus.orderNos.includes(item.order_no)) return false
+    if (hasOrderFocus && !orderNos.has(item.order_no) && !orderIds.has(String(item.order_id))) return false
     return inExecutionWindow(item.created_at, focus)
   })
   const inventoryTrans = snapshot.inventory_trans.filter((item) => {
     const allowedTypes = transTypes[focus.scenario]
     if (allowedTypes && allowedTypes.length > 0 && !allowedTypes.includes(item.trans_type)) return false
     if (focus.scenario === 'stocktake' && item.trans_type !== 'ADJUST') return false
-    if (focus.orderNos.length > 0 && !focus.orderNos.includes(item.order_no)) return false
-    if (focus.orderNos.length === 0 && focus.taskIds.length > 0 && !focus.taskIds.includes(item.task_no)) return false
+    if (orderNos.size > 0 && !orderNos.has(item.order_no)) return false
+    if (orderNos.size === 0 && focus.taskIds.length > 0 && !focus.taskIds.includes(item.task_no)) return false
     return inExecutionWindow(item.created_at, focus)
   })
+  const matchesOperation = operationMatcher(focus, { inbound: inboundOrders, outbound: outboundOrders, stocktake: stocktakeOrders }, tasks)
   const operations = snapshot.operations.filter((item) => {
     if (!isBusinessOperation(item)) return false
     if (!inExecutionWindow(item.created_at, focus)) return false
+    if (!matchesOperation(item)) return false
     const prefixes = operationPrefixes[focus.scenario]
     if (prefixes?.length) return prefixes.some((prefix) => item.path.startsWith(prefix))
     return true

@@ -6,6 +6,8 @@ import { getDashboardOverview, type DashboardOverview, type DashboardOrders, typ
 import { useAutoRefresh } from '@/composables/autoRefresh'
 import { useAuthStore } from '@/stores/auth'
 import { statusText, statusTag, taskTypeText } from '@/constants'
+import { useDashboardAlerts } from '@/composables/useDashboardAlerts'
+import OperationsDetails from './OperationsDetails.vue'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -15,10 +17,13 @@ const data = ref<DashboardOverview>()
 const loading = ref(false)
 const error = ref(false)
 const trendDetails = ref(false)
+const details = ref<'' | 'activity' | 'imports'>('')
+const { result: alerts, error: alertsError, loading: alertsLoading, load: loadAlerts } = useDashboardAlerts(() => auth.hasPerm('wms:inventory'))
 let sequence = 0
 
 async function load(silent = false) {
   const seq = ++sequence
+  void loadAlerts(warehouseId.value)
   if (!silent) loading.value = true
   try {
     const result = await getDashboardOverview(warehouseId.value)
@@ -32,7 +37,7 @@ async function load(silent = false) {
     if (seq === sequence) loading.value = false
   }
 }
-watch(warehouseId, () => { data.value = undefined; void load() })
+watch(warehouseId, () => { data.value = undefined; details.value = ''; void load() })
 onMounted(() => { void load() })
 onBeforeUnmount(() => { sequence++ })
 useAutoRefresh(() => load(true), 30000, () => document.visibilityState === 'visible')
@@ -131,8 +136,9 @@ const shortcuts = [
 
       <div class="dashboard-grid">
         <section v-if="data.access.inbound || data.access.outbound" class="overview-panel workflow-panel">
-          <div class="panel-heading"><h2>作业状态分布</h2><span>当前单据 · 可点击核对</span></div>
+          <div class="panel-heading"><h2>作业状态分布</h2><button v-if="data.import_issues" class="import-attention" :class="{ 'has-issues': data.import_issues.total > 0 }" @click="details = 'imports'"><span>近 7 日异常导入 <small>全部仓库</small></span><b>{{ data.import_issues.total }} 次 ↗</b></button><span v-else>当前单据 · 可点击核对</span></div>
           <div class="panel-scroll workflow-body">
+            <div v-if="data.activity" class="activity-strip"><span>今日实际作业 <small>按库存流水</small></span><button @click="details = 'activity'">上架 <b>{{ data.activity.putaway_records }}</b> 笔 · 发货 <b>{{ data.activity.shipment_records }}</b> 笔 <el-icon><ArrowRight /></el-icon></button></div>
             <div v-if="data.inbound" class="workflow"><b>入库</b><div class="phase-list"><button v-for="state in inboundStates" :key="state" @click="go('/inbound/orders', { status: state })"><span>{{ statusText(state) }}</span><strong>{{ count(data.inbound, state) }}</strong></button></div></div>
             <div v-if="data.outbound" class="workflow"><b>出库</b><div class="phase-list"><button v-for="state in outboundStates" :key="state" @click="go('/outbound/orders', { status: state })"><span>{{ statusText(state) }}</span><strong>{{ count(data.outbound, state) }}</strong></button></div></div>
             <div class="cancelled-notes"><span>今日新建后已取消</span><button v-if="data.inbound" class="text-action" @click="cancelledOrders('/inbound/orders')">入库 {{ count(data.inbound, 'CANCELLED', true) }} 单 ↗</button><button v-if="data.outbound" class="text-action" @click="cancelledOrders('/outbound/orders')">出库 {{ count(data.outbound, 'CANCELLED', true) }} 单 ↗</button></div>
@@ -163,8 +169,15 @@ const shortcuts = [
         <section v-if="data.access.inventory || data.access.basic || data.access.stocktake" class="overview-panel inventory-panel">
           <div class="panel-heading"><h2>库存与核对</h2><el-button v-if="data.access.inventory" link type="primary" @click="go('/inventory')">查看库存 ↗</el-button></div>
           <div class="panel-scroll inventory-body">
+            <template v-if="data.access.inventory">
+              <div class="alert-summary" :aria-busy="alertsLoading">
+                <button @click="go('/inventory/alerts', { state: 'OUT_OF_STOCK' })"><span>可用库存为零 <el-icon><ArrowRight /></el-icon></span><strong :class="{ danger: (alerts?.summary.out_of_stock || 0) > 0 }">{{ alerts ? alerts.summary.out_of_stock : '—' }}<small>项规则</small></strong></button>
+                <button @click="go('/inventory/alerts', { state: 'LOW' })"><span>低库存 <el-icon><ArrowRight /></el-icon></span><strong :class="{ warning: (alerts?.summary.low || 0) > 0 }">{{ alerts ? alerts.summary.low : '—' }}<small>项规则</small></strong></button>
+              </div>
+              <p class="alert-context" :class="{ stale: alertsError }" aria-live="polite">{{ alertsError ? (alerts ? `预警更新失败，保留上次核对结果 · ${time(alerts.checked_at)}` : '预警暂时无法加载，请刷新重试') : alerts ? (alerts.summary.configured ? `当前租户已配置 ${alerts.summary.configured} 项规则 · ${time(alerts.checked_at)} 核对` : '当前范围尚未配置预警规则') : '正在核对预警…' }}</p>
+            </template>
             <div v-if="data.inventory" class="inventory-facts"><div><strong>{{ data.inventory.skus }}</strong><span>有货 SKU</span></div><div><strong>{{ data.inventory.rows }}</strong><span>有货库存记录</span></div><div><strong>{{ data.inventory.allocated_rows }}</strong><span>含分配量记录</span></div></div>
-            <div v-if="data.locations" class="location-meter"><div><span>启用库位使用情况</span><b>{{ data.locations.enabled ? occupied + '%' : '暂无启用库位' }}</b></div><div class="meter-track"><i :style="{ width: occupied + '%' }"></i></div><small>占用 {{ data.locations.occupied }} 个 · 空闲 {{ data.locations.enabled - data.locations.occupied }} 个</small></div>
+            <div v-if="data.locations && !data.access.inventory" class="location-meter"><div><span>启用库位使用情况</span><b>{{ data.locations.enabled ? occupied + '%' : '暂无启用库位' }}</b></div><div class="meter-track"><i :style="{ width: occupied + '%' }"></i></div><small>占用 {{ data.locations.occupied }} 个 · 空闲 {{ data.locations.enabled - data.locations.occupied }} 个</small></div>
             <button v-if="data.draft_stocktakes !== undefined" class="stocktake-link" @click="go('/stocktake/orders', { status: 'DRAFT' })"><span>待完成盘点单</span><b>{{ data.draft_stocktakes }} 单 ↗</b></button>
           </div>
         </section>
@@ -176,6 +189,8 @@ const shortcuts = [
         <div class="panel-scroll recent-list"><button v-for="item in recent" :key="item.path" class="recent-row" @click="go(item.path)"><span class="record-type">{{ item.type }}</span><b>{{ item.order_no }}</b><el-tag :type="statusTag(item.status)" size="small" effect="plain">{{ statusText(item.status) }}</el-tag><time>{{ time(item.created_at) }}</time></button><p v-if="!recent.length" class="quiet-empty">当前范围暂无入出库单据</p></div>
       </section>
     </template>
+
+    <OperationsDetails v-if="data" v-model="details" :data="data" :warehouse-id="warehouseId" />
 
     <el-dialog v-model="trendDetails" class="business-dialog" title="近 7 日新建单量" width="600px" append-to-body>
       <p class="trend-explanation">{{ warehouseId ? '当前所选仓库' : '全部仓库' }} · 按北京时间创建日期统计，包含已取消单据，不代表实际收发货数量。</p>
@@ -210,9 +225,32 @@ button { font: inherit; } .metric { min-width: 0; text-align: left; padding: 14p
 .inventory-body { padding: 4px 16px 12px; } .inventory-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; } .inventory-facts strong { display: block; font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; } .inventory-facts span { display: block; margin-top: 5px; font-size: 10px; color: var(--el-text-color-secondary); }
 .location-meter { margin-top: 14px; } .location-meter > div:first-child { display: flex; justify-content: space-between; font-size: 10px; color: var(--el-text-color-secondary); } .location-meter b { color: var(--el-text-color-primary); font-weight: 500; } .meter-track { height: 6px; border-radius: 4px; background: var(--el-fill-color); overflow: hidden; margin: 7px 0 4px; } .meter-track i { display: block; height: 100%; background: var(--el-color-primary); border-radius: inherit; } .location-meter small { font-size: 10px; color: var(--el-text-color-secondary); }
 .stocktake-link { width: 100%; display: flex; justify-content: space-between; padding: 8px 0 0; margin-top: 9px; border: 0; border-top: 1px solid var(--el-border-color-lighter); background: transparent; color: var(--el-text-color-secondary); font-size: 11px; cursor: pointer; } .stocktake-link b { color: var(--el-color-primary); font-weight: 500; }
+.activity-strip, .import-attention { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 11px; }
+.activity-strip { padding: 8px 0; border-top: 1px solid var(--el-border-color-lighter); }
+.activity-strip > span, .import-attention > span { color: var(--el-text-color-secondary); }
+.activity-strip small, .import-attention small { margin-left: 5px; font-size: 10px; color: var(--el-text-color-secondary); }
+.activity-strip button { display: flex; align-items: center; gap: 5px; border: 0; padding: 0; background: none; color: var(--el-text-color-primary); font-size: 11px; cursor: pointer; }
+.activity-strip b { font-variant-numeric: tabular-nums; font-weight: 600; }
+.import-attention { border: 0; background: var(--el-fill-color-lighter); border-radius: 5px; padding: 6px 8px; text-align: left; cursor: pointer; color: var(--el-text-color-secondary); }
+.import-attention b { font-size: 11px; font-weight: 500; } .import-attention.has-issues b { color: var(--el-color-warning); }
+.alert-summary { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
+.alert-summary button { min-width: 0; border: 1px solid var(--el-border-color-lighter); border-radius: 6px; background: var(--el-fill-color-lighter); color: inherit; padding: 9px 10px; text-align: left; cursor: pointer; }
+.alert-summary button:hover { border-color: var(--el-color-primary-light-5); }
+.alert-summary span { display: flex; justify-content: space-between; gap: 4px; font-size: 10px; color: var(--el-text-color-secondary); }
+.alert-summary strong { display: block; margin-top: 5px; font-size: 23px; font-variant-numeric: tabular-nums; font-weight: 600; } .alert-summary strong small { font-size: 10px; margin-left: 6px; font-weight: 400; color: var(--el-text-color-secondary); }
+.alert-summary .danger { color: var(--el-color-danger); } .alert-summary .warning { color: var(--el-color-warning); }
+.alert-context { font-size: 10px; color: var(--el-text-color-secondary); margin: 7px 0 12px; line-height: 1.5; } .alert-context.stale { color: var(--el-color-warning); }
+/* Keep the regular desktop overview complete before local overflow is needed. */
+.workflow-body { gap: 7px; padding-bottom: 8px; }
+.phase-list button { display: flex; align-items: center; justify-content: center; gap: 7px; padding: 7px 4px; }
+.phase-list strong { margin-top: 0; font-size: 16px; }
+.activity-strip { padding: 5px 0; }
+.alert-summary button { padding: 7px 10px; } .alert-summary strong { font-size: 21px; }
+.alert-context { margin-bottom: 8px; } .inventory-facts strong { font-size: 20px; }
 .shortcuts { display: flex; flex-wrap: wrap; gap: 12px; } .text-action { background: transparent; border: 0; padding: 0; color: var(--el-color-primary); font-size: 11px; cursor: pointer; } .recent-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-content: start; gap: 0 24px; padding: 0 16px 8px; } .recent-row { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 8px 0; border: 0; border-bottom: 1px solid var(--el-border-color-lighter); text-align: left; background: transparent; color: inherit; cursor: pointer; } .record-type { font-size: 10px; color: var(--el-text-color-secondary); flex: none; } .recent-row b { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; font-weight: 500; } .recent-row time { color: var(--el-text-color-secondary); font-size: 10px; flex: none; } .recent-row .el-tag { font-size: 10px; height: 18px; }
 .quiet-empty { margin: auto; padding: 16px 0; font-size: 12px; color: var(--el-text-color-secondary); } .dashboard-placeholder { grid-column: 1 / -1; grid-row: 2 / -1; border-radius: 10px; padding: 24px; background: var(--el-bg-color); } .trend-explanation { font-size: 12px; color: var(--el-text-color-secondary); line-height: 1.7; }
 @media (min-width: 981px) and (max-height: 740px) { .operations-dashboard { gap: 10px; grid-template-rows: auto 76px minmax(0, 1fr) 72px; } .eyebrow, .dashboard-heading p { display: none; } h1 { margin: 0; font-size: 21px; } .metric { padding: 8px 14px; } .metric strong { margin-top: 4px; font-size: 24px; } .metric p { margin-top: 3px; } .dashboard-grid { gap: 10px; grid-template-rows: minmax(0, 1fr) minmax(0, 1.1fr); } .panel-heading { padding: 8px 12px 5px; min-height: 22px; } .workflow-body { padding: 0 12px 8px; gap: 7px; } .phase-list button { padding: 5px 2px; } .phase-list strong { font-size: 15px; margin-top: 2px; } .inventory-facts strong { font-size: 19px; } .location-meter { margin-top: 9px; } .recent-row { padding: 6px 0; } }
 @media (max-width: 980px) { .operations-dashboard { height: auto; grid-template-rows: auto auto auto auto; } .dashboard-heading { align-items: flex-start; flex-direction: column; } .dashboard-tools { flex-wrap: wrap; width: 100%; } .dashboard-tools .updated { margin-right: auto; } .dashboard-grid { grid-template-rows: 205px 225px; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); } .recent-panel { max-height: 210px; } .recent-list { grid-template-columns: 1fr; } .shortcuts { gap: 8px; } }
 @media (max-width: 680px) { .dashboard-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; } .metric { padding: 12px; } .metric strong { font-size: 26px; } .dashboard-grid { grid-template-columns: 1fr; grid-template-rows: none; grid-auto-rows: 220px; } .dashboard-tools .updated { flex-basis: 100%; } .panel-heading > span { font-size: 9px; } .recent-panel .panel-heading { align-items: flex-start; flex-direction: column; } .recent-row time { display: none; } }
+@media (max-width: 680px) { .phase-list button { flex-direction: column; gap: 3px; } .phase-list strong { font-size: 15px; } .import-attention small { display: none; } }
 </style>

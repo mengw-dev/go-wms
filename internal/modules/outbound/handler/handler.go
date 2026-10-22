@@ -30,6 +30,7 @@ func (h *Handler) RegisterRoutes(auth *gin.RouterGroup, checker middleware.Perms
 	{
 		orders.GET("", read, h.list)
 		orders.GET("/:id", read, h.get)
+		orders.GET("/:id/scan-sku", read, h.scanOrderSKU)
 		orders.POST("", perm("create"), h.create)
 		orders.DELETE("/:id", perm("create"), h.delete)
 		orders.POST("/batch-delete", perm("create"), h.batchDelete)

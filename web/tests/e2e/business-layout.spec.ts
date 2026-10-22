@@ -46,6 +46,9 @@ async function mockBusiness(page: Page, theme: 'light' | 'dark', guided = false,
     else if (path === '/demo/activity') data = { operations: [], inbound_orders: [], outbound_orders: [], stocktake_orders: [], tasks: [], inventory_trans: [] }
     else if (path === '/system/roles/all') data = [role]
     else if (path === '/inbound/imports') data = [{ task_id: 'batch-001', status: 'COMPLETED', success_rows: 10, total_rows: 10, created_at: date }]
+    else if (path === '/inventory/alerts') data = { list: [{ id: '1', warehouse_id: '1', warehouse_code: warehouse.code, warehouse_name: warehouse.name, sku_id: '1', sku_code: sku.code, sku_name: sku.name, unit: sku.unit, available_qty: 9, stock_quantity: 12, allocated_qty: 3, min_available_qty: 10, gap_qty: 1, enabled: true, state: 'LOW', updated_at: date }], total: 1, warehouses: [warehouse], summary: { configured: 1, low: 1, out_of_stock: 0 }, checked_at: date }
+    else if (path === '/inbound/orders/1/putaway-locations') data = { list: [location], total: 1 }
+    else if (path === '/inventory/alert-options') data = { list: [], total: 0 }
     else if (/\/(inbound|outbound|stocktake)\/orders\/1$/.test(path)) data = {
       order: { ...order, status: path.includes('stocktake') ? 'DRAFT' : 'APPROVED' }, details: [line], allocations: [line],
       tasks: [{ ...task, task_type: path.includes('outbound') ? 'PICK' : 'PUTAWAY' }],
@@ -136,6 +139,108 @@ const lists = [
   ['/basic/locations', '库位管理'], ['/basic/skus', '货品管理'], ['/system/users', '用户管理'],
   ['/system/roles', '角色管理'], ['/system/logs', '操作日志'],
 ]
+
+for (const theme of ['light', 'dark'] as const) {
+  for (const width of [1366, 390]) {
+    test(`${theme}: ${width}px all result tables support taller areas, scrolling, persistence and reset`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 800 })
+      await mockBusiness(page, theme)
+      for (const [path] of [...lists, ['/inventory/alerts']]) {
+        await page.goto(path!)
+        const area = page.locator('.business-table-area:visible')
+        await expect(area).toHaveCount(1)
+        await expect(area.locator('.el-table__body-wrapper tbody tr').first()).toBeVisible()
+        const before = (await area.boundingBox())!.height
+        const bodyBefore = await area.locator('.el-table__body-wrapper').evaluate(el => el.clientHeight)
+        await area.getByRole('button', { name: '一屏高度', exact: true }).click()
+        await expect(area).toHaveClass(/is-resized/)
+        await expect.poll(async () => (await area.boundingBox())!.height).toBe(700)
+        expect(await area.locator('.el-table__body-wrapper').evaluate(el => el.clientHeight), path).toBeGreaterThan(bodyBefore + 25)
+        expect(await page.locator('.main').evaluate(el => el.scrollHeight - el.clientHeight), path).toBeGreaterThan(20)
+        await page.reload()
+        await expect(page.locator('.business-table-area:visible')).toHaveClass(/is-resized/)
+        await expect.poll(async () => (await area.boundingBox())!.height).toBe(700)
+        await page.locator('.pagination:visible').scrollIntoViewIfNeeded()
+        await expect(page.locator('.pagination:visible')).toBeInViewport({ ratio: 1 })
+        await area.getByRole('button', { name: '恢复默认', exact: true }).click()
+        await expect(area).not.toHaveClass(/is-resized/)
+        await expect.poll(() => page.locator('.main').evaluate(el => el.scrollHeight-el.clientHeight), path).toBeLessThanOrEqual(1)
+        expect(Math.abs((await area.boundingBox())!.height-before), path).toBeLessThanOrEqual(2)
+        await contained(page)
+      }
+    })
+  }
+
+  test(`${theme}: drag, keyboard and cancellation preserve layout and do not issue business writes`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 1366, height: 800 })
+    await mockBusiness(page, theme)
+    await page.route('**/api/v1/inbound/orders?*', route => route.fulfill({ json: { code: 0, msg: 'ok', data: { list: Array.from({ length: 30 }, (_, i) => ({ ...order, id: String(i+1) })), total: 30 } } }))
+    await page.goto('/inbound/orders')
+    const area = page.locator('.business-table-area'), handle = area.getByRole('separator', { name: '拖动调整表格高度' })
+    await expect(handle).toBeVisible()
+    const before = (await area.boundingBox())!.height, box = (await handle.boundingBox())!
+    await page.mouse.move(box.x+30, box.y+10)
+    await page.mouse.down()
+    await page.mouse.move(box.x+30, box.y+100, { steps: 8 })
+    await page.mouse.up()
+    await expect(area).toHaveClass(/is-resized/)
+    expect((await area.boundingBox())!.height).toBeGreaterThan(before+60)
+    await expect(page.locator('body')).not.toHaveClass(/table-height-dragging/)
+    await handle.focus()
+    await handle.press('Home')
+    await expect(area).not.toHaveClass(/is-resized/)
+    await handle.press('ArrowDown')
+    expect((await area.boundingBox())!.height).toBeGreaterThan(before+25)
+    await handle.press('End')
+    await expect.poll(async () => (await area.boundingBox())!.height).toBe(700)
+    expect(await area.locator('.el-table__body-wrapper .el-scrollbar__wrap').evaluate(el => el.clientHeight)).toBeGreaterThan(550)
+    await page.screenshot({ path: testInfo.outputPath(`resized-${theme}.png`), animations: 'disabled' })
+    await handle.scrollIntoViewIfNeeded()
+    const next = (await handle.boundingBox())!
+    await page.mouse.move(next.x+20,next.y+10); await page.mouse.down()
+    await page.mouse.move(next.x+20,next.y-60,{steps:4})
+    await handle.press('Escape')
+    await page.mouse.up()
+    await expect.poll(async () => (await area.boundingBox())!.height).toBe(700)
+    await expect(page.locator('body')).not.toHaveClass(/table-height-dragging/)
+    await area.getByRole('button', { name: '恢复默认', exact: true }).click()
+    await expect(area).not.toHaveClass(/is-resized/)
+  })
+}
+
+test('inventory tab heights and phone/desktop preferences remain independent; navigation cleans active drag', async ({ page }) => {
+  await mockBusiness(page, 'dark')
+  await page.setViewportSize({ width: 1366, height: 800 })
+  await page.goto('/inventory')
+  const detail = page.locator('[data-height-key="inventory-detail"]')
+  await detail.getByRole('button', { name: '一屏高度', exact: true }).click()
+  await page.getByRole('tab', { name: '按SKU汇总', exact: true }).click()
+  const summary = page.locator('[data-height-key="inventory-summary"]')
+  await expect(summary).not.toHaveClass(/is-resized/)
+  await expect.poll(() => page.locator('.main').evaluate(el => el.scrollHeight-el.clientHeight)).toBeLessThanOrEqual(1)
+  await summary.getByRole('button', { name: '加高', exact: true }).click()
+  const summaryHeight = (await summary.boundingBox())!.height
+  await page.getByRole('tab', { name: '库存明细', exact: true }).click()
+  await expect.poll(async () => (await detail.boundingBox())!.height).toBe(700)
+  await page.setViewportSize({ width: 390, height: 800 })
+  await expect(detail).not.toHaveClass(/is-resized/)
+  await detail.getByRole('button', { name: '加高', exact: true }).click()
+  await page.setViewportSize({ width: 1366, height: 800 })
+  await expect.poll(async () => (await detail.boundingBox())!.height).toBe(700)
+  await page.setViewportSize({ width: 1366, height: 300 })
+  await expect.poll(async () => (await detail.boundingBox())!.height).toBe(600)
+  await page.setViewportSize({ width: 1366, height: 800 })
+  await expect.poll(async () => (await detail.boundingBox())!.height).toBe(700)
+  await page.getByRole('tab', { name: '按SKU汇总', exact: true }).click()
+  await expect.poll(async () => (await summary.boundingBox())!.height).toBe(summaryHeight)
+  const handle = summary.getByRole('separator')
+  await handle.scrollIntoViewIfNeeded(); const box = (await handle.boundingBox())!
+  await page.mouse.move(box.x+10,box.y+10); await page.mouse.down()
+  await expect(page.locator('body')).toHaveClass(/table-height-dragging/)
+  await page.goto('/tasks'); await page.mouse.up()
+  await expect(page.locator('body')).not.toHaveClass(/table-height-dragging/)
+  await expect(page.locator('.business-table-area')).not.toHaveClass(/is-resized/)
+})
 
 for (const theme of ['light', 'dark'] as const) {
   for (const width of [320, 390, 430, 768]) {

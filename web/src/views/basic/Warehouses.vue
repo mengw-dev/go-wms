@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ResizableTableArea from '@/components/common/ResizableTableArea.vue'
 import BusinessPagination from '@/components/common/BusinessPagination.vue'
 import { mobileTableCellStyle } from '@/utils/mobileTable'
 import BusinessListPage from '@/components/common/BusinessListPage.vue'
@@ -168,6 +169,8 @@ async function onDelete(row: WarehouseItem) {
       </el-form>
     </template>
 
+    <ResizableTableArea storage-key="warehouses">
+
     <el-table class="mobile-record-table" :cell-style="mobileTableCellStyle" max-height="var(--business-table-height)" v-loading="loading" :data="list" border stripe>
       <el-table-column prop="code" label="编码" min-width="110" />
       <el-table-column prop="name" label="名称" min-width="140" />
@@ -197,6 +200,7 @@ async function onDelete(row: WarehouseItem) {
         </template>
       </el-table-column>
     </el-table>
+    </ResizableTableArea>
 
     <BusinessPagination
       v-model:current-page="query.page"

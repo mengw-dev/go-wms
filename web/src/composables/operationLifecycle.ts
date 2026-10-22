@@ -9,6 +9,7 @@ import {
 // Keep per-command policies separate: a rejection safe for one command may be
 // uncertain for another. These lists reflect the existing server contracts.
 const safeRejectCodes = {
+  'inventory.move': new Set([400, 30001, 30010, 30011]),
   'inbound.receive': new Set([400, 40001, 40002, 40004, 40008, 40014]),
   'inbound.putaway': new Set([400, 40001, 40002, 40005, 40006, 40007, 40008, 20002, 20005, 20011, 20014]),
   'stocktake.approve': new Set([400, 60001, 60002, 60004, 60006]),

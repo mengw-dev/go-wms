@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { confirmMessageBox, loginByUi, requestApi, seedBaseData, seedStockedInventory, selectOption } from './support/api'
+import { confirmMessageBox, loginByUi, requestApi, seedBaseData, seedStockedInventory } from './support/api'
 
 // Forward the real command and wait for a successful backend commit, then drop
 // only its response. No business response or database result is mocked.
@@ -70,7 +70,9 @@ test('idempotency: receive and putaway recover after commit, lost response and r
   await page.getByRole('button', { name: '上架', exact: true }).first().click()
   dialog = page.getByRole('dialog', { name: '上架', exact: true })
   await expect(dialog.locator('.el-alert--error')).toHaveCount(0)
-  await selectOption(page, dialog, '选择空闲库位', seed.location.code)
+  await dialog.getByRole('textbox', { name: '上架库位扫码', exact: true }).fill(seed.location.code)
+  await dialog.getByRole('textbox', { name: '上架库位扫码', exact: true }).press('Enter')
+  await expect(dialog.getByRole('button', { name: '确定上架', exact: true })).toBeEnabled()
   const putawayLost = await loseSuccessfulResponse(page, putawayPath)
   await dialog.getByRole('button', { name: '确定上架' }).click()
   await putawayLost.done

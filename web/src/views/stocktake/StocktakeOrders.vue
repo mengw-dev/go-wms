@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ResizableTableArea from '@/components/common/ResizableTableArea.vue'
 import ExcelExportButton from '@/components/common/ExcelExportButton.vue'
 import { useAuthStore } from '@/stores/auth'
 import BusinessPagination from '@/components/common/BusinessPagination.vue'
@@ -232,6 +233,8 @@ useAutoRefresh(() => load(true), 0)
       </el-form>
     </template>
 
+    <ResizableTableArea storage-key="stocktake-orders">
+
     <el-table class="mobile-record-table" :cell-style="mobileTableCellStyle" max-height="var(--business-table-height)" v-loading="loading" :data="list" border stripe>
       <el-table-column prop="order_no" label="盘点单号" min-width="170">
         <template #default="{ row }">
@@ -270,6 +273,7 @@ useAutoRefresh(() => load(true), 0)
         </template>
       </el-table-column>
     </el-table>
+    </ResizableTableArea>
 
     <BusinessPagination
       v-model:current-page="query.page"

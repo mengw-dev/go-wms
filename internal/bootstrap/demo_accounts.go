@@ -12,7 +12,7 @@ import (
 )
 
 // demoPerms 演示账号权限集合（只读 + 业务操作 + 演示中心，无系统管理权限）。
-const demoPerms = "wms:basic,wms:inventory,wms:inventory:alert:manage,wms:task," +
+const demoPerms = "wms:basic,wms:inventory,wms:inventory:alert:manage,wms:inventory:move,wms:task," +
 	"wms:inbound:view,wms:inbound:create,wms:inbound:submit,wms:inbound:approve,wms:inbound:cancel,wms:inbound:receive,wms:inbound:putaway," +
 	"wms:outbound:view,wms:outbound:create,wms:outbound:submit,wms:outbound:approve,wms:outbound:cancel,wms:outbound:pick," +
 	"wms:stocktake:view,wms:stocktake:create,wms:stocktake:stocktake,wms:stocktake:approve,wms:stocktake:cancel,wms:demo"

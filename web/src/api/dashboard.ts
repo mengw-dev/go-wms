@@ -22,6 +22,15 @@ export interface DashboardOverview {
   inventory?: { skus: number; rows: number; allocated_rows: number }
   locations?: { enabled: number; occupied: number }
   draft_stocktakes?: number
+  activity?: { putaway_records: number; shipment_records: number; recent: DashboardActivity[] }
+  import_issues?: { total: number; recent: DashboardImportIssue[] }
+}
+
+export interface DashboardActivity {
+  id: string; inventory_id: string; trans_type: string; order_no: string; task_no: string; created_at: string
+}
+export interface DashboardImportIssue {
+  task_id: string; file_name: string; status: string; success_rows: number; fail_rows: number; error_msg: string; created_at: string
 }
 
 export function getDashboardOverview(warehouseId: string) {

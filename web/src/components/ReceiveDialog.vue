@@ -1,10 +1,14 @@
 <script setup lang="ts">
 import { mobileTableCellStyle } from '@/utils/mobileTable'
-import { computed, reactive, ref } from 'vue'
+import { computed, onScopeDispose, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getInboundOrder } from '@/api/inbound'
 import type { EntityID, InboundOrderDetailRow } from '@/api/types'
 import { useReceive } from '@/composables/inbound/useReceive'
+
+import ScanField from '@/components/common/ScanField.vue'
+import { useSkuScan } from '@/composables/useSkuScan'
+import { operationStateKey } from '@/composables/operationLifecycle'
 
 const emit = defineEmits<{ (e: 'success'): void }>()
 
@@ -15,6 +19,12 @@ const orderNo = ref('')
 const details = ref<InboundOrderDetailRow[]>([])
 
 const receiver = useReceive()
+const skuScan = useSkuScan('inbound', () => orderId.value, () => String(visible.value))
+const shownDetails = computed(() => skuScan.match.value ? details.value.filter(row => row.sku_id === skuScan.match.value!.id) : details.value)
+let loadSeq = 0, alive = true
+onScopeDispose(() => { alive = false; loadSeq++ })
+watch(visible, value => { if (!value) { loadSeq++; skuScan.reset() } })
+watch(() => operationStateKey('receive-view'), () => { loadSeq++; visible.value = false; details.value = [] })
 
 interface RowForm {
   qty: number
@@ -37,12 +47,16 @@ function stateOf(row: InboundOrderDetailRow) {
 }
 
 async function open(id: EntityID) {
+  if (hasSubmitting.value) return
+  const seq = ++loadSeq, identity = operationStateKey('receive-view')
+  details.value = []; skuScan.reset()
   orderId.value = id
   orderNo.value = ''
   visible.value = true
   loading.value = true
   try {
     const detail = await getInboundOrder(id)
+    if (!alive || seq !== loadSeq || !visible.value || identity !== operationStateKey('receive-view')) return
     orderNo.value = detail.order.order_no
     details.value = detail.details ?? []
     Object.keys(forms).forEach((key) => delete forms[key])
@@ -57,11 +71,13 @@ async function open(id: EntityID) {
     const restoreError = receiver.restoreForDetails(details.value.map((row) => row.id))
     if (restoreError) ElMessage.error(restoreError)
   } finally {
-    loading.value = false
+    if (alive && seq === loadSeq) loading.value = false
   }
 }
 
 async function submit(row: InboundOrderDetailRow) {
+  if (loading.value || skuScan.blocked.value) return
+  const seq = loadSeq, identity = operationStateKey('receive-view'), id = orderId.value
   const form = forms[row.id]
   if (!form || form.qty <= 0) {
     ElMessage.warning('请输入大于 0 的收货数量')
@@ -81,9 +97,10 @@ async function submit(row: InboundOrderDetailRow) {
       defective_qty: form.defective_qty,
       batch_no: form.batch_no,
     })
+    if (!alive || seq !== loadSeq || !visible.value || identity !== operationStateKey('receive-view')) return
     ElMessage.success('收货成功')
     emit('success')
-    await open(orderId.value)
+    await open(id)
   } catch {
     // 错误与待确认横幅已写入对应明细状态，由界面展示恢复/放弃入口。
   }
@@ -134,7 +151,13 @@ defineExpose({ open })
       <p>核对货品与批次，填写本次收货数量；不良品数量计入本次收货。</p>
     </div>
     <el-alert v-if="storageError" :title="storageError" type="error" show-icon :closable="false" class="storage-tip" />
-    <el-table class="mobile-record-table" :cell-style="mobileTableCellStyle" v-loading="loading" :data="details" border max-height="420">
+    <section class="receive-scan">
+      <ScanField v-model="skuScan.code.value" label="收货货品扫码" placeholder="扫描货品条码或编码，回车定位明细" :disabled="loading || hasSubmitting" :loading="skuScan.loading.value" @scan="skuScan.scan" />
+      <p v-if="skuScan.match.value">已定位 {{ skuScan.match.value.name }} · {{ skuScan.match.value.code }}，匹配 {{ shownDetails.length }} 条明细；请选择对应行确认收货。<el-button link @click="skuScan.reset">显示全部</el-button></p>
+      <p v-else>扫码只定位明细，不增加收货数量；同一货品多行时请核对批次和明细。</p>
+      <el-alert v-if="skuScan.error.value" :title="skuScan.error.value" type="error" :closable="false" />
+    </section>
+    <el-table class="mobile-record-table" :cell-style="mobileTableCellStyle" v-loading="loading" :data="shownDetails" border max-height="420">
       <el-table-column prop="sku_code" label="货品编码" min-width="110" />
       <el-table-column prop="sku_name" label="货品名称" min-width="130" show-overflow-tooltip />
       <el-table-column prop="expected_qty" label="应收" width="70" align="right" />
@@ -185,7 +208,7 @@ defineExpose({ open })
             v-else
             type="primary"
             size="small"
-            :disabled="remaining(row) <= 0"
+            :disabled="remaining(row) <= 0 || skuScan.blocked.value || loading"
             :loading="stateOf(row).submitting"
             @click="submit(row)"
           >
@@ -216,4 +239,7 @@ defineExpose({ open })
 .storage-tip {
   margin-bottom: 10px;
 }
+</style>
+<style scoped>
+.receive-scan { margin-bottom: 14px; } .receive-scan p { color: var(--el-text-color-secondary); font-size: 12px; line-height: 1.6; margin: 8px 0; }
 </style>

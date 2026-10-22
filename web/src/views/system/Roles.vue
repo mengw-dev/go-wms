@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ResizableTableArea from '@/components/common/ResizableTableArea.vue'
 import BusinessPagination from '@/components/common/BusinessPagination.vue'
 import { mobileTableCellStyle } from '@/utils/mobileTable'
 import BusinessListPage from '@/components/common/BusinessListPage.vue'
@@ -27,6 +28,7 @@ const PERMISSION_GROUPS: PermissionGroup[] = [
     label: '库存与任务',
     options: [
       { label: '库存查询', value: 'wms:inventory' },
+      { label: '仓内移库', value: 'wms:inventory:move' },
       { label: '库存预警规则管理', value: 'wms:inventory:alert:manage' },
       { label: '任务中心', value: 'wms:task' },
     ],
@@ -239,6 +241,8 @@ async function onDelete(row: RoleItem) {
       </el-form>
     </template>
 
+    <ResizableTableArea storage-key="roles">
+
     <el-table class="mobile-record-table" :cell-style="mobileTableCellStyle" max-height="var(--business-table-height)" v-loading="loading" :data="list" border stripe>
       <el-table-column label="角色名称" min-width="170">
         <template #default="{ row }">
@@ -287,6 +291,7 @@ async function onDelete(row: RoleItem) {
         </template>
       </el-table-column>
     </el-table>
+    </ResizableTableArea>
 
     <BusinessPagination
       v-model:current-page="query.page"

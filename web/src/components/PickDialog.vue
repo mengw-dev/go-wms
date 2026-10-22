@@ -1,9 +1,13 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, onScopeDispose, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getOutboundOrder } from '@/api/outbound'
 import type { EntityID, TaskItem } from '@/api/types'
 import { usePdaPick } from '@/composables/outbound/usePdaPick'
+
+import ScanField from '@/components/common/ScanField.vue'
+import { useSkuScan } from '@/composables/useSkuScan'
+import { operationStateKey } from '@/composables/operationLifecycle'
 
 const emit = defineEmits<{ (e: 'success'): void }>()
 
@@ -56,6 +60,25 @@ const pendingTip = computed(() => {
   return ''
 })
 
+const skuScan = useSkuScan('outbound', () => orderId.value, () => `${visible.value}:${form.task_id}`, () => selectedTask.value?.sku_id || '')
+let loadSeq = 0, alive = true
+onScopeDispose(() => { alive = false; loadSeq++ })
+watch(visible, value => { if (!value) { loadSeq++; skuScan.reset() } })
+watch(() => operationStateKey('pick-view'), () => { loadSeq++; visible.value = false; tasks.value = [] })
+function checkLocation(event: KeyboardEvent) {
+  if (event.key !== 'Enter' || event.isComposing || event.keyCode === 229) return
+  event.preventDefault(); event.stopPropagation()
+  if (event.repeat) return
+  if (!selectedTask.value || !form.location_scan.trim() || form.location_scan.trim().toLowerCase() !== selectedTask.value.location_code.toLowerCase()) ElMessage.error('库位不符，请核对当前任务的作业库位')
+  else ElMessage.success('作业库位核对一致，未提交拣货')
+}
+function checkBatch(event: KeyboardEvent) {
+  if (event.key !== 'Enter' || event.isComposing || event.keyCode === 229) return
+  event.preventDefault(); event.stopPropagation()
+  if (event.repeat) return
+  if (!selectedTask.value || !form.batch_scan.trim() || form.batch_scan.trim().toLowerCase() !== selectedTask.value.batch_no.toLowerCase()) ElMessage.error('批次不符，请核对当前任务的批次')
+  else ElMessage.success('批次核对一致，未提交拣货')
+}
 const claimed = computed(() => claimToken.value !== '')
 
 watch(
@@ -67,6 +90,9 @@ watch(
 )
 
 async function open(id: EntityID, task?: TaskItem) {
+  if (submitting.value || claiming.value) return
+  const seq = ++loadSeq, identity = operationStateKey('pick-view')
+  tasks.value = []; skuScan.reset()
   orderId.value = id
   orderNo.value = ''
   visible.value = true
@@ -76,6 +102,7 @@ async function open(id: EntityID, task?: TaskItem) {
   form.batch_scan = ''
   try {
     const detail = await getOutboundOrder(id)
+    if (!alive || seq !== loadSeq || !visible.value || identity !== operationStateKey('pick-view')) return
     orderNo.value = detail.order.order_no
     tasks.value = detail.tasks ?? []
     // 恢复这批任务上一次未确认的领取/拣货操作（关闭弹窗、刷新后不丢）。
@@ -88,7 +115,7 @@ async function open(id: EntityID, task?: TaskItem) {
       ElMessage.warning('暂无待执行的拣货任务')
     }
   } finally {
-    loading.value = false
+    if (alive && seq === loadSeq) loading.value = false
   }
 }
 
@@ -169,6 +196,8 @@ async function confirmDiscard(message: string) {
 }
 
 async function submit() {
+  if (loading.value || skuScan.blocked.value) return
+  const seq = loadSeq, identity = operationStateKey('pick-view')
   const taskId = form.task_id
   if (!taskId) {
     ElMessage.warning('请选择拣货任务')
@@ -207,6 +236,7 @@ async function submit() {
       location_code: scannedLocation,
       batch_no: scannedBatch || undefined,
     })
+    if (!alive || seq !== loadSeq || !visible.value || identity !== operationStateKey('pick-view')) return
     // 响应属于发送请求时的任务：切换任务后晚返回也只刷新对应任务的数据。
     applySnapshot(result, taskId)
     ElMessage.success('拣货成功')
@@ -245,7 +275,7 @@ defineExpose({ open })
       <span>出库单</span><strong>{{ orderNo || '加载中…' }}</strong>
       <p>领取任务后核对作业库位、批次与数量，再确认拣货。</p>
     </div>
-    <el-form label-width="90px" v-loading="loading">
+    <el-form label-width="90px" v-loading="loading" @submit.prevent>
       <el-form-item v-if="storageError" label=" ">
         <el-alert :title="storageError" type="error" show-icon :closable="false" />
       </el-form-item>
@@ -285,10 +315,17 @@ defineExpose({ open })
           <div class="hint">领取后获得作业凭证，10 分钟内完成，过期需重新领取</div>
         </template>
       </el-form-item>
+      <el-form-item label="货品核对">
+        <ScanField v-model="skuScan.code.value" label="拣货货品扫码" placeholder="扫描货品条码或编码（可选）" :disabled="loading || submitting || !!pendingPick || !form.task_id" :loading="skuScan.loading.value" @scan="skuScan.scan" />
+        <div v-if="skuScan.match.value" class="hint">已核对 {{ skuScan.match.value.name }} · {{ skuScan.match.value.code }}</div>
+        <div v-else class="hint">扫码只核对当前任务货品，不切换任务或增加数量。</div>
+        <el-alert v-if="skuScan.error.value" :title="skuScan.error.value" type="error" :closable="false" />
+      </el-form-item>
       <el-form-item label="作业库位">
         <el-input
           v-model="form.location_scan"
           placeholder="扫描或输入作业库位"
+          @keydown="checkLocation"
           :disabled="!claimed"
           clearable
         />
@@ -300,13 +337,14 @@ defineExpose({ open })
         <el-input
           v-model="form.batch_scan"
           placeholder="扫描或输入批次号核对"
+          @keydown="checkBatch"
           :disabled="!requireBatchScan || !claimed"
           clearable
         />
         <div class="hint">核对一致后才会提交，防止同库位不同批次拣错</div>
       </el-form-item>
       <el-form-item label="拣货数量">
-        <el-input-number v-model="form.qty" :min="1" :disabled="!claimed" controls-position="right" />
+        <el-input-number :key="`${form.task_id}:${claimed}`" v-model="form.qty" :min="1" :disabled="!claimed" controls-position="right" />
         <span v-if="selectedTask" class="qty-tip">待拣：{{ selectedTask.target_qty - selectedTask.done_qty }}</span>
       </el-form-item>
       <el-form-item v-if="snapshot" label="任务进度">
@@ -323,7 +361,7 @@ defineExpose({ open })
     </el-form>
     <template #footer>
       <el-button :disabled="submitting" @click="visible = false">取消</el-button>
-      <el-button type="primary" :loading="submitting" :disabled="!claimed || !!pendingPick" @click="submit">确定拣货</el-button>
+      <el-button type="primary" :loading="submitting" :disabled="!claimed || !!pendingPick || skuScan.blocked.value || loading" @click="submit">确定拣货</el-button>
     </template>
   </el-dialog>
 </template>

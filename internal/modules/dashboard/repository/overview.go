@@ -49,6 +49,9 @@ func (r *Repository) Overview(ctx context.Context, out *dto.Overview) error {
 			if err := orderOverview(tx, &inboundmodel.ReceiptOrder{}, out, out.Inbound); err != nil {
 				return err
 			}
+			if err := importOverview(tx, out); err != nil {
+				return err
+			}
 		}
 		if out.Access.Outbound {
 			out.Outbound = &dto.Orders{}
@@ -72,6 +75,9 @@ func (r *Repository) Overview(ctx context.Context, out *dto.Overview) error {
 			out.Inventory = &dto.Inventory{}
 			if err := warehouse(tx.Model(&invmodel.Inventory{}), out.WarehouseID).Where("stock_quantity > 0").
 				Select("COUNT(DISTINCT sku_id) AS skus, COUNT(*) AS `rows`, COALESCE(SUM(CASE WHEN allocated_quantity > 0 THEN 1 ELSE 0 END), 0) AS allocated_rows").Scan(out.Inventory).Error; err != nil {
+				return err
+			}
+			if err := activityOverview(ctx, tx, out); err != nil {
 				return err
 			}
 		}

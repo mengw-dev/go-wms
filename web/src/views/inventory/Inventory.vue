@@ -1,11 +1,12 @@
 <script setup lang="ts">
+import ResizableTableArea from '@/components/common/ResizableTableArea.vue'
 import ExcelExportButton from '@/components/common/ExcelExportButton.vue'
 import BusinessFilters from '@/components/common/BusinessFilters.vue'
 import BusinessPagination from '@/components/common/BusinessPagination.vue'
 import { mobileTableCellStyle } from '@/utils/mobileTable'
 import PageHeader from '@/components/common/PageHeader.vue'
 import { onMounted, reactive, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useAutoRefresh } from '@/composables/autoRefresh'
 import { listInventory, listInventorySummary, listInventoryTrans } from '@/api/inventory'
@@ -21,7 +22,7 @@ import { BUSINESS_EVENTS, emitBusinessEvent } from '@/events/businessEvents'
 import { loadSkuMap, loadWarehouseOptions, toOptionMap, type IdOption } from '@/utils/options'
 
 const activeTab = ref('detail')
-const route = useRoute()
+const route = useRoute(), router = useRouter(), auth = useAuthStore()
 
 // ---------- 仓库下拉 / 货品映射 ----------
 const warehouseOptions = ref<IdOption[]>([])
@@ -151,8 +152,10 @@ function skuLabel(skuId: EntityID): string {
 onMounted(async () => {
   const skuKeyword = typeof route.query.sku_keyword === 'string' ? route.query.sku_keyword : ''
   const orderNo = typeof route.query.order_no === 'string' ? route.query.order_no : ''
+  const inventoryID = typeof route.query.inventory_id === 'string' && /^[1-9]\d{0,18}$/.test(route.query.inventory_id) ? route.query.inventory_id : ''
   if (skuKeyword) detailQuery.sku_keyword = skuKeyword
-  if (orderNo) {
+  if (orderNo || inventoryID) {
+    transQuery.inventory_id = inventoryID
     transQuery.order_no = orderNo
     drawerVisible.value = true
   }
@@ -203,6 +206,8 @@ useAutoRefresh(refreshActiveTab, 0)
           </el-form-item>
         </el-form></BusinessFilters>
 
+        <ResizableTableArea storage-key="inventory-detail" :active="activeTab === 'detail'">
+
         <el-table class="mobile-record-table" :cell-style="mobileTableCellStyle" max-height="var(--business-table-height)" v-loading="detailLoading" :data="detailList" border stripe>
           <el-table-column label="仓库" min-width="150">
             <template #default="{ row }">{{ warehouseMap[row.warehouse_id] || row.warehouse_id }}</template>
@@ -222,12 +227,14 @@ useAutoRefresh(refreshActiveTab, 0)
           <el-table-column label="入库时间" width="170">
             <template #default="{ row }">{{ formatTime(row.stock_in_time) }}</template>
           </el-table-column>
-          <el-table-column label="操作" width="90" fixed="right">
+          <el-table-column label="操作" width="150" fixed="right">
             <template #default="{ row }">
               <el-button size="small" type="primary" plain @click="openTrans(row)">流水</el-button>
+              <el-button v-if="auth.hasPerm('wms:inventory:move')" type="primary" link :disabled="row.available_quantity <= 0" @click="router.push({ path: '/inventory/moves', query: { source_inventory_id: row.id } })">移库</el-button>
             </template>
           </el-table-column>
         </el-table>
+        </ResizableTableArea>
 
         <BusinessPagination
           v-model:current-page="detailQuery.page"
@@ -254,6 +261,8 @@ useAutoRefresh(refreshActiveTab, 0)
           </el-form-item>
         </el-form></BusinessFilters>
 
+        <ResizableTableArea storage-key="inventory-summary" :active="activeTab === 'summary'">
+
         <el-table class="mobile-record-table" :cell-style="mobileTableCellStyle" max-height="var(--business-table-height)" v-loading="summaryLoading" :data="summaryList" border stripe>
           <el-table-column prop="sku_code" label="货品编码" min-width="130" />
           <el-table-column prop="sku_name" label="货品名称" min-width="180" show-overflow-tooltip />
@@ -264,6 +273,7 @@ useAutoRefresh(refreshActiveTab, 0)
           <el-table-column prop="available_quantity" label="可用量" width="110" align="right" />
           <el-table-column prop="allocated_quantity" label="分配量" width="110" align="right" />
         </el-table>
+        </ResizableTableArea>
 
         <BusinessPagination
           v-model:current-page="summaryQuery.page"

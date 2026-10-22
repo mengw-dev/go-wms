@@ -16,10 +16,15 @@ type Handler struct {
 
 func New(svc *service.Service) *Handler { return &Handler{svc: svc} }
 
-// RegisterRoutes 库存查询路由（变更操作由 inbound/outbound/stocktake 通过 API 完成）。
+// RegisterRoutes 注册库存查询、预警与仓内移库；出入库扣增仍由业务模块调用 API 完成。
 func (h *Handler) RegisterRoutes(auth *gin.RouterGroup, checker middleware.PermsChecker) {
 	g := auth.Group("/inventory")
 	read := middleware.Permission(checker, "wms:inventory")
+	move := middleware.Permission(checker, "wms:inventory:move")
+	g.GET("/move-source/:id", read, move, h.moveSource)
+	g.GET("/moves", read, h.movements)
+	g.GET("/move-locations", read, move, h.moveLocations)
+	g.POST("/moves", read, move, h.moveStock)
 	manageAlerts := middleware.Permission(checker, "wms:inventory:alert:manage")
 	g.GET("/export", read, h.exportInventory)
 	g.GET("/trans/export", read, h.exportTransactions)

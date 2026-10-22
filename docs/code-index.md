@@ -33,6 +33,8 @@
 | 出库 outbound | `internal/modules/outbound` | 出库单生命周期、审核 + FIFO 分配、拣货、发货、集成下单 | `service/{order,response}_test.go`、`model/model_test.go`、`handler/handler_test.go` |
 | 任务 task | `internal/modules/task` | 收货/上架/拣货任务的状态与进度 | `service/{service,response,dashboard_filter}_test.go` |
 | 库存 inventory | `internal/modules/inventory` | 库存汇总/明细、并发分配与扣减、调整、流水 | `service/{service,concurrency,response,availability}_test.go`、`repository/repository_test.go` |
+| 扫码辅助作业 | `internal/modules/{inbound,outbound}/{handler,service,repository}`、`web/src/components/{ReceiveDialog,PutawayDialog,PickDialog}.vue` | 当前单据内货品精确核对、同仓库位选择，复用原确认与幂等；见[扫码说明](scan-assistance.md) | `internal/app/scanning_test.go`（真实HTTP/正式DDL/租户权限）；`useSkuScan.spec.ts`、E2E `scanning.spec.ts` |
+| 仓内移库 | `internal/modules/inventory`、`web/src/views/inventory/Moves.vue` | 同仓可用库存移动、成对流水和持久请求回放；见[移库说明](stock-movement.md) | `service/movement_test.go`、`handler/movement{,_integration}_test.go`、`migrations/movement_test.go`、前端 `useStockMove.spec.ts`、E2E `stock-moves.spec.ts` |
 | 库存预警 | `internal/modules/inventory`，`web/src/views/inventory` | 仓库+货品可用量下限配置、当前缺货/低库存与库存追溯 | `service/alert_test.go`、`handler/alert_test.go`、前端 `useInventoryAlerts.spec.ts`、E2E `inventory-alerts.spec.ts`；边界见[库存预警](inventory-alerts.md) |
 | Excel导出 | `internal/modules/{inventory,stocktake}`、`internal/pkg/xlsxexport`、`web/src/components/common/ExcelExportButton.vue` | 有上限的库存/流水/盘点明细XLSX，下载鉴权/取消；边界见[导出说明](excel-export.md) | 各模块`{handler,service}/export_test.go`、`pkg/xlsxexport/export_test.go`、前端`exportQuery.spec.ts`、E2E `excel-export.spec.ts` |
 | 盘点 stocktake | `internal/modules/stocktake` | 盘点单、账面快照、实盘录入、差异、审核调整 | `service/{service,response,fingerprint_compatibility}_test.go`、`handler/{actual,list}_test.go`（实盘参数与列表查询契约）、`model/model_test.go` |
@@ -61,7 +63,7 @@
 | --- | --- | --- | --- |
 | 系统 system | `internal/modules/system` | 鉴权（登录/JWT）、权限、用户、角色、操作日志 | `service/{auth,permission,user,role,login_limiter,builtin,audit,response,p2_auth}_test.go`、`dto/dto_test.go`、`model/model_test.go` |
 | 基础数据 basic | `internal/modules/basic` | 仓库、库位、SKU | `service/{sku,delete,rows_affected,conflict,response,location_limits}_test.go`、`dto/dto_test.go`、`handler/handler_test.go`、`repository/repository_test.go`、`model/model_json_test.go` |
-| 仪表盘 dashboard | `internal/modules/dashboard` | 按业务权限/仓库汇总当前状态、创建趋势、最早待办与库存/库位概况，只读事务 | `service/overview_test.go`；前端 E2E `dashboard-layout.spec.ts` |
+| 仪表盘 dashboard | `internal/modules/dashboard`，`web/src/views/dashboard` | 按业务权限/仓库汇总状态、创建趋势、待办、库存/库位、今日流水与历史导入异常，复用当前库存预警；见[运营信息](dashboard-operations.md) | `service/{overview,operations}_test.go`；前端 `useDashboardAlerts.spec.ts`、E2E `dashboard-layout.spec.ts` |
 | AI ai | `internal/modules/ai` | 库存问答、Redis 原子额度、整次预算及主备取消（智谱 BigModel） | `service/{service,low_stock,reliability}_test.go`；前端 E2E `ai-reliability.spec.ts` |
 
 应用装配与启动：
@@ -121,7 +123,7 @@
 | `events/` | 业务页面与 Guide/Demo 的唯一契约（`businessEvents.ts`） | `businessEvents.spec.ts` |
 | `utils/` | 前端工具（事件、演示证据/操作、分步检查点、options、手机表格字段标签等） | `utils/{demoOperations,demoEvidence,index}.spec.ts`、`composables/demo/useStagedDemoRunner.spec.ts`；E2E `business-layout.spec.ts` |
 | `views/` | 业务页面（`login`、`dashboard`、`basic`、`system`、`task`、`ai`、`inventory`、`inbound`、`outbound`、`stocktake`、`demo`） | `adminListConcurrency.spec.ts`（基础/系统六列表真实SFC请求交错及销毁）；E2E 见 `web/tests/e2e/**` |
-| `components/` | 组件（`DemoConsole`、`demo/*`、`PickDialog`、`PutawayDialog`、`ReceiveDialog`、`common/{PageHeader,BusinessListPage,BusinessFilters,BusinessPagination}`）；筛选折叠/手机分页只管理呈现，业务事件继续转发 | E2E `business-layout.spec.ts` |
+| `components/` | 组件（`DemoConsole`、`demo/*`、`PickDialog`、`PutawayDialog`、`ReceiveDialog`、`common/{PageHeader,BusinessListPage,BusinessFilters,BusinessPagination,ResizableTableArea}`）；筛选/分页/可选高度只管理呈现，业务事件继续转发；见[表格高度](business-table-height.md) | `utils/tableHeight.spec.ts`；E2E `business-layout.spec.ts` |
 | `views/printing`、`components/printing`、`utils/{documentPrint,barcodeLabels}` | 单据只读A4打印、基础资料Code128标签与显式分页；边界见[打印说明](document-printing.md) | `utils/{documentPrint,barcodeLabels}.spec.ts`、E2E `document-printing.spec.ts` |
 | `directives/` | `permission` 指令（按权限控制显示） | — |
 | `main.ts` / `App.vue` / `style.css` / `constants.ts` | 应用装配、根组件、全局样式与常量 | — |
@@ -131,6 +133,7 @@
 - 后端单测：`**/*_test.go`（`internal/**`），依赖 MySQL/Redis 时由 `internal/testutil` 创建独立测试库。运行方式见 [development.md](development.md)。
 - 前端单测：`web/src/**/*.spec.ts`、工具规则回归 `web/eslint-rules/**/*.spec.mjs`（Vitest，配置 `web/vitest.config.ts`）。
 - 端到端：`web/tests/e2e/**`（Playwright，`support/api.ts` 为共享工具层，配置 `web/playwright.config.ts`）；入口脚本 `scripts/e2e.ps1`。
+- 基础版收尾真实链路：`web/tests/e2e/warehouse-closeout.spec.ts`，日间桌面/夜间手机的扫码收货→上架→移库→分库位拣货发货，以及移库提交丢响应后的刷新核对；数据准备/核对均走真实JWT接口，不以布局夹具替代库存验证。
 - 脚本：`scripts/windows/*.ps1`（起栈、停止、重置、验证、打包、k6、监控等，多数附 `.cmd` 双击入口）、`scripts/wms-common.ps1`、`scripts/e2e.ps1`。
 - 压测：`scripts/k6/*.js`（业务流程与压力场景、分配证明后的范围清理）与 `loadtest/01-hello.js`；清理回归 `scripts/k6/cleanup-allocation{,.k6}.test.mjs`（Node隔离夹具与真实k6回环HTTP）；说明见 [load-testing.md](load-testing.md)。
 - 部署：`deploy/`（`docker-compose.yaml`、`docker-compose.dev.yaml`、`Caddyfile`、Prometheus、Grafana）、根 `Dockerfile`、`web/Dockerfile`、`Makefile`、`start.cmd`；说明见 [deployment.md](deployment.md)。
