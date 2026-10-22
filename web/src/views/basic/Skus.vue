@@ -6,12 +6,17 @@ import { onMounted, onScopeDispose, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { createSku, deleteSku, listSkus, updateSku } from '@/api/basic'
 import type { EntityID,  SkuItem } from '@/api/types'
+import BarcodeLabelPreview from '@/components/printing/BarcodeLabelPreview.vue'
+import { skuBarcodeLabel } from '@/utils/barcodeLabels'
 import { cleanParams, formatTime } from '@/utils'
 
 // ---------- 列表 ----------
 const loading = ref(false)
 const list = ref<SkuItem[]>([])
 const total = ref(0)
+const selectedRows = ref<SkuItem[]>([])
+const labels = ref<InstanceType<typeof BarcodeLabelPreview>>()
+function previewLabels(rows: SkuItem[]) { labels.value?.open(rows.map(skuBarcodeLabel)) }
 const query = reactive({ page: 1, page_size: 10, keyword: '' })
 
 let loadSeq = 0
@@ -116,6 +121,7 @@ async function onDelete(row: SkuItem) {
 <template>
   <BusinessListPage title="货品管理" description="维护货品编码、条码与规格，建立统一的业务资料。" :total="total">
     <template #actions>
+      <el-button :disabled="!list.length" @click="previewLabels(selectedRows.length ? selectedRows : list)">{{ selectedRows.length ? `所选标签（${selectedRows.length}）` : '本页标签预览' }}</el-button>
       <el-button v-permission="'wms:basic'" type="primary" @click="openCreate">新增货品</el-button>
     </template>
     <template #filters>
@@ -129,7 +135,8 @@ async function onDelete(row: SkuItem) {
       </el-form>
     </template>
 
-    <el-table class="mobile-record-table" :cell-style="mobileTableCellStyle" max-height="var(--business-table-height)" v-loading="loading" :data="list" border stripe>
+    <el-table class="mobile-record-table" :cell-style="mobileTableCellStyle" max-height="var(--business-table-height)" v-loading="loading" :data="list" row-key="id" border stripe @selection-change="selectedRows = $event">
+      <el-table-column type="selection" width="42" />
       <el-table-column prop="code" label="编码" min-width="120" />
       <el-table-column prop="barcode" label="条码" min-width="140" />
       <el-table-column prop="name" label="名称" min-width="160" />
@@ -138,9 +145,10 @@ async function onDelete(row: SkuItem) {
       <el-table-column label="创建时间" width="170">
         <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="150" fixed="right">
+      <el-table-column label="操作" width="210" fixed="right">
         <template #default="{ row }">
           <div class="table-oper">
+            <el-button size="small" @click="previewLabels([row])">标签</el-button>
             <el-button v-permission="'wms:basic'" size="small" @click="openEdit(row)">编辑</el-button>
             <el-button v-permission="'wms:basic'" size="small" type="danger" plain @click="onDelete(row)">删除</el-button>
           </div>
@@ -159,6 +167,7 @@ async function onDelete(row: SkuItem) {
       @size-change="search"
     />
 
+    <BarcodeLabelPreview ref="labels" />
     <el-dialog class="business-dialog"
       v-model="dialog.visible"
       :title="dialog.editingId ? '编辑货品' : '新增货品'"

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useAuthStore } from '@/stores/auth'
 import { mobileTableCellStyle } from '@/utils/mobileTable'
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -24,6 +25,7 @@ const hasPendingPick = computed(() => data.value?.tasks?.some((task) => {
   return state.pendingPick || state.pendingClaim
 }))
 
+const auth = useAuthStore()
 const route = useRoute()
 const router = useRouter()
 const orderId = String(route.params.id)
@@ -77,8 +79,14 @@ async function load() {
 }
 
 onMounted(async () => {
-  warehouseMap.value = toOptionMap(await loadWarehouseOptions())
-  load()
+  await load()
+  if (auth.hasPerm('wms:basic')) {
+    try {
+      warehouseMap.value = toOptionMap(await loadWarehouseOptions())
+    } catch {
+      // 仓库名称是辅助信息，加载失败仍可凭单据仓库 ID 查看、打印。
+    }
+  }
 })
 
 // ---------- 单据操作 ----------
@@ -144,6 +152,7 @@ function canPick(task: { task_type: string; status: string }): boolean {
     <template v-if="data?.order">
       <div class="page-card detail-identity">
         <div class="detail-actions">
+          <el-button @click="router.push(`/print/outbound/${orderId}`)">打印预览</el-button>
           <h1 class="document-id">{{ data.order.order_no }}</h1>
           <el-tag data-tour="outbound-shipped" :type="statusTag(data.order.status)" size="large">{{ statusText(data.order.status) }}</el-tag>
           <template v-if="data.order.status === 'DRAFT'">

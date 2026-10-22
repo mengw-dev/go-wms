@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useAuthStore } from '@/stores/auth'
 import { mobileTableCellStyle } from '@/utils/mobileTable'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -15,6 +16,7 @@ import { loadWarehouseOptions, toOptionMap } from '@/utils/options'
 import { BUSINESS_EVENTS, emitBusinessEvent } from '@/events/businessEvents'
 import { useStocktakeApprove } from '@/composables/stocktake/useStocktakeApprove'
 
+const auth = useAuthStore()
 const route = useRoute()
 const router = useRouter()
 const orderId = String(route.params.id)
@@ -101,8 +103,14 @@ async function load() {
 }
 
 onMounted(async () => {
-  warehouseMap.value = toOptionMap(await loadWarehouseOptions())
   await load()
+  if (auth.hasPerm('wms:basic')) {
+    try {
+      warehouseMap.value = toOptionMap(await loadWarehouseOptions())
+    } catch {
+      // 仓库名称是辅助信息，加载失败仍可凭单据仓库 ID 查看、打印。
+    }
+  }
 })
 
 // ---------- 录入实盘 ----------
@@ -184,6 +192,7 @@ async function onCancel() {
     <template v-if="data?.order">
       <div class="page-card detail-identity">
         <div class="detail-actions">
+          <el-button @click="router.push(`/print/stocktake/${orderId}`)">打印预览</el-button>
           <h1 class="document-id">{{ data.order.order_no }}</h1>
           <el-tag :type="statusTag(data.order.status)" size="large">{{ statusText(data.order.status) }}</el-tag>
           <template v-if="data.order.status === 'DRAFT'">
