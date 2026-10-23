@@ -33,6 +33,7 @@ const router = useRouter()
 const orderId = String(route.params.id)
 
 const loading = ref(false)
+const loadError = ref(false)
 const data = ref<OutboundDetailData | null>(null)
 const activeWaveID = computed(() => data.value?.order.status === 'PICKING' ? data.value.tasks.find(t => t.wave_id && t.wave_id !== '0')?.wave_id : undefined)
 const warehouseMap = ref<Record<EntityID, string>>({})
@@ -71,11 +72,15 @@ function emitOrderLoaded(): void {
 
 async function load() {
   loading.value = true
+  loadError.value = false
   try {
     data.value = await getOutboundOrder(orderId)
     const error = picker.restoreForTasks((data.value.tasks ?? []).map((task) => task.id))
     if (error) ElMessage.error(error)
     emitOrderLoaded()
+  } catch {
+    data.value = null
+    loadError.value = true
   } finally {
     loading.value = false
   }
@@ -153,6 +158,10 @@ function canPick(task: { task_type: string; status: string; wave_id?: EntityID }
       </template>
     </el-page-header>
 
+    <el-alert v-if="loadError" title="出库单加载失败，请检查网络后重试" type="error" :closable="false" show-icon>
+      <el-button :loading="loading" @click="load">重新加载出库单</el-button>
+    </el-alert>
+
     <template v-if="data?.order">
       <div class="page-card detail-identity">
         <div class="detail-actions">
@@ -206,6 +215,7 @@ function canPick(task: { task_type: string; status: string; wave_id?: EntityID }
 
       <div class="page-card section">
         <h3 class="section-title">分配明细</h3>
+        <p class="batch-hint">出库批次沿用原入库批次，不代表本次出库日期。</p>
         <el-table class="mobile-record-table" :cell-style="mobileTableCellStyle" max-height="360" :data="data.allocations ?? []" border stripe>
           <el-table-column prop="location_code" label="库位" min-width="120">
             <template #default="{ row }">{{ row.location_code || row.location_id }}</template>
@@ -289,5 +299,12 @@ function canPick(task: { task_type: string; status: string; wave_id?: EntityID }
 .section-title {
   margin: 0 0 12px;
   font-size: 15px;
+}
+
+.batch-hint {
+  margin: 0 0 12px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  line-height: 1.6;
 }
 </style>

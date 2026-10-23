@@ -332,6 +332,7 @@ defineExpose({ open })
       </el-form-item>
       <el-form-item label="应拣批次">
         <el-input :model-value="selectedTask?.batch_no || '-'" readonly />
+        <div class="hint">沿用原入库批次，不代表本次出库日期；按任务批次拣货。</div>
       </el-form-item>
       <el-form-item label="批次核对">
         <el-input
