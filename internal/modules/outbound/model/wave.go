@@ -15,6 +15,7 @@ const (
 	WaveReady     WaveStatus = "READY"
 	WaveCompleted WaveStatus = "COMPLETED"
 	WaveCancelled WaveStatus = "CANCELLED"
+	WaveAborted   WaveStatus = "ABORTED"
 )
 
 // Wave serializes its bounded picking/sorting work under the header row lock.
@@ -26,6 +27,9 @@ type Wave struct {
 	WarehouseID   int64      `json:"warehouse_id,string" gorm:"not null;index"`
 	Status        WaveStatus `json:"status" gorm:"size:16;not null;default:CREATED"`
 	Remark        string     `json:"remark" gorm:"size:255"`
+	AbortReason   string     `json:"abort_reason" gorm:"size:255;not null;default:''"`
+	AbortedBy     string     `json:"aborted_by" gorm:"size:64;not null;default:''"`
+	AbortedAt     *time.Time `json:"aborted_at"`
 	CreatedBy     string     `json:"created_by" gorm:"size:64"`
 	ClaimedBy     string     `json:"claimed_by" gorm:"size:64;not null;default:''"`
 	LeaseExpireAt *time.Time `json:"lease_expire_at"`

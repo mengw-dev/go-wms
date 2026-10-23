@@ -8,7 +8,7 @@ import (
 )
 
 // Inventory 库存：仓库+库位+SKU+批次 四元组唯一（tenant_id 前置联合唯一，各租户独立）。
-// 三数量模型：stock_quantity = available_quantity + allocated_quantity。
+// 数量守恒：stock_quantity = available_quantity + allocated_quantity + frozen_quantity。
 type Inventory struct {
 	modelbase.Base
 	modelbase.Versioned           // 变更版本号；库存并发控制使用行锁和数量条件更新
@@ -20,6 +20,7 @@ type Inventory struct {
 	StockQuantity       int       `json:"stock_quantity" gorm:"type:int;size:32;not null;default:0"`
 	AvailableQty        int       `json:"available_quantity" gorm:"type:int;size:32;column:available_quantity;not null;default:0"`
 	AllocatedQty        int       `json:"allocated_quantity" gorm:"type:int;size:32;column:allocated_quantity;not null;default:0"`
+	FrozenQty           int       `json:"frozen_quantity" gorm:"type:int;size:32;column:frozen_quantity;not null;default:0"`
 	StockInTime         time.Time `json:"stock_in_time"`                       // FIFO 依据
 	LocationCode        string    `json:"location_code" gorm:"->;-:migration"` // 联查字段，不落库
 }
@@ -38,6 +39,9 @@ const (
 	TransAdjust   TransType = "ADJUST"   // 盘点调整
 	TransMoveIn   TransType = "MOVE_IN"  // 仓内移入，不表示新入库
 	TransMoveOut  TransType = "MOVE_OUT" // 仓内移出，不消耗已分配库存
+	TransFreeze   TransType = "FREEZE"
+	TransUnfreeze TransType = "UNFREEZE"
+	TransShortage TransType = "SHORTAGE"
 )
 
 // InventoryTrans 库存流水：只增不改，每次变动同事务写入。
@@ -51,6 +55,9 @@ type InventoryTrans struct {
 	AfterQuantity   int       `json:"after_quantity" gorm:"type:int;size:32"`  // 变更后 stock_quantity
 	AvailableBefore int       `json:"available_before" gorm:"type:int;size:32"`
 	AvailableAfter  int       `json:"available_after" gorm:"type:int;size:32"`
+	FrozenBefore    int       `json:"frozen_before" gorm:"type:int;size:32;not null;default:0"`
+	FrozenAfter     int       `json:"frozen_after" gorm:"type:int;size:32;not null;default:0"`
+	Reason          string    `json:"reason" gorm:"size:255;not null;default:''"`
 	OrderNo         string    `json:"order_no" gorm:"size:64;index"` // 来源单据
 	TaskNo          string    `json:"task_no" gorm:"size:64"`
 	Operator        string    `json:"operator" gorm:"size:64"`

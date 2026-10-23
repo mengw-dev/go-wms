@@ -16,6 +16,7 @@ func (r *Repository) CountWarehouseReferences(ctx context.Context, db *gorm.DB, 
 		{"wms_task", "warehouse_id"},
 		{"wms_receipt_order", "warehouse_id"},
 		{"wms_shipment_order", "warehouse_id"},
+		{"wms_customer_return", "warehouse_id"},
 		{"wms_stocktake_order", "warehouse_id"},
 	})
 }
@@ -25,6 +26,7 @@ func (r *Repository) CountLocationReferences(ctx context.Context, db *gorm.DB, l
 	return r.countReferences(ctx, db, locationID, []referenceColumn{
 		{"wms_task", "location_id"},
 		{"wms_allocation", "location_id"},
+		{"wms_customer_return", "location_id"},
 		{"wms_stocktake_order", "location_id"},
 		{"wms_stocktake_detail", "location_id"},
 	})
@@ -37,6 +39,7 @@ func (r *Repository) CountSKUReferences(ctx context.Context, db *gorm.DB, skuID 
 		{"wms_receipt_order_detail", "sku_id"},
 		{"wms_shipment_order_detail", "sku_id"},
 		{"wms_allocation", "sku_id"},
+		{"wms_customer_return", "sku_id"},
 		{"wms_stocktake_detail", "sku_id"},
 	})
 }

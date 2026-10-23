@@ -85,11 +85,19 @@ func AutoMigrate(db *gorm.DB) error {
 		&taskmodel.Task{},
 		&inboundmodel.ReceiptOrder{}, &inboundmodel.ReceiptOrderDetail{}, &inboundmodel.ImportTask{},
 		&outboundmodel.ShipmentOrder{}, &outboundmodel.ShipmentOrderDetail{}, &outboundmodel.Allocation{},
+		&outboundmodel.WorkException{}, &outboundmodel.CustomerReturn{},
 		&outboundmodel.Wave{}, &outboundmodel.WaveOrder{}, &outboundmodel.WaveLine{}, &outboundmodel.WaveItem{},
 		&stocktakemodel.StocktakeOrder{}, &stocktakemodel.StocktakeDetail{},
 		&idempotency.Record{},
 	); err != nil {
 		return err
+	}
+	// Development databases may predate v16. Add the new balance atomically
+	// with removal of the old one, after AutoMigrate added the default-zero column.
+	if db.Migrator().HasConstraint(&invmodel.Inventory{}, "chk_inv_quantity_balance") {
+		if err := db.Exec("ALTER TABLE wms_inventory DROP CHECK chk_inv_quantity_balance, ADD CONSTRAINT chk_inv_quantity_balance_v2 CHECK (stock_quantity = ((available_quantity + allocated_quantity) + frozen_quantity))").Error; err != nil {
+			return err
+		}
 	}
 	return ensureQuantityChecks(db)
 }

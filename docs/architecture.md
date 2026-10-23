@@ -33,7 +33,7 @@ flowchart TD
 库存行按 `(tenant_id, warehouse_id, location_id, sku_id, batch_no)` 唯一。正常业务需保持：
 
 ```text
-stock_quantity = available_quantity + allocated_quantity
+stock_quantity = available_quantity + allocated_quantity + frozen_quantity
 stock_quantity、available_quantity、allocated_quantity 均不小于零
 ```
 
@@ -47,7 +47,7 @@ stock_quantity、available_quantity、allocated_quantity 均不小于零
 
 业务 Service 开启事务，库存先锁读，再执行数量条件更新，并在同一事务写库存流水。分配流水的总量变化为零，但记录可用量减少。写流水失败时，调用方必须返回错误，使整笔事务回滚。
 
-库存 `version` 会递增，但库存 SQL 没有 `WHERE version = ?`，不能把它介绍成“库存乐观锁”。真正使用版本比较的是单据进度、任务和分配等更新；状态转换还会使用期望状态条件。迁移 `000008` 后，数据库 CHECK 同时保证三数量非负和 `stock = available + allocated`，但仍不能替代事务与行锁。
+库存 `version` 会递增，但库存 SQL 没有 `WHERE version = ?`，不能把它介绍成“库存乐观锁”。真正使用版本比较的是单据进度、任务和分配等更新；状态转换还会使用期望状态条件。迁移 `000008` 后，数据库 CHECK 在迁移 000016 后保证四项数量非负和 `stock = available + allocated + frozen`，但仍不能替代事务与行锁。
 
 FIFO 按 `stock_in_time, id` 排序。`stock_in_time` 是这一库存四元组首次上架时间；后续补入同一批次会合并到同一行，系统没有逐次收货的独立 FIFO 层。分配后按库位编码排序只改变拣货任务顺序，不改变分配批次。
 
@@ -63,7 +63,7 @@ FIFO 按 `stock_in_time, id` 排序。`stock_in_time` 是这一库存四元组�
 
 入库：草稿 → 提交 → 审核生成收货任务 → 收货 → 上架 → 完成。`qty` 和 `received_qty` 都表示包含不良品的总收货量，`defective_qty` 是其中的不良品；例如总量 10、不良品 2，对应收货进度 10、上架量 8。全是不良品时无上架任务，收齐直接完成。
 
-出库：提交后审核，在一笔事务中完成 FIFO 分配、分配明细、拣货任务和单据状态推进。按分配行拣满时扣减该行库存，整单拣满后进入 SHIPPED。部分拣货后不允许取消，需要另外设计退货或反向业务，不能直接释放已发库存。
+出库：提交后审核，在一笔事务中完成 FIFO 分配、分配明细、拣货任务和单据状态推进。按分配行拣满时扣减该行库存，整单拣满后进入 SHIPPED。部分拣货后通过异常登记处理：确认未发实物退回，保留已发分配行，释放未发占用并修正单据进度；短缺扣账、货损冻结，随后可重新分配或关闭。已发货部分通过关联原批次的客户退货验收入库，详见[异常与退货](warehouse-closure.md)。
 
 盘点：创建时保存账面快照，填写实盘数，审核时锁定库存并将总库存调整到实盘数。差异、实际调整和流水使用同一份锁读结果；不允许调减已分配库存。审核要求全部明细录入实盘数，任一明细未填写即整单拒绝。盘点没有冻结仓库，实盘记录与后续作业的业务时间口径仍需要使用者理解，不能把行锁等同于完整的实物盘点流程。
 

@@ -26,6 +26,7 @@ func ResetDemoData(ctx context.Context, db *gorm.DB, tenantID int64) error {
 	ctx = tenant.WithTenant(ctx, tenantID)
 	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		models := []any{
+			&outboundmodel.WorkException{}, &outboundmodel.CustomerReturn{},
 			&invmodel.Movement{},
 			&invmodel.AlertRule{},
 			&outboundmodel.WaveItem{}, &outboundmodel.WaveLine{}, &outboundmodel.WaveOrder{}, &outboundmodel.Wave{},

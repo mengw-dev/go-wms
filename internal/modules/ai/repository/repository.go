@@ -30,6 +30,7 @@ type Overview struct {
 	StockTotal     int64 `json:"stock_total"`    // 库存总量
 	AvailableTotal int64 `json:"available_total"`
 	AllocatedTotal int64 `json:"allocated_total"`
+	FrozenTotal    int64 `json:"frozen_total"`
 }
 
 // WarehouseStock 仓库维度库存汇总行。
@@ -58,6 +59,7 @@ type InventoryDetail struct {
 	StockQty      int    `json:"stock_qty"`
 	AvailableQty  int    `json:"available_qty"`
 	AllocatedQty  int    `json:"allocated_qty"`
+	FrozenQty     int    `json:"frozen_qty"`
 }
 
 // SKUBrief SKU 目录简要字段（用于问题匹配与目录展示）。
@@ -77,7 +79,7 @@ type Repository struct {
 
 func New(db *gorm.DB) *Repository { return &Repository{db: db} }
 
-// GetOverview SKU 总数 + 三数量汇总。
+// GetOverview SKU 总数 + 库存各数量汇总。
 // 注意：GORM 的 Scan(struct) 会先清零目标结构体，因此聚合结果必须扫描到
 // 独立结构再拷回，否则先执行的 Count 结果会被清掉。
 func (r *Repository) GetOverview(ctx context.Context) (*Overview, error) {
@@ -90,7 +92,7 @@ func (r *Repository) GetOverview(ctx context.Context) (*Overview, error) {
 		Select("COUNT(*) AS inventory_rows, " +
 			"COALESCE(SUM(stock_quantity),0) AS stock_total, " +
 			"COALESCE(SUM(available_quantity),0) AS available_total, " +
-			"COALESCE(SUM(allocated_quantity),0) AS allocated_total").
+			"COALESCE(SUM(allocated_quantity),0) AS allocated_total, COALESCE(SUM(frozen_quantity),0) AS frozen_total").
 		Scan(&agg).Error
 	if err != nil {
 		return nil, err
@@ -99,6 +101,7 @@ func (r *Repository) GetOverview(ctx context.Context) (*Overview, error) {
 	o.StockTotal = agg.StockTotal
 	o.AvailableTotal = agg.AvailableTotal
 	o.AllocatedTotal = agg.AllocatedTotal
+	o.FrozenTotal = agg.FrozenTotal
 	return o, nil
 }
 
@@ -163,7 +166,7 @@ func (r *Repository) ListInventoryDetailBySKU(ctx context.Context, skuID int64, 
 	var list []InventoryDetail
 	q := tenantScope(ctx, r.db.WithContext(ctx).Table("wms_inventory i").
 		Select("w.code AS warehouse_code, l.code AS location_code, i.batch_no, "+
-			"i.stock_quantity AS stock_qty, i.available_quantity AS available_qty, i.allocated_quantity AS allocated_qty").
+			"i.stock_quantity AS stock_qty, i.available_quantity AS available_qty, i.allocated_quantity AS allocated_qty, i.frozen_quantity AS frozen_qty").
 		Joins("JOIN wms_warehouse w ON w.id = i.warehouse_id AND w.deleted_at IS NULL AND w.tenant_id = i.tenant_id").
 		Joins("JOIN wms_location l ON l.id = i.location_id AND l.deleted_at IS NULL AND l.tenant_id = i.tenant_id").
 		Where("i.deleted_at IS NULL AND i.sku_id = ?", skuID))

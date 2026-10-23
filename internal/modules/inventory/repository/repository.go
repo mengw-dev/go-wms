@@ -25,6 +25,7 @@ type SummaryRow struct {
 	StockQuantity int64  `gorm:"column:stock_quantity"`
 	AvailableQty  int64  `gorm:"column:available_quantity"`
 	AllocatedQty  int64  `gorm:"column:allocated_quantity"`
+	FrozenQty     int64  `json:"frozen_quantity" gorm:"column:frozen_quantity"`
 }
 
 func New() *Repository { return &Repository{} }
@@ -278,7 +279,7 @@ func (r *Repository) SummaryBySKU(ctx context.Context, db *gorm.DB, warehouseID 
 	var list []*SummaryRow
 	err := q.Select("i.sku_id, s.code AS sku_code, s.name AS sku_name, s.unit, " +
 		"SUM(i.stock_quantity) AS stock_quantity, SUM(i.available_quantity) AS available_quantity, " +
-		"SUM(i.allocated_quantity) AS allocated_quantity").
+		"SUM(i.allocated_quantity) AS allocated_quantity, SUM(i.frozen_quantity) AS frozen_quantity").
 		Group("i.sku_id, s.code, s.name, s.unit").
 		Order("i.sku_id").
 		Offset((page - 1) * size).Limit(size).Scan(&list).Error

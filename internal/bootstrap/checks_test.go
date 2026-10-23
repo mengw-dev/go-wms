@@ -44,7 +44,7 @@ func TestReleaseCheckVerificationIsReadOnlyAndRequiresEveryConstraint(t *testing
 	if err := VerifyQuantityChecks(db); err == nil || !strings.Contains(err.Error(), "missing check") {
 		t.Fatalf("release accepted incomplete database: %v", err)
 	}
-	if exists, err := checkDefinition(db, quantityChecks[3]); exists || err != nil {
+	if exists, err := checkDefinition(db, quantityCheck{"wms_task", "chk_task_quantity_progress", "(target_qty >= 0) AND (done_qty >= 0) AND (done_qty <= target_qty)", []string{"target_qty", "done_qty"}}); exists || err != nil {
 		t.Fatalf("verification altered schema: exists=%t err=%v", exists, err)
 	}
 }

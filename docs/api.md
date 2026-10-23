@@ -176,7 +176,7 @@ API Key 在服务端配置中绑定 `WMS_INTEGRATION_TENANT_ID`，请求体、�
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/inventory` | 库存明细（warehouse_id/sku_id/location_id/keyword 过滤），含三数量与批次 |
+| GET | `/inventory` | 库存明细（warehouse_id/sku_id/location_id/keyword 过滤），含现存/可用/分配/冻结量与批次 |
 | GET | `/inventory/summary` | 按 SKU 汇总（同仓聚合批次） |
 | GET | `/inventory/trans` | 库存流水（inventory_id/trans_type/order_no/时间范围过滤） |
 
@@ -485,3 +485,7 @@ wms:basic,wms:inventory,wms:task,wms:inbound:view,wms:inbound:receive
 ## 扫码辅助作业
 
 新增只读GET `/inbound/orders/:id/scan-sku`、`/outbound/orders/:id/scan-sku` 与 `/inbound/orders/:id/putaway-locations`。按当前单据及精确租户核对货品或同仓启用库位，不自动提交业务；参数、权限、编码歧义及设备边界见[扫码说明](scan-assistance.md)。
+
+## 异常、冻结与客户退货
+
+新增命令的权限、请求、响应及原请求恢复规则见[接口清单](warehouse-closure.md#接口)。所有 ID 使用 JSON 字符串；写入必须携带 `Idempotency-Key`，未知结果保留原键与参数。

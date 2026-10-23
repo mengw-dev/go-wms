@@ -21,6 +21,7 @@ func (h *Handler) RegisterRoutes(auth *gin.RouterGroup, checker middleware.Perms
 	g := auth.Group("/inventory")
 	read := middleware.Permission(checker, "wms:inventory")
 	move := middleware.Permission(checker, "wms:inventory:move")
+	g.POST("/freeze", read, middleware.Permission(checker, "wms:inventory:freeze"), h.freeze)
 	g.GET("/move-source/:id", read, move, h.moveSource)
 	g.GET("/moves", read, h.movements)
 	g.GET("/move-locations", read, move, h.moveLocations)

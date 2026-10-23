@@ -47,6 +47,7 @@ async function mockWorkspace(page: Page, theme: 'light' | 'dark', perms = ['*'])
       stock_quantity: 120, available_quantity: 90, allocated_quantity: 30,
     }], total: 1 }
     else if (path === '/inventory/trans') data = { list: [], total: 0 }
+    else if (path === '/outbound/exceptions' || path === '/outbound/returns') data = { list: [], total: 0 }
     else { await route.abort(); throw new Error(`Unexpected UI API: ${path}`) }
     await route.fulfill({ json: { code: 0, msg: 'ok', data } })
   })

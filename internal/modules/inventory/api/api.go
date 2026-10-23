@@ -69,8 +69,25 @@ type AdjustReq struct {
 	Operator    string
 }
 
-// InventoryAPI inventory 模块对外接口。全部方法要求在调用方事务内执行（tx 由 Service 层传入）。
+// FreezeReq 在调用方事务内转换可用/冻结量，或记录确认的短缺。
+type FreezeReq struct {
+	InventoryID               int64
+	Quantity                  int
+	Unfreeze                  bool
+	Reason, OrderNo, Operator string
+}
+
+type ReturnReq struct {
+	WarehouseID, LocationID, SKUID     int64
+	BatchNo, OrderNo, Operator, Reason string
+	GoodQty, BadQty                    int
+}
+
+// InventoryAPI inventory 模块对外接口；全部写入复用调用方事务。
 type InventoryAPI interface {
+	Freeze(ctx context.Context, tx *gorm.DB, req *FreezeReq) error
+	WriteOff(ctx context.Context, tx *gorm.DB, req *FreezeReq) error
+	ReceiveReturn(ctx context.Context, tx *gorm.DB, req *ReturnReq) error
 	Increase(ctx context.Context, tx *gorm.DB, req *IncreaseReq) error
 	Allocate(ctx context.Context, tx *gorm.DB, req *AllocateReq) (*AllocateResult, error)
 	Ship(ctx context.Context, tx *gorm.DB, req *ShipReq) error

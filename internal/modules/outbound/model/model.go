@@ -15,6 +15,8 @@ const (
 	OrderPicking   OrderStatus = "PICKING"
 	OrderShipped   OrderStatus = "SHIPPED"
 	OrderCancelled OrderStatus = "CANCELLED"
+	OrderException OrderStatus = "EXCEPTION"
+	OrderClosed    OrderStatus = "CLOSED"
 )
 
 // OrderNoPrefix 出库单号前缀。
@@ -27,7 +29,8 @@ var StatusTransitions = map[OrderStatus][]OrderStatus{
 	OrderDraft:     {OrderSubmitted, OrderCancelled},
 	OrderSubmitted: {OrderPicking, OrderCancelled},
 	OrderApproved:  {OrderPicking, OrderCancelled},
-	OrderPicking:   {OrderShipped, OrderCancelled},
+	OrderPicking:   {OrderShipped, OrderCancelled, OrderException},
+	OrderException: {OrderPicking, OrderClosed},
 }
 
 // CanTransit 判断状态是否允许从 from 流转到 to，是状态机校验的唯一入口。

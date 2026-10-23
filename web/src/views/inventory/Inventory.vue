@@ -21,6 +21,8 @@ import { cleanParams, formatTime } from '@/utils'
 import { BUSINESS_EVENTS, emitBusinessEvent } from '@/events/businessEvents'
 import { loadSkuMap, loadWarehouseOptions, toOptionMap, type IdOption } from '@/utils/options'
 
+import FreezeDialog from '@/components/inventory/FreezeDialog.vue'
+const freezeRef = ref<InstanceType<typeof FreezeDialog>>()
 const activeTab = ref('detail')
 const route = useRoute(), router = useRouter(), auth = useAuthStore()
 
@@ -184,8 +186,9 @@ useAutoRefresh(refreshActiveTab, 0)
 <template>
   <div class="app-page inventory-page">
     <PageHeader title="库存查询" description="按仓库、货品与批次查看库存，追溯每一笔库存变动。" />
+    <FreezeDialog ref="freezeRef" @changed="refreshActiveTab" />
     <section class="page-card">
-    <p class="inventory-note">现存量 = 可用量 + 分配量；分配量为已被出库单占用、尚未扣减的库存。</p>
+    <p class="inventory-note">现存量 = 可用量 + 分配量 + 冻结量；冻结库存不可分配、移库或被盘点调减侵占。</p>
     <el-tabs v-model="activeTab" @tab-change="onTabChange">
       <el-tab-pane label="库存明细" name="detail">
         <BusinessFilters><el-form inline class="query-form" @submit.prevent="searchDetail">
@@ -224,12 +227,14 @@ useAutoRefresh(refreshActiveTab, 0)
           <el-table-column prop="stock_quantity" label="现存量" width="90" align="right" />
           <el-table-column prop="available_quantity" label="可用量" width="90" align="right" />
           <el-table-column prop="allocated_quantity" label="分配量" width="90" align="right" />
+          <el-table-column prop="frozen_quantity" label="冻结量" width="90" align="right" />
           <el-table-column label="入库时间" width="170">
             <template #default="{ row }">{{ formatTime(row.stock_in_time) }}</template>
           </el-table-column>
-          <el-table-column label="操作" width="150" fixed="right">
+          <el-table-column label="操作" width="230" fixed="right">
             <template #default="{ row }">
               <el-button size="small" type="primary" plain @click="openTrans(row)">流水</el-button>
+              <el-button v-if="auth.hasPerm('wms:inventory:freeze')" type="primary" link @click="freezeRef?.open(row)">冻结/解冻</el-button>
               <el-button v-if="auth.hasPerm('wms:inventory:move')" type="primary" link :disabled="row.available_quantity <= 0" @click="router.push({ path: '/inventory/moves', query: { source_inventory_id: row.id } })">移库</el-button>
             </template>
           </el-table-column>
@@ -272,6 +277,7 @@ useAutoRefresh(refreshActiveTab, 0)
           <el-table-column prop="stock_quantity" label="现存量" width="110" align="right" />
           <el-table-column prop="available_quantity" label="可用量" width="110" align="right" />
           <el-table-column prop="allocated_quantity" label="分配量" width="110" align="right" />
+          <el-table-column prop="frozen_quantity" label="冻结量" width="110" align="right" />
         </el-table>
         </ResizableTableArea>
 
@@ -331,6 +337,7 @@ useAutoRefresh(refreshActiveTab, 0)
         <el-table-column label="可用量变化" min-width="110">
           <template #default="{ row }">{{ row.available_before }} → {{ row.available_after }}</template>
         </el-table-column>
+        <el-table-column prop="frozen_before" label="冻结前" width="90" /><el-table-column prop="frozen_after" label="冻结后" width="90" /><el-table-column prop="reason" label="原因" min-width="160" />
         <el-table-column prop="order_no" label="来源单据" min-width="150">
           <template #default="{ row }">{{ row.order_no || '-' }}</template>
         </el-table-column>

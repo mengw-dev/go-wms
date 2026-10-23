@@ -12,9 +12,14 @@ import (
 // 权限串必须与各模块 handler 的 middleware.Permission 参数、前端角色配置页保持一致；
 // 新增业务权限时先在这里登记，否则租户角色无法授予该权限。
 const (
-	PermBasic     = "wms:basic"
-	PermInventory = "wms:inventory"
-	PermTask      = "wms:task"
+	PermBasic             = "wms:basic"
+	PermInventory         = "wms:inventory"
+	PermTask              = "wms:task"
+	PermInventoryFreeze   = "wms:inventory:freeze"
+	PermInventoryMove     = "wms:inventory:move"
+	PermInventoryAlert    = "wms:inventory:alert:manage"
+	PermOutboundException = "wms:outbound:exception"
+	PermOutboundReturn    = "wms:outbound:return"
 
 	PermInboundView    = "wms:inbound:view"
 	PermInboundCreate  = "wms:inbound:create"
@@ -45,9 +50,11 @@ const (
 // allowedTenantPerms 是租户角色可授予权限的判定集合。
 // wms:demo 不在其中：它是演示租户种子专用的权限，普通租户持有会被前端误判为演示账号。
 var allowedTenantPerms = map[string]struct{}{
-	PermBasic:     {},
-	PermInventory: {},
-	PermTask:      {},
+	PermBasic:           {},
+	PermInventory:       {},
+	PermTask:            {},
+	PermInventoryFreeze: {}, PermInventoryMove: {}, PermInventoryAlert: {},
+	PermOutboundException: {}, PermOutboundReturn: {},
 
 	PermInboundView:    {},
 	PermInboundCreate:  {},

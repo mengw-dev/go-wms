@@ -29,6 +29,7 @@ type BasicAPI interface {
 	GetSKUsByIDsForShare(ctx context.Context, tx *gorm.DB, ids []int64) (map[int64]*model.SKU, error)
 	ValidateLocationInWarehouseInTx(ctx context.Context, tx *gorm.DB, warehouseID, id int64) error
 	GetLocation(ctx context.Context, id int64) (*model.Location, error)
+	GetLocationInTx(ctx context.Context, tx *gorm.DB, id int64) (*model.Location, error)
 	GetWarehouseByCode(ctx context.Context, code string) (*model.Warehouse, error)
 	GetSKUByCode(ctx context.Context, code string) (*model.SKU, error)
 	UpdateLocationStatusInTx(ctx context.Context, tx *gorm.DB, id int64, status int) error

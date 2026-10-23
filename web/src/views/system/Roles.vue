@@ -29,6 +29,9 @@ const PERMISSION_GROUPS: PermissionGroup[] = [
     options: [
       { label: '库存查询', value: 'wms:inventory' },
       { label: '仓内移库', value: 'wms:inventory:move' },
+      { label: '库存冻结/解冻', value: 'wms:inventory:freeze' },
+      { label: '出库异常处理', value: 'wms:outbound:exception' },
+      { label: '客户退货验收', value: 'wms:outbound:return' },
       { label: '库存预警规则管理', value: 'wms:inventory:alert:manage' },
       { label: '任务中心', value: 'wms:task' },
     ],

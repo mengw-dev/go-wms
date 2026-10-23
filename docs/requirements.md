@@ -4,7 +4,7 @@
 
 ## 1. 项目概述
 
-2026-10-22：基础功能进入收尾维护阶段，当前本地合集补齐仪表盘运营信息、表格调高、仓内移库和扫码辅助；具体操作见[仓储操作手册](warehouse-operations.md)，本轮验证和交付范围见[收尾验收](release-acceptance.md)。波次/播种现已按用户授权并入main合集，提供同仓选单、汇总拣货、软件槽位分货及逐单确认发货，详见[波次说明](wave-picking.md)。退货、质检冻结、效期、跨仓调拨等列为按真实需求启动的扩展，不是本次必须补齐的基础功能。
+2026-10-22：基础功能进入收尾维护阶段，当前本地合集补齐仪表盘运营信息、表格调高、仓内移库和扫码辅助；具体操作见[仓储操作手册](warehouse-operations.md)，本轮验证和交付范围见[收尾验收](release-acceptance.md)。波次/播种现已按用户授权并入main合集，提供同仓选单、汇总拣货、软件槽位分货及逐单确认发货，详见[波次说明](wave-picking.md)。2026-10-23 开发分支新增异常作业恢复、数量冻结/解冻与客户退货验收，见[规则与入口](warehouse-closure.md)。效期、跨仓调拨等仍按真实需求扩展。
 
 ### 1.1 背景
 
@@ -33,7 +33,7 @@ WMS 是一个**轻量级仓储管理系统**，以"功能简洁、工程亮点�
 | SKU | 最小存货单位（Stock Keeping Unit） |
 | 库位（Location） | 仓库内最小存放空间，编码 `{库区}-{排}-{列}`，如 `A01-02-03` |
 | 批次号（Batch No） | 同一 SKU 按入库批次的管理维度，FIFO 分配的依据 |
-| 三数量 | `stock_quantity`（存量）= `available_quantity`（可用）+ `allocated_quantity`（出库已分配量，不是质量冻结） |
+| 库存守恒 | `stock_quantity`（存量）= `available_quantity`（可用）+ `allocated_quantity`（出库已分配）+ `frozen_quantity`（冻结） |
 | 分配（Allocate） | 出库审核时按 FIFO 从可用量划拨到分配量的动作，即"锁库" |
 | 收货 / 上架 | 入库的两个作业步骤：先按单收货确认数量，再把货放到具体库位 |
 | 拣货 / 发货 | 出库的两个作业步骤：按分配行到库位拣货，全部拣完自动扣减库存 |
@@ -95,9 +95,9 @@ WMS 是一个**轻量级仓储管理系统**，以"功能简洁、工程亮点�
 
 | 编号 | 需求 | 说明 |
 | --- | --- | --- |
-| FR-301 | 库存明细查询 | 按仓库/库位/SKU/批次查询 `wms_inventory`，展示三数量与入库时间 |
+| FR-301 | 库存明细查询 | 按仓库/库位/SKU/批次查询 `wms_inventory`，展示现存、可用、分配、冻结量与入库时间 |
 | FR-302 | SKU 汇总查询 | 按仓库聚合同 SKU 各批次的总存量/可用/分配 |
-| FR-303 | 库存流水 | 每次变动记录 `RECEIVE/ALLOCATE/SHIP/RELEASE/ADJUST/MOVE_IN/MOVE_OUT` 流水：变更前后三数量、关联单号/任务号、操作人 |
+| FR-303 | 库存流水 | 每次变动记录 `RECEIVE/ALLOCATE/SHIP/RELEASE/ADJUST/MOVE_IN/MOVE_OUT/FREEZE/UNFREEZE/SHORTAGE` 流水：变更前后库存与冻结量、关联单号/任务号、操作人 |
 | FR-304 | 库存增加（内部） | 上架时调用；同维库存行不存在则创建，存在则累加，同事务写流水 |
 | FR-305 | 库存分配/释放/扣减/调整（内部） | 供出库/盘点模块通过接口调用，详见架构文档"核心设计" |
 | FR-306 | 库存阈值预警 | 按仓库+SKU配置可用量下限，缺货/低库存查询、恢复与追溯；独立管理权限，无自动补货或推送，见[库存预警](inventory-alerts.md) |
@@ -172,6 +172,9 @@ stateDiagram-v2
     DRAFT --> [*]: 删除
     SUBMITTED --> CANCELLED: 取消
     PICKING --> CANCELLED: 取消(未拣货时,释放锁库)
+    PICKING --> EXCEPTION: 确认退回未发实物，登记异常
+    EXCEPTION --> PICKING: 重新分配未发需求
+    EXCEPTION --> CLOSED: 关闭剩余作业
     note right of PICKING: 已拣货不可取消
 ```
 
@@ -219,7 +222,7 @@ stateDiagram-v2
 
 - 多货主（BO）体系；
 - 库位混放策略、上架推荐算法（当前由人工指定库位）；
-- 波次拣货、跨仓调拨、自动补货等进阶作业（当前可用库存阈值预警见[库存预警](inventory-alerts.md)，不自动生成补货任务）；
+- 跨仓调拨、自动补货等进阶作业（当前可用库存阈值预警见[库存预警](inventory-alerts.md)，不自动生成补货任务）；
 - 消息队列 / 分布式事务（当前单库事务已满足一致性目标）。
 
 > 多租户在 v1.1 已扩展：共享库共享表，tenant_id 由 GORM 回调注入，平台旁路（tenant_id=0）与精确租户隔离并存。

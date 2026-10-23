@@ -12,6 +12,7 @@
 - [配置参考](configuration.md)：常用环境变量和 Compose 账户配置。
 - [演示指南](demo.md)：体验流程、演示账号与会话边界。
 - [波次与播种拣货](wave-picking.md)：同仓组波、汇总拣货、软件槽位分货、逐单确认发货及异常边界。
+- [异常、冻结与客户退货](warehouse-closure.md)：操作入口、库存约束、恢复与验收。
 - [仓内移库](stock-movement.md)：同仓库可用库存移动、原请求恢复与流水追溯。
 - [库存预警](inventory-alerts.md)：规则配置、缺货/低库存与恢复口径。
 - [扫码辅助作业](scan-assistance.md)：收货定位明细、上架选择库位、拣货核对，扫码不自动写库存。

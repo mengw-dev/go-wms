@@ -126,8 +126,8 @@ func (s *Service) MoveStock(ctx context.Context, req *dto.MoveRequest, key strin
 		id := snowflake.Next()
 		no := fmt.Sprintf("YK%s%d", time.Now().Format("20060102"), id)
 		for _, entry := range []model.InventoryTrans{
-			{ID: snowflake.Next(), InventoryID: source.ID, TransType: model.TransMoveOut, QuantityChange: -req.Quantity, BeforeQuantity: source.StockQuantity, AfterQuantity: source.StockQuantity - req.Quantity, AvailableBefore: source.AvailableQty, AvailableAfter: source.AvailableQty - req.Quantity, OrderNo: no, Operator: operator},
-			{ID: snowflake.Next(), InventoryID: target.ID, TransType: model.TransMoveIn, QuantityChange: req.Quantity, BeforeQuantity: target.StockQuantity, AfterQuantity: target.StockQuantity + req.Quantity, AvailableBefore: target.AvailableQty, AvailableAfter: target.AvailableQty + req.Quantity, OrderNo: no, Operator: operator},
+			{ID: snowflake.Next(), InventoryID: source.ID, FrozenBefore: source.FrozenQty, FrozenAfter: source.FrozenQty, TransType: model.TransMoveOut, QuantityChange: -req.Quantity, BeforeQuantity: source.StockQuantity, AfterQuantity: source.StockQuantity - req.Quantity, AvailableBefore: source.AvailableQty, AvailableAfter: source.AvailableQty - req.Quantity, OrderNo: no, Operator: operator},
+			{ID: snowflake.Next(), InventoryID: target.ID, FrozenBefore: target.FrozenQty, FrozenAfter: target.FrozenQty, TransType: model.TransMoveIn, QuantityChange: req.Quantity, BeforeQuantity: target.StockQuantity, AfterQuantity: target.StockQuantity + req.Quantity, AvailableBefore: target.AvailableQty, AvailableAfter: target.AvailableQty + req.Quantity, OrderNo: no, Operator: operator},
 		} {
 			if err = s.repo.InsertTrans(db, &entry); err != nil {
 				return err

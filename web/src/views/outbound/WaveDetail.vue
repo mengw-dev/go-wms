@@ -4,6 +4,8 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
 import { getWave, WAVE_STATUS_TEXT, type WaveDetail, type WaveCommand, type WaveLine, type WaveItem, type WaveOrder } from '@/api/wave'
 import WavePendingNotice from '@/components/outbound/WavePendingNotice.vue'
+import WaveAbortPanel from '@/components/outbound/WaveAbortPanel.vue'
+const closureBlocked = ref(false)
 import { useWaveCommands } from '@/composables/outbound/useWaveCommands'
 import { useAuthStore } from '@/stores/auth'
 import { formatTime } from '@/utils'
@@ -15,9 +17,9 @@ const dialog = ref(false), selected = ref<{ action: 'collect' | 'sort'; id: stri
 const form = reactive({ sku_code: '', location_code: '', batch_no: '', slot_code: '', qty: 1 })
 let seq = 0, alive = true
 const waveID = computed(() => String(route.params.id))
-const terminal = computed(() => !data.value || ['COMPLETED', 'CANCELLED'].includes(data.value.wave.status))
+const terminal = computed(() => !data.value || ['COMPLETED', 'CANCELLED', 'ABORTED'].includes(data.value.wave.status))
 const owner = computed(() => !!data.value && data.value.wave.claimed_by === auth.user?.username && Date.parse(data.value.wave.lease_expire_at || '') > Date.now())
-const canWrite = computed(() => !terminal.value && !busy.value && !pending.value && owner.value && auth.hasPerm('wms:outbound:pick'))
+const canWrite = computed(() => !terminal.value && !closureBlocked.value && !busy.value && !pending.value && owner.value && auth.hasPerm('wms:outbound:pick'))
 const pickedLines = computed(() => data.value?.lines.filter(l => l.picked_qty === l.target_qty).length ?? 0)
 const sortedItems = computed(() => data.value?.items.filter(i => i.sorted_qty === i.target_qty).length ?? 0)
 const shipped = computed(() => data.value?.orders.filter(o => o.shipped_at).length ?? 0)
@@ -39,6 +41,7 @@ async function load() {
 watch(waveID, () => { data.value = null; dialog.value = false; tab.value = 'collect'; void load() }, { immediate: true })
 onScopeDispose(() => { alive = false; seq++ })
 async function perform(command: WaveCommand) {
+  if (closureBlocked.value) return
   const id = waveID.value
   const ack = await commands.run(command)
   if (ack && alive && waveID.value === id) { dialog.value = false; await load() }
@@ -88,8 +91,9 @@ function printList() { window.print() }
     <template v-if="data">
       <section class="app-card wave-identity">
         <div><h1>{{ data.wave.wave_no }}</h1><p>{{ data.wave.remark || '汇总拣货 → 按订单槽位分货 → 确认发货' }}</p></div>
-        <div class="wave-heading no-print"><el-tag>{{ WAVE_STATUS_TEXT[data.wave.status] }}</el-tag><el-button v-if="!terminal" v-permission="'wms:outbound:pick'" :disabled="busy || !!pending" type="primary" @click="perform({ action: 'claim', wave_id: waveID })">{{ owner ? '续领波次' : '领取波次' }}</el-button><el-button v-if="data.wave.status === 'CREATED'" v-permission="'wms:outbound:approve'" :disabled="busy || !!pending" @click="cancel">撤销波次</el-button></div>
+        <div class="wave-heading no-print"><el-tag>{{ WAVE_STATUS_TEXT[data.wave.status] }}</el-tag><el-button v-if="!terminal" v-permission="'wms:outbound:pick'" :disabled="busy || !!pending || closureBlocked" type="primary" @click="perform({ action: 'claim', wave_id: waveID })">{{ owner ? '续领波次' : '领取波次' }}</el-button><el-button v-if="data.wave.status === 'CREATED'" v-permission="'wms:outbound:approve'" :disabled="busy || !!pending || closureBlocked" @click="cancel">撤销波次</el-button></div>
       </section>
+      <WaveAbortPanel :wave="data.wave" :blocked="busy || !!pending" @changed="load" @pending-change="closureBlocked = $event" />
       <section class="wave-progress app-card">
         <div><small>汇总拣货</small><strong>{{ pickedLines }} / {{ data.lines.length }} 行</strong></div>
         <div><small>播种分货</small><strong>{{ sortedItems }} / {{ data.items.length }} 项</strong></div>

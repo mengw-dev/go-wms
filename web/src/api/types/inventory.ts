@@ -9,6 +9,7 @@ export interface InventoryItem {
   stock_quantity: number
   available_quantity: number
   allocated_quantity: number
+  frozen_quantity?: number
   stock_in_time: string
   location_code: string
 }
@@ -30,6 +31,7 @@ export interface InventorySummaryItem {
   stock_quantity: number
   available_quantity: number
   allocated_quantity: number
+  frozen_quantity?: number
 }
 
 export interface InventorySummaryQuery extends PageQuery {
@@ -45,6 +47,9 @@ export interface InventoryTransItem {
   after_quantity: number
   available_before: number
   available_after: number
+  frozen_before?: number
+  frozen_after?: number
+  reason?: string
   order_no: string
   task_no: string
   operator: string

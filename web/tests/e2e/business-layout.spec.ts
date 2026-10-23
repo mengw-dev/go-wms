@@ -11,7 +11,7 @@ const warehouse = { id: '1', code: 'WH-SH', name: '上海中心仓', status: 1, 
 const sku = { id: '1', code: 'SKU-001', name: '工业扫码终端', barcode: '690000000001', spec: '标准版', unit: '台', created_at: date }
 const location = { id: '1', warehouse_id: '1', code: 'A-01-01', zone: 'A', status: 1, created_at: date }
 const role = { id: '2', name: '仓库操作员', perms: 'wms:inventory,wms:task', remark: '日常仓储作业', created_at: date }
-const inventory = { id: '1', warehouse_id: '1', location_id: '1', location_code: 'A-01-01', sku_id: '1', batch_no: 'B20261020', stock_quantity: 120, available_quantity: 90, allocated_quantity: 30, stock_in_time: date }
+const inventory = { id: '1', warehouse_id: '1', location_id: '1', location_code: 'A-01-01', sku_id: '1', batch_no: 'B20261020', stock_quantity: 120, available_quantity: 90, allocated_quantity: 30, frozen_quantity: 0, stock_in_time: date }
 
 async function mockBusiness(page: Page, theme: 'light' | 'dark', guided = false, demo = false) {
   const state = { empty: false }
@@ -31,6 +31,7 @@ async function mockBusiness(page: Page, theme: 'light' | 'dark', guided = false,
     const path = new URL(route.request().url()).pathname.replace('/api/v1', '')
     if (!path.startsWith('/demo/session/')) expect(route.request().method()).toBe('GET')
     const lists: Record<string, unknown[]> = {
+      '/outbound/exceptions': [], '/outbound/returns': [],
       '/basic/warehouses': [warehouse], '/basic/skus': [sku], '/basic/locations': [location],
       '/system/users': [{ id: '2', username: 'warehouse01', nickname: '仓库操作员', status: 1, role_ids: ['2'], created_at: date }],
       '/system/roles': [role], '/system/oper-logs': [{ id: '1', username: 'operator', method: 'POST', path: '/api/v1/inbound/orders', ip: '127.0.0.1', cost_ms: 23, status: 200, created_at: date }],

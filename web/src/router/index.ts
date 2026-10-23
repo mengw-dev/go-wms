@@ -116,6 +116,10 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/inbound/InboundOrderDetail.vue'),
         meta: { title: '入库单详情', activeMenu: '/inbound/orders', perm: 'wms:inbound:view' },
       },
+      ...(['exceptions', 'returns'] as const).map(kind => ({
+        path: `outbound/${kind}`, name: `outbound-${kind}`, component: () => import('@/views/outbound/ClosureRecords.vue'), props: { kind },
+        meta: { title: kind === 'exceptions' ? '出库异常记录' : '客户退货记录', perm: 'wms:outbound:view' },
+      })),
       {
         path: 'outbound/waves',
         name: 'outbound-waves',

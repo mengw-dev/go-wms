@@ -19,12 +19,15 @@ type quantityCheck struct {
 var quantityChecks = []quantityCheck{
 	{"wms_inventory", "chk_inv_non_negative", "(available_quantity >= 0) AND (stock_quantity >= 0)", []string{"available_quantity", "stock_quantity"}},
 	{"wms_inventory", "chk_inv_allocated_non_negative", "allocated_quantity >= 0", []string{"allocated_quantity"}},
-	{"wms_inventory", "chk_inv_quantity_balance", "stock_quantity = (available_quantity + allocated_quantity)", []string{"stock_quantity", "available_quantity", "allocated_quantity"}},
+	{"wms_inventory", "chk_inv_quantity_balance_v2", "stock_quantity = ((available_quantity + allocated_quantity) + frozen_quantity)", []string{"stock_quantity", "available_quantity", "allocated_quantity", "frozen_quantity"}},
+	{"wms_inventory", "chk_inv_frozen_non_negative", "frozen_quantity >= 0", []string{"frozen_quantity"}},
 	{"wms_task", "chk_task_quantity_progress", "(target_qty >= 0) AND (done_qty >= 0) AND (done_qty <= target_qty)", []string{"target_qty", "done_qty"}},
 	{"wms_allocation", "chk_allocation_quantity_progress", "(allocated_qty >= 0) AND (picked_qty >= 0) AND (picked_qty <= allocated_qty)", []string{"allocated_qty", "picked_qty"}},
 	{"wms_shipment_order", "chk_shipment_quantity_progress", "(expected_qty >= 0) AND (allocated_qty >= 0) AND (picked_qty >= 0) AND (picked_qty <= allocated_qty) AND (allocated_qty <= expected_qty)", []string{"expected_qty", "allocated_qty", "picked_qty"}},
 	{"wms_inventory_alert_rule", "chk_alert_min_qty", "min_available_qty > 0", []string{"min_available_qty"}},
 	{"wms_inventory_movement", "chk_move_positive", "quantity > 0", []string{"quantity"}},
+	{"wms_work_exception", "chk_exception_quantity", "quantity > 0", []string{"quantity"}},
+	{"wms_customer_return", "chk_return_quantity", "(good_qty >= 0) AND (bad_qty >= 0) AND ((good_qty + bad_qty) > 0) AND ((good_qty + bad_qty) <= 2147483647)", []string{"good_qty", "bad_qty"}},
 	{"wms_wave_line", "chk_wave_line_qty", "(target_qty > 0) AND (picked_qty >= 0) AND (picked_qty <= target_qty)", []string{"target_qty", "picked_qty"}},
 	{"wms_wave_item", "chk_wave_item_qty", "(target_qty > 0) AND (sorted_qty >= 0) AND (sorted_qty <= target_qty)", []string{"target_qty", "sorted_qty"}},
 }
@@ -33,6 +36,15 @@ var quantityChecks = []quantityCheck{
 // 用于停写后的开发建表/正式迁移前检查；旧版本尚未建立的表或列留给后续迁移。
 // 不自动修账；独立 DDL 仍会验证实际数据，不能把预检当成跨表迁移事务。
 func AuditQuantityChecks(db *gorm.DB) error {
+	// A pre-v16 database still uses the historical three-quantity check.
+	// Validate it before the versioned migration replaces it, without requiring
+	// the new column to exist yet.
+	if db.Migrator().HasTable("wms_inventory") && !db.Migrator().HasColumn("wms_inventory", "frozen_quantity") {
+		legacy := quantityCheck{"wms_inventory", "chk_inv_quantity_balance", "stock_quantity = (available_quantity + allocated_quantity)", []string{"stock_quantity", "available_quantity", "allocated_quantity"}}
+		if _, err := checkDefinition(db, legacy); err != nil {
+			return err
+		}
+	}
 	return auditQuantityChecks(db, true)
 }
 

@@ -39,6 +39,7 @@ type InventoryResp struct {
 	StockQuantity int       `json:"stock_quantity"`
 	AvailableQty  int       `json:"available_quantity"`
 	AllocatedQty  int       `json:"allocated_quantity"`
+	FrozenQty     int       `json:"frozen_quantity" gorm:"column:frozen_quantity"`
 	StockInTime   time.Time `json:"stock_in_time"`
 	LocationCode  string    `json:"location_code"`
 	CreatedAt     time.Time `json:"created_at"`
@@ -54,6 +55,7 @@ type InventorySummaryResp struct {
 	StockQuantity int64  `json:"stock_quantity"`
 	AvailableQty  int64  `json:"available_quantity"`
 	AllocatedQty  int64  `json:"allocated_quantity"`
+	FrozenQty     int64  `json:"frozen_quantity" gorm:"column:frozen_quantity"`
 }
 
 // InventoryTransResp 是库存流水列表的稳定响应契约。
@@ -67,6 +69,9 @@ type InventoryTransResp struct {
 	AfterQuantity   int       `json:"after_quantity"`
 	AvailableBefore int       `json:"available_before"`
 	AvailableAfter  int       `json:"available_after"`
+	FrozenBefore    int       `json:"frozen_before"`
+	FrozenAfter     int       `json:"frozen_after"`
+	Reason          string    `json:"reason"`
 	OrderNo         string    `json:"order_no"`
 	TaskNo          string    `json:"task_no"`
 	Operator        string    `json:"operator"`

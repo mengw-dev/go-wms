@@ -25,6 +25,7 @@ async function fixture(page:Page,theme:string,kind:'receive'|'putaway'|'pick') {
       order:{id:'1',order_no:kind==='pick'?'CK1':'RK1',warehouse_id:'1',status:kind==='receive'?'APPROVED':kind==='putaway'?'PUTAWAY':'PICKING',source:'MANUAL',expected_qty:10,received_qty:kind==='receive'?0:10,defective_qty:0,allocated_qty:10,picked_qty:0,created_at:date,updated_at:date,created_by:'worker'},
       details,allocations:[],tasks:[{id:'11',task_no:'TASK11',task_type:kind==='pick'?'PICK':'PUTAWAY',status:'CREATED',order_id:'1',order_no:kind==='pick'?'CK1':'RK1',detail_id:'101',sku_id:'10',warehouse_id:'1',location_id:'1',location_code:'A01',batch_no:'B001',target_qty:2,done_qty:0,created_at:date}],
     }
+    else if(path==='/outbound/exceptions'||path==='/outbound/returns')data={list:[],total:0}
     else throw Error('unexpected scanner API '+path)
     await route.fulfill({json:{code:0,msg:'ok',data}})
   })

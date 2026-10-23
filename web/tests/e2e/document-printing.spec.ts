@@ -25,7 +25,8 @@ async function fixture(page: Page,theme='light',basic=true,fail=false) {
       const details=Array.from({length:count},(_,i)=>({id:String(i+10),order_id:'1',sku_id:'2',sku_code:`PRINTROW${String(i+1).padStart(3,'0')}`,sku_name:`精密零件${i+1}`,batch_no:`B${String(i+1).padStart(3,'0')}`,location_code:'A-01-01',expected_qty:4,received_qty:0,defective_qty:0,allocated_qty:4,picked_qty:0,book_qty:4,actual_qty:i===0 ? null : 0,diff_qty:0}))
       const allocations=details.map((d,i)=>({id:String(i+100),order_id:'1',detail_id:d.id,sku_id:'2',location_code:'A-01-01',batch_no:d.batch_no,allocated_qty:4,picked_qty:0,status:'ALLOCATED'}))
       data={order,details,allocations,tasks:[]}
-    } else throw Error('unexpected printing API '+path)
+    } else if(path==='/outbound/exceptions'||path==='/outbound/returns')data={list:[],total:0}
+    else throw Error('unexpected printing API '+path)
     await route.fulfill({json:{code:0,msg:'ok',data}})
   })
 }

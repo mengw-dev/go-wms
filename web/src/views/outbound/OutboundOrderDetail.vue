@@ -15,6 +15,8 @@ import { statusTag, statusText, taskTypeText } from '@/constants'
 import { formatTime } from '@/utils'
 import { loadWarehouseOptions, toOptionMap } from '@/utils/options'
 import PickDialog from '@/components/PickDialog.vue'
+import OrderClosurePanel from '@/components/outbound/OrderClosurePanel.vue'
+const closureBlocked = ref(false)
 import { BUSINESS_EVENTS, emitBusinessEvent } from '@/events/businessEvents'
 
 import { usePdaPick } from '@/composables/outbound/usePdaPick'
@@ -133,6 +135,7 @@ async function onCancel() {
 const pickRef = ref<InstanceType<typeof PickDialog>>()
 
 function openPick(taskId?: EntityID) {
+  if (closureBlocked.value) return
   const task = data.value?.tasks?.find((t) => t.id === taskId)
   pickRef.value?.open(orderId, task)
 }
@@ -165,13 +168,14 @@ function canPick(task: { task_type: string; status: string; wave_id?: EntityID }
           </template>
           <template v-else-if="data.order.status === 'APPROVED' || data.order.status === 'PICKING'">
             <el-button v-if="activeWaveID" type="primary" @click="router.push(`/outbound/waves/${activeWaveID}`)">进入波次工作台</el-button>
-            <el-button v-else v-permission="'wms:outbound:pick'" data-tour="outbound-pick" type="primary" plain @click="openPick()">拣货</el-button>
+            <el-button v-else v-permission="'wms:outbound:pick'" data-tour="outbound-pick" :disabled="closureBlocked" type="primary" plain @click="openPick()">拣货</el-button>
             <el-button v-if="!activeWaveID" v-permission="'wms:outbound:cancel'" type="danger" plain @click="onCancel">取消</el-button>
           </template>
           <el-button v-if="hasPendingPick" v-permission="'wms:outbound:pick'" type="warning" plain @click="openPick()">恢复待确认拣货</el-button>
         </div>
       </div>
       <div class="detail-scroll">
+      <OrderClosurePanel :data="data" :blocked="!!hasPendingPick" @changed="load" @pending-change="closureBlocked = $event" />
       <div class="page-card">
 
 

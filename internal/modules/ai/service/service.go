@@ -202,7 +202,7 @@ func (s *Service) buildSnapshot(ctx context.Context, question string) (string, e
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "- SKU 总数: %d（库存记录 %d 条）\n", ov.SKUTotal, ov.InventoryRows)
-	fmt.Fprintf(&b, "- 库存总量: %d，可用总量: %d，已分配总量: %d\n", ov.StockTotal, ov.AvailableTotal, ov.AllocatedTotal)
+	fmt.Fprintf(&b, "- 库存总量: %d，可用总量: %d，已分配总量: %d，冻结总量: %d\n", ov.StockTotal, ov.AvailableTotal, ov.AllocatedTotal, ov.FrozenTotal)
 
 	b.WriteString("- 各仓库库存分布:\n")
 	if len(warehouseStock) == 0 {
@@ -268,8 +268,8 @@ func (s *Service) matchedSKUDetails(ctx context.Context, question string, catalo
 			b.WriteString("    （该 SKU 暂无库存记录）\n")
 		}
 		for _, d := range details {
-			fmt.Fprintf(&b, "    - 仓库 %s，库位 %s，批次 %s，库存 %d，可用 %d，已分配 %d\n",
-				d.WarehouseCode, d.LocationCode, d.BatchNo, d.StockQty, d.AvailableQty, d.AllocatedQty)
+			fmt.Fprintf(&b, "    - 仓库 %s，库位 %s，批次 %s，库存 %d，可用 %d，已分配 %d，冻结 %d\n",
+				d.WarehouseCode, d.LocationCode, d.BatchNo, d.StockQty, d.AvailableQty, d.AllocatedQty, d.FrozenQty)
 		}
 	}
 	return b.String()

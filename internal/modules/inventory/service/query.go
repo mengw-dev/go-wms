@@ -32,7 +32,7 @@ func (s *Service) SummaryBySKU(ctx context.Context, q *dto.SummaryQuery) ([]*dto
 	for _, row := range rows {
 		resp = append(resp, &dto.InventorySummaryResp{
 			SKUID: row.SKUID, SKUCode: row.SKUCode, SKUName: row.SKUName, Unit: row.Unit,
-			StockQuantity: row.StockQuantity, AvailableQty: row.AvailableQty, AllocatedQty: row.AllocatedQty,
+			StockQuantity: row.StockQuantity, AvailableQty: row.AvailableQty, AllocatedQty: row.AllocatedQty, FrozenQty: row.FrozenQty,
 		})
 	}
 	return resp, total, nil
@@ -65,7 +65,7 @@ func inventoryResponses(items []*model.Inventory) []*dto.InventoryResp {
 			ID: item.ID, TenantID: item.TenantID, WarehouseID: item.WarehouseID,
 			LocationID: item.LocationID, SKUID: item.SKUID, BatchNo: item.BatchNo,
 			StockQuantity: item.StockQuantity, AvailableQty: item.AvailableQty,
-			AllocatedQty: item.AllocatedQty, StockInTime: item.StockInTime,
+			AllocatedQty: item.AllocatedQty, FrozenQty: item.FrozenQty, StockInTime: item.StockInTime,
 			LocationCode: item.LocationCode, CreatedAt: item.CreatedAt, UpdatedAt: item.UpdatedAt,
 		})
 	}
@@ -79,7 +79,7 @@ func inventoryTransResponses(items []*model.InventoryTrans) []*dto.InventoryTran
 			ID: item.ID, TenantID: item.TenantID, InventoryID: item.InventoryID,
 			TransType: string(item.TransType), QuantityChange: item.QuantityChange,
 			BeforeQuantity: item.BeforeQuantity, AfterQuantity: item.AfterQuantity,
-			AvailableBefore: item.AvailableBefore, AvailableAfter: item.AvailableAfter,
+			AvailableBefore: item.AvailableBefore, AvailableAfter: item.AvailableAfter, FrozenBefore: item.FrozenBefore, FrozenAfter: item.FrozenAfter, Reason: item.Reason,
 			OrderNo: item.OrderNo, TaskNo: item.TaskNo, Operator: item.Operator, CreatedAt: item.CreatedAt,
 		})
 	}
@@ -91,7 +91,7 @@ func inventorySummaryResponses(rows []*repository.SummaryRow) []*dto.InventorySu
 	for _, row := range rows {
 		resp = append(resp, &dto.InventorySummaryResp{
 			SKUID: row.SKUID, SKUCode: row.SKUCode, SKUName: row.SKUName, Unit: row.Unit,
-			StockQuantity: row.StockQuantity, AvailableQty: row.AvailableQty, AllocatedQty: row.AllocatedQty,
+			StockQuantity: row.StockQuantity, AvailableQty: row.AvailableQty, AllocatedQty: row.AllocatedQty, FrozenQty: row.FrozenQty,
 		})
 	}
 	return resp

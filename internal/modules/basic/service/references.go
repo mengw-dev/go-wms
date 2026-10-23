@@ -64,3 +64,12 @@ func (s *Service) ValidateLocationInWarehouseInTx(ctx context.Context, tx *gorm.
 	}
 	return nil
 }
+
+// GetLocationInTx returns the locked catalog snapshot for a business receipt.
+func (s *Service) GetLocationInTx(ctx context.Context, tx *gorm.DB, id int64) (*model.Location, error) {
+	row, e := s.repo.GetLocationForUpdate(ctx, tx, id)
+	if errors.Is(e, gorm.ErrRecordNotFound) {
+		return nil, errcode.LocationNotFound
+	}
+	return row, e
+}

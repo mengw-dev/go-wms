@@ -15,6 +15,7 @@ const STATUS_TAG_MAP: Record<string, TagType> = {
   PICKED: 'success',
   CANCELLED: 'danger',
   FAILED: 'danger',
+  EXCEPTION: 'warning', CLOSED: 'info', ABORTED: 'warning', OPEN: 'warning', RESOLVED: 'success',
   ALLOCATED: 'warning',
   CREATED: 'info',
   PENDING: 'info',
@@ -54,6 +55,7 @@ const STATUS_TEXT_MAP: Record<string, string> = {
   ADJUST: '调整',
   MOVE_IN: '移库入',
   MOVE_OUT: '移库出',
+  FREEZE: '冻结', UNFREEZE: '解冻', SHORTAGE: '短缺扣减', EXCEPTION: '待处理异常', CLOSED: '异常关闭', ABORTED: '异常结束', OPEN: '待处理', RESOLVED: '已恢复',
 }
 
 export function statusText(status?: string | null): string {
@@ -129,6 +131,7 @@ export const OUTBOUND_STATUS_OPTIONS = [
   'PICKING',
   'SHIPPED',
   'CANCELLED',
+  'EXCEPTION', 'CLOSED',
 ]
 
 /** 盘点单状态集合 */
@@ -141,4 +144,4 @@ export const TASK_STATUS_OPTIONS = ['CREATED', 'IN_PROGRESS', 'COMPLETED', 'CANC
 export const TASK_TYPE_OPTIONS = ['RECEIVE', 'PUTAWAY', 'PICK']
 
 /** 流水类型集合 */
-export const TRANS_TYPE_OPTIONS = ['OPENING', 'RECEIVE', 'ALLOCATE', 'SHIP', 'RELEASE', 'ADJUST', 'MOVE_IN', 'MOVE_OUT']
+export const TRANS_TYPE_OPTIONS = ['OPENING', 'RECEIVE', 'ALLOCATE', 'SHIP', 'RELEASE', 'ADJUST', 'MOVE_IN', 'MOVE_OUT', 'FREEZE', 'UNFREEZE', 'SHORTAGE']

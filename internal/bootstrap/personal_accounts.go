@@ -15,9 +15,9 @@ import (
 // personalPerms 持久体验账号权限集合：与演示账号一致，但【不含 wms:demo】。
 // 原因：带 wms:demo 的账号登录后前端会领取演示会话，而那会重置本租户数据；
 // 持久账号的数据必须长期保留，因此既不加会话锁、也不参与演示重置。
-const personalPerms = "wms:basic,wms:inventory,wms:inventory:alert:manage,wms:inventory:move,wms:task," +
+const personalPerms = "wms:basic,wms:inventory,wms:inventory:alert:manage,wms:inventory:move,wms:inventory:freeze,wms:task," +
 	"wms:inbound:view,wms:inbound:create,wms:inbound:submit,wms:inbound:approve,wms:inbound:cancel,wms:inbound:receive,wms:inbound:putaway," +
-	"wms:outbound:view,wms:outbound:create,wms:outbound:submit,wms:outbound:approve,wms:outbound:cancel,wms:outbound:pick," +
+	"wms:outbound:view,wms:outbound:exception,wms:outbound:return,wms:outbound:create,wms:outbound:submit,wms:outbound:approve,wms:outbound:cancel,wms:outbound:pick," +
 	"wms:stocktake:view,wms:stocktake:create,wms:stocktake:stocktake,wms:stocktake:approve,wms:stocktake:cancel"
 
 // SeedPersonalAccounts 幂等创建持久体验账号（user1..userN）：每个账号独占一个租户（20001+），

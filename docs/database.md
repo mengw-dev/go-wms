@@ -3,7 +3,7 @@
 > MySQL 8.0.16+（依赖 CHECK 约束强制执行）｜ 全表 InnoDB / utf8mb4
 > 生产结构以 `migrations/versions` 中的版本化迁移为准；开发 debug 模式可使用 AutoMigrate。
 
-数量字段（库存三数量、库存流水前后量、单据及明细进度、分配、任务、盘点）统一为有符号 INT；业务非负量最大 2147483647，差异和流水变化允许负数。Go 模型显式指定 `type:int;size:32`，避免 64 位 Go 的默认 int 被映射为 BIGINT。正式 SQL 已是 INT，本轮不修改已发布迁移，也不新增收窄生产字段的迁移。
+数量字段（库存现存/可用/分配/冻结量、库存流水前后量、单据及明细进度、分配、任务、盘点）统一为有符号 INT；业务非负量最大 2147483647，差异和流水变化允许负数。Go 模型显式指定 `type:int;size:32`，避免 64 位 Go 的默认 int 被映射为 BIGINT。正式 SQL 已是 INT，本轮不修改已发布迁移，也不新增收窄生产字段的迁移。
 
 波次汇总行 `wms_wave_line.target_qty/picked_qty` 是跨订单汇总，使用 BIGINT；分货项数量仍为 INT。二者有独立进度 CHECK，正式启动同时验证，详见[波次设计与迁移](wave-picking.md)。
 
@@ -20,7 +20,7 @@
 | 基础数据 | `wms_warehouse` | 仓库 |
 | | `wms_location` | 库位（`{库区}-{排}-{列}`） |
 | | `wms_sku` | 货品（编码/条码唯一） |
-| **库存** | **`wms_inventory`** | **三数量库存行（核心）** |
+| **库存** | **`wms_inventory`** | **库存数量行（核心）** |
 | | **`wms_inventory_trans`** | **库存流水（对账依据）** |
 | | `wms_inventory_alert_rule` | 仓库+货品可用库存下限配置（迁移000013），见[库存预警](inventory-alerts.md) |
 | | `wms_inventory_movement` | 同仓移库凭证与来源/目标库存（迁移000014），见[仓内移库](stock-movement.md) |
@@ -28,6 +28,7 @@
 | 入库 | `wms_receipt_order` | 入库单 |
 | | `wms_receipt_order_detail` | 入库单明细 |
 | | `wms_import_task` | Excel 导入任务（状态机） |
+| 异常/退货 | `wms_work_exception` / `wms_customer_return` | 不可删除的异常处理与客户退货验收记录（000017） |
 | 出库 | `wms_shipment_order` | 出库单（`biz_order_no` 幂等） |
 | | `wms_shipment_order_detail` | 出库单明细 |
 | | **`wms_allocation`** | **分配明细（锁库行，FIFO 拆批次）** |
@@ -64,15 +65,16 @@ erDiagram
 
 ## 3. 核心表结构
 
-### 3.1 wms_inventory（三数量库存行）
+### 3.1 wms_inventory（库存数量行）
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
 | id | BIGINT | 雪花 ID |
 | warehouse_id / location_id / sku_id / batch_no | — | 库存四维定位 |
-| **stock_quantity** | INT | 存量 = 可用 + 分配 |
+| **stock_quantity** | INT | 存量 = 可用 + 分配 + 冻结 |
 | **available_quantity** | INT | 可用量（可被分配） |
 | **allocated_quantity** | INT | 分配量（已锁定待发货） |
+| **frozen_quantity** | INT | 冻结量；不可分配/移库或被盘点调减侵占 |
 | stock_in_time | DATETIME(3) | 首次上架时间，**FIFO 排序依据** |
 | created_at / updated_at / deleted_at | — | 审计字段 |
 
@@ -81,9 +83,10 @@ erDiagram
 - `UNIQUE uk_inv (tenant_id, warehouse_id, location_id, sku_id, batch_no)` —— 租户内库存行的业务身份，防重复建行；
 - `CHECK chk_inv_non_negative (available_quantity >= 0 AND stock_quantity >= 0)` —— 基础非负兜底。
 - `CHECK chk_inv_allocated_non_negative (allocated_quantity >= 0)` —— 分配量非负兜底。
-- `CHECK chk_inv_quantity_balance (stock_quantity = available_quantity + allocated_quantity)` —— 三数量等式兜底。
+- `CHECK chk_inv_quantity_balance_v2 (stock_quantity = ((available_quantity + allocated_quantity) + frozen_quantity))` —— 数量守恒。
+- `CHECK chk_inv_frozen_non_negative (frozen_quantity >= 0)` —— 冻结量非负。
 
-以上约束配合行锁 + 条件更新构成多层防护；`chk_inv_non_negative` 随建表迁移 `000001` 添加，`000008` 补充分配量非负与三数量等式两个约束。
+以上约束配合行锁 + 条件更新构成多层防护；`chk_inv_non_negative` 随建表迁移 `000001` 添加，`000008` 补充分配量约束；`000016` 用含冻结量的新约束替换旧余额等式。
 
 > 注意：MySQL 8.0.16 起 CHECK 约束才真正生效，低版本仅语法兼容不执行。
 
@@ -212,3 +215,7 @@ erDiagram
 ## 11. 仓内移库（迁移000014）
 
 `wms_inventory_movement` 保存不可修改的成功记录，快照包含源/目标库存与库位、货品批次、数量、原因及操作者；唯一键 `(tenant_id,operation_key)` 在同一库存事务中持久去重，索引 `(tenant_id,created_at)` 支持历史查询，`chk_move_positive` 保证正数量。记录不由七天通用幂等清理任务删除。成对 `MOVE_OUT/MOVE_IN` 复用原库存流水表，以移库号关联。空表可回退，有历史时down拒绝删除。业务与迁移编号边界见[仓内移库](stock-movement.md)。
+
+## 库存与异常收尾迁移
+
+`000016_inventory_freeze` 新增冻结量、流水冻结前后量和原因；`000017_warehouse_closure` 增加异常/退货记录及波次异常结束审计字段。新程序正式启动核对新约束；发布须先停止旧实例写入，再迁移并启动匹配程序。有冻结库存或冻结流水时，16 的 down 会拒绝；有异常、退货或已异常结束的波次时，17 的 down 会拒绝，业务历史不自动删除。详见[专题说明](warehouse-closure.md)。

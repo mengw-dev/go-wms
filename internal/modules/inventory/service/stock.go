@@ -21,7 +21,7 @@ import (
 
 // 库存变动：入库、分配、发货、释放和盘点调整。
 //
-// 三数量不变量：stock_quantity = available_quantity + allocated_quantity。
+// 三数量不变量：stock_quantity = available_quantity + allocated_quantity + frozen_quantity。
 // 分配只在 available 与 allocated 之间移动；发货同时扣减 stock 和 allocated；
 // 释放把 allocated 退回 available；盘点调减不能吃掉已分配库存。
 
@@ -48,7 +48,7 @@ func (s *Service) Increase(ctx context.Context, tx *gorm.DB, req *api.IncreaseRe
 			}
 			return s.repo.InsertTrans(tx, &model.InventoryTrans{
 				ID:          snowflake.Next(),
-				InventoryID: inv.ID, TransType: model.TransReceive,
+				InventoryID: inv.ID, FrozenBefore: inv.FrozenQty, FrozenAfter: inv.FrozenQty, TransType: model.TransReceive,
 				QuantityChange: req.Quantity,
 				BeforeQuantity: inv.StockQuantity, AfterQuantity: inv.StockQuantity + req.Quantity,
 				AvailableBefore: inv.AvailableQty, AvailableAfter: inv.AvailableQty + req.Quantity,
@@ -70,7 +70,7 @@ func (s *Service) Increase(ctx context.Context, tx *gorm.DB, req *api.IncreaseRe
 		if err == nil {
 			return s.repo.InsertTrans(tx, &model.InventoryTrans{
 				ID:          snowflake.Next(),
-				InventoryID: inv.ID, TransType: model.TransReceive,
+				InventoryID: inv.ID, FrozenBefore: inv.FrozenQty, FrozenAfter: inv.FrozenQty, TransType: model.TransReceive,
 				QuantityChange: req.Quantity, BeforeQuantity: 0, AfterQuantity: req.Quantity,
 				AvailableBefore: 0, AvailableAfter: req.Quantity,
 				OrderNo: req.OrderNo, TaskNo: req.TaskNo, Operator: req.Operator,
@@ -167,7 +167,7 @@ func (s *Service) Allocate(ctx context.Context, tx *gorm.DB, req *api.AllocateRe
 				return nil, errcode.Conflict
 			}
 			if err := s.repo.InsertTrans(tx, &model.InventoryTrans{
-				ID: snowflake.Next(), InventoryID: inv.ID, TransType: model.TransAllocate,
+				ID: snowflake.Next(), InventoryID: inv.ID, FrozenBefore: inv.FrozenQty, FrozenAfter: inv.FrozenQty, TransType: model.TransAllocate,
 				QuantityChange: 0, BeforeQuantity: inv.StockQuantity, AfterQuantity: inv.StockQuantity,
 				AvailableBefore: inv.AvailableQty, AvailableAfter: inv.AvailableQty - take,
 				OrderNo: req.OrderNo, Operator: req.Operator,
@@ -255,7 +255,7 @@ func (s *Service) Ship(ctx context.Context, tx *gorm.DB, req *api.ShipReq) error
 	}
 	return s.repo.InsertTrans(tx, &model.InventoryTrans{
 		ID:          snowflake.Next(),
-		InventoryID: inv.ID, TransType: model.TransShip,
+		InventoryID: inv.ID, FrozenBefore: inv.FrozenQty, FrozenAfter: inv.FrozenQty, TransType: model.TransShip,
 		QuantityChange: -req.Quantity,
 		BeforeQuantity: inv.StockQuantity, AfterQuantity: inv.StockQuantity - req.Quantity,
 		AvailableBefore: inv.AvailableQty, AvailableAfter: inv.AvailableQty,
@@ -283,7 +283,7 @@ func (s *Service) Release(ctx context.Context, tx *gorm.DB, req *api.ReleaseReq)
 	}
 	return s.repo.InsertTrans(tx, &model.InventoryTrans{
 		ID:          snowflake.Next(),
-		InventoryID: inv.ID, TransType: model.TransRelease,
+		InventoryID: inv.ID, FrozenBefore: inv.FrozenQty, FrozenAfter: inv.FrozenQty, TransType: model.TransRelease,
 		QuantityChange: 0,
 		BeforeQuantity: inv.StockQuantity, AfterQuantity: inv.StockQuantity,
 		AvailableBefore: inv.AvailableQty, AvailableAfter: inv.AvailableQty + req.Quantity,
@@ -324,7 +324,7 @@ func (s *Service) Adjust(ctx context.Context, tx *gorm.DB, req *api.AdjustReq) (
 	}
 	err = s.repo.InsertTrans(tx, &model.InventoryTrans{
 		ID:          snowflake.Next(),
-		InventoryID: inv.ID, TransType: model.TransAdjust,
+		InventoryID: inv.ID, FrozenBefore: inv.FrozenQty, FrozenAfter: inv.FrozenQty, TransType: model.TransAdjust,
 		QuantityChange: delta,
 		BeforeQuantity: inv.StockQuantity, AfterQuantity: req.NewStock,
 		AvailableBefore: inv.AvailableQty, AvailableAfter: inv.AvailableQty + delta,

@@ -1,10 +1,10 @@
 import { get, post } from './request'
 import type { EntityID, OutboundOrderItem, PageData } from './types'
 
-export type WaveStatus = 'CREATED' | 'PICKING' | 'SORTING' | 'READY' | 'COMPLETED' | 'CANCELLED'
+export type WaveStatus = 'CREATED' | 'PICKING' | 'SORTING' | 'READY' | 'COMPLETED' | 'CANCELLED' | 'ABORTED'
 export interface Wave {
   id: EntityID; wave_no: string; warehouse_id: EntityID; status: WaveStatus
-  remark: string; created_by: string; claimed_by: string; lease_expire_at: string | null; created_at: string
+  abort_reason?: string; remark: string; created_by: string; claimed_by: string; lease_expire_at: string | null; created_at: string
 }
 export interface WaveOrder {
   id: EntityID; wave_id: EntityID; order_id: EntityID; order_no: string; slot_code: string; shipped_at: string | null
@@ -43,7 +43,7 @@ export function sendWaveCommand(command: WaveCommand, key: string): Promise<Wave
 }
 
 export const WAVE_STATUS_TEXT: Record<WaveStatus, string> = {
-  CREATED: '待拣货', PICKING: '拣货中', SORTING: '分货中', READY: '待发货', COMPLETED: '已完成', CANCELLED: '已撤销',
+  CREATED: '待拣货', PICKING: '拣货中', SORTING: '分货中', READY: '待发货', COMPLETED: '已完成', CANCELLED: '已撤销', ABORTED: '异常结束',
 }
 
 export function isWaveCommand(value: unknown): value is WaveCommand {

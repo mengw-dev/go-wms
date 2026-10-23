@@ -12,9 +12,9 @@ import (
 )
 
 // demoPerms 演示账号权限集合（只读 + 业务操作 + 演示中心，无系统管理权限）。
-const demoPerms = "wms:basic,wms:inventory,wms:inventory:alert:manage,wms:inventory:move,wms:task," +
+const demoPerms = "wms:basic,wms:inventory,wms:inventory:alert:manage,wms:inventory:move,wms:inventory:freeze,wms:task," +
 	"wms:inbound:view,wms:inbound:create,wms:inbound:submit,wms:inbound:approve,wms:inbound:cancel,wms:inbound:receive,wms:inbound:putaway," +
-	"wms:outbound:view,wms:outbound:create,wms:outbound:submit,wms:outbound:approve,wms:outbound:cancel,wms:outbound:pick," +
+	"wms:outbound:view,wms:outbound:exception,wms:outbound:return,wms:outbound:create,wms:outbound:submit,wms:outbound:approve,wms:outbound:cancel,wms:outbound:pick," +
 	"wms:stocktake:view,wms:stocktake:create,wms:stocktake:stocktake,wms:stocktake:approve,wms:stocktake:cancel,wms:demo"
 
 // SeedDemoAccounts 幂等创建多演示账号（demo1..demoN）：每个账号独占一个租户（10001+）

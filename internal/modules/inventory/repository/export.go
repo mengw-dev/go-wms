@@ -26,6 +26,7 @@ type ExportStockRow struct {
 	BatchNo           string
 	StockQuantity     int
 	AvailableQuantity int
+	FrozenQuantity    int
 	AllocatedQuantity int
 	StockInTime       time.Time
 }
@@ -56,7 +57,7 @@ func (r *Repository) ExportStock(ctx context.Context, db *gorm.DB, f *dto.Invent
 		q = q.Where("i.stock_quantity>0")
 	}
 	var rows []ExportStockRow
-	err := q.Select("i.id,i.warehouse_id,w.code AS warehouse_code,w.name AS warehouse_name,i.location_id,l.code AS location_code,i.sku_id,s.code AS sku_code,s.name AS sku_name,s.barcode,s.unit,i.batch_no,i.stock_quantity,i.available_quantity,i.allocated_quantity,i.stock_in_time").Order("i.id DESC").Limit(limit).Scan(&rows).Error
+	err := q.Select("i.id,i.warehouse_id,w.code AS warehouse_code,w.name AS warehouse_name,i.location_id,l.code AS location_code,i.sku_id,s.code AS sku_code,s.name AS sku_name,s.barcode,s.unit,i.batch_no,i.stock_quantity,i.available_quantity,i.allocated_quantity,i.frozen_quantity,i.stock_in_time").Order("i.id DESC").Limit(limit).Scan(&rows).Error
 	return rows, err
 }
 
@@ -75,6 +76,9 @@ type ExportTransRow struct {
 	BeforeQuantity  int
 	AfterQuantity   int
 	AvailableBefore int
+	FrozenBefore    int
+	FrozenAfter     int
+	Reason          string
 	AvailableAfter  int
 	OrderNo         string
 	TaskNo          string
@@ -100,6 +104,6 @@ func (r *Repository) ExportTransactions(ctx context.Context, db *gorm.DB, f *dto
 		q = q.Where("t.trans_type=?", f.TransType)
 	}
 	var rows []ExportTransRow
-	err := q.Select("t.id,t.inventory_id,i.warehouse_id,w.code AS warehouse_code,l.code AS location_code,s.code AS sku_code,s.name AS sku_name,s.unit,i.batch_no,t.trans_type,t.quantity_change,t.before_quantity,t.after_quantity,t.available_before,t.available_after,t.order_no,t.task_no,t.operator,t.created_at").Order("t.id DESC").Limit(limit).Scan(&rows).Error
+	err := q.Select("t.id,t.inventory_id,i.warehouse_id,w.code AS warehouse_code,l.code AS location_code,s.code AS sku_code,s.name AS sku_name,s.unit,i.batch_no,t.trans_type,t.quantity_change,t.before_quantity,t.after_quantity,t.available_before,t.available_after,t.frozen_before,t.frozen_after,t.reason,t.order_no,t.task_no,t.operator,t.created_at").Order("t.id DESC").Limit(limit).Scan(&rows).Error
 	return rows, err
 }

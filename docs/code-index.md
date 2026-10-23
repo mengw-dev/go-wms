@@ -159,3 +159,11 @@
 - 本文件只保留模块级信息（模块 → 目录 → 职责 → 测试）；新增实现细节请写到架构 / 数据库 / 开发等专题文档。
 - 修改代码后请同步更新对应模块小节；不确定的内容不要写成结论，按"以代码为准"处理。
 - 面向 AI 的项目导航另见根目录 `AGENTS.md`（本地文件，已忽略，不提交远端）。
+
+## 八、异常、冻结与退货入口
+
+- 库存：`internal/modules/inventory/{api/api.go,service/freeze.go,repository/freeze.go,handler/freeze.go}`；页面 `web/src/components/inventory/FreezeDialog.vue`。
+- 异常：`internal/modules/outbound/service/{exceptions,wave_abort}.go`；退货：`service/returns.go`；模型、DTO、Repository 与 Handler 的 `closure.go`；页面 `OrderClosurePanel.vue`、`WaveAbortPanel.vue`、`views/outbound/ClosureRecords.vue`。
+- 原键恢复：`internal/pkg/idempotency/command.go` 与 `web/src/composables/useClosureCommands.ts`；严格请求绑定：`internal/pkg/httpx/command.go`。
+- 验证：`internal/app/closure_test.go`、两个模块 `handler/{freeze,closure}_test.go`、`migrations/closure_test.go`、`web/src/composables/useClosureCommands.spec.ts`、`web/tests/e2e/warehouse-closure.spec.ts`。
+- 迁移 000016 / 000017；规则与验收见 [warehouse-closure.md](warehouse-closure.md)。

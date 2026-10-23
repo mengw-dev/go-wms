@@ -112,7 +112,7 @@ func TestMigrationsAndImportTokenRollback(t *testing.T) {
 			t.Fatalf("missing task lease column %s", column)
 		}
 	}
-	for _, constraint := range []string{"chk_inv_allocated_non_negative", "chk_inv_quantity_balance"} {
+	for _, constraint := range []string{"chk_inv_allocated_non_negative", "chk_inv_quantity_balance_v2", "chk_inv_frozen_non_negative"} {
 		if !hasCheckConstraint(t, db, "wms_inventory", constraint) {
 			t.Fatalf("missing inventory check constraint %s", constraint)
 		}
