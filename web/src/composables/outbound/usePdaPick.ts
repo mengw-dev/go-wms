@@ -5,6 +5,7 @@ import {
 } from '@/composables/operationLifecycle'
 import { claimPdaTask, pickPdaTask } from '@/api/outbound'
 import type { ClaimResult, EntityID, PickParams, PickResult } from '@/api/types'
+import { isPickReceipt } from '@/utils/commandReceipt'
 import {
   findPending,
   isStale,
@@ -238,6 +239,7 @@ export function usePdaPick() {
     try {
       const result: ClaimResult = await claimPdaTask(taskId, operationKey)
       if (stateOf(taskId) !== st) return false
+      if (!isPickReceipt(result) || typeof result.claim_token !== 'string' || !result.claim_token.trim() || typeof result.lease_expire_at !== 'string' || !Number.isFinite(Date.parse(result.lease_expire_at))) throw new Error('领取回执无法核对，请保留原请求恢复')
       if (st.claimFlight === seq) {
         st.claimToken = result.claim_token
         st.leaseExpireAt = result.lease_expire_at
@@ -368,6 +370,7 @@ export function usePdaPick() {
     try {
       const result = await pickPdaTask(taskId, { ...data, claim_token: st.claimToken }, operationKey)
       if (stateOf(taskId) !== st) throw new Error('登录身份已变更，请在原账号核对该操作')
+      if (!isPickReceipt(result)) throw new Error('拣货回执无法核对，请保留原请求恢复')
       if (st.pickFlight === seq) {
         st.snapshot = result
         st.lastError = ''
@@ -381,7 +384,7 @@ export function usePdaPick() {
       const message = operationErrorMessage(error, '操作失败')
       if (st.pickFlight === seq) {
         const dataPayload = (error as { data?: unknown } | null)?.data
-        if (dataPayload && typeof dataPayload === 'object') st.snapshot = dataPayload as PickResult
+        if (isPickReceipt(dataPayload)) st.snapshot = dataPayload
         st.lastError = message
       }
       if (outcome === 'rejected') {

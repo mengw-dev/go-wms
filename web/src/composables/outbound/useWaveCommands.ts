@@ -1,6 +1,6 @@
 import { onScopeDispose, ref, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
-import { isWaveCommand, sendWaveCommand, type WaveAck, type WaveCommand } from '@/api/wave'
+import { isWaveAck, isWaveCommand, sendWaveCommand, type WaveAck, type WaveCommand } from '@/api/wave'
 import {
   classifyOperationError, getOperationContext, onOperationStorageChange, operationErrorMessage,
   operationStateKey, prepareOperation,
@@ -42,6 +42,7 @@ export function useWaveCommands() {
     try {
       const ack = await sendWaveCommand(command, key)
       if (!active()) return null
+      if (!isWaveAck(ack, command)) throw new Error('波次回执无法核对，请保留原请求并恢复，勿重新提交')
       const removed = removePending(ctx.identity, ctx.storage, scope, object, key)
       if (!removed.ok) { error.value = removed.error; return null }
       refresh()

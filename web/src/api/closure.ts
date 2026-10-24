@@ -1,5 +1,6 @@
 import { get, post } from './request'
 import type { EntityID, PageData } from './types'
+import { isReceiptID } from '@/utils/commandReceipt'
 
 export interface WorkException {
   id: EntityID; order_id: EntityID; order_no: string; task_id: EntityID; inventory_id: EntityID
@@ -21,6 +22,13 @@ export type ClosureCommand = (
 ) & { label?: string }
 
 export interface ClosureAck { object_id?: EntityID; inventory_id?: EntityID; wave_id?: EntityID }
+export function isClosureAck(value: unknown, command: ClosureCommand): value is ClosureAck {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const ack = value as ClosureAck
+  if (command.action === 'freeze') return isReceiptID(ack.inventory_id) && ack.inventory_id === command.data.inventory_id
+  if (command.action === 'abort') return isReceiptID(ack.wave_id) && ack.wave_id === command.wave_id
+  return isReceiptID(ack.object_id) && (command.action !== 'resolve' || ack.object_id === command.exception_id)
+}
 export interface ReturnableRow { allocation_id: EntityID; sku_id: EntityID; sku_code: string; sku_name: string; batch_no: string; shipped_qty: number; returned_qty: number; returnable_qty: number }
 export function getReturnable(id: EntityID) { return get<ReturnableRow[]>(`/outbound/orders/${id}/returnable`) }
 export function getReturnLocations(id: EntityID, page: number, page_size: number) { return get<PageData<{ id: EntityID; code: string }>>(`/outbound/orders/${id}/return-locations`, { page, page_size }) }

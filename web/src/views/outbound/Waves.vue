@@ -10,12 +10,15 @@ import type { OutboundOrderItem } from '@/api/types'
 import { useWaveCommands } from '@/composables/outbound/useWaveCommands'
 import { loadWarehouseOptions, type IdOption } from '@/utils/options'
 import { formatTime } from '@/utils'
+import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
+const auth = useAuthStore()
 const commands = useWaveCommands()
 const { pending, busy, error } = commands
 const list = ref<Wave[]>([]), total = ref(0), loading = ref(false)
 const warehouses = ref<IdOption[]>([])
+const optionsLoading = ref(false), optionsError = ref('')
 const query = reactive({ warehouse_id: '', keyword: '', page: 1, page_size: 10 })
 const createOpen = ref(false), previewLoading = ref(false)
 const form = reactive({ warehouse_id: '', keyword: '', limit: 20, remark: '' })
@@ -60,16 +63,24 @@ async function discard() {
   try { await ElMessageBox.confirm('请先核对波次列表与业务结果。放弃只清除本机待确认记录，不会撤销已完成的业务。', '放弃待确认记录', { type: 'warning' }) } catch { return }
   if (alive) commands.discard()
 }
-onMounted(async () => {
+async function loadWarehouses() {
+  if (!auth.hasPerm('wms:basic')) return
+  optionsLoading.value = true; optionsError.value = ''
+  try {
+    const options = await loadWarehouseOptions()
+    if (alive) warehouses.value = options
+  } catch { if (alive) optionsError.value = '仓库选项加载失败，可重新加载后再创建波次' }
+  finally { if (alive) optionsLoading.value = false }
+}
+onMounted(() => {
   void load()
-  const options = await loadWarehouseOptions()
-  if (alive) warehouses.value = options
+  void loadWarehouses()
 })
 </script>
 
 <template>
   <BusinessListPage title="波次与拣货" description="按仓库组织订单，汇总拣货、按槽位分货，最后逐单确认发货。" :total="total">
-    <template #actions><el-button v-permission="'wms:outbound:approve'" type="primary" :disabled="busy || !!pending" @click="createOpen = true">新建波次</el-button></template>
+    <template #actions><el-button v-permission="'wms:outbound:approve'" type="primary" :disabled="busy || !!pending || optionsLoading || !!optionsError" @click="createOpen = true">新建波次</el-button></template>
     <template #filters>
       <el-form inline label-position="top" class="query-form" @submit.prevent="query.page = 1; load()">
         <el-form-item label="仓库"><el-select v-model="query.warehouse_id" clearable placeholder="全部仓库" style="width: 220px"><el-option v-for="w in warehouses" :key="w.id" :value="w.id" :label="w.label" /></el-select></el-form-item>
@@ -77,7 +88,8 @@ onMounted(async () => {
         <el-form-item label="操作"><el-button native-type="submit" type="primary" plain>查询</el-button><el-button @click="load">刷新</el-button></el-form-item>
       </el-form>
     </template>
-    <WavePendingNotice :pending="pending" :error="error" :busy="busy" @recover="recover" @discard="discard" />
+    <WavePendingNotice v-if="!createOpen" :pending="pending" :error="error" :busy="busy" @recover="recover" @discard="discard" />
+    <el-alert v-if="optionsError" :title="optionsError" type="error" :closable="false"><el-button :loading="optionsLoading" @click="loadWarehouses">重新加载仓库</el-button></el-alert>
     <el-table v-loading="loading" :data="list" max-height="100%" class="wave-table mobile-record-table">
       <el-table-column label="波次号" min-width="250"><template #default="{ row }"><el-link type="primary" @click="router.push(`/outbound/waves/${row.id}`)">{{ row.wave_no }}</el-link></template></el-table-column>
       <el-table-column label="仓库" min-width="180"><template #default="{ row }">{{ warehouses.find(w => w.id === row.warehouse_id)?.label || row.warehouse_id }}</template></el-table-column>
@@ -88,6 +100,7 @@ onMounted(async () => {
     </el-table>
     <BusinessPagination v-model:current-page="query.page" v-model:page-size="query.page_size" :total="total" @change="load" />
     <el-dialog v-model="createOpen" title="新建波次" class="business-dialog" width="960px" :close-on-click-modal="false" @closed="invalidatePreview">
+      <WavePendingNotice :pending="pending" :error="error" :busy="busy" @recover="recover" @discard="discard" />
       <el-alert title="仅可选择同仓、已审核分配且尚未开始拣货的订单。每波最多50单、1000条拣货任务。" type="info" :closable="false" />
       <el-form inline label-position="top" class="preview-form" @submit.prevent="preview(false)">
         <el-form-item label="仓库"><el-select v-model="form.warehouse_id" placeholder="请选择仓库" style="width: 230px" @change="invalidatePreview"><el-option v-for="w in warehouses" :key="w.id" :value="w.id" :label="w.label" /></el-select></el-form-item>

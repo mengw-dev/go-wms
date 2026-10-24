@@ -66,7 +66,7 @@ async function recover() { if (await commands.recover()) { dialog.value = false;
 
 <template>
   <section class="app-card closure-panel">
-    <ClosurePendingNotice :pending="pending" :busy="busy" :error="error" @recover="recover" @discard="commands.discard" />
+    <ClosurePendingNotice v-if="!dialog" :pending="pending" :busy="busy" :error="error" @recover="recover" @discard="commands.discard" />
     <div class="closure-toolbar">
       <div><strong>异常与售后</strong><span>按真实库存与原单处理，保留完整记录</span></div>
       <div class="closure-buttons">
@@ -80,6 +80,7 @@ async function recover() { if (await commands.recover()) { dialog.value = false;
     <el-alert v-if="data.order.status === 'EXCEPTION'" type="warning" :closable="false" :title="openException ? `${openException.kind === 'DAMAGE' ? '货损' : '短缺'} ${openException.quantity}：${openException.reason}。可补货后重新分配，或关闭剩余作业。` : '该单等待异常处理，请核对异常记录。'" />
     <el-alert v-if="loadError" type="error" :title="loadError" :closable="false" />
     <el-dialog v-model="dialog" class="business-dialog" :title="mode === 'exception' ? '登记出库异常' : mode === 'resolve' ? '处理出库异常' : '客户退货验收'" width="580px" :close-on-click-modal="!busy">
+      <ClosurePendingNotice :pending="pending" :busy="busy" :error="error" @recover="recover" @discard="commands.discard" />
       <div v-loading="loading">
         <p>{{ data.order.order_no }} · {{ formatTime(data.order.created_at) }}</p>
         <el-form label-position="top" @submit.prevent="submit">
@@ -103,7 +104,7 @@ async function recover() { if (await commands.recover()) { dialog.value = false;
           </template>
           <el-form-item label="处理原因"><el-input v-model="form.reason" type="textarea" maxlength="255" show-word-limit :disabled="disabled" /></el-form-item>
         </el-form>
-        <el-alert v-if="error || loadError" :title="error || loadError" type="warning" :closable="false" />
+        <el-alert v-if="loadError" :title="loadError" type="warning" :closable="false" />
       </div>
       <template #footer><el-button :disabled="busy" @click="dialog = false">返回</el-button><el-button type="primary" :loading="busy" :disabled="!valid" @click="submit">确认处理</el-button></template>
     </el-dialog>

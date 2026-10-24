@@ -19,8 +19,9 @@ async function recover() { if (await commands.recover()) { visible.value = false
 defineExpose({ open })
 </script>
 <template>
-  <ClosurePendingNotice :pending="pending" :busy="busy" :error="error" @recover="recover" @discard="commands.discard" />
+  <ClosurePendingNotice v-if="!visible" :pending="pending" :busy="busy" :error="error" @recover="recover" @discard="commands.discard" />
   <el-dialog v-model="visible" class="business-dialog" title="库存冻结 / 解冻" width="500px" :close-on-click-modal="!busy">
+    <ClosurePendingNotice :pending="pending" :busy="busy" :error="error" @recover="recover" @discard="commands.discard" />
     <template v-if="row">
       <el-alert title="冻结不减少实物库存。仅可用量可冻结；已分配数量请先通过出库异常释放占用。" type="info" :closable="false" />
       <p>库位 {{ row.location_code || row.location_id }} · 批次 {{ row.batch_no || '—' }}</p>
@@ -30,7 +31,6 @@ defineExpose({ open })
         <el-form-item :label="`数量（最多 ${maximum}）`"><el-input-number v-model="form.quantity" :min="1" :max="Math.max(1, maximum)" :precision="0" :disabled="busy || !!pending" /></el-form-item>
         <el-form-item label="原因"><el-input v-model="form.reason" type="textarea" maxlength="255" show-word-limit :disabled="busy || !!pending" /></el-form-item>
       </el-form>
-      <el-alert v-if="error" :title="error" type="warning" :closable="false" />
     </template>
     <template #footer><el-button :disabled="busy" @click="visible = false">返回</el-button><el-button type="primary" :loading="busy" :disabled="!!pending || maximum < 1 || !form.reason.trim() || form.quantity > maximum" @click="submit">确认{{ form.unfreeze ? '解冻' : '冻结' }}</el-button></template>
   </el-dialog>

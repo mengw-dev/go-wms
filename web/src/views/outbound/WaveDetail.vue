@@ -88,7 +88,7 @@ function printList() { window.print() }
 <template>
   <div v-loading="loading" class="app-page wave-workbench">
     <div class="wave-heading no-print"><el-button @click="router.push('/outbound/waves')">返回波次</el-button><el-button @click="load">刷新</el-button><el-button :disabled="!data" @click="printList">打印拣货单</el-button></div>
-    <WavePendingNotice class="no-print" :pending="pending" :error="error" :busy="busy" @recover="recover" @discard="discard" />
+    <WavePendingNotice v-if="!dialog" class="no-print" :pending="pending" :error="error" :busy="busy" @recover="recover" @discard="discard" />
     <el-alert v-if="loadError" class="no-print" type="error" :title="loadError" :closable="false" />
     <template v-if="data">
       <section class="app-card wave-identity">
@@ -119,6 +119,7 @@ function printList() { window.print() }
       <section class="print-only"><h2>订单槽位</h2><p v-for="order in data.orders" :key="order.id">{{ order.slot_code }} · {{ order.order_no }}</p><p>请核对来源库位、货品、批次；实物拣出后在工作台登记，分货完成再确认发货。本单不是发货凭证。</p></section>
     </template>
     <el-dialog v-model="dialog" :title="selected?.action === 'collect' ? '登记汇总拣货' : '登记播种分货'" class="business-dialog" width="520px" :close-on-click-modal="false" :close-on-press-escape="!busy">
+      <WavePendingNotice :pending="pending" :error="error" :busy="busy" @recover="recover" @discard="discard" />
       <p>{{ selected?.title }}</p><p>支持扫码枪输入；无设备时手动核对填写。</p>
       <el-form label-position="top" @submit.prevent="submitQuantity">
         <el-form-item label="货品编码或条码"><el-input v-model="form.sku_code" autofocus maxlength="64" placeholder="扫描或输入货品编码 / 条码" /></el-form-item>
@@ -127,7 +128,6 @@ function printList() { window.print() }
         <el-form-item v-if="selected?.action === 'sort'" label="目标槽位"><el-input v-model="form.slot_code" maxlength="16" placeholder="例如 S01" /></el-form-item>
         <el-form-item label="本次数量"><el-input-number v-model="form.qty" :min="1" :max="selected?.max || 1" :precision="0" /></el-form-item>
       </el-form>
-      <el-alert v-if="error" :title="error" type="warning" :closable="false" />
       <template #footer><el-button :disabled="busy" @click="dialog = false">返回</el-button><el-button type="primary" :loading="busy" :disabled="!canWrite" @click="submitQuantity">确认登记</el-button></template>
     </el-dialog>
   </div>

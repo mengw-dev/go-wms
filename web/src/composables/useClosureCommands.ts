@@ -1,6 +1,6 @@
 import { onScopeDispose, ref, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
-import { isClosureCommand, sendClosureCommand, type ClosureAck, type ClosureCommand } from '@/api/closure'
+import { isClosureAck, isClosureCommand, sendClosureCommand, type ClosureAck, type ClosureCommand } from '@/api/closure'
 import {
   classifyOperationError, getOperationContext, onOperationStorageChange, operationErrorMessage,
   operationStateKey, prepareOperation,
@@ -42,6 +42,7 @@ export function useClosureCommands() {
     try {
       const ack = await sendClosureCommand(command, key)
       if (!active()) return null
+      if (!isClosureAck(ack, command)) throw new Error('操作回执无法核对，请保留原请求并恢复，勿重新提交')
       const removed = removePending(ctx.identity, ctx.storage, scope, object, key)
       if (!removed.ok) { error.value = removed.error; return null }
       refresh()

@@ -1,5 +1,6 @@
 import { get, post } from './request'
 import type { EntityID, OutboundOrderItem, PageData } from './types'
+import { isReceiptID } from '@/utils/commandReceipt'
 
 export type WaveStatus = 'CREATED' | 'PICKING' | 'SORTING' | 'READY' | 'COMPLETED' | 'CANCELLED' | 'ABORTED'
 export interface Wave {
@@ -21,6 +22,11 @@ export interface WaveDetail { wave: Wave; orders: WaveOrder[]; lines: WaveLine[]
 export interface CreateWaveParams { order_ids: EntityID[]; remark: string }
 export interface WaveQuantityParams { qty: number; sku_code: string; location_code?: string; batch_no: string; slot_code?: string }
 export interface WaveAck { wave_id: EntityID }
+export function isWaveAck(value: unknown, command: WaveCommand): value is WaveAck {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const id = (value as WaveAck).wave_id
+  return isReceiptID(id) && (command.action === 'create' || command.wave_id === id)
+}
 export type WaveCommand =
   | { action: 'create'; data: CreateWaveParams }
   | { action: 'claim' | 'cancel'; wave_id: EntityID }
