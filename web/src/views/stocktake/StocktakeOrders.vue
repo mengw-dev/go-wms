@@ -5,10 +5,10 @@ import { useAuthStore } from '@/stores/auth'
 import BusinessPagination from '@/components/common/BusinessPagination.vue'
 import { mobileTableCellStyle } from '@/utils/mobileTable'
 import BusinessListPage from '@/components/common/BusinessListPage.vue'
-import { onMounted, reactive, ref } from 'vue'
+import { onMounted, onScopeDispose, reactive, ref, watch } from 'vue'
 import { useAutoRefresh } from '@/composables/autoRefresh'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import {
   cancelStocktakeOrder,
   createStocktakeOrder,
@@ -20,6 +20,9 @@ import { cleanParams, formatTime } from '@/utils'
 import { loadLocationOptions, loadWarehouseOptions, toOptionMap, type IdOption } from '@/utils/options'
 import { BUSINESS_EVENTS, emitBusinessEvent } from '@/events/businessEvents'
 import { useStocktakeApprove } from '@/composables/stocktake/useStocktakeApprove'
+import { useScopedConfirm } from '@/composables/useScopedConfirm'
+
+const confirmAction = useScopedConfirm()
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -81,7 +84,7 @@ function goDetail(row: StocktakeOrderItem) {
 // ---------- 行操作 ----------
 async function onApprove(row: StocktakeOrderItem) {
   try {
-    await ElMessageBox.confirm(
+    await confirmAction(
       `确定审核盘点单「${row.order_no}」吗？审核后将按差异自动调整库存。`,
       '审核盘点单',
       {
@@ -108,7 +111,7 @@ async function handleStalePending(orderId: EntityID) {
   const st = approver.stateOf(orderId)
   if (!st.pending?.stale) return
   try {
-    await ElMessageBox.confirm(
+    await confirmAction(
       '该单据的上次审核已超过保留期仍未确认，请先核对单据状态。放弃后本地记录将被清除，可重新发起审核。',
       '核对待确认审核',
       { type: 'warning', confirmButtonText: '已核对，放弃', cancelButtonText: '保留记录' },
@@ -122,7 +125,7 @@ async function handleStalePending(orderId: EntityID) {
 
 async function onCancel(row: StocktakeOrderItem) {
   try {
-    await ElMessageBox.confirm(
+    await confirmAction(
       `确定取消盘点单「${row.order_no}」吗？取消后本次盘点记录不能继续使用。`,
       '取消盘点单',
       {
@@ -149,8 +152,15 @@ const createForm = reactive({
 })
 const locationOptions = ref<IdOption[]>([])
 const locationLoading = ref(false)
+const locationError = ref('')
+let locationSeq = 0, alive = true
+onScopeDispose(() => { alive = false; locationSeq++ })
+watch(() => createDialog.visible, visible => { if (!visible) { locationSeq++; locationLoading.value = false } })
 
 function openCreate() {
+  locationSeq++
+  locationLoading.value = false
+  locationError.value = ''
   createForm.warehouse_id = undefined
   createForm.location_id = ''
   createForm.remark = ''
@@ -159,19 +169,27 @@ function openCreate() {
 }
 
 async function onWarehouseChange(warehouseId: EntityID | undefined) {
+  const current = ++locationSeq
   createForm.location_id = ''
   locationOptions.value = []
+  locationError.value = ''
+  locationLoading.value = false
   if (warehouseId) {
     locationLoading.value = true
     try {
-      locationOptions.value = await loadLocationOptions(warehouseId)
+      const options = await loadLocationOptions(warehouseId)
+      if (alive && current === locationSeq && createDialog.visible && warehouseId === createForm.warehouse_id) locationOptions.value = options
+    } catch {
+      if (alive && current === locationSeq) locationError.value = '库位选项加载失败，请重试后确认盘点范围'
     } finally {
-      locationLoading.value = false
+      if (alive && current === locationSeq) locationLoading.value = false
     }
   }
 }
 
 async function submitCreate() {
+  if (createDialog.loading || locationLoading.value || locationError.value) return
+  if (createForm.location_id && !locationOptions.value.some(option => option.id === createForm.location_id)) return
   if (!createForm.warehouse_id) {
     ElMessage.warning('请选择仓库')
     return
@@ -303,6 +321,7 @@ useAutoRefresh(() => load(true), 0)
             placeholder="选择仓库"
             style="width: 100%"
             @change="onWarehouseChange"
+            :disabled="createDialog.loading"
           >
             <el-option v-for="w in warehouseOptions" :key="w.id" :label="w.label" :value="w.id" />
           </el-select>
@@ -314,11 +333,13 @@ useAutoRefresh(() => load(true), 0)
             clearable
             filterable
             :loading="locationLoading"
+            :disabled="createDialog.loading || locationLoading || !!locationError"
             style="width: 100%"
           >
             <el-option v-for="loc in locationOptions" :key="loc.id" :label="loc.label" :value="loc.id" />
           </el-select>
           <div class="form-tip">选择库位则只盘点该库位；留空（0）表示整仓盘点</div>
+          <el-alert v-if="locationError" :title="locationError" type="error" :closable="false"><el-button @click="onWarehouseChange(createForm.warehouse_id)">重新加载库位</el-button></el-alert>
         </el-form-item>
         <el-form-item label="备注">
           <el-input v-model="createForm.remark" type="textarea" :rows="2" placeholder="备注（可选）" />
@@ -326,7 +347,7 @@ useAutoRefresh(() => load(true), 0)
       </el-form>
       <template #footer>
         <el-button :disabled="createDialog.loading" @click="createDialog.visible = false">取消</el-button>
-        <el-button type="primary" :loading="createDialog.loading" @click="submitCreate">创建</el-button>
+        <el-button type="primary" :loading="createDialog.loading" :disabled="locationLoading || !!locationError" @click="submitCreate">创建</el-button>
       </template>
     </el-dialog>
   </BusinessListPage>

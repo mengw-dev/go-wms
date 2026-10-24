@@ -9,6 +9,7 @@ const closureBlocked = ref(false)
 import { useWaveCommands } from '@/composables/outbound/useWaveCommands'
 import { useAuthStore } from '@/stores/auth'
 import { formatTime } from '@/utils'
+import { useLeaseActive } from '@/composables/useLeaseActive'
 
 const route = useRoute(), router = useRouter(), auth = useAuthStore()
 const commands = useWaveCommands(), { pending, busy, error } = commands
@@ -18,7 +19,8 @@ const form = reactive({ sku_code: '', location_code: '', batch_no: '', slot_code
 let seq = 0, alive = true
 const waveID = computed(() => String(route.params.id))
 const terminal = computed(() => !data.value || ['COMPLETED', 'CANCELLED', 'ABORTED'].includes(data.value.wave.status))
-const owner = computed(() => !!data.value && data.value.wave.claimed_by === auth.user?.username && Date.parse(data.value.wave.lease_expire_at || '') > Date.now())
+const leaseActive = useLeaseActive(() => data.value?.wave.lease_expire_at)
+const owner = computed(() => !!data.value && data.value.wave.claimed_by === auth.user?.username && leaseActive.value)
 const canWrite = computed(() => !terminal.value && !closureBlocked.value && !busy.value && !pending.value && owner.value && auth.hasPerm('wms:outbound:pick'))
 const pickedLines = computed(() => data.value?.lines.filter(l => l.picked_qty === l.target_qty).length ?? 0)
 const sortedItems = computed(() => data.value?.items.filter(i => i.sorted_qty === i.target_qty).length ?? 0)

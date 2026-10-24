@@ -79,10 +79,10 @@ function goDetail(row: InboundOrderItem) {
   router.push(`/inbound/orders/${row.id}`)
 }
 
-onMounted(async () => {
-  await loadOptions()
-  await loadImports()
-  load()
+onMounted(() => {
+  void load()
+  void loadOptions()
+  void loadImports()
 })
 
 useAutoRefresh(() => load(true), 0, () => selectedRows.value.length === 0)

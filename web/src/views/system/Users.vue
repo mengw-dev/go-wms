@@ -5,7 +5,7 @@ import { mobileTableCellStyle } from '@/utils/mobileTable'
 import BusinessListPage from '@/components/common/BusinessListPage.vue'
 import { passwordByteRule } from '@/utils/password'
 import { onMounted, onScopeDispose, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
+import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import {
   createUser,
   deleteUser,
@@ -17,6 +17,9 @@ import {
 } from '@/api/system'
 import type { EntityID, RoleItem, UserItem } from '@/api/types'
 import { cleanParams, formatTime } from '@/utils'
+import { useScopedConfirm } from '@/composables/useScopedConfirm'
+
+const confirmAction = useScopedConfirm()
 
 // ---------- 列表 ----------
 const loading = ref(false)
@@ -78,7 +81,7 @@ async function onToggleStatus(row: UserItem, value: string | number | boolean) {
   const status = value ? 1 : 0
   if (status === 0) {
     try {
-      await ElMessageBox.confirm(
+      await confirmAction(
         `停用后「${row.username}」将立即退出登录，确定继续吗？`,
         '停用用户',
         {
@@ -206,7 +209,7 @@ async function submitResetPwd() {
 // ---------- 删除 ----------
 async function onDelete(row: UserItem) {
   try {
-    await ElMessageBox.confirm(
+    await confirmAction(
       `删除后账号「${row.username}」将无法登录，确定继续吗？`,
       '删除用户',
       {

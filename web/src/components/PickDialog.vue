@@ -8,6 +8,7 @@ import { usePdaPick } from '@/composables/outbound/usePdaPick'
 import ScanField from '@/components/common/ScanField.vue'
 import { useSkuScan } from '@/composables/useSkuScan'
 import { operationStateKey } from '@/composables/operationLifecycle'
+import { useLeaseActive } from '@/composables/useLeaseActive'
 
 const emit = defineEmits<{ (e: 'success'): void }>()
 
@@ -79,7 +80,8 @@ function checkBatch(event: KeyboardEvent) {
   if (!selectedTask.value || !form.batch_scan.trim() || form.batch_scan.trim().toLowerCase() !== selectedTask.value.batch_no.toLowerCase()) ElMessage.error('批次不符，请核对当前任务的批次')
   else ElMessage.success('批次核对一致，未提交拣货')
 }
-const claimed = computed(() => claimToken.value !== '')
+const leaseActive = useLeaseActive(leaseExpireAt)
+const claimed = computed(() => claimToken.value !== '' && leaseActive.value)
 
 watch(
   () => form.task_id,
@@ -312,6 +314,7 @@ defineExpose({ open })
         </template>
         <template v-else>
           <el-button :loading="claiming" :disabled="!form.task_id" @click="handleClaim">领取任务</el-button>
+          <div v-if="claimToken && !leaseActive" class="hint">领取已过期，请重新领取任务后作业。</div>
           <div class="hint">领取后获得作业凭证，10 分钟内完成，过期需重新领取</div>
         </template>
       </el-form-item>

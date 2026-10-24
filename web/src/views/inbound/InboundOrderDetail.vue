@@ -3,7 +3,7 @@ import { useAuthStore } from '@/stores/auth'
 import { mobileTableCellStyle } from '@/utils/mobileTable'
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import {
   approveInboundOrder,
   cancelInboundOrder,
@@ -20,6 +20,9 @@ import PutawayDialog from '@/components/PutawayDialog.vue'
 
 import { useReceive } from '@/composables/inbound/useReceive'
 import { usePutaway } from '@/composables/inbound/usePutaway'
+import { useScopedConfirm } from '@/composables/useScopedConfirm'
+
+const confirmAction = useScopedConfirm()
 
 const receiver = useReceive()
 const puter = usePutaway()
@@ -84,7 +87,7 @@ onMounted(async () => {
 // ---------- 单据操作 ----------
 async function onSubmit() {
   try {
-    await ElMessageBox.confirm('确定提交该入库单吗？', '提示', { type: 'warning' })
+    await confirmAction('确定提交该入库单吗？', '提示', { type: 'warning' })
   } catch {
     return
   }
@@ -95,7 +98,7 @@ async function onSubmit() {
 
 async function onApprove() {
   try {
-    await ElMessageBox.confirm('确定审核通过该入库单吗？', '提示', { type: 'warning' })
+    await confirmAction('确定审核通过该入库单吗？', '提示', { type: 'warning' })
   } catch {
     return
   }
@@ -106,7 +109,7 @@ async function onApprove() {
 
 async function onCancel() {
   try {
-    await ElMessageBox.confirm('确定取消该入库单吗？取消后不能继续收货或上架。', '取消入库单', {
+    await confirmAction('确定取消该入库单吗？取消后不能继续收货或上架。', '取消入库单', {
       type: 'warning',
       confirmButtonText: '确认取消',
       cancelButtonText: '返回',

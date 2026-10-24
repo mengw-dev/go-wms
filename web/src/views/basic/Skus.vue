@@ -4,12 +4,15 @@ import BusinessPagination from '@/components/common/BusinessPagination.vue'
 import { mobileTableCellStyle } from '@/utils/mobileTable'
 import BusinessListPage from '@/components/common/BusinessListPage.vue'
 import { onMounted, onScopeDispose, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
+import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { createSku, deleteSku, listSkus, updateSku } from '@/api/basic'
 import type { EntityID,  SkuItem } from '@/api/types'
 import BarcodeLabelPreview from '@/components/printing/BarcodeLabelPreview.vue'
 import { skuBarcodeLabel } from '@/utils/barcodeLabels'
 import { cleanParams, formatTime } from '@/utils'
+import { useScopedConfirm } from '@/composables/useScopedConfirm'
+
+const confirmAction = useScopedConfirm()
 
 // ---------- 列表 ----------
 const loading = ref(false)
@@ -100,7 +103,7 @@ async function submit() {
 
 async function onDelete(row: SkuItem) {
   try {
-    await ElMessageBox.confirm(
+    await confirmAction(
       `删除货品「${row.name}」前请确认该货品没有库存，确定继续吗？`,
       '删除货品',
       {

@@ -4,10 +4,13 @@ import BusinessPagination from '@/components/common/BusinessPagination.vue'
 import { mobileTableCellStyle } from '@/utils/mobileTable'
 import BusinessListPage from '@/components/common/BusinessListPage.vue'
 import { onMounted, onScopeDispose, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
+import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { createRole, deleteRole, listRoles, updateRole } from '@/api/system'
 import type { EntityID, RoleItem } from '@/api/types'
 import { cleanParams, formatTime } from '@/utils'
+import { useScopedConfirm } from '@/composables/useScopedConfirm'
+
+const confirmAction = useScopedConfirm()
 
 interface PermissionOption {
   label: string
@@ -209,7 +212,7 @@ async function submit() {
 async function onDelete(row: RoleItem) {
   if (isBuiltinRole(row)) return
   try {
-    await ElMessageBox.confirm(
+    await confirmAction(
       `删除角色「${row.name}」后不可恢复，确定继续吗？`,
       '删除角色',
       {

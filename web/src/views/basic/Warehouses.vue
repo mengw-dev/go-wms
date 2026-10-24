@@ -4,7 +4,7 @@ import BusinessPagination from '@/components/common/BusinessPagination.vue'
 import { mobileTableCellStyle } from '@/utils/mobileTable'
 import BusinessListPage from '@/components/common/BusinessListPage.vue'
 import { onMounted, onScopeDispose, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
+import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import {
   createWarehouse,
   deleteWarehouse,
@@ -15,6 +15,9 @@ import {
 import type { EntityID,  WarehouseItem } from '@/api/types'
 import { COMMON_STATUS } from '@/constants'
 import { cleanParams, formatTime } from '@/utils'
+import { useScopedConfirm } from '@/composables/useScopedConfirm'
+
+const confirmAction = useScopedConfirm()
 
 // ---------- 列表 ----------
 const loading = ref(false)
@@ -57,7 +60,7 @@ async function onToggleStatus(row: WarehouseItem, value: string | number | boole
   const status = value ? COMMON_STATUS.ENABLED : COMMON_STATUS.DISABLED
   if (status === COMMON_STATUS.DISABLED) {
     try {
-      await ElMessageBox.confirm(
+      await confirmAction(
         `停用仓库「${row.name}」后，将无法继续产生新的入库、出库和盘点业务，确定继续吗？`,
         '停用仓库',
         {
@@ -128,7 +131,7 @@ async function submit() {
 
 async function onDelete(row: WarehouseItem) {
   try {
-    await ElMessageBox.confirm(
+    await confirmAction(
       `删除仓库「${row.name}」前请确认仓库下没有库位或库存，确定继续吗？`,
       '删除仓库',
       {

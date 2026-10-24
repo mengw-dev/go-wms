@@ -23,9 +23,13 @@ import type { BatchOperResult, EntityID, ImportTaskItem, InboundOrderItem } from
 import { BUSINESS_EVENTS, emitBusinessEvent } from '@/events/businessEvents'
 import { cleanParams } from '@/utils'
 import { loadSkuMap, loadWarehouseOptions, toOptionMap, type IdOption } from '@/utils/options'
+import { useAuthStore } from '@/stores/auth'
+import { useScopedConfirm } from '@/composables/useScopedConfirm'
 
 export function useInboundOrders() {
+  const confirmAction = useScopedConfirm()
   const route = useRoute()
+  const auth = useAuthStore()
   // ---------- 基础选项 ----------
   const warehouseOptions = ref<IdOption[]>([])
   const warehouseMap = ref<Record<EntityID, string>>({})
@@ -33,13 +37,18 @@ export function useInboundOrders() {
   const importBatchOptions = ref<{ task_id: string; label: string }[]>([])
 
   async function loadOptions() {
-    warehouseOptions.value = await loadWarehouseOptions()
-    warehouseMap.value = toOptionMap(warehouseOptions.value)
-    const map = await loadSkuMap()
-    skuOptions.value = Object.entries(map).map(([id, sku]) => ({
-      id,
-      label: `${sku.code} ${sku.name}`,
-    }))
+    if (!auth.hasPerm('wms:basic')) return
+    try {
+      warehouseOptions.value = await loadWarehouseOptions()
+      warehouseMap.value = toOptionMap(warehouseOptions.value)
+      const map = await loadSkuMap()
+      skuOptions.value = Object.entries(map).map(([id, sku]) => ({
+        id,
+        label: `${sku.code} ${sku.name}`,
+      }))
+    } catch {
+      // Optional names and creation options must not hide an accessible order list.
+    }
   }
 
   async function loadImports() {
@@ -114,7 +123,7 @@ export function useInboundOrders() {
   // ---------- 行操作 ----------
   async function onSubmit(row: InboundOrderItem) {
     try {
-      await ElMessageBox.confirm(`确定提交入库单「${row.order_no}」吗？`, '提示', { type: 'warning' })
+      await confirmAction(`确定提交入库单「${row.order_no}」吗？`, '提示', { type: 'warning' })
     } catch {
       return
     }
@@ -129,7 +138,7 @@ export function useInboundOrders() {
 
   async function onApprove(row: InboundOrderItem) {
     try {
-      await ElMessageBox.confirm(`确定审核通过入库单「${row.order_no}」吗？`, '提示', { type: 'warning' })
+      await confirmAction(`确定审核通过入库单「${row.order_no}」吗？`, '提示', { type: 'warning' })
     } catch {
       return
     }
@@ -144,7 +153,7 @@ export function useInboundOrders() {
 
   async function onCancel(row: InboundOrderItem) {
     try {
-      await ElMessageBox.confirm(
+      await confirmAction(
         `确定取消入库单「${row.order_no}」吗？取消后不能继续收货或上架。`,
         '取消入库单',
         {
@@ -164,7 +173,7 @@ export function useInboundOrders() {
 
   async function onDelete(row: InboundOrderItem) {
     try {
-      await ElMessageBox.confirm(
+      await confirmAction(
         `确定删除草稿入库单「${row.order_no}」吗？删除后不可恢复。`,
         '删除入库单',
         {
@@ -208,15 +217,16 @@ export function useInboundOrders() {
     const hasSubmitted = rows.some(r => r.status === 'SUBMITTED')
     const hasCanCancel = rows.some(r => ['DRAFT', 'SUBMITTED', 'APPROVED'].includes(r.status))
     return {
-      delete: hasDraft,
-      submit: hasDraft,
-      approve: hasSubmitted,
-      cancel: hasCanCancel,
+      delete: hasDraft && auth.hasPerm('wms:inbound:create'),
+      submit: hasDraft && auth.hasPerm('wms:inbound:submit'),
+      approve: hasSubmitted && auth.hasPerm('wms:inbound:approve'),
+      cancel: hasCanCancel && auth.hasPerm('wms:inbound:cancel'),
     }
   })
 
   // 是否存在可按批次删除的选中（全部来自同一次导入 + 都是 DRAFT）
   const singleImportBatch = computed(() => {
+    if (!auth.hasPerm('wms:inbound:create')) return null
     const rows = selectedRows.value
     if (rows.length < 2) return null
     const taskId = rows[0].import_task_id
@@ -240,7 +250,7 @@ export function useInboundOrders() {
   async function onBatchDelete() {
     const rows = selectedRows.value
     try {
-      await ElMessageBox.confirm(`确定批量删除选中的 ${rows.length} 张草稿入库单吗？`, '批量删除', { type: 'warning', confirmButtonClass: 'el-button--danger' })
+      await confirmAction(`确定批量删除选中的 ${rows.length} 张草稿入库单吗？`, '批量删除', { type: 'warning', confirmButtonClass: 'el-button--danger' })
     } catch { return }
     const resp = await batchDeleteInboundOrders(rows.map(r => r.id))
     showBatchResult(resp, '批量删除')
@@ -252,7 +262,7 @@ export function useInboundOrders() {
   async function onBatchSubmit() {
     const rows = selectedRows.value
     try {
-      await ElMessageBox.confirm(`确定批量提交选中的 ${rows.length} 张草稿入库单吗？`, '批量提交', { type: 'warning' })
+      await confirmAction(`确定批量提交选中的 ${rows.length} 张草稿入库单吗？`, '批量提交', { type: 'warning' })
     } catch { return }
     const resp = await batchSubmitInboundOrders(rows.map(r => r.id))
     showBatchResult(resp, '批量提交')
@@ -263,7 +273,7 @@ export function useInboundOrders() {
   async function onBatchApprove() {
     const rows = selectedRows.value
     try {
-      await ElMessageBox.confirm(`确定批量审核选中的 ${rows.length} 张入库单吗？`, '批量审核', { type: 'warning' })
+      await confirmAction(`确定批量审核选中的 ${rows.length} 张入库单吗？`, '批量审核', { type: 'warning' })
     } catch { return }
     const resp = await batchApproveInboundOrders(rows.map(r => r.id))
     showBatchResult(resp, '批量审核')
@@ -274,7 +284,7 @@ export function useInboundOrders() {
   async function onBatchCancel() {
     const rows = selectedRows.value
     try {
-      await ElMessageBox.confirm(`确定批量作废选中的 ${rows.length} 张入库单吗？`, '批量作废', { type: 'warning', confirmButtonClass: 'el-button--danger' })
+      await confirmAction(`确定批量作废选中的 ${rows.length} 张入库单吗？`, '批量作废', { type: 'warning', confirmButtonClass: 'el-button--danger' })
     } catch { return }
     const resp = await batchCancelInboundOrders(rows.map(r => r.id))
     showBatchResult(resp, '批量作废')
@@ -284,7 +294,7 @@ export function useInboundOrders() {
 
   async function onBatchDeleteByTask(taskId: string) {
     try {
-      await ElMessageBox.confirm(`确定按批次号 ${taskId} 删除全部 DRAFT 入库单吗？`, '按批次删除', { type: 'warning', confirmButtonClass: 'el-button--danger' })
+      await confirmAction(`确定按批次号 ${taskId} 删除全部 DRAFT 入库单吗？`, '按批次删除', { type: 'warning', confirmButtonClass: 'el-button--danger' })
     } catch { return }
     const resp = await deleteInboundByImportTask(taskId)
     showBatchResult(resp, `批次 ${taskId} 删除`)

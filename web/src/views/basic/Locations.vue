@@ -7,7 +7,7 @@ import BarcodeLabelPreview from '@/components/printing/BarcodeLabelPreview.vue'
 import { locationBarcodeLabel } from '@/utils/barcodeLabels'
 import { computed, onMounted, onScopeDispose, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
+import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import {
   batchCreateLocations,
   deleteLocation,
@@ -19,6 +19,9 @@ import type { EntityID,  LocationItem, WarehouseItem } from '@/api/types'
 import { COMMON_STATUS, LOCATION_STATUS, locationStatusTag, locationStatusText } from '@/constants'
 import { cleanParams, formatTime } from '@/utils'
 import { loadAllPages } from '@/utils/pagination'
+import { useScopedConfirm } from '@/composables/useScopedConfirm'
+
+const confirmAction = useScopedConfirm()
 
 const route = useRoute()
 
@@ -148,7 +151,7 @@ async function onToggleStatus(row: LocationItem, value: string | number | boolea
   const status = value ? LOCATION_STATUS.IDLE : LOCATION_STATUS.DISABLED
   if (status === LOCATION_STATUS.DISABLED) {
     try {
-      await ElMessageBox.confirm(
+      await confirmAction(
         `停用库位「${row.code}」后，该库位将不能继续参与上架，确定继续吗？`,
         '停用库位',
         {
@@ -174,7 +177,7 @@ async function onToggleStatus(row: LocationItem, value: string | number | boolea
 
 async function onDelete(row: LocationItem) {
   try {
-    await ElMessageBox.confirm(
+    await confirmAction(
       `删除库位「${row.code}」前请确认该库位没有库存，确定继续吗？`,
       '删除库位',
       {

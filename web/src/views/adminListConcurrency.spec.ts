@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createRenderer, ssrContextKey, type Component } from 'vue'
+import { createPinia } from 'pinia'
 import Warehouses from './basic/Warehouses.vue'
 import Locations from './basic/Locations.vue'
 import Skus from './basic/Skus.vue'
@@ -55,6 +56,7 @@ const unmounts: (() => void)[] = []
 
 async function mountPage(component: Component) {
   const app = renderer.createApp({ ...component, render: () => null })
+  app.use(createPinia())
   app.provide(ssrContextKey, { modules: new Set<string>() })
   app.mount({})
   // Script-setup bindings stay private in production; inspect them only in this test harness.
@@ -81,11 +83,14 @@ const pages = [
 ]
 
 beforeEach(() => {
+  vi.stubGlobal('localStorage', { getItem: () => null })
+  vi.stubGlobal('sessionStorage', { getItem: () => null })
   for (const request of Object.values(api)) request.mockReset().mockResolvedValue({ list: [], total: 0 })
   api.listAllRoles.mockResolvedValue([])
 })
 afterEach(() => {
   unmounts.splice(0).forEach(unmount => unmount())
+  vi.unstubAllGlobals()
 })
 
 describe.each(pages)('$name 列表请求交错', ({ component, request, filter }) => {

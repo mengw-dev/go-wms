@@ -28,9 +28,14 @@ import { loadSkuMap, loadWarehouseOptions, toOptionMap, type IdOption } from '@/
 import PageHeader from '@/components/common/PageHeader.vue'
 import PickDialog from '@/components/PickDialog.vue'
 import { BUSINESS_EVENTS, emitBusinessEvent } from '@/events/businessEvents'
+import { useAuthStore } from '@/stores/auth'
+import { useScopedConfirm } from '@/composables/useScopedConfirm'
+
+const confirmAction = useScopedConfirm()
 
 const router = useRouter()
 const route = useRoute()
+const auth = useAuthStore()
 
 // ---------- 基础选项 ----------
 const warehouseOptions = ref<IdOption[]>([])
@@ -38,14 +43,19 @@ const warehouseMap = ref<Record<EntityID, string>>({})
 const skuOptions = ref<IdOption[]>([])
 
 onMounted(async () => {
-  warehouseOptions.value = await loadWarehouseOptions()
-  warehouseMap.value = toOptionMap(warehouseOptions.value)
-  const map = await loadSkuMap()
-  skuOptions.value = Object.entries(map).map(([id, sku]) => ({
-    id,
-    label: `${sku.code} ${sku.name}`,
-  }))
-  load()
+  void load()
+  if (!auth.hasPerm('wms:basic')) return
+  try {
+    warehouseOptions.value = await loadWarehouseOptions()
+    warehouseMap.value = toOptionMap(warehouseOptions.value)
+    const map = await loadSkuMap()
+    skuOptions.value = Object.entries(map).map(([id, sku]) => ({
+      id,
+      label: `${sku.code} ${sku.name}`,
+    }))
+  } catch {
+    // Optional names and creation options must not hide an accessible order list.
+  }
 })
 
 // ---------- 列表 ----------
@@ -105,7 +115,7 @@ function onDateRangeChange(value: [string, string] | null): void {
 // ---------- 行操作 ----------
 async function onSubmit(row: OutboundOrderItem) {
   try {
-    await ElMessageBox.confirm(`确定提交出库单「${row.order_no}」吗？`, '提示', { type: 'warning' })
+    await confirmAction(`确定提交出库单「${row.order_no}」吗？`, '提示', { type: 'warning' })
   } catch { return }
   await submitOutboundOrder(row.id)
   emitBusinessEvent(BUSINESS_EVENTS.OUTBOUND_ORDER_SUBMITTED, {
@@ -118,7 +128,7 @@ async function onSubmit(row: OutboundOrderItem) {
 
 async function onApprove(row: OutboundOrderItem) {
   try {
-    await ElMessageBox.confirm(`确定审核（分配库存）出库单「${row.order_no}」吗？`, '提示', { type: 'warning' })
+    await confirmAction(`确定审核（分配库存）出库单「${row.order_no}」吗？`, '提示', { type: 'warning' })
   } catch { return }
   await approveOutboundOrder(row.id)
   emitBusinessEvent(BUSINESS_EVENTS.OUTBOUND_ORDER_ALLOCATED, {
@@ -131,7 +141,7 @@ async function onApprove(row: OutboundOrderItem) {
 
 async function onCancel(row: OutboundOrderItem) {
   try {
-    await ElMessageBox.confirm(
+    await confirmAction(
       `确定取消出库单「${row.order_no}」吗？取消后将释放已分配库存。`,
       '取消出库单', { type: 'warning', confirmButtonText: '确认取消', cancelButtonText: '返回', confirmButtonClass: 'el-button--danger' },
     )
@@ -143,7 +153,7 @@ async function onCancel(row: OutboundOrderItem) {
 
 async function onDelete(row: OutboundOrderItem) {
   try {
-    await ElMessageBox.confirm(
+    await confirmAction(
       `确定删除草稿出库单「${row.order_no}」吗？删除后不可恢复。`,
       '删除出库单', { type: 'warning', confirmButtonText: '确认删除', cancelButtonText: '返回', confirmButtonClass: 'el-button--danger' },
     )
@@ -181,7 +191,12 @@ const availableBatchOps = computed(() => {
   const hasSubmitted = rows.some(r => r.status === 'SUBMITTED')
   // 作废允许 DRAFT / SUBMITTED / PICKING（未实际拣货）
   const hasCanCancel = rows.some(r => ['DRAFT', 'SUBMITTED', 'PICKING'].includes(r.status))
-  return { delete: hasDraft, submit: hasDraft, approve: hasSubmitted, cancel: hasCanCancel }
+  return {
+    delete: hasDraft && auth.hasPerm('wms:outbound:create'),
+    submit: hasDraft && auth.hasPerm('wms:outbound:submit'),
+    approve: hasSubmitted && auth.hasPerm('wms:outbound:approve'),
+    cancel: hasCanCancel && auth.hasPerm('wms:outbound:cancel'),
+  }
 })
 
 function showBatchResult(resp: BatchOperResult, action: string) {
@@ -195,7 +210,7 @@ function showBatchResult(resp: BatchOperResult, action: string) {
 async function onBatchDelete() {
   const rows = selectedRows.value
   try {
-    await ElMessageBox.confirm(`确定批量删除选中的 ${rows.length} 张草稿出库单吗？`, '批量删除', { type: 'warning', confirmButtonClass: 'el-button--danger' })
+    await confirmAction(`确定批量删除选中的 ${rows.length} 张草稿出库单吗？`, '批量删除', { type: 'warning', confirmButtonClass: 'el-button--danger' })
   } catch { return }
   const resp = await batchDeleteOutboundOrders(rows.map(r => r.id))
   showBatchResult(resp, '批量删除')
@@ -206,7 +221,7 @@ async function onBatchDelete() {
 async function onBatchSubmit() {
   const rows = selectedRows.value
   try {
-    await ElMessageBox.confirm(`确定批量提交选中的 ${rows.length} 张草稿出库单吗？`, '批量提交', { type: 'warning' })
+    await confirmAction(`确定批量提交选中的 ${rows.length} 张草稿出库单吗？`, '批量提交', { type: 'warning' })
   } catch { return }
   const resp = await batchSubmitOutboundOrders(rows.map(r => r.id))
   showBatchResult(resp, '批量提交')
@@ -217,7 +232,7 @@ async function onBatchSubmit() {
 async function onBatchApprove() {
   const rows = selectedRows.value
   try {
-    await ElMessageBox.confirm(`确定批量审核选中的 ${rows.length} 张出库单吗？审核将分配库存。`, '批量审核', { type: 'warning' })
+    await confirmAction(`确定批量审核选中的 ${rows.length} 张出库单吗？审核将分配库存。`, '批量审核', { type: 'warning' })
   } catch { return }
   const resp = await batchApproveOutboundOrders(rows.map(r => r.id))
   showBatchResult(resp, '批量审核')
@@ -228,7 +243,7 @@ async function onBatchApprove() {
 async function onBatchCancel() {
   const rows = selectedRows.value
   try {
-    await ElMessageBox.confirm(`确定批量作废选中的 ${rows.length} 张出库单吗？已分配的库存将被释放。`, '批量作废', { type: 'warning', confirmButtonClass: 'el-button--danger' })
+    await confirmAction(`确定批量作废选中的 ${rows.length} 张出库单吗？已分配的库存将被释放。`, '批量作废', { type: 'warning', confirmButtonClass: 'el-button--danger' })
   } catch { return }
   const resp = await batchCancelOutboundOrders(rows.map(r => r.id))
   showBatchResult(resp, '批量作废')

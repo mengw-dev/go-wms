@@ -4,7 +4,7 @@ import { useAuthStore } from '@/stores/auth'
 import { mobileTableCellStyle } from '@/utils/mobileTable'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import {
   cancelStocktakeOrder,
   getStocktakeOrder,
@@ -16,6 +16,9 @@ import { formatTime } from '@/utils'
 import { loadWarehouseOptions, toOptionMap } from '@/utils/options'
 import { BUSINESS_EVENTS, emitBusinessEvent } from '@/events/businessEvents'
 import { useStocktakeApprove } from '@/composables/stocktake/useStocktakeApprove'
+import { useScopedConfirm } from '@/composables/useScopedConfirm'
+
+const confirmAction = useScopedConfirm()
 
 const auth = useAuthStore()
 const route = useRoute()
@@ -134,7 +137,7 @@ async function saveActual(row: StocktakeDetailItem) {
 // ---------- 审核 / 取消 ----------
 async function onApprove() {
   try {
-    await ElMessageBox.confirm('确定审核该盘点单吗？审核后将按差异自动调整库存。', '审核盘点单', {
+    await confirmAction('确定审核该盘点单吗？审核后将按差异自动调整库存。', '审核盘点单', {
       type: 'warning',
       confirmButtonText: '确认审核',
       cancelButtonText: '返回',
@@ -150,7 +153,7 @@ async function onApprove() {
     const st = approver.stateOf(orderId as EntityID)
     if (st.pending?.stale) {
       try {
-        await ElMessageBox.confirm(
+        await confirmAction(
           '该单据的上次审核已超过保留期仍未确认，请先核对单据状态。放弃后本地记录将被清除，可重新发起审核。',
           '核对待确认审核',
           { type: 'warning', confirmButtonText: '已核对，放弃', cancelButtonText: '保留记录' },
@@ -167,7 +170,7 @@ async function onApprove() {
 
 async function onCancel() {
   try {
-    await ElMessageBox.confirm('确定取消该盘点单吗？', '取消盘点单', {
+    await confirmAction('确定取消该盘点单吗？', '取消盘点单', {
       type: 'warning',
       confirmButtonText: '确认取消',
       cancelButtonText: '返回',

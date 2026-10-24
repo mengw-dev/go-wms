@@ -5,7 +5,7 @@ import BusinessFilters from '@/components/common/BusinessFilters.vue'
 import BusinessPagination from '@/components/common/BusinessPagination.vue'
 import { mobileTableCellStyle } from '@/utils/mobileTable'
 import PageHeader from '@/components/common/PageHeader.vue'
-import { onMounted, reactive, ref } from 'vue'
+import { onMounted, onScopeDispose, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useAutoRefresh } from '@/composables/autoRefresh'
@@ -101,6 +101,7 @@ function onTabChange(name: string | number) {
 // ---------- 流水抽屉 ----------
 const drawerVisible = ref(false)
 const transLoading = ref(false)
+const transError = ref('')
 const transList = ref<InventoryTransItem[]>([])
 const transTotal = ref(0)
 const transQuery = reactive({
@@ -123,13 +124,18 @@ function openTrans(row: InventoryItem) {
 }
 
 let transSeq = 0
+let alive = true
+onScopeDispose(() => { alive = false; detailSeq++; summarySeq++; transSeq++ })
 
 async function loadTrans(silent = false) {
   const seq = ++transSeq
+  transError.value = ''
+  transList.value = []
+  transTotal.value = 0
   if (!silent) transLoading.value = true
   try {
     const data = await listInventoryTrans(cleanParams({ ...transQuery }))
-    if (seq !== transSeq) return
+    if (!alive || seq !== transSeq) return
     transList.value = data.list ?? []
     transTotal.value = data.total ?? 0
     emitBusinessEvent(BUSINESS_EVENTS.INVENTORY_TRANS_LOADED, {
@@ -137,6 +143,8 @@ async function loadTrans(silent = false) {
       transTypes: transList.value.map((item) => item.trans_type),
       transTotal: transTotal.value,
     })
+  } catch {
+    if (alive && seq === transSeq) transError.value = '库存流水加载失败，请重试，当前不展示上次查询结果'
   } finally {
     if (seq === transSeq) transLoading.value = false
   }
@@ -318,6 +326,7 @@ useAutoRefresh(refreshActiveTab, 0)
         </el-form-item>
       </el-form></BusinessFilters>
 
+      <el-alert v-if="transError" :title="transError" type="error" :closable="false"><el-button @click="loadTrans()">重新加载流水</el-button></el-alert>
       <el-table class="mobile-record-table" :cell-style="mobileTableCellStyle" max-height="480" v-loading="transLoading" :data="transList" border stripe size="small">
         <el-table-column label="类型" width="90">
           <template #default="{ row }">

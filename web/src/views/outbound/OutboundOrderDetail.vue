@@ -3,7 +3,7 @@ import { useAuthStore } from '@/stores/auth'
 import { mobileTableCellStyle } from '@/utils/mobileTable'
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import {
   approveOutboundOrder,
   cancelOutboundOrder,
@@ -20,6 +20,9 @@ const closureBlocked = ref(false)
 import { BUSINESS_EVENTS, emitBusinessEvent } from '@/events/businessEvents'
 
 import { usePdaPick } from '@/composables/outbound/usePdaPick'
+import { useScopedConfirm } from '@/composables/useScopedConfirm'
+
+const confirmAction = useScopedConfirm()
 
 const picker = usePdaPick()
 const hasPendingPick = computed(() => data.value?.tasks?.some((task) => {
@@ -100,7 +103,7 @@ onMounted(async () => {
 // ---------- 单据操作 ----------
 async function onSubmit() {
   try {
-    await ElMessageBox.confirm('确定提交该出库单吗？', '提示', { type: 'warning' })
+    await confirmAction('确定提交该出库单吗？', '提示', { type: 'warning' })
   } catch {
     return
   }
@@ -111,7 +114,7 @@ async function onSubmit() {
 
 async function onApprove() {
   try {
-    await ElMessageBox.confirm('确定审核（分配库存）该出库单吗？', '提示', { type: 'warning' })
+    await confirmAction('确定审核（分配库存）该出库单吗？', '提示', { type: 'warning' })
   } catch {
     return
   }
@@ -122,7 +125,7 @@ async function onApprove() {
 
 async function onCancel() {
   try {
-    await ElMessageBox.confirm('确定取消该出库单吗？取消后将释放已分配库存。', '取消出库单', {
+    await confirmAction('确定取消该出库单吗？取消后将释放已分配库存。', '取消出库单', {
       type: 'warning',
       confirmButtonText: '确认取消',
       cancelButtonText: '返回',
