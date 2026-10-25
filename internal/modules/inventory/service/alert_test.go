@@ -43,6 +43,31 @@ func saveRule(ctx context.Context, t *testing.T, s *Service, wh, sku int64, min 
 	return r.ID
 }
 
+func TestAlertRowsPreserveSKUIdentityForEditing(t *testing.T) {
+	s, db, ctx := alertFixture(t)
+	const skuID = int64(9007199254740993)
+	if err := db.WithContext(ctx).Create(&basicmodel.SKU{Base: modelbase.Base{ID: skuID}, Code: "LARGE", Barcode: "LARGE", Name: "large", Status: 1}).Error; err != nil {
+		t.Fatal(err)
+	}
+	id := saveRule(ctx, t, s, 1101, skuID, 10, true)
+	r := alerts(ctx, t, s, "ALL")
+	if len(r.List) != 1 || r.List[0].SKUID != skuID || r.List[0].ID != id {
+		t.Fatalf("rule identity lost: %+v", r.List)
+	}
+	row := r.List[0]
+	if got := saveRule(ctx, t, s, row.WarehouseID, row.SKUID, 20, false); got != id {
+		t.Fatalf("editing replaced rule: %d != %d", got, id)
+	}
+	paused := alerts(ctx, t, s, "PAUSED")
+	if paused.Total != 1 || paused.List[0].SKUID != skuID || paused.List[0].MinAvailableQty != 20 {
+		t.Fatalf("edited rule not preserved: %+v", paused)
+	}
+	saveRule(ctx, t, s, row.WarehouseID, row.SKUID, 20, true)
+	if alerts(ctx, t, s, "PAUSED").Total != 0 {
+		t.Fatal("rule could not be resumed")
+	}
+}
+
 func alerts(ctx context.Context, t *testing.T, s *Service, state string) *dto.AlertListResp {
 	t.Helper()
 	r, err := s.ListAlerts(ctx, &dto.AlertQuery{State: state, Page: 1, PageSize: 100})

@@ -11,7 +11,7 @@ import (
 
 func (r *Repository) WaveAllocations(db *gorm.DB, orderIDs []int64, lock bool) ([]*model.Allocation, error) {
 	list := make([]*model.Allocation, 0)
-	q := db.Where("order_id IN ?", orderIDs).Order("id").Limit(1001)
+	q := db.Where("order_id IN ? AND status <> ?", orderIDs, model.AllocCancelled).Order("id").Limit(1001)
 	if lock {
 		q = q.Clauses(clause.Locking{Strength: "UPDATE"})
 	}

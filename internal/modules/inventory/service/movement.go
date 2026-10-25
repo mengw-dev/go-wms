@@ -72,8 +72,8 @@ func (s *Service) MoveStock(ctx context.Context, req *dto.MoveRequest, key strin
 		if err != nil {
 			return err
 		}
-		// First ordinary read is after the shared warehouse gate; later same-key
-		// arrivals see its predecessor's committed receipt under repeatable read.
+		// First ordinary read follows the ordered location locks. Same-source retries
+		// wait there and see the predecessor's committed receipt under repeatable read.
 		if old, e := s.repo.FindMovement(db, key); e != nil {
 			return e
 		} else if old != nil {

@@ -12,7 +12,8 @@ func (r *Repository) ListForWave(db *gorm.DB, orderIDs []int64, limit int, lock 
 	if len(orderIDs) == 0 {
 		return list, nil
 	}
-	q := db.Where("order_id IN ? AND task_type = ?", orderIDs, model.TaskPick).Order("id").Limit(limit)
+	// Cancelled attempts remain audit history; a replacement task represents the current work.
+	q := db.Where("order_id IN ? AND task_type = ? AND status <> ?", orderIDs, model.TaskPick, model.TaskCancelled).Order("id").Limit(limit)
 	if lock {
 		q = q.Clauses(clause.Locking{Strength: "UPDATE"})
 	}

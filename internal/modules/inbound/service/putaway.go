@@ -87,18 +87,18 @@ func (s *Service) Putaway(ctx context.Context, taskID, locationID int64, qty int
 		if t.Status != taskmodel.TaskCreated && t.Status != taskmodel.TaskInProgress {
 			return errcode.TaskStatusWrong
 		}
-		var detail *model.ReceiptOrderDetail
-		details, err := s.repo.ListDetails(tx, o.ID)
+		// 单头已锁定，只读取当前任务的明细；不为每次分次上架扫描整单。
+		detail, err := s.repo.GetDetailForUpdate(tx, routing.DetailID)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return errcode.BatchNoRequired
+		}
 		if err != nil {
 			return err
 		}
-		for _, d := range details {
-			if d.ID == routing.DetailID {
-				detail = d
-				break
-			}
+		if detail.OrderID != o.ID || detail.SKUID != t.SKUID {
+			return errcode.TaskStatusWrong
 		}
-		if detail == nil || detail.BatchNo == "" {
+		if detail.BatchNo == "" {
 			return errcode.BatchNoRequired
 		}
 		// 以锁内状态为准；沿仓库→库位→SKU 的库存加锁顺序，复用当前事务。

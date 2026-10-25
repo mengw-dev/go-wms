@@ -70,10 +70,6 @@ func (s *Service) CreateWave(ctx context.Context, req *dto.CreateWaveReq, operat
 		}
 		slices.Sort(skuIDs)
 		skuIDs = slices.Compact(skuIDs)
-		skus, err := s.basic.GetSKUsByIDsForShare(ctx, db, skuIDs)
-		if err != nil {
-			return 0, err
-		}
 		waveID := snowflake.Next()
 		wave := &model.Wave{Base: modelbase.Base{ID: waveID}, TenantID: tenant.FromContext(ctx), WaveNo: fmt.Sprintf("BC%s%d", now.Format("20060102"), waveID), Status: model.WaveCreated, Remark: normalized.Remark, CreatedBy: operator}
 		members := make([]*model.WaveOrder, 0, len(ids))
@@ -94,6 +90,11 @@ func (s *Service) CreateWave(ctx context.Context, req *dto.CreateWaveReq, operat
 			memberMap[id] = member
 		}
 		if err := s.basic.ValidateWarehouseInTx(ctx, db, wave.WarehouseID); err != nil {
+			return 0, err
+		}
+		// 与库存写入保持仓库→SKU引用锁顺序，不能先持SKU再等待仓库。
+		skus, err := s.basic.GetSKUsByIDsForShare(ctx, db, skuIDs)
+		if err != nil {
 			return 0, err
 		}
 		lines := make([]*model.WaveLine, 0)

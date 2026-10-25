@@ -240,6 +240,11 @@ func (s *Service) Cancel(ctx context.Context, id int64, operator string) error {
 			return err
 		}
 		for _, task := range tasks {
+			// 异常处理已确认未发实物退回，取消的旧尝试仅作审计。
+			// 当前任务的开工/波次绑定及主单已发数量仍必须阻止取消。
+			if task.Status == taskmodel.TaskCancelled {
+				continue
+			}
 			if task.WaveID != 0 {
 				return errcode.WaveOrderLocked
 			}
@@ -251,8 +256,9 @@ func (s *Service) Cancel(ctx context.Context, id int64, operator string) error {
 			return err
 		}
 
-		// 释放已分配库存：分配行 → 库存行，与拣货保持同一加锁顺序
-		allocations, err := s.repo.ListAllocations(tx, id)
+		// 任务等待期间可能经历异常→重分配，必须锁读当前分配，不能使用最初RR快照。
+		// 分配行 → 库存行，与拣货保持同一加锁顺序。
+		allocations, err := s.repo.ListAllocationsForUpdate(tx, id)
 		if err != nil {
 			return err
 		}
@@ -261,6 +267,7 @@ func (s *Service) Cancel(ctx context.Context, id int64, operator string) error {
 		} else if n == 0 && len(allocations) > 0 {
 			return errcode.AllocConflict
 		}
+		sort.SliceStable(allocations, func(i, j int) bool { return allocations[i].InventoryID < allocations[j].InventoryID })
 		for _, a := range allocations {
 			if a.Status != model.AllocAllocated {
 				continue

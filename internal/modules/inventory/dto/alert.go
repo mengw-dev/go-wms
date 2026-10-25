@@ -26,7 +26,7 @@ type AlertRow struct {
 	WarehouseID     int64     `json:"warehouse_id,string"`
 	WarehouseCode   string    `json:"warehouse_code"`
 	WarehouseName   string    `json:"warehouse_name"`
-	SKUID           int64     `json:"sku_id,string"`
+	SKUID           int64     `json:"sku_id,string" gorm:"column:sku_id"`
 	SKUCode         string    `json:"sku_code"`
 	SKUName         string    `json:"sku_name"`
 	Unit            string    `json:"unit"`

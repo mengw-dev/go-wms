@@ -78,7 +78,7 @@ func (r *Repository) Returnable(db *gorm.DB, orderID int64) ([]*dto.ReturnableRo
 	rows := make([]*dto.ReturnableRow, 0)
 	e := db.Table("wms_allocation a").Joins("JOIN wms_shipment_order o ON o.id=a.order_id AND o.tenant_id=a.tenant_id AND o.deleted_at IS NULL").
 		Joins("JOIN wms_shipment_order_detail d ON d.id=a.detail_id AND d.order_id=a.order_id AND d.tenant_id=a.tenant_id AND d.deleted_at IS NULL").
-		Joins("LEFT JOIN (SELECT allocation_id,tenant_id,SUM(good_qty+bad_qty) AS returned FROM wms_customer_return WHERE tenant_id=? GROUP BY allocation_id,tenant_id) r ON r.allocation_id=a.id AND r.tenant_id=a.tenant_id", tid).
+		Joins("LEFT JOIN (SELECT allocation_id,tenant_id,SUM(good_qty+bad_qty) AS returned FROM wms_customer_return WHERE tenant_id=? AND order_id=? GROUP BY allocation_id,tenant_id) r ON r.allocation_id=a.id AND r.tenant_id=a.tenant_id", tid, orderID).
 		Where("a.tenant_id=? AND a.deleted_at IS NULL AND a.order_id=? AND a.status=? AND a.picked_qty>0 AND o.status IN ?", tid, orderID, model.AllocPicked, []model.OrderStatus{model.OrderShipped, model.OrderClosed}).
 		Select("a.id AS allocation_id,a.sku_id,d.sku_code,d.sku_name,a.batch_no,a.picked_qty AS shipped_qty,COALESCE(r.returned,0) AS returned_qty,a.picked_qty-COALESCE(r.returned,0) AS returnable_qty").Order("a.id").Scan(&rows).Error
 	return rows, e

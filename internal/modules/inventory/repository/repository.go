@@ -30,11 +30,11 @@ type SummaryRow struct {
 
 func New() *Repository { return &Repository{} }
 
-// LockBasicReferences 按固定顺序锁定库存依赖的仓库、库位和 SKU。
-// 基础资料删除使用同一行锁协议，避免“删除校验通过后又创建库存”的并发窗口。
+// LockBasicReferences 按仓库共享锁→库位排他锁→SKU共享锁保护引用。
+// 删除/禁用仍需排他锁；不同库位的库存写入可以并行，库位状态与库存行仍串行。
 func (r *Repository) LockBasicReferences(tx *gorm.DB, warehouseID, locationID, skuID int64) error {
 	var warehouse basicmodel.Warehouse
-	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&warehouse, warehouseID).Error; err != nil {
+	if err := tx.Clauses(clause.Locking{Strength: "SHARE"}).First(&warehouse, warehouseID).Error; err != nil {
 		return err
 	}
 	var location basicmodel.Location
@@ -42,7 +42,7 @@ func (r *Repository) LockBasicReferences(tx *gorm.DB, warehouseID, locationID, s
 		return err
 	}
 	var sku basicmodel.SKU
-	return tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&sku, skuID).Error
+	return tx.Clauses(clause.Locking{Strength: "SHARE"}).First(&sku, skuID).Error
 }
 
 // FIFOCandidate 是候选库存行的轻量投影，只带排序和用量估算需要的列。

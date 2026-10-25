@@ -200,6 +200,13 @@ func (r *Repository) GetAllocationForUpdate(tx *gorm.DB, id int64) (*model.Alloc
 	return &a, nil
 }
 
+// ListAllocationsForUpdate 按分配ID一次锁读当前单的权威记录，保留历史审计行。
+func (r *Repository) ListAllocationsForUpdate(tx *gorm.DB, orderID int64) ([]*model.Allocation, error) {
+	var list []*model.Allocation
+	err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("order_id = ?", orderID).Order("id").Find(&list).Error
+	return list, err
+}
+
 // IncrAllocationPicked 原子累加分配行拣货量，拣满时置为 PICKED（version 乐观锁 + status 条件）。
 // delta 为本次拣货数，toStatus 传入拣满后的 AllocPicked 或未拣满时的 AllocAllocated。
 // 数量上限条件（picked_qty + delta <= allocated_qty）兜底防超拣。

@@ -71,20 +71,14 @@ func (s *Service) ReportException(ctx context.Context, req *dto.ExceptionRequest
 		if selected == nil || selected.TaskType != taskmodel.TaskPick || (selected.Status != taskmodel.TaskCreated && selected.Status != taskmodel.TaskInProgress) || input.Quantity > selected.TargetQty-selected.DoneQty {
 			return 0, errcode.ExceptionNotAllowed
 		}
-		rows, e := s.repo.ListAllocations(db, selected.OrderID)
+		allocations, e := s.repo.ListAllocationsForUpdate(db, selected.OrderID)
 		if e != nil {
 			return 0, e
 		}
-		allocations := make([]*model.Allocation, 0, len(rows))
 		var source *model.Allocation
-		for _, a := range rows {
-			locked, e := s.repo.GetAllocationForUpdate(db, a.ID)
-			if e != nil {
-				return 0, e
-			}
-			allocations = append(allocations, locked)
+		for _, a := range allocations {
 			if a.ID == selected.AllocationID {
-				source = locked
+				source = a
 			}
 		}
 		if source == nil || source.Status != model.AllocAllocated || source.PickedQty != selected.DoneQty || source.AllocatedQty != selected.TargetQty || source.SKUID != selected.SKUID || source.OrderID != selected.OrderID || source.DetailID != selected.DetailID || source.LocationID != selected.LocationID || source.BatchNo != selected.BatchNo {

@@ -53,11 +53,11 @@ func (r *Repository) FindMovement(db *gorm.DB, key string) (*model.Movement, err
 	return &m, err
 }
 
-// LockMoveReferences follows the existing protocol: warehouse -> ordered locations
-// -> SKU -> inventory. The warehouse gate is deliberately retained (B16).
+// LockMoveReferences shares warehouse/SKU references and exclusively locks ordered
+// locations before inventory, preserving deletion/disable protection without a warehouse gate.
 func (r *Repository) LockMoveReferences(db *gorm.DB, source *model.Inventory, target int64) (*basicmodel.Warehouse, []*basicmodel.Location, *basicmodel.SKU, error) {
 	var w basicmodel.Warehouse
-	if err := db.Clauses(clause.Locking{Strength: "UPDATE"}).First(&w, source.WarehouseID).Error; err != nil {
+	if err := db.Clauses(clause.Locking{Strength: "SHARE"}).First(&w, source.WarehouseID).Error; err != nil {
 		return nil, nil, nil, err
 	}
 	ids := []int64{source.LocationID, target}
@@ -75,7 +75,7 @@ func (r *Repository) LockMoveReferences(db *gorm.DB, source *model.Inventory, ta
 		}
 	}
 	var sku basicmodel.SKU
-	if err := db.Clauses(clause.Locking{Strength: "UPDATE"}).First(&sku, source.SKUID).Error; err != nil {
+	if err := db.Clauses(clause.Locking{Strength: "SHARE"}).First(&sku, source.SKUID).Error; err != nil {
 		return nil, nil, nil, err
 	}
 	if sku.Status != 1 {

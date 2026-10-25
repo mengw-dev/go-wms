@@ -1,5 +1,9 @@
 # 本地开发与验证
 
+## 2026-10-25 业务组合与锁逻辑修复
+
+F36–F38及确认退回后的取消规则已修复，L1–L6引用锁/加锁顺序/查询范围同步调整。相关Go463项（含子测试）与8文件24项浏览器回归全部通过、无跳过，6类库存/单据一致性核对零异常；lint、vet及构建通过。实际命令、隔离环境、历史失败与最终证据见[业务流程验收](business-workflow-audit-20261025.md)和[锁与逻辑修复](locking-logic-audit-20261025.md)。本轮无迁移、前端业务实现或中间件变更，未重跑无关模块全量，不表示生产容量或全仓D27审查完成。
+
 ## 2026-10-22 修复UTC CI中的仪表盘测试时区
 
 基线67eb3c5的[CI39787824470](https://github.com/mengw-dev/go-wms/actions/runs/39787824470)仅后端race+MySQL步骤失败：`TestOperationsUseLedgerDatesTenantAndWarehouse`预期上架2/发货1，实际1/2。没有data race报告；前端通过，容器/E2E及部署因前置失败跳过。失败与生产服务器SSH或迁移无关。

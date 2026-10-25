@@ -40,10 +40,10 @@ func (s *Service) GetSKUsByIDsForShare(ctx context.Context, tx *gorm.DB, ids []i
 	return result, nil
 }
 
-// ValidateLocationInWarehouseInTx 依库存写入的仓库→库位顺序加锁，
+// ValidateLocationInWarehouseInTx 依库存写入的仓库共享锁→库位排他锁顺序加锁，
 // 对锁内当前状态校验，防止上架覆盖已经提交的禁用。锁保留到业务提交。
 func (s *Service) ValidateLocationInWarehouseInTx(ctx context.Context, tx *gorm.DB, warehouseID, id int64) error {
-	if _, err := s.repo.GetWarehouseForUpdate(ctx, tx, warehouseID); err != nil {
+	if _, err := s.repo.GetWarehouseForShare(ctx, tx, warehouseID); err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return errcode.WarehouseNotFound
 		}
