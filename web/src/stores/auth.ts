@@ -158,7 +158,8 @@ export const useAuthStore = defineStore('auth', {
       writeUser(user, isDemo)
     },
     setDemoSession(info: DemoSessionInfo) {
-      this.sessionVersion++
+      // A heartbeat renews the same identity; only replacing the session invalidates work.
+      if (this.demoSessionId !== info.session_id) this.sessionVersion++
       this.demoSessionId = info.session_id
       this.demoSessionExpiresIn = info.expires_in
       sessionStorage.setItem(DEMO_SESSION_KEY, info.session_id)

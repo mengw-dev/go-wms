@@ -104,8 +104,8 @@ func TestInventoryStockChangeSummaryUsesThreeQuantityInvariant(t *testing.T) {
 	}
 
 	facts := stockChangeFacts(trans)
-	if len(facts) != 6 {
-		t.Fatalf("facts count = %d, want 6", len(facts))
+	if len(facts) != 7 {
+		t.Fatalf("facts count = %d, want 7", len(facts))
 	}
 	if facts[0].Label != "库存变化" || facts[0].Value != "+10" {
 		t.Fatalf("stock change fact = %#v", facts[0])
@@ -382,8 +382,8 @@ func TestStocktakeAdjustmentFactsUsePersistedInventoryTrans(t *testing.T) {
 	}
 
 	facts := stocktakeAdjustmentFacts(trans)
-	if len(facts) != 5 {
-		t.Fatalf("adjustment facts count = %d, want 5", len(facts))
+	if len(facts) != 6 {
+		t.Fatalf("adjustment facts count = %d, want 6", len(facts))
 	}
 	if facts[0].Label != "库存流水" || facts[0].Value != "ADJUST -3" {
 		t.Fatalf("inventory trans fact = %#v", facts[0])
@@ -393,5 +393,28 @@ func TestStocktakeAdjustmentFactsUsePersistedInventoryTrans(t *testing.T) {
 	}
 	if facts[4].Label != "流水单号" || facts[4].Value != "PD-1" {
 		t.Fatalf("order fact = %#v", facts[4])
+	}
+}
+
+func TestFrozenStockIsNotPresentedAsAllocated(t *testing.T) {
+	trans := &inventorymodel.InventoryTrans{TransType: inventorymodel.TransAdjust, BeforeQuantity: 20, AfterQuantity: 18, AvailableBefore: 10, AvailableAfter: 8, FrozenBefore: 6, FrozenAfter: 6}
+	if summary := inventoryStockChangeSummary(trans); !strings.Contains(summary, "已分配 4 → 4") || !strings.Contains(summary, "冻结 6 → 6") {
+		t.Fatalf("frozen stock counted as allocated: %s", summary)
+	}
+	if facts := stockChangeFacts(trans); facts[3].Value != "4 → 4" || facts[6].Value != "6 → 6" {
+		t.Fatalf("stock facts: %+v", facts)
+	}
+	if facts := stocktakeAdjustmentFacts(trans); facts[3].Value != "4 → 4" || facts[5].Value != "6 → 6" {
+		t.Fatalf("stocktake facts: %+v", facts)
+	}
+	if facts := inventoryTransFacts([]*inventorymodel.InventoryTrans{trans}); !strings.Contains(facts[0].Value, "已分配 4 → 4") {
+		t.Fatalf("outbound facts: %+v", facts)
+	}
+	trans.TransType = inventorymodel.TransAllocate
+	before := *trans
+	trans.TransType = inventorymodel.TransShip
+	summary := summarizeOutboundTrans([]*inventorymodel.InventoryTrans{&before, trans})
+	if summary.AllocatedBefore != 4 || summary.AllocatedAfter != 4 {
+		t.Fatalf("outbound summary: %+v", summary)
 	}
 }

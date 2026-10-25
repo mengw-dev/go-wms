@@ -1,5 +1,9 @@
 # WMS API 接口文档
 
+## 2026-10-25 增量审查修复
+
+库存流水导出 `trans_type` 对齐全部11种正式类型，包括移库、冻结/解冻和短缺扣减，见[Excel导出](excel-export.md)。`GET /demo/performance` 的 `business`、并发分配/短缺/拣货实验结果补充数字字段 `frozen_total`；不变量采用现存=可用+已分配+冻结及四数量非负。未增加写接口或改变库存变动规则，详见[演示模式](demo.md)与[专项记录](post-idempotency-audit-20261025.md)。
+
 ## 2026-10-22 仪表盘运营信息
 
 原 GET `/dashboard/overview` 补充 `activity`（wms:inventory 权限下的今日上架/发货流水数及最近8笔）和 `import_issues`（wms:inbound:view 权限下近七日创建的异常导入数及最近5次，全部仓库）。前者是流水数，后者是历史异常，均不推导未记录的任务完成时间或“未处理”状态。预警摘要复用已有 GET `/inventory/alerts`，使用独立 checked_at 和精确租户范围；口径、权限、范围与跳转详见[仪表盘运营信息](dashboard-operations.md)。

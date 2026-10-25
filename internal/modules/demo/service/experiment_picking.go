@@ -62,6 +62,7 @@ type PickingResult struct {
 	StockTotal                     int64                      `json:"stock_total"`
 	AvailableTotal                 int64                      `json:"available_total"`
 	AllocatedTotal                 int64                      `json:"allocated_total"`
+	FrozenTotal                    int64                      `json:"frozen_total"`
 	NegativeRows                   int64                      `json:"negative_rows"`
 	InvariantOK                    bool                       `json:"invariant_ok"`
 	InvariantMessage               string                     `json:"invariant_message"`
@@ -332,11 +333,11 @@ func (s *Service) RunConcurrentPicking(ctx context.Context, sessionID string, wo
 		return nil, err
 	}
 	invariantOK := concurrentInventoryInvariantOK(stats) && duplicateSuccess == 0
-	invariantMessage := "库存三数量公式成立，且已完成任务重复扫码均被拒绝"
+	invariantMessage := "库存四数量公式成立，且已完成任务重复扫码均被拒绝"
 	if !invariantOK {
 		invariantMessage = fmt.Sprintf(
-			"不变量异常：stock=%d available=%d allocated=%d，负数行=%d，重复扫码成功=%d",
-			stats.StockTotal, stats.AvailableTotal, stats.AllocatedTotal, stats.NegativeRows, duplicateSuccess,
+			"不变量异常：stock=%d available=%d allocated=%d frozen=%d，负数行=%d，重复扫码成功=%d",
+			stats.StockTotal, stats.AvailableTotal, stats.AllocatedTotal, stats.FrozenTotal, stats.NegativeRows, duplicateSuccess,
 		)
 	}
 	durationMs := time.Since(start).Milliseconds()
@@ -386,6 +387,7 @@ func (s *Service) RunConcurrentPicking(ctx context.Context, sessionID string, wo
 		StockTotal:                     stats.StockTotal,
 		AvailableTotal:                 stats.AvailableTotal,
 		AllocatedTotal:                 stats.AllocatedTotal,
+		FrozenTotal:                    stats.FrozenTotal,
 		NegativeRows:                   stats.NegativeRows,
 		InvariantOK:                    invariantOK,
 		InvariantMessage:               invariantMessage,

@@ -23,6 +23,16 @@ describe('只读打印快照',()=>{
     expect(print.sections).toHaveLength(1)
     expect(print.notes[0]).toContain('不能作为实际拣货指令')
   })
+  it('异常重分配只打印当前作业，取消与已发分配独立标为历史', () => {
+    const allocation = { id: '7', order_id: order.id, detail_id: '3', inventory_id: '5', sku_id: '6', location_id: '2', location_code: 'A-01', batch_no: 'B01', allocated_qty: 4, picked_qty: 0, status: 'ALLOCATED' }
+    const snapshot = { order, details: [line], allocations: [allocation, { ...allocation, id: '8', picked_qty: 2, status: 'CANCELLED' }, { ...allocation, id: '9', picked_qty: 4, status: 'PICKED' }], tasks: [] }
+    const print = outboundPrint(snapshot)
+    expect(print.sections[1]!.rows).toEqual([['货品', 'A-01', 'B01', 4, 0]])
+    expect(print.sections[2]!.title).toContain('不作为拣货指令')
+    expect(print.sections[2]!.rows.map(row => row[3])).toEqual(['已取消', '已拣货'])
+    expect(snapshot.allocations).toHaveLength(3)
+    expect(outboundPrint({ ...snapshot, allocations: snapshot.allocations.slice(1) }).notes[0]).toContain('不能作为实际拣货指令')
+  })
   it('盘点未录入留空，已录入零保留0与负差异',()=>{
     const print=stocktakePrint({order,details:[line,{...line,id:'4',actual_qty:0}]})
     expect(print.sections[0]!.rows[0]!.slice(-2)).toEqual([null,null])

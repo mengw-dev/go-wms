@@ -91,6 +91,7 @@ export interface DemoBusinessStats {
   stock_total: number
   available_total: number
   allocated_total: number
+  frozen_total: number
 }
 
 export interface DemoPerformanceSnapshot {
@@ -145,6 +146,7 @@ export interface DemoConcurrentResult {
   stock_total: number
   available_total: number
   allocated_total: number
+  frozen_total: number
   negative_rows: number
   invariant_ok: boolean
   invariant_message: string
@@ -171,6 +173,7 @@ export interface DemoConcurrentShortageResult {
   stock_total: number
   available_total: number
   allocated_total: number
+  frozen_total: number
   negative_rows: number
   limit_respected: boolean
   invariant_ok: boolean
@@ -210,6 +213,7 @@ export interface DemoPickingResult {
   stock_total: number
   available_total: number
   allocated_total: number
+  frozen_total: number
   negative_rows: number
   invariant_ok: boolean
   invariant_message: string

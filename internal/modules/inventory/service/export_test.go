@@ -11,6 +11,7 @@ import (
 	"github.com/xuri/excelize/v2"
 	"gorm.io/gorm"
 
+	basicmodel "gowms/internal/modules/basic/model"
 	"gowms/internal/modules/inventory/dto"
 	"gowms/internal/modules/inventory/model"
 	"gowms/internal/pkg/modelbase"
@@ -30,6 +31,25 @@ func readExport(t *testing.T, file *xlsxexport.File) [][]string {
 		t.Fatal(err)
 	}
 	return rows
+}
+
+func TestInventoryExportPreservesLargeSKUIdentity(t *testing.T) {
+	s, db, ctx := alertFixture(t)
+	const skuID = int64(9007199254740993)
+	if err := db.WithContext(ctx).Create(&basicmodel.SKU{Base: modelbase.Base{ID: skuID}, Code: "EXPORT-LARGE", Barcode: "000123", Name: "large", Status: 1}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.WithContext(ctx).Create(&model.Inventory{Base: modelbase.Base{ID: 9901}, WarehouseID: 1101, LocationID: 1, SKUID: skuID, BatchNo: "EXPORT-ID", StockQuantity: 1, AvailableQty: 1, StockInTime: time.Now()}).Error; err != nil {
+		t.Fatal(err)
+	}
+	file, err := s.ExportInventory(ctx, &dto.InventoryExportQuery{WarehouseID: 1101})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows := readExport(t, file)
+	if len(rows) != 2 || rows[1][6] != "9007199254740993" || rows[1][7] != "EXPORT-LARGE" {
+		t.Fatalf("SKU identity changed in workbook: %v", rows)
+	}
 }
 
 func TestInventoryExportsFilterAllPagesAndExactTenant(t *testing.T) {

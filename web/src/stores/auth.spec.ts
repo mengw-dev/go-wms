@@ -57,6 +57,19 @@ describe('auth store permissions', () => {
     expect(auth.hasPerm('wms:inbound:view')).toBe(true)
     expect(auth.hasPerm('wms:system:user')).toBe(false)
   })
+  it('same demo session renewal updates TTL without changing identity; replacement still does', () => {
+    const auth = useAuthStore()
+    auth.setDemoSession({ session_id: 'a', expires_in: 100 })
+    const version = auth.sessionVersion
+    auth.setDemoSession({ session_id: 'a', expires_in: 300 })
+    expect(auth.sessionVersion).toBe(version)
+    expect(auth.demoSessionExpiresIn).toBe(300)
+    auth.setDemoSession({ session_id: 'b', expires_in: 300 })
+    expect(auth.sessionVersion).toBeGreaterThan(version)
+    const replaced = auth.sessionVersion
+    auth.clearDemoSession()
+    expect(auth.sessionVersion).toBeGreaterThan(replaced)
+  })
 
   it('does not grant permissions based on user ID 1', () => {
     const auth = useAuthStore()

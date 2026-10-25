@@ -18,7 +18,7 @@ type ExportStockRow struct {
 	WarehouseName     string
 	LocationID        int64
 	LocationCode      string
-	SKUID             int64
+	SKUID             int64 `gorm:"column:sku_id"`
 	SKUCode           string
 	SKUName           string
 	Barcode           string

@@ -26,6 +26,15 @@ func TestSummarizeConcurrentAttemptsByStage(t *testing.T) {
 }
 
 func TestConcurrentInventoryInvariant(t *testing.T) {
+	if !concurrentInventoryInvariantOK(&concurrentInventoryStats{StockTotal: 100, AvailableTotal: 50, AllocatedTotal: 40, FrozenTotal: 10}) {
+		t.Fatal("valid frozen stock must obey the four quantity balance")
+	}
+	if concurrentInventoryInvariantOK(&concurrentInventoryStats{StockTotal: 100, AvailableTotal: 50, AllocatedTotal: 40, FrozenTotal: 9}) {
+		t.Fatal("missing frozen stock must not pass")
+	}
+	if concurrentInventoryInvariantOK(&concurrentInventoryStats{StockTotal: 100, AvailableTotal: 60, AllocatedTotal: 41, FrozenTotal: -1}) {
+		t.Fatal("negative frozen stock must not be hidden by a balanced sum")
+	}
 	if !concurrentInventoryInvariantOK(&concurrentInventoryStats{StockTotal: 100, AvailableTotal: 60, AllocatedTotal: 40}) {
 		t.Fatal("valid stock equation should pass")
 	}

@@ -12,5 +12,5 @@ type InventoryExportQuery struct {
 type TransExportQuery struct {
 	InventoryID int64  `form:"inventory_id" binding:"gte=0"`
 	OrderNo     string `form:"order_no" binding:"max=64"`
-	TransType   string `form:"trans_type" binding:"omitempty,oneof=OPENING RECEIVE ALLOCATE SHIP RELEASE ADJUST MOVE_IN MOVE_OUT"`
+	TransType   string `form:"trans_type" binding:"omitempty,oneof=OPENING RECEIVE ALLOCATE SHIP RELEASE ADJUST MOVE_IN MOVE_OUT FREEZE UNFREEZE SHORTAGE"`
 }

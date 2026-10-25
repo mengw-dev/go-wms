@@ -352,7 +352,7 @@ useAutoRefresh(
       <div><span>数据库连接</span><b>{{ data.pool.open_connections }} / {{ data.pool.max_open_connections }}</b></div>
       <div><span>Go 协程</span><b>{{ data.runtime.goroutines }}</b></div>
       <div><span>内存占用</span><b>{{ data.runtime.memory_alloc_mb }} MB</b></div>
-      <div><span>库存三数量</span><b>现存 {{ data.business.stock_total }} / 可用 {{ data.business.available_total }} / 分配 {{ data.business.allocated_total }}</b></div>
+      <div><span>库存四数量</span><b>现存 {{ data.business.stock_total }} / 可用 {{ data.business.available_total }} / 分配 {{ data.business.allocated_total }} / 冻结 {{ data.business.frozen_total }}</b></div>
     </div>
   </el-drawer>
 

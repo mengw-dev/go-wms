@@ -24,7 +24,7 @@ func (s *Service) runStocktakeDemo(ctx context.Context, refs *demoRefs) (*Scenar
 		ScenarioStep{Title: "录入实盘", Detail: "录入真实实盘数量，并包含一笔可核对的盘亏"},
 		ScenarioStep{Title: "核对差异", Detail: "按账面与实盘结果计算盘点差异"},
 		ScenarioStep{Title: "审核盘点", Detail: "审核真实盘点单并触发库存调整"},
-		ScenarioStep{Title: "库存调整入账", Detail: "核对审核事务写入的 ADJUST 流水和三数量变化"},
+		ScenarioStep{Title: "库存调整入账", Detail: "核对审核事务写入的 ADJUST 流水和四数量变化"},
 	)
 
 	var orderID int64
@@ -327,14 +327,15 @@ func stocktakeAdjustmentFacts(trans *inventorymodel.InventoryTrans) []ScenarioFa
 	if trans == nil {
 		return nil
 	}
-	allocatedBefore := trans.BeforeQuantity - trans.AvailableBefore
-	allocatedAfter := trans.AfterQuantity - trans.AvailableAfter
+	allocatedBefore := trans.BeforeQuantity - trans.AvailableBefore - trans.FrozenBefore
+	allocatedAfter := trans.AfterQuantity - trans.AvailableAfter - trans.FrozenAfter
 	return []ScenarioFact{
 		{Label: "库存流水", Value: fmt.Sprintf("%s %+d", trans.TransType, trans.QuantityChange)},
 		{Label: "现存量", Value: fmt.Sprintf("%d → %d", trans.BeforeQuantity, trans.AfterQuantity)},
 		{Label: "可用量", Value: fmt.Sprintf("%d → %d", trans.AvailableBefore, trans.AvailableAfter)},
 		{Label: "已分配", Value: fmt.Sprintf("%d → %d", allocatedBefore, allocatedAfter)},
 		{Label: "流水单号", Value: trans.OrderNo},
+		{Label: "冻结量", Value: fmt.Sprintf("%d → %d", trans.FrozenBefore, trans.FrozenAfter)},
 	}
 }
 

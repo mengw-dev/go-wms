@@ -25,6 +25,18 @@ beforeEach(() => { vi.resetAllMocks(); vi.stubGlobal('localStorage', storage());
 afterEach(() => { scopes.splice(0).forEach(s => s.stop()); vi.unstubAllGlobals() })
 
 describe('库存与异常命令持久化与恢复', () => {
+  it('同会话续期保留进行中的命令，并接受原成功回执', async () => {
+    login('1', 'session-a')
+    const { flow } = setup(), request = deferred()
+    vi.mocked(sendClosureCommand).mockReturnValueOnce(request.promise)
+    const result = flow.run(command)
+    useAuthStore().setDemoSession({ session_id: 'session-a', expires_in: 300 })
+    await nextTick()
+    expect(flow.busy.value).toBe(true)
+    request.resolve({ inventory_id: '9223372036854775800' })
+    expect(await result).toEqual({ inventory_id: '9223372036854775800' })
+    expect(flow.pending.value).toBeNull()
+  })
   it('成功才清除记录，ID不经过数字转换', async () => {
     const { flow } = setup(), request = deferred()
     vi.mocked(sendClosureCommand).mockReturnValueOnce(request.promise)
