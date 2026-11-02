@@ -38,21 +38,28 @@ func (r *Repository) UpdateRole(ctx context.Context, id int64, name, perms, rema
 }
 
 func (r *Repository) DeleteRole(ctx context.Context, id int64) error {
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		// 分配角色也先锁角色行，保证“未被使用”的判断与删除之间不能插入新关联。
-		var role model.SysRole
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&role, id).Error; err != nil {
-			return err
-		}
-		var count int64
-		if err := tx.Model(&model.SysUserRole{}).Where("role_id = ?", id).Count(&count).Error; err != nil {
-			return err
-		}
-		if count > 0 {
-			return ErrRoleInUse
-		}
-		return tx.Delete(&role).Error
-	})
+	return r.Transaction(ctx, func(r *Repository) error { return r.DeleteRoleInTx(ctx, id) })
+}
+
+// DeleteRoleInTx requires the caller to own the transaction.
+func (r *Repository) DeleteRoleInTx(ctx context.Context, id int64) error {
+	tx := r.db.WithContext(ctx)
+	// 分配角色也先锁角色行，保证“未被使用”的判断与删除之间不能插入新关联。
+	var role model.SysRole
+	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&role, id).Error; err != nil {
+		return err
+	}
+	// Authority checks may already have established a repeatable-read snapshot.
+	// Use a current locking read after acquiring the role lock, otherwise an
+	// assignment committed while we waited could be absent from that snapshot.
+	var links []model.SysUserRole
+	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("role_id = ?", id).Limit(1).Find(&links).Error; err != nil {
+		return err
+	}
+	if len(links) > 0 {
+		return ErrRoleInUse
+	}
+	return tx.Delete(&role).Error
 }
 
 func (r *Repository) ListRoles(ctx context.Context, keyword string, page, size int) ([]*model.SysRole, int64, error) {

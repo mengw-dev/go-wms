@@ -4,12 +4,12 @@ import BusinessPagination from '@/components/common/BusinessPagination.vue'
 import { mobileTableCellStyle } from '@/utils/mobileTable'
 import BusinessListPage from '@/components/common/BusinessListPage.vue'
 import { passwordByteRule } from '@/utils/password'
-import { onMounted, onScopeDispose, reactive, ref } from 'vue'
+import { onMounted, onScopeDispose, reactive, ref, watch } from 'vue'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import {
   createUser,
   deleteUser,
-  listAllRoles,
+  listAssignableRoles,
   listUsers,
   resetUserPassword,
   updateUser,
@@ -32,6 +32,7 @@ let disposed = false
 onScopeDispose(() => {
   disposed = true
   loadSeq++
+  roleSeq++
 })
 
 async function load() {
@@ -60,13 +61,32 @@ onMounted(() => {
 
 // ---------- 角色选项 ----------
 const roleOptions = ref<RoleItem[]>([])
+const knownRoleNames = reactive(new Map<EntityID, string>())
+const rolesLoading = ref(false)
+const rolesReady = ref(false)
+let roleSeq = 0
 
-async function loadRoleOptions() {
-  roleOptions.value = (await listAllRoles()) ?? []
+async function loadRoleOptions(userId?: EntityID) {
+  const seq = ++roleSeq
+  rolesLoading.value = true
+  rolesReady.value = false
+  roleOptions.value = []
+  try {
+    const options = (await listAssignableRoles(userId)) ?? []
+    if (disposed || seq !== roleSeq) return
+    roleOptions.value = options
+    for (const role of options) knownRoleNames.set(role.id, role.name)
+    rolesReady.value = true
+  } catch {
+    // The request layer reports the failure. Never treat it as an empty,
+    // successfully loaded role set that can overwrite existing assignments.
+  } finally {
+    if (!disposed && seq === roleSeq) rolesLoading.value = false
+  }
 }
 
 function roleName(id: EntityID): string {
-  return roleOptions.value.find((role) => role.id === id)?.name || String(id)
+  return knownRoleNames.get(id) || String(id)
 }
 
 function isBuiltinAdmin(row: UserItem): boolean {
@@ -107,6 +127,13 @@ async function onToggleStatus(row: UserItem, value: string | number | boolean) {
 
 // ---------- 新增 / 编辑 ----------
 const dialog = reactive({ visible: false, loading: false, editingId: '' as EntityID })
+watch(() => dialog.visible, (visible) => {
+  if (!visible) {
+    roleSeq++
+    rolesReady.value = false
+    rolesLoading.value = false
+  }
+})
 const formRef = ref<FormInstance>()
 const form = reactive({
   username: '',
@@ -133,6 +160,7 @@ function openCreate() {
   form.nickname = ''
   form.role_ids = []
   dialog.visible = true
+  void loadRoleOptions()
 }
 
 function openEdit(row: UserItem) {
@@ -143,11 +171,14 @@ function openEdit(row: UserItem) {
   form.role_ids = [...(row.role_ids ?? [])]
   editStatus.value = row.status
   dialog.visible = true
+  void loadRoleOptions(row.id)
 }
 
 async function submit() {
+  if (dialog.loading || rolesLoading.value || !rolesReady.value) return
+  const seq = roleSeq
   const valid = await formRef.value?.validate().catch(() => false)
-  if (!valid) return
+  if (!valid || disposed || !dialog.visible || seq !== roleSeq) return
   dialog.loading = true
   try {
     if (dialog.editingId) {
@@ -343,6 +374,8 @@ async function onDelete(row: UserItem) {
         </el-form-item>
         <el-form-item :label="dialog.editingId ? '角色' : '初始角色'">
           <el-select
+            :loading="rolesLoading"
+            :disabled="rolesLoading || !rolesReady"
             v-model="form.role_ids"
             multiple
             placeholder="选择角色，可多选"
@@ -351,11 +384,15 @@ async function onDelete(row: UserItem) {
             <el-option v-for="role in roleOptions" :key="role.id" :label="role.name" :value="role.id" />
           </el-select>
           <div class="form-tip">留空表示不授予角色；修改后立即覆盖该用户原有角色。</div>
+          <div v-if="!rolesLoading && !rolesReady" class="form-tip">
+            可分配角色未加载成功，暂时不能保存。
+            <el-button link type="primary" @click="loadRoleOptions(dialog.editingId || undefined)">重新加载</el-button>
+          </div>
         </el-form-item>
       </el-form>
       <template #footer>
         <el-button :disabled="dialog.loading" @click="dialog.visible = false">取消</el-button>
-        <el-button type="primary" :loading="dialog.loading" @click="submit">确定</el-button>
+        <el-button type="primary" :loading="dialog.loading" :disabled="rolesLoading || !rolesReady" @click="submit">确定</el-button>
       </template>
     </el-dialog>
 

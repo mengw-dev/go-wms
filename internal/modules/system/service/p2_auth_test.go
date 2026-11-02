@@ -18,6 +18,7 @@ import (
 
 func TestPermissionLoadCannotRefillAfterRevocation(t *testing.T) {
 	s, db, ctx := userFixture(t)
+	actorID := newAdminActor(t, s, ctx)
 	loaded, release := make(chan struct{}), make(chan struct{})
 	var once, unblock sync.Once
 	defer unblock.Do(func() { close(release) })
@@ -43,7 +44,7 @@ func TestPermissionLoadCannotRefillAfterRevocation(t *testing.T) {
 	case <-queryCtx.Done():
 		t.Fatal("permission query did not reach barrier")
 	}
-	if err := s.UpdateRole(ctx, 10, &dto.RoleUpdateReq{Name: "Own", Perms: ""}); err != nil {
+	if err := s.UpdateRole(ctx, actorID, 10, &dto.RoleUpdateReq{Name: "Own", Perms: ""}); err != nil {
 		t.Fatal(err)
 	}
 	unblock.Do(func() { close(release) })
@@ -111,6 +112,7 @@ func TestUnknownLoginNamesSharePrelookupIPLimit(t *testing.T) {
 
 func TestPasswordByteLimitAcrossAllSetters(t *testing.T) {
 	s, db, ctx := userFixture(t)
+	actorID := newAdminActor(t, s, ctx)
 	valid := strings.Repeat("密", 24) // 72 bytes; within existing 32-character limit.
 	hash, err := hashPassword(valid)
 	if err != nil || !checkPassword(hash, valid) {
@@ -125,8 +127,10 @@ func TestPasswordByteLimitAcrossAllSetters(t *testing.T) {
 	}
 	invalid := strings.Repeat("密", 25)
 	for _, action := range []func() error{
-		func() error { return s.CreateUser(ctx, &dto.UserCreateReq{Username: "too-long", Password: invalid}) },
-		func() error { return s.ResetPassword(ctx, 42, &dto.ResetPwdReq{Password: invalid}) },
+		func() error {
+			return s.CreateUser(ctx, actorID, &dto.UserCreateReq{Username: "too-long", Password: invalid})
+		},
+		func() error { return s.ResetPassword(ctx, actorID, 42, &dto.ResetPwdReq{Password: invalid}) },
 		func() error {
 			return s.ChangePassword(ctx, 42, &dto.ChangePwdReq{OldPassword: valid, NewPassword: invalid})
 		},

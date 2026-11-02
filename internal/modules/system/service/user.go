@@ -10,12 +10,14 @@ import (
 	"gowms/internal/modules/system/model"
 	"gowms/internal/modules/system/repository"
 	"gowms/internal/pkg/errcode"
+	"gowms/internal/pkg/tenant"
 	pkgtx "gowms/internal/pkg/tx"
 )
 
 // 用户管理。
 
-func (s *Service) CreateUser(ctx context.Context, req *dto.UserCreateReq) error {
+func (s *Service) CreateUser(ctx context.Context, actorID int64, req *dto.UserCreateReq) error {
+	ctx = tenant.WithExactTenant(ctx, tenant.FromContext(ctx))
 	if _, err := s.repo.GetUserByUsername(ctx, req.Username); err == nil {
 		return errcode.UserExist
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -25,9 +27,12 @@ func (s *Service) CreateUser(ctx context.Context, req *dto.UserCreateReq) error 
 	if err != nil {
 		return err
 	}
-	err = s.repo.CreateUser(ctx, &model.SysUser{
-		Username: req.Username, PasswordHash: hash, Nickname: req.Nickname, Status: 1,
-	}, req.RoleIDs)
+	err = s.administer(ctx, actorID, 0, req.RoleIDs, PermSystemUser, func(r *repository.Repository, a *administration) error {
+		if err := a.validateAssignments(req.RoleIDs, a.actor.TenantID); err != nil {
+			return err
+		}
+		return r.CreateUserInTx(ctx, &model.SysUser{Username: req.Username, PasswordHash: hash, Nickname: req.Nickname, Status: 1}, req.RoleIDs)
+	})
 	if errors.Is(err, repository.ErrInvalidRole) {
 		return errcode.RoleIDInvalid
 	}
@@ -45,77 +50,44 @@ func (s *Service) CreateUser(ctx context.Context, req *dto.UserCreateReq) error 
 	return nil
 }
 
-func (s *Service) UpdateUser(ctx context.Context, id int64, req *dto.UserUpdateReq) error {
-	builtin, err := s.isBuiltinAdmin(ctx, id)
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		return err
-	}
-	if builtin {
-		return errcode.ModifyAdminForbidden
-	}
+func (s *Service) UpdateUser(ctx context.Context, actorID, id int64, req *dto.UserUpdateReq) error {
 	if req.Status != nil && *req.Status != 0 && *req.Status != 1 {
 		return errcode.ParamError
 	}
-	if err := s.repo.UpdateUser(ctx, id, req.Nickname, req.Status, req.RoleIDs); err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return errcode.UserIDInvalid
+	err := s.administer(ctx, actorID, id, req.RoleIDs, PermSystemUser, func(r *repository.Repository, a *administration) error {
+		if err := a.validateAssignments(req.RoleIDs, a.target.TenantID); err != nil {
+			return err
 		}
-		if errors.Is(err, repository.ErrInvalidRole) {
-			return errcode.RoleIDInvalid
-		}
+		return r.UpdateUserInTx(ctx, id, req.Nickname, req.Status, req.RoleIDs)
+	})
+	if errors.Is(err, repository.ErrInvalidRole) {
+		return errcode.RoleIDInvalid
+	}
+	if err != nil {
 		return err
 	}
 	s.invalidatePermCache()
 	return nil
 }
 
-func (s *Service) DeleteUser(ctx context.Context, id int64) error {
-	builtin, err := s.isBuiltinAdmin(ctx, id)
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		return err
+func (s *Service) DeleteUser(ctx context.Context, actorID, id int64) error {
+	err := s.administer(ctx, actorID, id, nil, PermSystemUser, func(r *repository.Repository, _ *administration) error {
+		return r.DeleteUserInTx(ctx, id)
+	})
+	if err == nil {
+		s.invalidatePermCache()
 	}
-	if builtin {
-		return errcode.ModifyAdminForbidden
-	}
-	if err := s.repo.DeleteUser(ctx, id); err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return errcode.UserIDInvalid
-		}
-		return err
-	}
-	return nil
+	return err
 }
 
-func (s *Service) ResetPassword(ctx context.Context, id int64, req *dto.ResetPwdReq) error {
-	user, err := s.repo.GetUserByID(ctx, id)
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return errcode.UserIDInvalid
-		}
-		return err
-	}
-	if user.TenantID == 0 && user.Username == "admin" {
-		return errcode.ModifyAdminForbidden
-	}
+func (s *Service) ResetPassword(ctx context.Context, actorID, id int64, req *dto.ResetPwdReq) error {
 	hash, err := hashPassword(req.Password)
 	if err != nil {
 		return err
 	}
-	if err := s.repo.UpdatePassword(ctx, id, hash); err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return errcode.UserIDInvalid
-		}
-		return err
-	}
-	return nil
-}
-
-func (s *Service) isBuiltinAdmin(ctx context.Context, id int64) (bool, error) {
-	user, err := s.repo.GetUserByID(ctx, id)
-	if err != nil {
-		return false, err
-	}
-	return user.TenantID == 0 && user.Username == "admin", nil
+	return s.administer(ctx, actorID, id, nil, PermSystemUser, func(r *repository.Repository, _ *administration) error {
+		return r.UpdatePassword(ctx, id, hash)
+	})
 }
 
 func (s *Service) ListUsers(ctx context.Context, q *dto.UserListQuery) ([]*dto.UserResp, int64, error) {

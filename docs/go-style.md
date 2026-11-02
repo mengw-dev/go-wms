@@ -15,7 +15,7 @@
 - `handler → service → repository` 表示主要调用方向，不要求 DTO、model、错误码也逐层转发。handler 不直接操作 Repository 或数据库；Repository 不反向依赖 service/handler。
 - `api` 可以使用稳定的请求/结果类型、状态枚举及现有事务参数，不依赖 service/repository/handler。跨模块优先复用既有 api；当前库存锁定基础资料等跨 model 访问是已存在的单库协作，修改前查调用链，不机械消除。
 - `internal/pkg` 不依赖业务模块；业务模块不依赖 demo；demo 允许编排业务 Service，依赖组装集中在 `internal/app`。这些直接导入边界已由 `scripts/check-dependencies` 全量检查和前端 ESLint 规则守护，入口及例外见下节。
-- 库存等跨模块写入由 Service 开事务，向 Repository 和跨模块 API 传递同一个 tx。system 的 `CreateUser`、`UpdateUser`、`DeleteUser`、`DeleteRole` 是既有聚合短事务例外；保留用户角色的原子性和共同锁协议。若新用例需要外层事务，再单独迁移，不把移动事务当作格式整理。
+- 库存等跨模块写入由 Service 开事务，向 Repository 和跨模块 API 传递同一个 tx。system 管理 Service 通过 Repository.Transaction 组织短事务，先锁用户、再锁角色，在同一事务内核对当前权限和写入；内部使用 InTx 方法，避免嵌套事务。Repository 独立事务包装保留给可信初始化/测试，外部管理入口必须经过 Service 的显式操作者校验。
 - 新增 `Raw` / `Table` / `Exec` / `Scan` 要逐表检查租户与软删范围。系统级旁路说明用途和调用入口；覆盖精确租户 0、普通租户和关联条件，不能只靠 GORM 回调推定安全。
 - 需要调用前先锁行的 API，应注明锁对象、顺序、事务归属和失败语义，例如 `TaskAPI.AddProgress`。重构不能使调用方忘记这些前置条件。
 

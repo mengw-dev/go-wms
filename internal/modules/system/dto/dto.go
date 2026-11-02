@@ -123,3 +123,8 @@ type OperLogResp struct {
 	Result    string    `json:"result"`
 	CreatedAt time.Time `json:"created_at"`
 }
+
+// AssignableRoleQuery omits UserID for creation in the current tenant.
+type AssignableRoleQuery struct {
+	UserID int64 `form:"user_id" binding:"gte=0"`
+}

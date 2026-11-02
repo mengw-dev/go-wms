@@ -27,6 +27,7 @@ func (h *Handler) RegisterRoutes(pub, auth *gin.RouterGroup, checker middleware.
 	users := auth.Group("/system/users")
 	{
 		users.GET("", middleware.Permission(checker, "wms:system:user"), h.listUsers)
+		users.GET("/role-options", middleware.Permission(checker, "wms:system:user"), h.listAssignableRoles)
 		users.POST("", middleware.Permission(checker, "wms:system:user"), h.createUser)
 		users.PUT("/:id", middleware.Permission(checker, "wms:system:user"), h.updateUser)
 		users.DELETE("/:id", middleware.Permission(checker, "wms:system:user"), h.deleteUser)
@@ -99,7 +100,7 @@ func (h *Handler) createUser(c *gin.Context) {
 	if !httpx.BindJSON(c, &req) {
 		return
 	}
-	if err := h.svc.CreateUser(c.Request.Context(), &req); err != nil {
+	if err := h.svc.CreateUser(c.Request.Context(), middleware.UserID(c), &req); err != nil {
 		response.Fail(c, err)
 		return
 	}
@@ -115,7 +116,7 @@ func (h *Handler) updateUser(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := h.svc.UpdateUser(c.Request.Context(), id, &req); err != nil {
+	if err := h.svc.UpdateUser(c.Request.Context(), middleware.UserID(c), id, &req); err != nil {
 		response.Fail(c, err)
 		return
 	}
@@ -131,7 +132,7 @@ func (h *Handler) updateUserStatus(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := h.svc.UpdateUser(c.Request.Context(), id, &dto.UserUpdateReq{Status: req.Status}); err != nil {
+	if err := h.svc.UpdateUser(c.Request.Context(), middleware.UserID(c), id, &dto.UserUpdateReq{Status: req.Status}); err != nil {
 		response.Fail(c, err)
 		return
 	}
@@ -143,7 +144,7 @@ func (h *Handler) deleteUser(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := h.svc.DeleteUser(c.Request.Context(), id); err != nil {
+	if err := h.svc.DeleteUser(c.Request.Context(), middleware.UserID(c), id); err != nil {
 		response.Fail(c, err)
 		return
 	}
@@ -159,7 +160,7 @@ func (h *Handler) resetPassword(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := h.svc.ResetPassword(c.Request.Context(), id, &req); err != nil {
+	if err := h.svc.ResetPassword(c.Request.Context(), middleware.UserID(c), id, &req); err != nil {
 		response.Fail(c, err)
 		return
 	}
@@ -194,7 +195,7 @@ func (h *Handler) createRole(c *gin.Context) {
 	if !httpx.BindJSON(c, &req) {
 		return
 	}
-	if err := h.svc.CreateRole(c.Request.Context(), &req); err != nil {
+	if err := h.svc.CreateRole(c.Request.Context(), middleware.UserID(c), &req); err != nil {
 		response.Fail(c, err)
 		return
 	}
@@ -210,7 +211,7 @@ func (h *Handler) updateRole(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := h.svc.UpdateRole(c.Request.Context(), id, &req); err != nil {
+	if err := h.svc.UpdateRole(c.Request.Context(), middleware.UserID(c), id, &req); err != nil {
 		response.Fail(c, err)
 		return
 	}
@@ -222,7 +223,7 @@ func (h *Handler) deleteRole(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := h.svc.DeleteRole(c.Request.Context(), id); err != nil {
+	if err := h.svc.DeleteRole(c.Request.Context(), middleware.UserID(c), id); err != nil {
 		response.Fail(c, err)
 		return
 	}
@@ -241,4 +242,18 @@ func (h *Handler) listOperLogs(c *gin.Context) {
 		return
 	}
 	response.OKPage(c, list, total)
+}
+
+func (h *Handler) listAssignableRoles(c *gin.Context) {
+	var q dto.AssignableRoleQuery
+	if err := c.ShouldBindQuery(&q); err != nil {
+		response.Fail(c, errcode.ParamError)
+		return
+	}
+	list, err := h.svc.ListAssignableRoles(c.Request.Context(), middleware.UserID(c), q.UserID)
+	if err != nil {
+		response.Fail(c, err)
+		return
+	}
+	response.OK(c, list)
 }

@@ -19,6 +19,11 @@ export function listUsers(params: UserListQuery) {
   return get<PageData<UserItem>>('/system/users', params as Record<string, unknown>)
 }
 
+/** 当前操作者可授予的角色；编辑时按目标用户确定租户。 */
+export function listAssignableRoles(userId?: EntityID) {
+  return get<RoleItem[]>('/system/users/role-options', userId ? { user_id: userId } : undefined)
+}
+
 export function createUser(data: UserCreateParams) {
   return post<void>('/system/users', data)
 }

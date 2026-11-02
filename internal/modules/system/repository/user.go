@@ -52,50 +52,62 @@ func (r *Repository) GetUserByID(ctx context.Context, id int64) (*model.SysUser,
 
 // CreateUser 创建用户并原子维护角色关联。系统模块的聚合例外由 Repository 自身开启短事务。
 func (r *Repository) CreateUser(ctx context.Context, u *model.SysUser, roleIDs []int64) error {
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Create(u).Error; err != nil {
-			return err
-		}
-		return replaceRoles(tx, u.ID, u.TenantID, roleIDs)
-	})
+	return r.Transaction(ctx, func(r *Repository) error { return r.CreateUserInTx(ctx, u, roleIDs) })
+}
+
+// CreateUserInTx requires the caller to own the transaction.
+func (r *Repository) CreateUserInTx(ctx context.Context, u *model.SysUser, roleIDs []int64) error {
+	tx := r.db.WithContext(ctx)
+	if err := tx.Create(u).Error; err != nil {
+		return err
+	}
+	return replaceRoles(tx, u.ID, u.TenantID, roleIDs)
 }
 
 // UpdateUser 更新用户资料并原子替换角色关联。系统模块的聚合例外由 Repository 自身开启短事务。
 func (r *Repository) UpdateUser(ctx context.Context, id int64, nickname *string, status *int, roleIDs []int64) error {
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var user model.SysUser
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&user, id).Error; err != nil {
+	return r.Transaction(ctx, func(r *Repository) error { return r.UpdateUserInTx(ctx, id, nickname, status, roleIDs) })
+}
+
+// UpdateUserInTx requires the caller to own the transaction.
+func (r *Repository) UpdateUserInTx(ctx context.Context, id int64, nickname *string, status *int, roleIDs []int64) error {
+	tx := r.db.WithContext(ctx)
+	var user model.SysUser
+	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&user, id).Error; err != nil {
+		return err
+	}
+	updates := make(map[string]any)
+	if nickname != nil {
+		updates["nickname"] = *nickname
+	}
+	if status != nil {
+		updates["status"] = *status
+		// 禁用再启用后旧 Token 也不能恢复有效。
+		updates["token_version"] = gorm.Expr("token_version + 1")
+	}
+	if len(updates) > 0 {
+		if err := tx.Model(&model.SysUser{}).Where("id = ?", id).Updates(updates).Error; err != nil {
 			return err
 		}
-		updates := make(map[string]any)
-		if nickname != nil {
-			updates["nickname"] = *nickname
-		}
-		if status != nil {
-			updates["status"] = *status
-			// 禁用再启用后旧 Token 也不能恢复有效。
-			updates["token_version"] = gorm.Expr("token_version + 1")
-		}
-		if len(updates) > 0 {
-			if err := tx.Model(&model.SysUser{}).Where("id = ?", id).Updates(updates).Error; err != nil {
-				return err
-			}
-		}
-		if roleIDs != nil {
-			return replaceRoles(tx, id, user.TenantID, roleIDs)
-		}
-		return nil
-	})
+	}
+	if roleIDs != nil {
+		return replaceRoles(tx, id, user.TenantID, roleIDs)
+	}
+	return nil
 }
 
 // DeleteUser 删除用户并原子清理角色关联。系统模块的聚合例外由 Repository 自身开启短事务。
 func (r *Repository) DeleteUser(ctx context.Context, id int64) error {
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := dbutil.RequireAffected(tx.Delete(&model.SysUser{}, id)); err != nil {
-			return err
-		}
-		return tx.Where("user_id = ?", id).Delete(&model.SysUserRole{}).Error
-	})
+	return r.Transaction(ctx, func(r *Repository) error { return r.DeleteUserInTx(ctx, id) })
+}
+
+// DeleteUserInTx requires the caller to own the transaction.
+func (r *Repository) DeleteUserInTx(ctx context.Context, id int64) error {
+	tx := r.db.WithContext(ctx)
+	if err := dbutil.RequireAffected(tx.Delete(&model.SysUser{}, id)); err != nil {
+		return err
+	}
+	return tx.Where("user_id = ?", id).Delete(&model.SysUserRole{}).Error
 }
 
 func (r *Repository) UpdatePassword(ctx context.Context, id int64, hash string) error {
