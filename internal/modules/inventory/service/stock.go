@@ -16,6 +16,7 @@ import (
 	"gowms/internal/pkg/modelbase"
 	"gowms/internal/pkg/quantity"
 	"gowms/internal/pkg/snowflake"
+	"gowms/internal/pkg/tenant"
 	pkgtx "gowms/internal/pkg/tx"
 )
 
@@ -32,6 +33,7 @@ func (s *Service) Increase(ctx context.Context, tx *gorm.DB, req *api.IncreaseRe
 	if req.Quantity <= 0 {
 		return errcode.ParamError
 	}
+	tx = tx.WithContext(tenant.WithExactTenant(ctx, tenant.FromContext(ctx)))
 	if err := s.repo.LockBasicReferences(tx, req.WarehouseID, req.LocationID, req.SKUID); err != nil {
 		return err
 	}
@@ -98,6 +100,7 @@ func (s *Service) Allocate(ctx context.Context, tx *gorm.DB, req *api.AllocateRe
 		return nil, errcode.ParamError
 	}
 
+	tx = tx.WithContext(tenant.WithExactTenant(ctx, tenant.FromContext(ctx)))
 	allocation := &api.AllocateResult{Rows: make([]api.AllocateRow, 0, 4)}
 	remaining := req.Quantity
 	var pending []repository.FIFOCandidate // 当前批中尚未处理的候选
@@ -239,6 +242,7 @@ func (s *Service) Ship(ctx context.Context, tx *gorm.DB, req *api.ShipReq) error
 	if req.Quantity <= 0 {
 		return errcode.ParamError
 	}
+	tx = tx.WithContext(tenant.WithExactTenant(ctx, tenant.FromContext(ctx)))
 	inv, err := s.repo.GetForUpdate(tx, req.InventoryID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -267,6 +271,7 @@ func (s *Service) Release(ctx context.Context, tx *gorm.DB, req *api.ReleaseReq)
 	if req.Quantity <= 0 {
 		return errcode.ParamError
 	}
+	tx = tx.WithContext(tenant.WithExactTenant(ctx, tenant.FromContext(ctx)))
 	inv, err := s.repo.GetForUpdate(tx, req.InventoryID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -298,6 +303,7 @@ func (s *Service) Adjust(ctx context.Context, tx *gorm.DB, req *api.AdjustReq) (
 	if req.NewStock < 0 {
 		return 0, errcode.AdjustNotAllow
 	}
+	tx = tx.WithContext(tenant.WithExactTenant(ctx, tenant.FromContext(ctx)))
 	inv, err := s.repo.GetForUpdate(tx, req.InventoryID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {

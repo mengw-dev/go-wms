@@ -10,12 +10,14 @@ import (
 	"gowms/internal/modules/basic/model"
 	"gowms/internal/pkg/errcode"
 	"gowms/internal/pkg/quota"
+	"gowms/internal/pkg/tenant"
 	pkgtx "gowms/internal/pkg/tx"
 )
 
 // 仓库业务。
 
 func (s *Service) CreateWarehouse(ctx context.Context, req *dto.WarehouseReq) error {
+	ctx = tenant.WithExactTenant(ctx, tenant.FromContext(ctx))
 	// 公开租户配额：防止访客无限建仓库。
 	if err := quota.Guard(ctx, s.tm.DB(), &model.Warehouse{}, s.limits.MaxWarehouses, 1, "仓库"); err != nil {
 		return err
@@ -42,6 +44,7 @@ func (s *Service) CreateWarehouse(ctx context.Context, req *dto.WarehouseReq) er
 }
 
 func (s *Service) UpdateWarehouse(ctx context.Context, id int64, req *dto.WarehouseReq) error {
+	ctx = tenant.WithExactTenant(ctx, tenant.FromContext(ctx))
 	if err := s.repo.UpdateWarehouse(ctx, s.tm.DB(), id, req.Name, req.Remark); err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return errcode.WarehouseNotFound
@@ -52,6 +55,7 @@ func (s *Service) UpdateWarehouse(ctx context.Context, id int64, req *dto.Wareho
 }
 
 func (s *Service) UpdateWarehouseStatus(ctx context.Context, id int64, status int) error {
+	ctx = tenant.WithExactTenant(ctx, tenant.FromContext(ctx))
 	if status != 0 && status != 1 {
 		return errcode.ParamError
 	}
@@ -65,6 +69,7 @@ func (s *Service) UpdateWarehouseStatus(ctx context.Context, id int64, status in
 }
 
 func (s *Service) DeleteWarehouse(ctx context.Context, id int64) error {
+	ctx = tenant.WithExactTenant(ctx, tenant.FromContext(ctx))
 	err := s.tm.TxRetry(ctx, pkgtx.MaxTxRetry, func(txDB *gorm.DB) error {
 		if _, err := s.repo.GetWarehouseForUpdate(ctx, txDB, id); err != nil {
 			return err

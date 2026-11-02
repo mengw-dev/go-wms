@@ -45,7 +45,7 @@ func (s *Service) RunImports(ctx context.Context) {
 }
 
 func (s *Service) processImport(parent context.Context, task *model.ImportTask) error {
-	ctx, cancel := context.WithTimeout(tenant.WithTenant(parent, task.TenantID), importTimeout)
+	ctx, cancel := context.WithTimeout(tenant.WithExactTenant(parent, task.TenantID), importTimeout)
 	defer cancel()
 	token := uuid.NewString()
 	claimed, err := s.repo.ClaimImport(s.tm.DB().WithContext(ctx), task, token)
@@ -66,7 +66,7 @@ func (s *Service) processImport(parent context.Context, task *model.ImportTask) 
 	result := s.doImport(ctx, task)
 
 	// 请求/进程取消后仍需有限时地保存状态；所有写入都校验本次 token。
-	finishCtx, finishCancel := context.WithTimeout(tenant.WithTenant(context.Background(), task.TenantID), 5*time.Second)
+	finishCtx, finishCancel := context.WithTimeout(tenant.WithExactTenant(context.Background(), task.TenantID), 5*time.Second)
 	defer finishCancel()
 	db := s.tm.DB().WithContext(finishCtx)
 	if parent.Err() != nil || errors.Is(ctx.Err(), context.Canceled) {

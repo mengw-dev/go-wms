@@ -69,6 +69,8 @@
 
 应用装配与启动：
 
+跨模块业务租户契约回归：`internal/app/business_tenant_test.go`（真实迁移库、平台只读/精确写入、业务生命周期及事务回滚）；导入与任务内部接口分别见 `inbound/service/import_tenant_test.go`、`task/service/tenant_test.go`。
+
 | 路径 | 职责 | 对应测试 |
 | --- | --- | --- |
 | `internal/app` | 依赖组装与路由注册 | `router_test.go`、`integration_test.go`、`list_contract_test.go`（业务列表HTTP/SQL契约）、`race_cleanup_test.go`（门闩/取消/worker回收）、`pick_race_test.go`、`order_references_test.go`、`order_quantity_test.go`、`task_pagination_test.go`、`external_identity_test.go`、`schema_contract_test.go`、`fingerprint_compatibility_test.go`（领取/拣货旧记录回放及字段移位拒绝） |

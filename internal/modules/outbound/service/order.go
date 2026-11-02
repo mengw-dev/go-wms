@@ -18,6 +18,7 @@ import (
 	"gowms/internal/pkg/quantity"
 	"gowms/internal/pkg/quota"
 	"gowms/internal/pkg/snowflake"
+	"gowms/internal/pkg/tenant"
 	"gowms/internal/pkg/tx"
 )
 
@@ -33,6 +34,7 @@ func (s *Service) CreateResponse(ctx context.Context, req *dto.CreateOrderReq, o
 }
 
 func (s *Service) Create(ctx context.Context, req *dto.CreateOrderReq, operator string) (*model.ShipmentOrder, error) {
+	ctx = tenant.WithExactTenant(ctx, tenant.FromContext(ctx))
 	if err := s.checkDetailCount(len(req.Details)); err != nil {
 		return nil, err
 	}
@@ -81,6 +83,7 @@ func (s *Service) Create(ctx context.Context, req *dto.CreateOrderReq, operator 
 }
 
 func (s *Service) Delete(ctx context.Context, id int64) error {
+	ctx = tenant.WithExactTenant(ctx, tenant.FromContext(ctx))
 	return s.tm.Tx(ctx, func(tx *gorm.DB) error {
 		o, err := s.repo.GetOrderForUpdate(tx, id)
 		if err != nil {
@@ -97,6 +100,7 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 }
 
 func (s *Service) Submit(ctx context.Context, id int64) error {
+	ctx = tenant.WithExactTenant(ctx, tenant.FromContext(ctx))
 	return s.tm.Tx(ctx, func(tx *gorm.DB) error {
 		o, err := s.repo.GetOrderForUpdate(tx, id)
 		if err != nil {
@@ -118,6 +122,7 @@ func (s *Service) Submit(ctx context.Context, id int64) error {
 }
 
 func (s *Service) Approve(ctx context.Context, id int64, operator string) error {
+	ctx = tenant.WithExactTenant(ctx, tenant.FromContext(ctx))
 	return s.tm.TxRetry(ctx, tx.MaxTxRetry, func(tx *gorm.DB) error {
 		o, err := s.repo.GetOrderForUpdate(tx, id)
 		if err != nil {
@@ -202,6 +207,7 @@ func (s *Service) Approve(ctx context.Context, id int64, operator string) error 
 }
 
 func (s *Service) Cancel(ctx context.Context, id int64, operator string) error {
+	ctx = tenant.WithExactTenant(ctx, tenant.FromContext(ctx))
 	return s.tm.TxRetry(ctx, tx.MaxTxRetry, func(tx *gorm.DB) error {
 		// 非锁读：只用于判断分支；权威校验与状态推进交给条件更新（CAS），
 		// 并发变化会让 CAS 影响行数为 0，由 TxRetry 重新读取后走正确的路径。

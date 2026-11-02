@@ -28,6 +28,7 @@ const approveIdempotencyScope = "stocktake.approve"
 // 审核成功但响应丢失后的重试不会因「已终态」被误报为业务失败。
 // 同 key 被用于其他单据返回 409；未携带 key 保持旧契约但无请求级去重保证。
 func (s *Service) Approve(ctx context.Context, orderID int64, operator, idempotencyKey string) error {
+	ctx = tenant.WithExactTenant(ctx, tenant.FromContext(ctx))
 	idempotencyKey = strings.TrimSpace(idempotencyKey)
 	if len(idempotencyKey) > 64 {
 		return errcode.ParamError

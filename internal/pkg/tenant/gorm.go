@@ -65,7 +65,7 @@ func tenantWhereScope(db *gorm.DB) {
 }
 
 // fillTenantOnCreate 在有租户的上下文中只能创建该租户的数据。
-// 平台代操作必须使用平台上下文，并在记录上显式指定租户。
+// 系统初始化/维护使用平台旁路时需在记录上显式指定租户；业务写入口不允许借此跨租户代办。
 func fillTenantOnCreate(db *gorm.DB) {
 	if db.Statement == nil || db.Statement.Schema == nil {
 		return

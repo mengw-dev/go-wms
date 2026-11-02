@@ -9,11 +9,13 @@ import (
 	"gowms/internal/modules/stocktake/model"
 	"gowms/internal/pkg/errcode"
 	"gowms/internal/pkg/quantity"
+	"gowms/internal/pkg/tenant"
 )
 
 // 实盘数量录入。
 
 func (s *Service) RecordActual(ctx context.Context, orderID, detailID int64, actualQty int) error {
+	ctx = tenant.WithExactTenant(ctx, tenant.FromContext(ctx))
 	if actualQty > quantity.Max {
 		return errcode.QuantityLimitExceeded
 	}

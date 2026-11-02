@@ -29,6 +29,7 @@ const receiveIdempotencyScope = "inbound.receive"
 // idempotencyKey 非空时启用请求级幂等：同 key + 同内容重试回放空成功（data:null 契约不变），
 // 同 key 不同内容返回 409；未携带 key 保持旧契约但无请求级去重保证。
 func (s *Service) Receive(ctx context.Context, orderID, detailID int64, req *dto.ReceiveReq, operator, idempotencyKey string) error {
+	ctx = tenant.WithExactTenant(ctx, tenant.FromContext(ctx))
 	if req.Qty > quantity.Max {
 		return errcode.QuantityLimitExceeded
 	}

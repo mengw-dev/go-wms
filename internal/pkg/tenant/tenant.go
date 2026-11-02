@@ -1,6 +1,7 @@
 // Package tenant 多租户最小版：共享库加列方案。
 // 租户 ID 经 JWT → 请求 ctx 传播 → GORM 全局回调自动注入 WHERE tenant_id = ?。
 // ctx 中无租户（或为 0）视为平台旁路：迁移、种子、演示重置等场景不注入隔离条件。
+// 业务写入口必须使用 WithExactTenant(ctx, FromContext(ctx))，平台只能写租户 0 自身业务。
 package tenant
 
 import "context"
@@ -10,7 +11,7 @@ type ctxKey string
 const tenantCtxKey ctxKey = "tenant_id"
 const exactScopeKey ctxKey = "exact_tenant_scope"
 
-// WithExactTenant 限定单一租户，包括 tenantID=0。用于 API Key 等不应具有平台旁路权限的入口。
+// WithExactTenant 限定单一租户，包括 tenantID=0。用于业务写入、API Key 等不应具有平台旁路权限的入口。
 // 租户 ID 必须非负；调用入口负责校验。后续 WithTenant 不会取消此隔离要求。
 func WithExactTenant(ctx context.Context, tenantID int64) context.Context {
 	return context.WithValue(WithTenant(ctx, tenantID), exactScopeKey, true)

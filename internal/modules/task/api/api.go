@@ -48,6 +48,7 @@ func ListOrderTasks(ctx context.Context, tasks TaskAPI, orderID int64) ([]*model
 }
 
 // TaskAPI task 模块对外接口：inbound / outbound 通过它操作统一任务表。
+// 事务接口以 ctx 限定精确业务租户（包括租户 0），复用 tx；调用方负责校验单据/明细关系。
 type TaskAPI interface {
 	// Create 在业务事务内批量创建任务。
 	Create(ctx context.Context, tx *gorm.DB, tasks []*CreateTask) error

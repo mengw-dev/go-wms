@@ -53,6 +53,7 @@ const claimIdempotencyScope = "outbound.claim"
 // 不再先锁整张出库单：同一张单的不同任务可以并行拣货；
 // 与取消的互斥落在任务行上——取消会先锁定全部任务行并校验是否已有任务开工。
 func (s *Service) Pick(ctx context.Context, taskID int64, qty int, operator string, scan *PickScan, claimToken, idempotencyKey string) (*dto.PickResult, error) {
+	ctx = tenant.WithExactTenant(ctx, tenant.FromContext(ctx))
 	// 事务外只读不可变路由信息（OrderID/AllocationID/TaskType/TaskNo 建后不变）
 	routing, err := s.taskAPI.Get(ctx, taskID)
 	if err != nil {
@@ -238,6 +239,7 @@ func (s *Service) Pick(ctx context.Context, taskID int64, qty int, operator stri
 // idempotencyKey 非空时启用请求级幂等：同一 key + 同一内容（任务+操作人）回放首次领取的
 // 凭证与租约，不轮换 token；同 key 不同内容返回 409。PDA 入口强制携带（见 handler）。
 func (s *Service) ClaimPickTask(ctx context.Context, taskID int64, operator, idempotencyKey string) (*dto.ClaimResult, error) {
+	ctx = tenant.WithExactTenant(ctx, tenant.FromContext(ctx))
 	if operator == "" {
 		return nil, errcode.ParamError
 	}

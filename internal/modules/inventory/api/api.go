@@ -84,6 +84,7 @@ type ReturnReq struct {
 }
 
 // InventoryAPI inventory 模块对外接口；全部写入复用调用方事务。
+// ctx 决定精确业务租户（包括租户 0）；实现将其绑定到同一 tx，不继承平台查询旁路。
 type InventoryAPI interface {
 	Freeze(ctx context.Context, tx *gorm.DB, req *FreezeReq) error
 	WriteOff(ctx context.Context, tx *gorm.DB, req *FreezeReq) error
