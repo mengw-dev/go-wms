@@ -241,7 +241,7 @@ describe('auth store 登录态写入与清理', () => {
       nickname: '新昵称',
       roles: ['operator'],
       perms: ['wms:outbound:view'],
-    })
+    }, auth.snapshot())
 
     expect(auth.user?.nickname).toBe('新昵称')
     expect(localStorage.getItem(TOKEN_KEY)).toBe('token-1')

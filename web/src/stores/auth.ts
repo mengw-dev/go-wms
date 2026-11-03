@@ -18,6 +18,14 @@ interface AuthPair {
   user: AuthUser
 }
 
+/** 捕获请求发起时的身份；版本区分退出后以相同 token 再次登录的情况。 */
+export interface AuthSnapshot {
+  version: number
+  token: string
+  userID: EntityID | undefined
+  demoSession: string
+}
+
 function parseStringList(value: unknown): string[] {
   if (!Array.isArray(value)) return []
   return value.filter((item): item is string => typeof item === 'string')
@@ -130,6 +138,13 @@ export const useAuthStore = defineStore('auth', {
       (state.user?.perms ?? []).some((p) => p === '*' || p === perm),
   },
   actions: {
+    snapshot(): AuthSnapshot {
+      return { version: this.sessionVersion, token: this.token, userID: this.user?.user_id, demoSession: this.demoSessionId }
+    },
+    isCurrent(snapshot: AuthSnapshot): boolean {
+      return snapshot.version === this.sessionVersion && snapshot.token === this.token &&
+        snapshot.userID === this.user?.user_id && snapshot.demoSession === this.demoSessionId
+    },
     setAuth(result: LoginResult) {
       this.sessionVersion++
       this.clearDemoSession()
@@ -145,8 +160,10 @@ export const useAuthStore = defineStore('auth', {
       this.token = result.token
       this.user = user
     },
-    setProfile(profile: ProfileResult) {
-      const isDemo = (profile.perms ?? []).includes('wms:demo')
+    setProfile(profile: ProfileResult, snapshot: AuthSnapshot): boolean {
+      if (!this.isCurrent(snapshot) || !this.token || profile.user_id !== this.user?.user_id) return false
+      // 存储介质属于登录会话，不能由一次资料刷新迁移到另一份存储。
+      const isDemo = this.isDemo
       const user: AuthUser = {
         user_id: profile.user_id,
         username: profile.username,
@@ -156,6 +173,7 @@ export const useAuthStore = defineStore('auth', {
       }
       this.user = user
       writeUser(user, isDemo)
+      return true
     },
     setDemoSession(info: DemoSessionInfo) {
       // A heartbeat renews the same identity; only replacing the session invalidates work.

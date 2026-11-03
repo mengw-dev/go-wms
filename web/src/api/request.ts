@@ -1,7 +1,7 @@
 import axios, { type AxiosRequestConfig } from 'axios'
 import { ElMessage } from 'element-plus'
 import router from '@/router'
-import { useAuthStore } from '@/stores/auth'
+import { useAuthStore, type AuthSnapshot } from '@/stores/auth'
 import type { ApiResponse } from './types'
 
 /**
@@ -46,7 +46,7 @@ export interface RequestOptions {
 declare module 'axios' {
   interface AxiosRequestConfig {
     silentError?: boolean
-    authSnapshot?: { version: number; token: string; demoSession: string }
+    authSnapshot?: AuthSnapshot
   }
 }
 
@@ -87,8 +87,7 @@ const client = service as unknown as ApiClient
 function belongsToCurrentSession(config?: AxiosRequestConfig): boolean {
   const snapshot = config?.authSnapshot
   const auth = useAuthStore()
-  return !!snapshot && snapshot.version === auth.sessionVersion &&
-    snapshot.token === auth.token && snapshot.demoSession === auth.demoSessionId
+  return !!snapshot && auth.isCurrent(snapshot)
 }
 
 /**
@@ -107,7 +106,7 @@ function handleDemoSessionExpired() {
 // 请求拦截器：注入 token
 service.interceptors.request.use((config) => {
   const auth = useAuthStore()
-  config.authSnapshot = { version: auth.sessionVersion, token: auth.token, demoSession: auth.demoSessionId }
+  config.authSnapshot = auth.snapshot()
   if (auth.token) {
     config.headers.Authorization = `Bearer ${auth.token}`
   }
