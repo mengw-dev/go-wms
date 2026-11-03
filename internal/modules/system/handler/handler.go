@@ -74,7 +74,7 @@ func (h *Handler) changePassword(c *gin.Context) {
 	if !httpx.BindJSON(c, &req) {
 		return
 	}
-	if err := h.svc.ChangePassword(c.Request.Context(), middleware.UserID(c), &req); err != nil {
+	if err := h.svc.ChangePassword(c.Request.Context(), middleware.UserID(c), middleware.TokenVersion(c), &req); err != nil {
 		response.Fail(c, err)
 		return
 	}

@@ -119,6 +119,15 @@ func (r *Repository) UpdatePassword(ctx context.Context, id int64, hash string) 
 	return dbutil.RequireAffected(res)
 }
 
+// ChangePasswordIfCurrent rejects an in-flight self-service change after a
+// reset, disable or another password change. Hashing happens before this write.
+func (r *Repository) ChangePasswordIfCurrent(ctx context.Context, id int64, version int, oldHash, hash string) (bool, error) {
+	res := r.db.WithContext(ctx).Model(&model.SysUser{}).
+		Where("id = ? AND status = 1 AND token_version = ? AND BINARY password_hash = ?", id, version, oldHash).
+		Updates(map[string]any{"password_hash": hash, "token_version": gorm.Expr("token_version + 1")})
+	return res.RowsAffected == 1, res.Error
+}
+
 func (r *Repository) ListUsers(ctx context.Context, keyword string, page, size int) ([]*model.SysUser, int64, error) {
 	q := r.db.WithContext(ctx).Model(&model.SysUser{})
 	if keyword != "" {

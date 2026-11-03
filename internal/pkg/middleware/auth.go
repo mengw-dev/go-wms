@@ -46,6 +46,7 @@ func Auth(secret string, validator AuthValidator) gin.HandlerFunc {
 		c.Set(string(ctxUserID), claims.UserID)
 		c.Set(string(ctxUsername), claims.Username)
 		c.Set(string(ctxTenantID), claims.TenantID)
+		c.Set(string(ctxTokenVersion), claims.TokenVersion)
 		// ctx 链式叠加：保留 RequestID，再挂 UserID（日志）与租户 ID（GORM 隔离回调）
 		c.Request = c.Request.WithContext(
 			tenant.WithTenant(log.WithUserID(c.Request.Context(), claims.UserID), claims.TenantID))

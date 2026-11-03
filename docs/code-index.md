@@ -62,7 +62,7 @@
 
 | 模块 | 目录 | 职责 | 对应测试 |
 | --- | --- | --- | --- |
-| 系统 system | `internal/modules/system` | 鉴权（登录/JWT）、权限及委派上限、用户、角色、操作日志 | `service/{auth,permission,user,role,administration,login_limiter,builtin,audit,response,p2_auth}_test.go`、`dto/dto_test.go`、`model/model_test.go`；跨层 `internal/app/administration_test.go`；前端 `Users.roles.spec.ts`、E2E `administration-delegation.spec.ts` |
+| 系统 system | `internal/modules/system` | 鉴权（登录/JWT）、权限及委派上限、用户、角色、操作日志 | `service/{auth,password_concurrency,permission,user,role,administration,login_limiter,builtin,audit,response,p2_auth}_test.go`、`dto/dto_test.go`、`model/model_test.go`；跨层 `internal/app/{administration,password}_test.go`；前端 `Users.roles.spec.ts`、E2E `administration-delegation.spec.ts` |
 | 基础数据 basic | `internal/modules/basic` | 仓库、库位、SKU | `service/{sku,delete,rows_affected,conflict,response,location_limits}_test.go`、`dto/dto_test.go`、`handler/handler_test.go`、`repository/repository_test.go`、`model/model_json_test.go` |
 | 仪表盘 dashboard | `internal/modules/dashboard`，`web/src/views/dashboard` | 按业务权限/仓库汇总状态、创建趋势、待办、库存/库位、今日流水与历史导入异常，复用当前库存预警；见[运营信息](dashboard-operations.md) | `service/{overview,operations}_test.go`；前端 `useDashboardAlerts.spec.ts`、E2E `dashboard-layout.spec.ts` |
 | AI ai | `internal/modules/ai` | 库存问答、Redis 原子额度、整次预算及主备取消（智谱 BigModel） | `service/{service,low_stock,reliability}_test.go`；前端 E2E `ai-reliability.spec.ts` |
@@ -74,7 +74,7 @@
 | 路径 | 职责 | 对应测试 |
 | --- | --- | --- |
 | `internal/app` | 依赖组装与路由注册 | `router_test.go`、`integration_test.go`、`list_contract_test.go`（业务列表HTTP/SQL契约）、`race_cleanup_test.go`（门闩/取消/worker回收）、`pick_race_test.go`、`order_references_test.go`、`order_quantity_test.go`、`task_pagination_test.go`、`external_identity_test.go`、`schema_contract_test.go`、`fingerprint_compatibility_test.go`（领取/拣货旧记录回放及字段移位拒绝） |
-| `internal/bootstrap` | DB/Redis 初始化、迁移、种子（管理员/演示/体验账号）、演示数据重置 | `seed_test.go`、`personal_test.go`、`reset_test.go`、`quantity_test.go`、`checks_test.go` |
+| `internal/bootstrap` | DB/Redis 初始化、迁移、种子（管理员/演示/体验账号）、演示数据重置 | `seed_test.go`、`personal_test.go`、`account_credentials_test.go`、`reset_test.go`、`quantity_test.go`、`checks_test.go` |
 | `cmd/wms` | 服务入口、`.env` 加载、优雅关停、后台 worker 启动 | `dotenv_test.go`、`server_test.go` |
 | `cmd/migrate` | 迁移工具与管理员/应用账户初始化 | `preflight_test.go` |
 | `internal/testutil` | 测试用 MySQL/Redis 基础设施（临时 schema、租户回调、正式迁移入口、Redis 命名空间） | `mysql_test.go`、`redis_test.go`；应用结构契约见 `internal/app/schema_contract_test.go` |

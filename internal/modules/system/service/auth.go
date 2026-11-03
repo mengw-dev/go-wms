@@ -88,13 +88,20 @@ func (s *Service) Profile(ctx context.Context, userID int64) (*dto.ProfileResp, 
 	}, nil
 }
 
-func (s *Service) ChangePassword(ctx context.Context, userID int64, req *dto.ChangePwdReq) error {
+func (s *Service) ChangePassword(ctx context.Context, userID int64, tokenVersion int, req *dto.ChangePwdReq) error {
+	if req == nil {
+		return errcode.ParamError
+	}
+	ctx = tenant.WithExactTenant(ctx, tenant.FromContext(ctx))
 	u, err := s.repo.GetUserByID(ctx, userID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return errcode.UserIDInvalid
+			return errcode.Unauthorized
 		}
 		return err
+	}
+	if tokenVersion <= 0 || u.TokenVersion != tokenVersion || u.Status != 1 {
+		return errcode.Unauthorized
 	}
 	if !checkPassword(u.PasswordHash, req.OldPassword) {
 		return errcode.OldPwdWrong
@@ -103,11 +110,12 @@ func (s *Service) ChangePassword(ctx context.Context, userID int64, req *dto.Cha
 	if err != nil {
 		return err
 	}
-	if err := s.repo.UpdatePassword(ctx, userID, hash); err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return errcode.UserIDInvalid
-		}
+	changed, err := s.repo.ChangePasswordIfCurrent(ctx, userID, tokenVersion, u.PasswordHash, hash)
+	if err != nil {
 		return err
+	}
+	if !changed {
+		return errcode.Unauthorized
 	}
 	s.invalidatePermCache()
 	return nil

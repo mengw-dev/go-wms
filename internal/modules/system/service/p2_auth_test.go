@@ -132,7 +132,7 @@ func TestPasswordByteLimitAcrossAllSetters(t *testing.T) {
 		},
 		func() error { return s.ResetPassword(ctx, actorID, 42, &dto.ResetPwdReq{Password: invalid}) },
 		func() error {
-			return s.ChangePassword(ctx, 42, &dto.ChangePwdReq{OldPassword: valid, NewPassword: invalid})
+			return s.ChangePassword(ctx, 42, before.TokenVersion, &dto.ChangePwdReq{OldPassword: valid, NewPassword: invalid})
 		},
 	} {
 		if err := action(); !errors.Is(err, errcode.PasswordTooLong) {
