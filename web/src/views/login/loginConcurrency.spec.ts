@@ -83,7 +83,7 @@ describe('登录入口竞争（真实 SFC）', () => {
     auth.setAuth(result())
     old.reject(new Error('old failure')); await pending
     expect(auth.token).toBe('same-token')
-    expect(localStorage.getItem('WMS_TOKEN')).toBe('same-token')
+    expect(useAuthStore(createPinia()).token).toBe('same-token')
     expect(api.push).not.toHaveBeenCalled()
   })
 

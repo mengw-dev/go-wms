@@ -57,10 +57,10 @@ describe('Layout 认证操作归属（真实 SFC）', () => {
     if (mode === 'unmount') unmount()
     else if (mode === 'switch') auth.setAuth(login('3'))
     else { if (mode === 'ABA') auth.setAuth(login('3')); auth.setAuth(login()) }
-    const token = auth.token, before = localStorage.getItem('WMS_USER')
+    const token = auth.token, before = useAuthStore(createPinia()).user
     old.resolve({ ...login(), nickname: 'stale', perms: ['*'] }); await flush()
     expect(auth.token).toBe(token); expect(auth.user?.nickname).toBe('current')
-    expect(auth.perms).toEqual([]); expect(localStorage.getItem('WMS_USER')).toBe(before)
+    expect(auth.perms).toEqual([]); expect(useAuthStore(createPinia()).user).toEqual(before)
   })
   it('有效资料更新昵称与权限，返回其他用户则拒绝', async () => {
     const profile = deferred<ProfileResult>(); mocks.getProfile.mockReturnValueOnce(profile.promise)

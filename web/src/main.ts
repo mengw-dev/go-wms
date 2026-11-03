@@ -34,11 +34,15 @@ import { installNavigationRecovery } from './router/navigationRecovery'
 import { permission } from './directives/permission'
 import './style.css'
 import { useThemeStore } from './stores/theme'
+import { installAuthStorageSync } from './stores/authSync'
 import { installGuideBusinessBridge } from './guide/businessBridge'
 
 const app = createApp(App)
 
 app.use(createPinia())
+const stopAuthSync = installAuthStorageSync()
+app.onUnmount(stopAuthSync)
+if (import.meta.hot) import.meta.hot.dispose(stopAuthSync)
 useThemeStore().init()
 // 外挂层：把业务页面发送的业务事件翻译成引导进度，业务页面本身不感知 Demo / Guide。
 installGuideBusinessBridge()

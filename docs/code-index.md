@@ -119,7 +119,7 @@
 | 目录/文件 | 职责 | 对应测试 |
 | --- | --- | --- |
 | `api/` | 各业务模块 HTTP 客户端与类型（`api/*.ts`、`api/types/*.ts`） | — |
-| `stores/` | Pinia 状态（`auth` 登录态、`guide` 运行态、`theme`） | `stores/auth.spec.ts`、`stores/guide.spec.ts`；认证异步归属 `views/login/loginConcurrency.spec.ts`、`layouts/Layout.auth.spec.ts`、`composables/demo/useDemoSession.spec.ts`、`api/request.spec.ts` |
+| `stores/` | Pinia 状态（`auth` 登录态及跨页同步、`guide` 运行态、`theme`） | `stores/{auth,authSync,guide}.spec.ts`；认证异步归属 `views/login/loginConcurrency.spec.ts`、`layouts/Layout.auth.spec.ts`、`composables/demo/useDemoSession.spec.ts`、`api/request.spec.ts`；E2E `auth-session-concurrency.spec.ts` |
 | `router/` | 路由与登录/权限守卫（`router/index.ts`） | — |
 | `layouts/` | 布局与导航（`Layout.vue`、`WmsNavigation.vue`）；业务路由独立启用 `business-layout.css`，仪表盘/演示保持原样 | E2E `ui-layout.spec.ts`、`business-layout.spec.ts`、`demo-home-layout.spec.ts` |
 | `composables/` | 组合式函数及幂等公共支持：`operationLifecycle`、`autoRefresh`、`demo/useDemoDock`、`inbound/*`、`stocktake/useStocktakeApprove`、`outbound/usePdaPick`、`demo/*` | `operationLifecycle.spec.ts`、`autoRefresh.spec.ts`、`inbound/useInboundOrders.spec.ts`（手动/后台查询交错）、`inbound/{useReceive,usePutaway,useInboundImport}.spec.ts`、`stocktake/useStocktakeApprove.spec.ts`、`outbound/usePdaPick.spec.ts` |

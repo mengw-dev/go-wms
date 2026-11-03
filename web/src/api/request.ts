@@ -87,6 +87,7 @@ const client = service as unknown as ApiClient
 function belongsToCurrentSession(config?: AxiosRequestConfig): boolean {
   const snapshot = config?.authSnapshot
   const auth = useAuthStore()
+  if (auth.invalidateIfStorageChanged()) return false
   return !!snapshot && auth.isCurrent(snapshot)
 }
 
@@ -106,7 +107,9 @@ function handleDemoSessionExpired() {
 // 请求拦截器：注入 token
 service.interceptors.request.use((config) => {
   const auth = useAuthStore()
-  config.authSnapshot = auth.snapshot()
+  if (auth.invalidateIfStorageChanged() || !config.authSnapshot || !auth.isCurrent(config.authSnapshot)) {
+    throw new axios.CanceledError('登录身份已变化，请刷新页面后重试', config)
+  }
   if (auth.token) {
     config.headers.Authorization = `Bearer ${auth.token}`
   }
@@ -145,6 +148,7 @@ service.interceptors.response.use(
     return body
   },
   async (error) => {
+    if (axios.isCancel(error)) return Promise.reject(error)
     // Download failures are still JSON business/auth responses, wrapped as Blob by axios.
     if (error?.response?.data instanceof Blob) {
       try { error.response.data = JSON.parse(await error.response.data.text()) }
@@ -192,28 +196,29 @@ export function get<T = unknown>(
   params?: Record<string, unknown>,
   options?: RequestOptions,
 ): Promise<T> {
-  return client.get<T>(url, { params, ...options })
+  return client.get<T>(url, { params, ...options, authSnapshot: useAuthStore().snapshot() })
 }
 
 export function post<T = unknown>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T> {
-  return client.post<T>(url, data, config)
+  return client.post<T>(url, data, { ...config, authSnapshot: useAuthStore().snapshot() })
 }
 
 export function put<T = unknown>(url: string, data?: unknown): Promise<T> {
-  return client.put<T>(url, data)
+  return client.put<T>(url, data, { authSnapshot: useAuthStore().snapshot() })
 }
 
 export function del<T = unknown>(url: string): Promise<T> {
-  return client.delete<T>(url)
+  return client.delete<T>(url, { authSnapshot: useAuthStore().snapshot() })
 }
 
 export function upload<T = unknown>(url: string, formData: FormData): Promise<T> {
   return client.post<T>(url, formData, {
+    authSnapshot: useAuthStore().snapshot(),
     headers: { 'Content-Type': 'multipart/form-data' },
   })
 }
 
 /** Authenticated XLSX download; callers own cancellation and user feedback. */
 export function getExcel(url: string, params: Record<string, unknown>, signal: AbortSignal): Promise<Blob> {
-  return client.get<Blob>(url, { params, signal, responseType: 'blob', timeout: 15000, silentError: true })
+  return client.get<Blob>(url, { params, signal, responseType: 'blob', timeout: 15000, silentError: true, authSnapshot: useAuthStore().snapshot() })
 }
