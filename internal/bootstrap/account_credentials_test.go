@@ -62,12 +62,12 @@ func TestManagedAccountCredentialLifecycle(t *testing.T) {
 			first, second := read(1), read(2)
 			seed(true, 2, "initial-password")
 			stable := read(1)
-			if stable.TokenVersion != first.TokenVersion || stable.PasswordHash != first.PasswordHash {
+			if stable.Version != first.Version || stable.TokenVersion != first.TokenVersion || stable.PasswordHash != first.PasswordHash {
 				t.Fatal("unchanged restart rewrites credentials")
 			}
 			seed(false, 2, "initial-password")
 			disabled := read(1)
-			if disabled.Status != 0 || disabled.TokenVersion != first.TokenVersion+1 {
+			if disabled.Status != 0 || disabled.TokenVersion != first.TokenVersion+1 || disabled.Version != first.Version+1 {
 				t.Fatal("disable failed to revoke credentials")
 			}
 			invalid(first)

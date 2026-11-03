@@ -83,7 +83,12 @@ func (r *Repository) UpdateUserInTx(ctx context.Context, id int64, nickname *str
 	if status != nil {
 		updates["status"] = *status
 		// 禁用再启用后旧 Token 也不能恢复有效。
-		updates["token_version"] = gorm.Expr("token_version + 1")
+		if *status != user.Status {
+			updates["token_version"] = gorm.Expr("token_version + 1")
+		}
+	}
+	if len(updates) > 0 || roleIDs != nil {
+		updates["version"] = gorm.Expr("version + 1")
 	}
 	if len(updates) > 0 {
 		if err := tx.Model(&model.SysUser{}).Where("id = ?", id).Updates(updates).Error; err != nil {
@@ -115,6 +120,7 @@ func (r *Repository) UpdatePassword(ctx context.Context, id int64, hash string) 
 		Updates(map[string]any{
 			"password_hash": hash,
 			"token_version": gorm.Expr("token_version + 1"),
+			"version":       gorm.Expr("version + 1"),
 		})
 	return dbutil.RequireAffected(res)
 }
@@ -124,7 +130,7 @@ func (r *Repository) UpdatePassword(ctx context.Context, id int64, hash string) 
 func (r *Repository) ChangePasswordIfCurrent(ctx context.Context, id int64, version int, oldHash, hash string) (bool, error) {
 	res := r.db.WithContext(ctx).Model(&model.SysUser{}).
 		Where("id = ? AND status = 1 AND token_version = ? AND BINARY password_hash = ?", id, version, oldHash).
-		Updates(map[string]any{"password_hash": hash, "token_version": gorm.Expr("token_version + 1")})
+		Updates(map[string]any{"password_hash": hash, "token_version": gorm.Expr("token_version + 1"), "version": gorm.Expr("version + 1")})
 	return res.RowsAffected == 1, res.Error
 }
 

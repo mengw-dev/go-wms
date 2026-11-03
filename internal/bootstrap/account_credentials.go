@@ -20,7 +20,7 @@ func syncManagedAccount(db *gorm.DB, user *sysmodel.SysUser, password, hash, nic
 		if !securityChanged && user.Nickname == nickname {
 			return nil
 		}
-		updates := map[string]any{"nickname": nickname, "status": 1}
+		updates := map[string]any{"nickname": nickname, "status": 1, "version": gorm.Expr("version + 1")}
 		if passwordChanged {
 			updates["password_hash"] = hash
 		}
@@ -28,8 +28,8 @@ func syncManagedAccount(db *gorm.DB, user *sysmodel.SysUser, password, hash, nic
 			updates["token_version"] = gorm.Expr("token_version + 1")
 		}
 		result := db.Model(&sysmodel.SysUser{}).
-			Where("id = ? AND tenant_id = ? AND username = ? AND status = ? AND token_version = ? AND BINARY password_hash = ?",
-				user.ID, user.TenantID, user.Username, user.Status, user.TokenVersion, user.PasswordHash).
+			Where("id = ? AND tenant_id = ? AND username = ? AND status = ? AND token_version = ? AND version = ? AND BINARY password_hash = ?",
+				user.ID, user.TenantID, user.Username, user.Status, user.TokenVersion, user.Version, user.PasswordHash).
 			Updates(updates)
 		if result.Error != nil {
 			return result.Error

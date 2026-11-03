@@ -55,6 +55,12 @@ func (s *Service) UpdateUser(ctx context.Context, actorID, id int64, req *dto.Us
 		return errcode.ParamError
 	}
 	err := s.administer(ctx, actorID, id, req.RoleIDs, PermSystemUser, func(r *repository.Repository, a *administration) error {
+		if req.ExpectedVersion <= 0 {
+			return errcode.ParamError
+		}
+		if req.ExpectedVersion != a.target.Version {
+			return errcode.StaleEdit
+		}
 		if err := a.validateAssignments(req.RoleIDs, a.target.TenantID); err != nil {
 			return err
 		}
@@ -68,6 +74,24 @@ func (s *Service) UpdateUser(ctx context.Context, actorID, id int64, req *dto.Us
 	}
 	s.invalidatePermCache()
 	return nil
+}
+
+// SetUserStatus is an explicit enable/disable command. Unlike a whole editor
+// snapshot it does not carry or overwrite nickname/role assignments.
+func (s *Service) SetUserStatus(ctx context.Context, actorID, id int64, status int) error {
+	if status != 0 && status != 1 {
+		return errcode.ParamError
+	}
+	err := s.administer(ctx, actorID, id, nil, PermSystemUser, func(r *repository.Repository, a *administration) error {
+		if a.target.Status == status {
+			return nil
+		}
+		return r.UpdateUserInTx(ctx, id, nil, &status, nil)
+	})
+	if err == nil {
+		s.invalidatePermCache()
+	}
+	return err
 }
 
 func (s *Service) DeleteUser(ctx context.Context, actorID, id int64) error {
@@ -104,6 +128,7 @@ func (s *Service) ListUsers(ctx context.Context, q *dto.UserListQuery) ([]*dto.U
 
 func userResponse(user *model.SysUser) *dto.UserResp {
 	return &dto.UserResp{
+		Version:   user.Version,
 		ID:        user.ID,
 		TenantID:  user.TenantID,
 		Username:  user.Username,

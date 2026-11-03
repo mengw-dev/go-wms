@@ -69,7 +69,7 @@ func TestChangePasswordRejectsStaleCredentialSnapshot(t *testing.T) {
 				err = s.ChangePassword(ctx, 42, before.TokenVersion, &dto.ChangePwdReq{OldPassword: "original-password", NewPassword: "winning-password"})
 			case "disable and reenable":
 				for _, status := range []int{0, 1} {
-					if err = s.UpdateUser(ctx, actor, 42, &dto.UserUpdateReq{Status: &status}); err != nil {
+					if err = s.SetUserStatus(ctx, actor, 42, status); err != nil {
 						break
 					}
 				}

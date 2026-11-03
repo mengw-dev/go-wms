@@ -33,7 +33,7 @@ func SeedPersonalAccounts(db *gorm.DB, cfg *config.Config) error {
 		// 关闭持久账号：禁用历史账号（命名与 demoN 区分，避免误伤演示账号）
 		return db.Model(&sysmodel.SysUser{}).
 			Where("tenant_id IN ? AND username REGEXP ?", managedPersonalTenantIDs(), "^user[0-9]+$").
-			Where("status <> 0").Updates(map[string]any{"status": 0, "token_version": gorm.Expr("token_version + 1")}).Error
+			Where("status <> 0").Updates(map[string]any{"status": 0, "token_version": gorm.Expr("token_version + 1"), "version": gorm.Expr("version + 1")}).Error
 	}
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(cfg.Personal.Password), bcrypt.DefaultCost)
@@ -101,7 +101,7 @@ func SeedPersonalAccounts(db *gorm.DB, cfg *config.Config) error {
 	return db.Model(&sysmodel.SysUser{}).
 		Where("tenant_id IN ? AND username REGEXP ? AND username NOT IN ?",
 			managedPersonalTenantIDs(), "^user[0-9]+$", current).
-		Where("status <> 0").Updates(map[string]any{"status": 0, "token_version": gorm.Expr("token_version + 1")}).Error
+		Where("status <> 0").Updates(map[string]any{"status": 0, "token_version": gorm.Expr("token_version + 1"), "version": gorm.Expr("version + 1")}).Error
 }
 
 func managedPersonalTenantIDs() []int64 {

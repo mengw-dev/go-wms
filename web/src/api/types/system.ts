@@ -3,6 +3,7 @@ import type { EntityID, PageQuery } from './common'
 // ---------- 系统：用户 ----------
 
 export interface UserItem {
+  version: number
   id: EntityID
   username: string
   nickname: string
@@ -25,6 +26,7 @@ export interface UserCreateParams {
 }
 
 export interface UserUpdateParams {
+  expected_version: number
   nickname?: string
   status?: number
   role_ids?: EntityID[]

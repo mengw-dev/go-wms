@@ -15,6 +15,7 @@ type Versioned = modelbase.Versioned
 // SysUser 用户（多租户：tenant_id 联合唯一用户名，各租户内独立）。
 type SysUser struct {
 	Base
+	Version      int             `json:"-" gorm:"type:bigint;not null;default:1"`
 	TenantID     int64           `json:"tenant_id,string" gorm:"not null;default:0;uniqueIndex:uk_user_username,priority:1"`
 	Username     string          `json:"username" gorm:"size:64;uniqueIndex:uk_user_username,priority:2;not null"`
 	PasswordHash string          `json:"-" gorm:"size:128;not null"`

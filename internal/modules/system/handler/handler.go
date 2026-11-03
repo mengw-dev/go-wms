@@ -132,7 +132,7 @@ func (h *Handler) updateUserStatus(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := h.svc.UpdateUser(c.Request.Context(), middleware.UserID(c), id, &dto.UserUpdateReq{Status: req.Status}); err != nil {
+	if err := h.svc.SetUserStatus(c.Request.Context(), middleware.UserID(c), id, *req.Status); err != nil {
 		response.Fail(c, err)
 		return
 	}

@@ -44,7 +44,7 @@ test('user manager assigns permitted roles without role-management permission', 
     users.push(child!.id)
     const managerToken = await loginByApi(request, managerName, password)
     const forged = await request.put(`/api/v1/system/users/${child!.id}`, {
-      headers: { Authorization: `Bearer ${managerToken}` }, data: { role_ids: ['1'] },
+      headers: { Authorization: `Bearer ${managerToken}` }, data: { expected_version: 1, role_ids: ['1'] },
     })
     expect(forged.status()).toBe(403)
     expect((await forged.json()).code).toBe(40300)

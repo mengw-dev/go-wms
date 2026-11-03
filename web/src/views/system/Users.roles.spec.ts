@@ -13,7 +13,7 @@ vi.mock('@/api/system', () => ({
 vi.mock('vue-router', () => ({ useRoute: () => ({ query: {} }) }))
 vi.mock('element-plus', async (importOriginal) => ({
   ...await importOriginal<typeof import('element-plus')>(),
-  ElMessage: { success: vi.fn() },
+  ElMessage: { success: vi.fn(), error: vi.fn() },
 }))
 
 const renderer = createRenderer<object, object>({
@@ -30,7 +30,8 @@ type State = {
   rolesReady: boolean
   rolesLoading: boolean
   dialog: { visible: boolean; editingId: string }
-  form: { role_ids: string[] }
+  form: { role_ids: string[]; nickname: string }
+  editConflict: boolean
   formRef: { validate(): Promise<boolean> }
 }
 const unmounts: (() => void)[] = []
@@ -56,7 +57,7 @@ function deferred() {
 }
 const role = (id: string): RoleItem => ({ id, name: id, perms: 'wms:basic', remark: '', created_at: '', updated_at: '' })
 const user = (id: string): UserItem => ({
-  id, username: id, nickname: 'original', status: 1, role_ids: ['existing'], created_at: '', updated_at: '',
+  id, version: 1, username: id, nickname: 'original', status: 1, role_ids: ['existing'], created_at: '', updated_at: '',
 })
 
 beforeEach(() => {
@@ -74,6 +75,35 @@ afterEach(() => {
 })
 
 describe('用户管理可授予角色', () => {
+  it('编辑冲突不恢复旧角色与状态，保留输入并等待重新打开核对', async () => {
+    const state = await mount()
+    const original = { ...user('target'), version: 7 }
+    state.openEdit(original); await flush()
+    state.form.nickname = 'unsaved'
+    api.updateUser.mockRejectedValueOnce({ code: 40902 })
+    await state.submit()
+    expect(api.updateUser).toHaveBeenCalledWith('target', expect.objectContaining({ expected_version: 7, nickname: 'unsaved', status: 1, role_ids: ['existing'] }))
+    expect(state.editConflict).toBe(true)
+    expect(state.dialog.visible).toBe(true)
+    expect(state.form.nickname).toBe('unsaved')
+    expect(state.form.role_ids).toEqual(['existing'])
+    await state.submit()
+    expect(api.updateUser).toHaveBeenCalledTimes(1)
+    state.dialog.visible = false; await nextTick()
+    state.openEdit({ ...original, version: 8, status: 0, role_ids: [] }); await flush()
+    await state.submit()
+    expect(api.updateUser).toHaveBeenLastCalledWith('target', expect.objectContaining({ expected_version: 8, status: 0, role_ids: [] }))
+  })
+
+  it('缺少版本的旧列表不能打开可提交编辑窗口', async () => {
+    const state = await mount()
+    state.openEdit({ ...user('target'), version: undefined as unknown as number })
+    await flush()
+    expect(state.dialog.visible).toBe(false)
+    await state.submit()
+    expect(api.updateUser).not.toHaveBeenCalled()
+  })
+
   it('编辑使用目标用户，创建重新使用当前租户；旧回复不能混入新目标', async () => {
     const state = await mount()
     expect(api.listAssignableRoles).toHaveBeenCalledWith(undefined)

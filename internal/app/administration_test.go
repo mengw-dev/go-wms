@@ -71,22 +71,22 @@ func TestAdministrationDelegationHTTP(t *testing.T) {
 		method, path, body string
 		code               int
 	}{
-		{"self elevation", 10, 0, "PUT", "/system/users/10", `{"role_ids":["1"]}`, 40300},
+		{"self elevation", 10, 0, "PUT", "/system/users/10", `{"expected_version":1,"role_ids":["1"]}`, 40300},
 		{"create elevated account", 10, 0, "POST", "/system/users", `{"username":"escalated","password":"test-password","role_ids":["1"]}`, 40300},
 		{"reset higher account", 10, 0, "PUT", "/system/users/30/password", `{"password":"test-password"}`, 40300},
 		{"disable higher account", 10, 0, "PUT", "/system/users/30/status", `{"status":0}`, 40300},
 		{"delete higher account", 10, 0, "DELETE", "/system/users/30", "", 40300},
-		{"rewrite higher account", 10, 0, "PUT", "/system/users/30", `{"nickname":"changed","role_ids":["40"]}`, 40300},
-		{"platform scope is not authority", 10, 0, "PUT", "/system/users/140", `{"nickname":"changed"}`, 40300},
+		{"rewrite higher account", 10, 0, "PUT", "/system/users/30", `{"expected_version":1,"nickname":"changed","role_ids":["40"]}`, 40300},
+		{"platform scope is not authority", 10, 0, "PUT", "/system/users/140", `{"expected_version":1,"nickname":"changed"}`, 40300},
 		{"create higher role", 20, 0, "POST", "/system/roles", `{"name":"escalated","perms":"wms:inventory"}`, 40300},
 		{"grant self wildcard", 20, 0, "PUT", "/system/roles/20", `{"name":"role-manager","perms":"*"}`, 40300},
 		{"rewrite higher role", 20, 0, "PUT", "/system/roles/30", `{"name":"higher","perms":"wms:basic"}`, 40300},
 		{"delete higher role", 20, 0, "DELETE", "/system/roles/30", "", 40300},
-		{"tenant self elevation", 110, 11, "PUT", "/system/users/110", `{"role_ids":["130"]}`, 40300},
+		{"tenant self elevation", 110, 11, "PUT", "/system/users/110", `{"expected_version":1,"role_ids":["130"]}`, 40300},
 		{"tenant role escalation", 110, 11, "POST", "/system/roles", `{"name":"escalated","perms":"wms:inventory"}`, 40300},
-		{"foreign target remains hidden", 110, 11, "PUT", "/system/users/40", `{"nickname":"changed"}`, errcode.UserIDInvalid.Code},
-		{"foreign role assignment", 110, 11, "PUT", "/system/users/140", `{"role_ids":["40"]}`, errcode.RoleIDInvalid.Code},
-		{"protected account", 1, 0, "PUT", "/system/users/1", `{"nickname":"changed"}`, errcode.ModifyAdminForbidden.Code},
+		{"foreign target remains hidden", 110, 11, "PUT", "/system/users/40", `{"expected_version":1,"nickname":"changed"}`, errcode.UserIDInvalid.Code},
+		{"foreign role assignment", 110, 11, "PUT", "/system/users/140", `{"expected_version":1,"role_ids":["40"]}`, errcode.RoleIDInvalid.Code},
+		{"protected account", 1, 0, "PUT", "/system/users/1", `{"expected_version":1,"nickname":"changed"}`, errcode.ModifyAdminForbidden.Code},
 		{"protected role", 1, 0, "PUT", "/system/roles/1", `{"name":"other","perms":""}`, errcode.ModifyBuiltinRoleForbidden.Code},
 		{"no user management", 40, 0, "GET", "/system/users/role-options", "", 40300},
 	} {
@@ -142,10 +142,10 @@ func TestAdministrationDelegationHTTP(t *testing.T) {
 	}
 	request(10, 0, "POST", "/system/users", `{"username":"legal-user","password":"test-password","role_ids":["40"]}`, 0)
 	request(20, 0, "POST", "/system/roles", `{"name":"legal-role","perms":"wms:basic"}`, 0)
-	request(10, 0, "PUT", "/system/users/40", `{"nickname":"legal edit","role_ids":["40","40"]}`, 0)
-	request(1, 0, "PUT", "/system/users/140", `{"nickname":"platform managed","role_ids":["140"]}`, 0)
+	request(10, 0, "PUT", "/system/users/40", `{"expected_version":1,"nickname":"legal edit","role_ids":["40","40"]}`, 0)
+	request(1, 0, "PUT", "/system/users/140", `{"expected_version":1,"nickname":"platform managed","role_ids":["140"]}`, 0)
 	// Privileged administration still cannot put wildcard permissions in a tenant role.
 	request(1, 0, "PUT", "/system/roles/140", `{"name":"basic","perms":"*"}`, errcode.RolePermNotAllowed.Code)
 	// User management can delegate a peer only within its current permission ceiling.
-	request(10, 0, "PUT", "/system/users/40", fmt.Sprintf(`{"role_ids":["%d"]}`, 10), 0)
+	request(10, 0, "PUT", "/system/users/40", fmt.Sprintf(`{"expected_version":2,"role_ids":["%d"]}`, 10), 0)
 }

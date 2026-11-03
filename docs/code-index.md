@@ -48,7 +48,7 @@
 | 分布式锁 | `internal/pkg/lock` | 基于 Redis 的锁（`SET NX EX` + Lua 校验持有者释放） | — |
 | 事务与重试 | `internal/pkg/tx` | 事务管理器、死锁重试与退避及耗时/重试观测 | `tx_test.go`、`mysql_test.go`、`metrics_test.go` |
 | 请求幂等 | `internal/pkg/idempotency` | 幂等记录写入/查询及有批数/时间预算的过期清理（表 `wms_idempotency`） | `fingerprint_test.go`（版本/字节边界/旧格式安全兼容）、`cleanup_test.go`（分批/隔离/并发/超时/恢复/调度指标）、`internal/app/pick_race_test.go`（领取/拣货/清理集成测试） |
-| 数据库迁移 | `migrations/**` | 版本化 SQL 迁移，`embed.go` 内嵌 `versions/*.sql` | `migrations_test.go`、`quantity_test.go`、`checks_test.go` |
+| 数据库迁移 | `migrations/**` | 版本化 SQL 迁移，`embed.go` 内嵌 `versions/*.sql` | `migrations_test.go`、`quantity_test.go`、`checks_test.go`、`user_edit_test.go`（账号编辑修订号升级/回退及数据保留） |
 
 跨模块关键落点（仅记位置，细节以代码为准）：
 

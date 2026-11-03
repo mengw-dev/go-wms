@@ -48,7 +48,7 @@ func TestUserPartialUpdateAndTenantRoles(t *testing.T) {
 	platformID := newAdminActor(t, s, context.Background())
 	actorID := newAdminActor(t, s, ctx)
 	disabled := 0
-	if err := s.UpdateUser(ctx, actorID, 42, &dto.UserUpdateReq{Status: &disabled}); err != nil {
+	if err := s.SetUserStatus(ctx, actorID, 42, disabled); err != nil {
 		t.Fatal(err)
 	}
 	user, err := s.repo.GetUserByID(ctx, 42)
@@ -59,7 +59,7 @@ func TestUserPartialUpdateAndTenantRoles(t *testing.T) {
 		t.Fatalf("status update changed other fields: %+v", user)
 	}
 	replacement := "Must roll back"
-	if err := s.UpdateUser(ctx, actorID, 42, &dto.UserUpdateReq{Nickname: &replacement, RoleIDs: typex.Int64List{20}}); !errors.Is(err, errcode.RoleIDInvalid) {
+	if err := s.UpdateUser(ctx, actorID, 42, &dto.UserUpdateReq{ExpectedVersion: 2, Nickname: &replacement, RoleIDs: typex.Int64List{20}}); !errors.Is(err, errcode.RoleIDInvalid) {
 		t.Fatalf("cross-tenant assignment: %v", err)
 	}
 	user, err = s.repo.GetUserByID(ctx, 42)
@@ -80,7 +80,7 @@ func TestUserPartialUpdateAndTenantRoles(t *testing.T) {
 		t.Fatal("invalid user survived transaction rollback")
 	}
 	// 平台代操作写入的关联仍属于目标用户的租户，重复角色 ID 不产生重复关联。
-	if err := s.UpdateUser(context.Background(), platformID, 42, &dto.UserUpdateReq{RoleIDs: typex.Int64List{10, 10}}); err != nil {
+	if err := s.UpdateUser(context.Background(), platformID, 42, &dto.UserUpdateReq{ExpectedVersion: 2, RoleIDs: typex.Int64List{10, 10}}); err != nil {
 		t.Fatal(err)
 	}
 	var links []model.SysUserRole
@@ -94,7 +94,7 @@ func TestUserPartialUpdateAndTenantRoles(t *testing.T) {
 		t.Fatalf("delete assigned role: %v", err)
 	}
 	empty := ""
-	if err := s.UpdateUser(ctx, actorID, 42, &dto.UserUpdateReq{Nickname: &empty, RoleIDs: typex.Int64List{}}); err != nil {
+	if err := s.UpdateUser(ctx, actorID, 42, &dto.UserUpdateReq{ExpectedVersion: 3, Nickname: &empty, RoleIDs: typex.Int64List{}}); err != nil {
 		t.Fatal(err)
 	}
 	user, err = s.repo.GetUserByID(ctx, 42)
@@ -107,7 +107,7 @@ func TestUserPartialUpdateAndTenantRoles(t *testing.T) {
 	if err := s.DeleteRole(ctx, actorID, 10); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.UpdateUser(ctx, actorID, 42, &dto.UserUpdateReq{RoleIDs: typex.Int64List{10}}); !errors.Is(err, errcode.RoleIDInvalid) {
+	if err := s.UpdateUser(ctx, actorID, 42, &dto.UserUpdateReq{ExpectedVersion: 4, RoleIDs: typex.Int64List{10}}); !errors.Is(err, errcode.RoleIDInvalid) {
 		t.Fatalf("deleted role assignment: %v", err)
 	}
 }

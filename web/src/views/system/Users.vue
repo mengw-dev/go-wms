@@ -142,6 +142,8 @@ const form = reactive({
   role_ids: [] as EntityID[],
 })
 const editStatus = ref(1)
+const editVersion = ref(0)
+const editConflict = ref(false)
 
 const createRules: FormRules = {
   username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
@@ -154,6 +156,9 @@ const createRules: FormRules = {
 }
 
 function openCreate() {
+  if (dialog.loading) return
+  editVersion.value = 0
+  editConflict.value = false
   dialog.editingId = ''
   form.username = ''
   form.password = ''
@@ -164,6 +169,14 @@ function openCreate() {
 }
 
 function openEdit(row: UserItem) {
+  if (dialog.loading) return
+  if (!Number.isInteger(row.version) || row.version <= 0) {
+    ElMessage.error('用户版本信息缺失，请刷新列表后再编辑')
+    void load()
+    return
+  }
+  editVersion.value = row.version
+  editConflict.value = false
   dialog.editingId = row.id
   form.username = row.username
   form.password = ''
@@ -175,7 +188,7 @@ function openEdit(row: UserItem) {
 }
 
 async function submit() {
-  if (dialog.loading || rolesLoading.value || !rolesReady.value) return
+  if (dialog.loading || rolesLoading.value || !rolesReady.value || editConflict.value) return
   const seq = roleSeq
   const valid = await formRef.value?.validate().catch(() => false)
   if (!valid || disposed || !dialog.visible || seq !== roleSeq) return
@@ -183,6 +196,7 @@ async function submit() {
   try {
     if (dialog.editingId) {
       const data = {
+        expected_version: editVersion.value,
         nickname: form.nickname,
         status: editStatus.value,
         role_ids: [...form.role_ids],
@@ -200,6 +214,13 @@ async function submit() {
     }
     dialog.visible = false
     load()
+  } catch (error) {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 40902) {
+      editConflict.value = true
+      void load()
+      return
+    }
+    throw error
   } finally {
     dialog.loading = false
   }
@@ -360,6 +381,8 @@ async function onDelete(row: UserItem) {
       :show-close="!dialog.loading"
     >
       <el-form ref="formRef" :model="form" :rules="dialog.editingId ? {} : createRules" label-width="90px">
+        <el-alert v-if="editConflict" type="warning" :closable="false" show-icon
+          title="该用户已被修改，当前输入仍保留。请复制需要保留的内容，关闭后从最新列表重新打开并核对角色与状态。" />
         <el-form-item label="用户名" prop="username">
           <el-input v-model="form.username" :disabled="!!dialog.editingId" placeholder="登录账号" />
         </el-form-item>
@@ -392,7 +415,7 @@ async function onDelete(row: UserItem) {
       </el-form>
       <template #footer>
         <el-button :disabled="dialog.loading" @click="dialog.visible = false">取消</el-button>
-        <el-button type="primary" :loading="dialog.loading" :disabled="rolesLoading || !rolesReady" @click="submit">确定</el-button>
+        <el-button type="primary" :loading="dialog.loading" :disabled="rolesLoading || !rolesReady || editConflict" @click="submit">确定</el-button>
       </template>
     </el-dialog>
 
