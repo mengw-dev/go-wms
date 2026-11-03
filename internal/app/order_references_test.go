@@ -105,12 +105,12 @@ func TestInboundEditUsesSingleTransactionConnection(t *testing.T) {
 	}
 	req.Remark = "updated"
 	req.Details[0].ExpectedQty = 7
-	if err := s.in.Update(ctx, order.ID, &req); err != nil {
+	if err := s.in.Update(ctx, order.ID, &indto.UpdateOrderReq{CreateOrderReq: req, ExpectedVersion: order.Version}); err != nil {
 		t.Fatalf("single connection update: %v", err)
 	}
 	req.Remark = "must rollback"
 	req.Details[0].SKUID = -1
-	if err := s.in.Update(ctx, order.ID, &req); !errors.Is(err, errcode.SKUNotFound) {
+	if err := s.in.Update(ctx, order.ID, &indto.UpdateOrderReq{CreateOrderReq: req, ExpectedVersion: order.Version + 1}); !errors.Is(err, errcode.SKUNotFound) {
 		t.Fatalf("invalid SKU: %v", err)
 	}
 	detail, err := s.in.Get(ctx, order.ID)

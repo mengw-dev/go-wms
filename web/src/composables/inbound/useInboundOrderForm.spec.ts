@@ -9,7 +9,7 @@ vi.mock('element-plus', () => ({ ElMessage: { warning: vi.fn(), error: vi.fn(), 
 vi.mock('@/events/businessEvents', () => ({ BUSINESS_EVENTS: {}, emitBusinessEvent: vi.fn() }))
 
 function order(id: string): InboundOrderItem {
-  return { id, order_no: id, warehouse_id: `WH-${id}`, remark: id, status: 'DRAFT', source: 'MANUAL', import_task_id: null, expected_qty: 5, received_qty: 0, defective_qty: 0, created_by: '', created_at: '', updated_at: '' }
+  return { id, version: 3, order_no: id, warehouse_id: `WH-${id}`, remark: id, status: 'DRAFT', source: 'MANUAL', import_task_id: null, expected_qty: 5, received_qty: 0, defective_qty: 0, created_by: '', created_at: '', updated_at: '' }
 }
 function detail(id: string): InboundOrderDetail {
   return { order: order(id), details: [{ id: `D-${id}`, order_id: id, sku_id: `SKU-${id}`, sku_code: id, sku_name: id, expected_qty: 5, received_qty: 0, defective_qty: 0, batch_no: '' }], tasks: [] }
@@ -24,6 +24,48 @@ function deferred<T>() {
 beforeEach(() => vi.resetAllMocks())
 
 describe('入库编辑对象与加载生命周期', () => {
+  it('使用加载详情的版本，冲突保留输入且不自动重试或更新版本', async () => {
+    const saved = vi.fn()
+    const form = useInboundOrderForm(saved)
+    const loaded = detail('A')
+    loaded.order.version = 8
+    vi.mocked(getInboundOrder).mockResolvedValueOnce(loaded)
+    await form.openEdit(order('A'))
+    form.editForm.remark = 'my unsaved note'
+    form.editForm.details[0]!.expected_qty = 9
+    vi.mocked(updateInboundOrder).mockRejectedValueOnce({ code: 40902 })
+    await form.submitEdit()
+    expect(updateInboundOrder).toHaveBeenCalledWith('A', expect.objectContaining({ expected_version: 8 }))
+    expect(form.editDialog.visible).toBe(true)
+    expect(form.editDialog.conflicted).toBe(true)
+    expect(form.editDialog.loading).toBe(false)
+    expect(form.editForm.remark).toBe('my unsaved note')
+    expect(form.editForm.details[0]!.expected_qty).toBe(9)
+    await form.submitEdit()
+    expect(updateInboundOrder).toHaveBeenCalledTimes(1)
+    expect(getInboundOrder).toHaveBeenCalledTimes(1)
+    expect(saved).not.toHaveBeenCalled()
+    const refreshed = detail('A')
+    refreshed.order.version = 9
+    vi.mocked(getInboundOrder).mockResolvedValueOnce(refreshed)
+    form.editDialog.visible = false
+    await form.openEdit(order('A'))
+    expect(form.editDialog.conflicted).toBe(false)
+    await form.submitEdit()
+    expect(updateInboundOrder).toHaveBeenLastCalledWith('A', expect.objectContaining({ expected_version: 9 }))
+  })
+
+  it('详情缺少编辑版本时禁止保存，不猜测或使用列表旧版本', async () => {
+    const form = useInboundOrderForm(vi.fn())
+    const missing = detail('A')
+    missing.order.version = undefined as unknown as number
+    vi.mocked(getInboundOrder).mockResolvedValueOnce(missing)
+    await form.openEdit(order('A'))
+    expect(form.editDialog.ready).toBe(false)
+    await form.submitEdit()
+    expect(updateInboundOrder).not.toHaveBeenCalled()
+  })
+
   it('打开 B 立即清空 A 内容，B 加载完成前不能保存', async () => {
     const form = useInboundOrderForm(vi.fn())
     vi.mocked(getInboundOrder).mockResolvedValueOnce(detail('A'))
@@ -38,7 +80,7 @@ describe('入库编辑对象与加载生命周期', () => {
     b.resolve(detail('B'))
     await loading
     await form.submitEdit()
-    expect(updateInboundOrder).toHaveBeenCalledWith('B', { warehouse_id: 'WH-B', remark: 'B', details: [{ sku_id: 'SKU-B', expected_qty: 5 }] })
+    expect(updateInboundOrder).toHaveBeenCalledWith('B', { expected_version: 3, warehouse_id: 'WH-B', remark: 'B', details: [{ sku_id: 'SKU-B', expected_qty: 5 }] })
   })
 
   it('A 的详情晚返回不能覆盖已加载的 B', async () => {

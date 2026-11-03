@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { OutboundOrderDetail } from '@/api/types'
 import { inboundPrint, outboundPrint, stocktakePrint } from './documentPrint'
 
-const order={id:'9007199254740993',order_no:'TEST00001',biz_order_no:'ERP1',warehouse_id:'9223372036854775800',location_id:'2',location_code:'A-01',status:'DRAFT',source:'MANUAL',import_task_id:'',remark:'<script>alert(1)</script>',expected_qty:4,allocated_qty:4,picked_qty:0,received_qty:0,defective_qty:0,created_by:'operator',created_at:'2026-10-21T08:00:00Z',updated_at:'2026-10-21T08:00:00Z'}
+const order={version:1,id:'9007199254740993',order_no:'TEST00001',biz_order_no:'ERP1',warehouse_id:'9223372036854775800',location_id:'2',location_code:'A-01',status:'DRAFT',source:'MANUAL',import_task_id:'',remark:'<script>alert(1)</script>',expected_qty:4,allocated_qty:4,picked_qty:0,received_qty:0,defective_qty:0,created_by:'operator',created_at:'2026-10-21T08:00:00Z',updated_at:'2026-10-21T08:00:00Z'}
 const line={id:'3',order_id:order.id,inventory_id:'5',sku_id:'6',sku_code:'000123',sku_name:'货品',location_id:'2',location_code:'A-01',expected_qty:4,received_qty:0,defective_qty:0,allocated_qty:4,picked_qty:0,batch_no:'B01',book_qty:4,actual_qty:null as number|null,diff_qty:0,adjusted:false}
 
 describe('只读打印快照',()=>{

@@ -20,6 +20,11 @@ type CreateOrderReq struct {
 	Details     []OrderDetailItem `json:"details" binding:"required,min=1,dive"`
 }
 
+type UpdateOrderReq struct {
+	CreateOrderReq
+	ExpectedVersion int `json:"expected_version" binding:"required,min=1"`
+}
+
 type OrderQuery struct {
 	WarehouseID   int64  `form:"warehouse_id"`
 	Status        string `form:"status"`
@@ -81,6 +86,7 @@ type ImportTaskResp struct {
 
 // OrderResp 是入库单列表和创建接口的稳定响应契约。
 type OrderResp struct {
+	Version      int               `json:"version"`
 	ID           int64             `json:"id,string"`
 	TenantID     int64             `json:"tenant_id,string"`
 	OrderNo      string            `json:"order_no"`

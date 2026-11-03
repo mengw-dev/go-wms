@@ -86,7 +86,9 @@ var (
 	Unauthorized          = New(40100, "未登录或登录已过期")
 	Forbidden             = New(40300, "无权限执行该操作")
 	Conflict              = New(40900, "数据并发冲突，请重试")
-	TransactionBusy       = NewHTTP(50302, "数据库并发繁忙，请保留原请求编号和参数稍后重试", 503)
+	// StaleEdit requires a user to review current data, never automatic retry.
+	StaleEdit       = NewHTTP(40902, "内容已被其他操作修改，已保留本次输入，请重新加载并核对后保存", 409)
+	TransactionBusy = NewHTTP(50302, "数据库并发繁忙，请保留原请求编号和参数稍后重试", 503)
 )
 
 // 请求级幂等 41000+（跨模块共用：同一请求编号被复用于不同内容属于客户端误用，不可重试）

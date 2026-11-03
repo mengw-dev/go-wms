@@ -95,7 +95,7 @@ func (h *Handler) create(c *gin.Context) {
 }
 
 func (h *Handler) update(c *gin.Context) {
-	var req dto.CreateOrderReq
+	var req dto.UpdateOrderReq
 	if !httpx.BindJSON(c, &req) {
 		return
 	}

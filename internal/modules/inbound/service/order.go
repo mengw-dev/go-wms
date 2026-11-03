@@ -103,7 +103,10 @@ func (s *Service) createOrder(ctx context.Context, req *dto.CreateOrderReq, oper
 	return nil, errcode.OrderNoDuplicate
 }
 
-func (s *Service) Update(ctx context.Context, id int64, req *dto.CreateOrderReq) error {
+func (s *Service) Update(ctx context.Context, id int64, req *dto.UpdateOrderReq) error {
+	if req == nil || req.ExpectedVersion <= 0 {
+		return errcode.ParamError
+	}
 	ctx = tenant.WithExactTenant(ctx, tenant.FromContext(ctx))
 	return s.tm.Tx(ctx, func(tx *gorm.DB) error {
 		o, err := s.repo.GetOrderForUpdate(tx, id)
@@ -115,6 +118,9 @@ func (s *Service) Update(ctx context.Context, id int64, req *dto.CreateOrderReq)
 		}
 		if o.Status != model.OrderDraft {
 			return errcode.OrderStatusWrong
+		}
+		if o.Version != req.ExpectedVersion {
+			return errcode.StaleEdit
 		}
 		if err := s.basic.ValidateWarehouseInTx(ctx, tx, req.WarehouseID); err != nil {
 			return err

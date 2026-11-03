@@ -34,7 +34,7 @@ func TestImportTaskResponseKeepsPublicFieldsAndHidesInternalPaths(t *testing.T) 
 		}
 	}
 }
-func TestOrderResponseKeepsPublicFieldsAndHidesInternalVersion(t *testing.T) {
+func TestOrderResponseIncludesEditingVersion(t *testing.T) {
 	importTaskID := "IMP-1"
 	order := &model.ReceiptOrder{
 		Base:         sysmodel.Base{ID: 42},
@@ -64,8 +64,8 @@ func TestOrderResponseKeepsPublicFieldsAndHidesInternalVersion(t *testing.T) {
 	if err := json.Unmarshal(raw, &fields); err != nil {
 		t.Fatalf("unmarshal order response: %v", err)
 	}
-	if _, exists := fields["version"]; exists {
-		t.Fatalf("order response exposes internal version: %s", raw)
+	if fields["version"] != float64(7) {
+		t.Fatalf("order response lost editing version: %s", raw)
 	}
 	if fields["id"] != "42" || fields["warehouse_id"] != "11" {
 		t.Fatalf("order response ID contract changed: %s", raw)

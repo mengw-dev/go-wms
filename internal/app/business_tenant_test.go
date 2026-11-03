@@ -148,7 +148,7 @@ func TestBusinessCommandsUseOwnTenant(t *testing.T) {
 			// Platform reads retain their cross-tenant visibility.
 			_, err = s.in.Get(context.Background(), in.ID)
 			requireBusinessError(t, err, nil)
-			requireBusinessError(t, s.in.Update(foreign, in.ID, inReq), errcode.OrderNotFound)
+			requireBusinessError(t, s.in.Update(foreign, in.ID, &indto.UpdateOrderReq{CreateOrderReq: *inReq, ExpectedVersion: in.Version}), errcode.OrderNotFound)
 			requireBusinessError(t, s.in.Delete(foreign, in.ID), errcode.OrderNotFound)
 			requireBusinessError(t, s.in.Submit(foreign, in.ID), errcode.OrderNotFound)
 			requireBusinessError(t, s.in.Submit(ctx, in.ID), nil)
