@@ -45,19 +45,19 @@ const claimSnapshot = { ...snapshot, claim_token: 'claim-token', lease_expire_at
 const cases = [
   { name: '收货', setup: () => {
     const op = useReceive()
-    return { submit: () => op.receive('100', '1', { qty: 2, defective_qty: 0, batch_no: 'B1' }), recover: () => op.recoverReceive('100', '1'), discard: () => op.discardReceive('1'), state: () => op.stateOf('1'), api: vi.mocked(receiveInbound), result: undefined }
+    return { submit: () => op.receive('100', '1', { qty: 2, defective_qty: 0, batch_no: 'B1' }), recover: () => op.recoverReceive('100', '1'), restore: () => op.restoreForDetails(['1']), discard: () => op.discardReceive('1'), state: () => op.stateOf('1'), api: vi.mocked(receiveInbound), result: undefined }
   } },
   { name: '上架', setup: () => {
     const op = usePutaway()
-    return { submit: () => op.putaway('1', { qty: 2, location_id: '7' }), recover: () => op.recoverPutaway('1'), discard: () => op.discardPutaway('1'), state: () => op.stateOf('1'), api: vi.mocked(putawayInboundTask), result: undefined }
+    return { submit: () => op.putaway('1', { qty: 2, location_id: '7' }), recover: () => op.recoverPutaway('1'), restore: () => op.restoreForTasks(['1']), discard: () => op.discardPutaway('1'), state: () => op.stateOf('1'), api: vi.mocked(putawayInboundTask), result: undefined }
   } },
   { name: '盘点审核', setup: () => {
     const op = useStocktakeApprove()
-    return { submit: () => op.approve('1'), recover: () => op.approve('1'), discard: () => op.discard('1'), state: () => op.stateOf('1'), api: vi.mocked(approveStocktakeOrder), result: undefined }
+    return { submit: () => op.approve('1'), recover: () => op.approve('1'), restore: () => op.restoreForOrders(['1']), discard: () => op.discard('1'), state: () => op.stateOf('1'), api: vi.mocked(approveStocktakeOrder), result: undefined }
   } },
   { name: '拣货', setup: () => {
     const op = usePdaPick()
-    return { submit: () => op.pick('1', { qty: 2, location_code: 'A', batch_no: 'B1' }), recover: () => op.recoverPick('1'), discard: () => op.discardPick('1'), state: () => op.stateOf('1'), api: vi.mocked(pickPdaTask), result: snapshot }
+    return { submit: () => op.pick('1', { qty: 2, location_code: 'A', batch_no: 'B1' }), recover: () => op.recoverPick('1'), restore: () => op.restoreForTasks(['1']), discard: () => op.discardPick('1'), state: () => op.stateOf('1'), api: vi.mocked(pickPdaTask), result: snapshot }
   } },
 ]
 
@@ -112,6 +112,23 @@ describe.each(cases)('$name 恢复边界', ({ setup }) => {
     expect(op.api).toHaveBeenCalledTimes(1)
   })
 
+  it('内容冲突经关闭重开和刷新后仍阻止重试，并保留原参数与key', async () => {
+    const op = setup()
+    op.api.mockRejectedValueOnce({ code: 40901, message: 'conflict' })
+    await expect(op.submit()).rejects.toEqual({ code: 40901, message: 'conflict' })
+    const original = loadPending({ userId: '1', sessionNamespace: '' }, localStorage).items[0]!
+    op.restore()
+    expect(op.state().blocked).toBe(true)
+    await expect(op.recover()).rejects.toThrow(/核对/)
+    const recreated = setup()
+    // 即使调用方还没恢复界面状态，也不能发送已持久化为冲突的请求。
+    await expect(recreated.recover()).rejects.toThrow(/核对/)
+    recreated.restore(); expect(recreated.state().blocked).toBe(true)
+    expect(op.api).toHaveBeenCalledTimes(1)
+    const stored = loadPending({ userId: '1', sessionNamespace: '' }, localStorage).items[0]!
+    expect(stored).toEqual({ ...original, state: 'conflict' })
+  })
+
   it.each([50301, 50302])('后端结果未知或数据库繁忙（%i）时保留原 key 和参数', async (code) => {
     const op = setup()
     const unknown = { code, status: 503, message: '结果暂时无法确认' }
@@ -135,6 +152,24 @@ it('领取遇到数据库繁忙时保留同一个 key，恢复后才保存凭证
   expect(await op.recoverClaim('1')).toBe(true)
   expect(vi.mocked(claimPdaTask).mock.calls[1]?.at(-1)).toBe(pending?.operationKey)
   expect(loadPending({ userId: '1', sessionNamespace: '' }, localStorage).items).toHaveLength(0)
+})
+
+it('领取内容冲突也经重开与重建保持禁止重试，核对放弃后才允许新领取', async () => {
+  const op = usePdaPick()
+  vi.mocked(claimPdaTask).mockRejectedValueOnce({ code: 40901 })
+  expect(await op.claim('1')).toBe(false)
+  const original = loadPending({ userId: '1', sessionNamespace: '' }, localStorage).items[0]!
+  op.restoreForTasks(['1']); expect(op.stateOf('1').blocked).toBe(true)
+  expect(await op.recoverClaim('1')).toBe(false)
+  const restored = usePdaPick()
+  expect(await restored.recoverClaim('1')).toBe(false)
+  restored.restoreForTasks(['1']); expect(restored.stateOf('1').blocked).toBe(true)
+  expect(claimPdaTask).toHaveBeenCalledTimes(1)
+  expect(loadPending({ userId: '1', sessionNamespace: '' }, localStorage).items[0]?.state).toBe('conflict')
+  restored.discardClaim('1')
+  vi.mocked(claimPdaTask).mockResolvedValueOnce(claimSnapshot)
+  expect(await restored.claim('1')).toBe(true)
+  expect(vi.mocked(claimPdaTask).mock.calls[1]?.[1]).not.toBe(original.operationKey)
 })
 
 it('领取恢复同样禁止双击和发送中放弃，切账号不泄露凭证', async () => {

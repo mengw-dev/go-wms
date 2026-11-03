@@ -1,7 +1,7 @@
 import { onScopeDispose, ref } from 'vue'
 import { moveStock, listStockMoves, type MovePayload, type StockMove } from '@/api/stockMoves'
 import { classifyOperationError, getOperationContext, onOperationStorageChange, operationErrorMessage, operationStateKey, prepareOperation } from '@/composables/operationLifecycle'
-import { isStale, loadPending, removePending, upsertPending, type PendingOperation } from '@/utils/pendingOperations'
+import { isStale, loadPending, removePending, upsertPending, markPendingOutcome, PENDING_CONFLICT_MESSAGE, type PendingOperation } from '@/utils/pendingOperations'
 import { isReceiptID } from '@/utils/commandReceipt'
 
 const scope = 'inventory.move'
@@ -30,6 +30,7 @@ export function useStockMove() {
     pending.value = saved.items.filter(item => item.scope === scope)
     if (saved.error) error.value = saved.error
     else if (pending.value.some(item => !movePayload(item))) error.value = '移库待确认参数已损坏，请通过记录核对，已暂停新建与重试'
+    else if (pending.value.some(item => item.state === 'conflict')) error.value = PENDING_CONFLICT_MESSAGE
     else error.value = ''
   }
   onOperationStorageChange(() => { if (!busy.value) restore() })
@@ -63,8 +64,13 @@ export function useStockMove() {
       return result
     } catch (e) {
       if (!alive || operationStateKey('stock-move') !== state) return
-      if (classifyOperationError(e, scope) === 'rejected') removePending(c.ctx.identity, c.ctx.storage, scope, payload.source_inventory_id, key)
-      restore(); error.value = operationErrorMessage(e, '移库结果未确认，请保留原请求核对或重试')
+      const outcome = classifyOperationError(e, scope)
+      if (outcome === 'rejected') removePending(c.ctx.identity, c.ctx.storage, scope, payload.source_inventory_id, key)
+      else if (outcome === 'conflict') {
+        const saved = markPendingOutcome(c.ctx.identity, c.ctx.storage, scope, payload.source_inventory_id, key, 'conflict')
+        if (!saved.ok) { error.value = saved.error; return }
+      }
+      restore(); error.value = outcome === 'conflict' ? PENDING_CONFLICT_MESSAGE : operationErrorMessage(e, '移库结果未确认，请保留原请求核对或重试')
     } finally { if (alive) busy.value = false }
   }
   async function retry(item: PendingOperation) { const payload = movePayload(item); if (payload) return send(payload, item); error.value = '待确认参数已损坏，不能重试' }

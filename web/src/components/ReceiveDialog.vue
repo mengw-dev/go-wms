@@ -196,7 +196,7 @@ defineExpose({ open })
             <el-button
               size="small"
               type="primary"
-              :disabled="stateOf(row).pending!.stale"
+              :disabled="stateOf(row).pending!.stale || stateOf(row).blocked"
               :loading="stateOf(row).submitting"
               @click="recover(row)"
             >
@@ -219,7 +219,7 @@ defineExpose({ open })
       <el-table-column label="待确认" width="130">
         <template #default="{ row }">
           <span v-if="stateOf(row).pending" class="pending-tip">
-            {{ stateOf(row).pending!.stale ? '超期待核对' : `待确认 ${stateOf(row).pending!.businessPayload.qty} 件` }}
+            {{ stateOf(row).blocked ? '内容冲突，请核对后放弃' : stateOf(row).pending!.stale ? '超期待核对' : `待确认 ${stateOf(row).pending!.businessPayload.qty} 件` }}
           </span>
         </template>
       </el-table-column>

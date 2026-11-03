@@ -48,6 +48,7 @@ const pendingClaim = computed(() => current.value?.pendingClaim ?? null)
 const pendingPick = computed(() => current.value?.pendingPick ?? null)
 const storageError = computed(() => picker.storageError.value)
 const pendingTip = computed(() => {
+  if (current.value?.blocked) return current.value.blockedReason
   if (pendingPick.value) {
     return pendingPick.value.stale
       ? '任务存在未确认的拣货操作（已超过保留期，请核对任务进度）'
@@ -287,10 +288,10 @@ defineExpose({ open })
             <span v-if="pendingPick" class="pending-detail">
               数量 {{ pendingPick.businessPayload.qty }}，库位 {{ pendingPick.businessPayload.location_code || '未扫描' }}
             </span>
-            <el-button v-if="pendingPick" size="small" type="primary" :disabled="pendingPick.stale" @click="handleRecoverPick">
+            <el-button v-if="pendingPick" size="small" type="primary" :disabled="pendingPick.stale || current?.blocked" @click="handleRecoverPick">
               恢复拣货
             </el-button>
-            <el-button v-if="pendingClaim" size="small" type="primary" :disabled="pendingClaim.stale" @click="handleRecoverClaim">
+            <el-button v-if="pendingClaim" size="small" type="primary" :disabled="pendingClaim.stale || current?.blocked" @click="handleRecoverClaim">
               恢复领取
             </el-button>
             <el-button size="small" @click="pendingPick ? handleDiscardPick() : handleDiscardClaim()">已核对，放弃</el-button>

@@ -8,7 +8,7 @@ const props = defineProps<{ pending: PendingOperation | null; error: string; bus
 const emit = defineEmits<{ recover: []; discard: [] }>()
 const confirmAction = useScopedConfirm()
 const command = computed(() => isClosureCommand(props.pending?.businessPayload) ? props.pending.businessPayload : null)
-const canRecover = computed(() => !!props.pending && !!command.value && !isStale(props.pending))
+const canRecover = computed(() => !!props.pending && !!command.value && !isStale(props.pending) && props.pending.state !== 'conflict')
 async function discard() {
   const owner = JSON.stringify([props.pending?.userId, props.pending?.sessionNamespace, props.pending?.operationKey])
   try { await confirmAction('请先查看原单、库存流水或退货记录确认结果。这里只清除本机待确认记录，不撤销已提交业务。', '核对后放弃', { type: 'warning' }); if (owner === JSON.stringify([props.pending?.userId, props.pending?.sessionNamespace, props.pending?.operationKey])) emit('discard') } catch { /* cancelled */ }

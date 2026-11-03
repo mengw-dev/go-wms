@@ -210,7 +210,7 @@ defineExpose({ open })
       <el-form-item v-if="pendingPutaway || lastError" label=" ">
         <el-alert
           :title="
-            pendingPutaway
+            current?.blocked ? current.blockedReason : pendingPutaway
               ? pendingPutaway.stale
                 ? '任务存在未确认的上架操作（已超过保留期，请核对库存与任务进度）'
                 : '任务存在未确认的上架操作'
@@ -224,7 +224,7 @@ defineExpose({ open })
             <span class="pending-detail">
               库位 {{ pendingPutaway.businessPayload.location_id }}，数量 {{ pendingPutaway.businessPayload.qty }}
             </span>
-            <el-button size="small" type="primary" :disabled="pendingPutaway.stale" @click="recover">恢复上架</el-button>
+            <el-button size="small" type="primary" :disabled="pendingPutaway.stale || current?.blocked" @click="recover">恢复上架</el-button>
             <el-button size="small" @click="discard">已核对，放弃</el-button>
           </div>
         </el-alert>

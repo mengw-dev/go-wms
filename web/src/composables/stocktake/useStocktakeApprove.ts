@@ -10,7 +10,7 @@ import {
   isStale,
   loadPending,
   removePending,
-  upsertPending,
+  markPendingOutcome, PENDING_CONFLICT_MESSAGE,
   type PendingOperation,
 } from '@/utils/pendingOperations'
 
@@ -73,12 +73,10 @@ export function useStocktakeApprove() {
     if (!removed.ok) storageError.value = removed.error
   }
 
-  function markUncertain(orderId: EntityID) {
+  function markOutcome(orderId: EntityID, operationKey: string, outcome: 'uncertain' | 'conflict') {
     const c = currentContext()
     if (!c.ctx) return
-    const existing = findPending(c.ctx.identity, c.ctx.storage, APPROVE_SCOPE, orderId)
-    if (!existing) return
-    const saved = upsertPending(c.ctx.identity, c.ctx.storage, { ...existing, state: 'uncertain' })
+    const saved = markPendingOutcome(c.ctx.identity, c.ctx.storage, APPROVE_SCOPE, orderId, operationKey, outcome)
     if (!saved.ok) storageError.value = saved.error
   }
 
@@ -107,6 +105,12 @@ export function useStocktakeApprove() {
     }
     const existing = findOp(orderId)
     if (existing) {
+      if (existing.state === 'conflict') {
+        st.pending = toPendingInfo(existing, isStale(existing))
+        st.blocked = true; st.blockedReason = PENDING_CONFLICT_MESSAGE
+        st.lastError = st.blockedReason
+        throw new Error(st.blockedReason)
+      }
       if (isStale(existing)) {
         st.pending = toPendingInfo(existing, true)
         st.lastError = '该盘点单的上次审核已超过保留期，请核对待确认记录后再操作'
@@ -166,7 +170,7 @@ export function useStocktakeApprove() {
         endOperation(orderId, operationKey)
         st.pending = null
       } else if (outcome === 'conflict') {
-        markUncertain(orderId)
+        markOutcome(orderId, operationKey, 'conflict')
         const stored = findOp(orderId)
         st.pending = stored
           ? toPendingInfo(stored, false)
@@ -174,7 +178,7 @@ export function useStocktakeApprove() {
         st.blocked = true
         st.blockedReason = '该请求编号已被用于其他盘点单，请核对原审核操作后放弃重试'
       } else {
-        markUncertain(orderId)
+        markOutcome(orderId, operationKey, 'uncertain')
         const stored = findOp(orderId)
         st.pending = stored
           ? toPendingInfo(stored, isStale(stored))
@@ -208,7 +212,9 @@ export function useStocktakeApprove() {
     const idSet = new Set(orderIds.map(String))
     for (const item of loaded.items) {
       if (!idSet.has(String(item.objectId)) || item.scope !== APPROVE_SCOPE) continue
-      stateOf(item.objectId as EntityID).pending = toPendingInfo(item, isStale(item))
+      const st = stateOf(item.objectId)
+      st.pending = toPendingInfo(item, isStale(item))
+      if (item.state === 'conflict') { st.blocked = true; st.blockedReason = PENDING_CONFLICT_MESSAGE }
     }
     return ''
   }

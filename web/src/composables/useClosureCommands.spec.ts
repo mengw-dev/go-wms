@@ -25,6 +25,19 @@ beforeEach(() => { vi.resetAllMocks(); vi.stubGlobal('localStorage', storage());
 afterEach(() => { scopes.splice(0).forEach(s => s.stop()); vi.unstubAllGlobals() })
 
 describe('库存与异常命令持久化与恢复', () => {
+  it('内容冲突刷新后仍保留原key且禁止重发，核对后仍能放弃', async () => {
+    const { flow, scope } = setup()
+    vi.mocked(sendClosureCommand).mockRejectedValueOnce({ code: 40901 })
+    await flow.run(command)
+    const key = flow.pending.value?.operationKey
+    flow.refresh(); await flow.recover(); scope.stop()
+    const restored = setup().flow
+    expect(restored.pending.value?.state).toBe('conflict')
+    expect(restored.pending.value?.operationKey).toBe(key)
+    await restored.recover(); expect(sendClosureCommand).toHaveBeenCalledTimes(1)
+    expect(restored.error.value).toContain('核对')
+    restored.discard(); expect(restored.pending.value).toBeNull()
+  })
   it('同会话续期保留进行中的命令，并接受原成功回执', async () => {
     login('1', 'session-a')
     const { flow } = setup(), request = deferred()

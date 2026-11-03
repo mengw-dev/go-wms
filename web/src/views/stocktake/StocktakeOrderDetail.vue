@@ -151,10 +151,10 @@ async function onApprove() {
     ElMessage.success('审核完成，库存调整流水已生成')
   } catch {
     const st = approver.stateOf(orderId as EntityID)
-    if (st.pending?.stale) {
+    if (st.pending && (st.pending.stale || st.blocked)) {
       try {
         await confirmAction(
-          '该单据的上次审核已超过保留期仍未确认，请先核对单据状态。放弃后本地记录将被清除，可重新发起审核。',
+          st.blocked ? '该审核请求存在内容冲突，不能重试。请先核对单据和库存流水，确认后仅清除本地记录，不撤销业务。' : '该单据的上次审核已超过保留期仍未确认，请先核对单据状态。放弃后本地记录将被清除，可重新发起审核。',
           '核对待确认审核',
           { type: 'warning', confirmButtonText: '已核对，放弃', cancelButtonText: '保留记录' },
         )

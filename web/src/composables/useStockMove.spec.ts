@@ -18,6 +18,21 @@ const scopes: ReturnType<typeof effectScope>[] = []
 function setup() {const s=effectScope();scopes.push(s);return s.run(useStockMove)!}
 beforeEach(() => { vi.resetAllMocks(); vi.stubGlobal('localStorage',storage()); vi.stubGlobal('sessionStorage',storage()); setActivePinia(createPinia());login() })
 afterEach(() => {scopes.splice(0).forEach(s=>s.stop());vi.unstubAllGlobals()})
+it('冲突经过恢复后不能发送，仍允许按原key只读核对移库记录', async () => {
+  const op = setup()
+  vi.mocked(moveStock).mockRejectedValueOnce({ code: 40901 })
+  await op.send(payload)
+  const oldItem = op.pending.value[0]!
+  op.restore(); await op.retry(oldItem)
+  const restored = setup(); restored.restore()
+  expect(restored.pending.value[0]?.state).toBe('conflict')
+  await restored.retry(restored.pending.value[0]!)
+  expect(moveStock).toHaveBeenCalledTimes(1)
+  expect(restored.error.value).toContain('核对')
+  vi.mocked(listStockMoves).mockResolvedValueOnce({ list: [receipt], total: 1 })
+  expect(await restored.check(restored.pending.value[0]!)).toEqual(receipt)
+  expect(restored.pending.value).toHaveLength(0)
+})
 it('saves before send, blocks simultaneous requests and reuses original payload/key after reload', async () => {
   const a=setup(); vi.mocked(moveStock).mockRejectedValueOnce(Error('network'))
   await a.send(payload)

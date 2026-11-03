@@ -100,7 +100,7 @@ watch(() => route.query.source_inventory_id, id => { if (typeof id === 'string' 
       <p>响应未确认时，请先核对结果；重试使用原请求编号和原参数。</p>
       <div v-for="item in pending" :key="item.operationKey" class="pending-item">
         <span>来源库存 {{ item.objectId }} → 库位 {{ movePayload(item)?.target_location_id || '参数待核对' }} · 数量 {{ movePayload(item)?.quantity ?? '—' }}<br><small>请求编号 {{ item.operationKey }}</small></span>
-        <div><el-button :disabled="busy" @click="recover(item, false)">核对结果</el-button><el-button v-if="canMove" :disabled="busy" @click="recover(item, true)">按原请求重试</el-button><el-button :disabled="busy" link type="danger" @click="forget(item)">核对后清除</el-button></div>
+        <div><el-button :disabled="busy" @click="recover(item, false)">核对结果</el-button><el-button v-if="canMove" :disabled="busy || item.state === 'conflict'" @click="recover(item, true)">按原请求重试</el-button><el-button :disabled="busy" link type="danger" @click="forget(item)">核对后清除</el-button></div>
       </div>
     </section>
     <ResizableTableArea storage-key="stock-moves">

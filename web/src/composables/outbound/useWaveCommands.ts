@@ -5,7 +5,7 @@ import {
   classifyOperationError, getOperationContext, onOperationStorageChange, operationErrorMessage,
   operationStateKey, prepareOperation,
 } from '@/composables/operationLifecycle'
-import { isStale, loadPending, removePending, type PendingOperation } from '@/utils/pendingOperations'
+import { isStale, loadPending, removePending, markPendingOutcome, PENDING_CONFLICT_MESSAGE, type PendingOperation } from '@/utils/pendingOperations'
 
 const scope = 'outbound.wave'
 const object = 'wave-command'
@@ -28,6 +28,7 @@ export function useWaveCommands() {
     error.value = loaded.error || ''
     if (pending.value && !isWaveCommand(pending.value.businessPayload)) error.value = '待确认记录损坏，请先核对业务结果，禁止重发'
     else if (pending.value && isStale(pending.value)) error.value = '待确认操作已超过7天，请核对业务结果后处理，禁止自动重发'
+    else if (pending.value?.state === 'conflict') error.value = PENDING_CONFLICT_MESSAGE
   }
   watch(identity, () => { flight++; busy.value = false; refresh() }, { immediate: true })
   onOperationStorageChange(refresh)
@@ -49,12 +50,16 @@ export function useWaveCommands() {
       return ack
     } catch (cause) {
       if (!active()) return null
-      if (classifyOperationError(cause, scope) === 'rejected') {
+      const outcome = classifyOperationError(cause, scope)
+      if (outcome === 'rejected') {
         const removed = removePending(ctx.identity, ctx.storage, scope, object, key)
         if (!removed.ok) { error.value = removed.error; return null }
+      } else if (outcome === 'conflict') {
+        const saved = markPendingOutcome(ctx.identity, ctx.storage, scope, object, key, 'conflict')
+        if (!saved.ok) { error.value = saved.error; return null }
       }
       refresh()
-      error.value = operationErrorMessage(cause, '操作结果未知，请用原参数重试')
+      error.value = outcome === 'conflict' ? PENDING_CONFLICT_MESSAGE : operationErrorMessage(cause, '操作结果未知，请用原参数重试')
       return null
     } finally {
       if (active()) busy.value = false
