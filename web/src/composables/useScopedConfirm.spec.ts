@@ -3,7 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { ElMessageBox } from 'element-plus'
 import { useScopedConfirm } from './useScopedConfirm'
 
-const state = vi.hoisted(() => ({ route: { fullPath: '/inbound/orders/1' }, auth: { sessionVersion: 1, token: 'first', demoSessionId: '' } }))
+const state = vi.hoisted(() => ({ route: { fullPath: '/inbound/orders/1' }, auth: { sessionVersion: 1, token: 'first', demoSessionId: '', storageIsCurrent: (): boolean => true } }))
 vi.mock('vue-router', () => ({ useRoute: () => state.route }))
 vi.mock('@/stores/auth', () => ({ useAuthStore: () => state.auth }))
 const dialogs = vi.hoisted(() => ({ confirm: vi.fn(), close: vi.fn() }))
@@ -14,7 +14,7 @@ function deferred() { let resolve!: (value: 'confirm') => void; const promise = 
 beforeEach(() => {
   vi.resetAllMocks()
   state.route = reactive({ fullPath: '/inbound/orders/1' })
-  state.auth = reactive({ sessionVersion: 1, token: 'first', demoSessionId: '' })
+  state.auth = reactive({ sessionVersion: 1, token: 'first', demoSessionId: '', storageIsCurrent: () => true })
 })
 afterEach(() => { scopes.splice(0).forEach(scope => scope.stop()) })
 
@@ -52,4 +52,28 @@ it('does not open duplicate confirmations and remains reusable after cancellatio
 it('does not close other dialogs when its page has no outstanding confirmation', () => {
   const flow = setup(); flow.scope.stop()
   expect(ElMessageBox.close).not.toHaveBeenCalled()
+})
+
+it('target changes cancel the old confirmation even after switching back; old finally cannot unlock a new dialog', async () => {
+  const scope = effectScope(); scopes.push(scope)
+  const target = reactive({ key: 'first' })
+  const confirm = scope.run(() => useScopedConfirm(() => target.key))!
+  const old = deferred(), current = deferred()
+  dialogs.confirm.mockReturnValueOnce(old.promise).mockReturnValueOnce(current.promise)
+  const first = confirm('原记录', '提示')
+  const rejected = expect(first).rejects.toThrow('已取消')
+  target.key = 'second'; target.key = 'first'
+  const second = confirm('重新核对', '提示')
+  old.resolve('confirm'); await rejected
+  await expect(confirm('重复', '提示')).rejects.toThrow('等待确认')
+  current.resolve('confirm'); await expect(second).resolves.toBe('confirm')
+})
+
+it('rejects a shared login change before the storage event reaches this page', async () => {
+  const gate = deferred(), flow = setup()
+  dialogs.confirm.mockReturnValueOnce(gate.promise)
+  const result = flow.confirm('原操作', '提示')
+  state.auth.storageIsCurrent = () => false
+  gate.resolve('confirm')
+  await expect(result).rejects.toThrow('已取消')
 })

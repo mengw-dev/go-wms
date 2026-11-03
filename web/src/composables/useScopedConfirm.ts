@@ -4,21 +4,22 @@ import { ElMessageBox } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 
 /** A business confirmation belongs to the page and login that opened it. */
-export function useScopedConfirm() {
+export function useScopedConfirm(target: () => unknown = () => null) {
   const route = useRoute(), auth = useAuthStore()
-  let alive = true, opened = false
-  const identity = () => JSON.stringify([route?.fullPath, auth.sessionVersion, auth.token, auth.demoSessionId])
-  function close() { if (opened) { opened = false; ElMessageBox.close() } }
-  watch(identity, close)
+  let alive = true, active: symbol | null = null
+  const identity = () => JSON.stringify([route?.fullPath, auth.sessionVersion, auth.token, auth.demoSessionId, target()])
+  function close() { if (active) { active = null; ElMessageBox.close() } }
+  watch(identity, close, { flush: 'sync' })
   onScopeDispose(() => { alive = false; close() })
   return async (...args: Parameters<typeof ElMessageBox.confirm>) => {
-    if (!alive || opened) throw new Error('当前操作已取消或仍在等待确认')
+    if (!alive || active || !auth.storageIsCurrent()) throw new Error('当前操作已取消或仍在等待确认')
     const owner = identity()
-    opened = true
+    const confirmation = Symbol('confirmation')
+    active = confirmation
     try {
       const result = await ElMessageBox.confirm(...args)
-      if (!alive || identity() !== owner) throw new Error('页面或账号已切换，原操作已取消')
+      if (!alive || active !== confirmation || identity() !== owner || !auth.storageIsCurrent()) throw new Error('页面、账号或操作目标已切换，原操作已取消')
       return result
-    } finally { opened = false }
+    } finally { if (active === confirmation) active = null }
   }
 }

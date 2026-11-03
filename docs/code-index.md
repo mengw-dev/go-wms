@@ -108,7 +108,7 @@
 | --- | --- | --- |
 | `internal/modules/demo` | 演示账号会话与租约、场景编排、并发实验、活动证据、性能数据 | `handler/{handler,json}_test.go`、`service/{session,tenant_lock,scenario,activity,identity,experiment_allocation}_test.go`；种子 `internal/bootstrap/{seed_demo,reset}_test.go` |
 | `web/src/guide/**` | 引导定义、路由匹配、持久化、与业务事件的桥接 | `routeMatcher.spec.ts`、`businessBridge.spec.ts` |
-| `web/src/components/demo/**` | 演示/引导组件（`ManualGuide`、`DemoRunViewer`、`DemoTour`、`StagedDemoRunner`） | — |
+| `web/src/components/demo/**`、`web/src/components/DemoConsole.vue` | 演示/引导组件（`ManualGuide`、`DemoRunViewer`、`DemoTour`、`StagedDemoRunner`）及控制台 | `components/DemoConsole.confirm.spec.ts`、`composables/useScopedConfirm.spec.ts` |
 | `web/src/views/demo/**` | 演示页面（`index`、`Activity`、`Performance`） | E2E `web/tests/e2e/demo-console.spec.ts` |
 | `web/src/composables/demo/**` | 演示/引导组合式函数（会话、运行器、引导目标等） | `composables/demo/{useDemoRunner,useStagedDemoRunner}.spec.ts`、E2E `demo-scroll.spec.ts`、`api/demoExecution.spec.ts`、E2E `demo-console.spec.ts` |
 
