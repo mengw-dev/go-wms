@@ -35,24 +35,6 @@ function createStorage(): Storage {
   } as Storage
 }
 
-function createFailingStorage(): Storage {
-  const store = new Map<string, string>()
-  return {
-    getItem: (key: string) => store.get(key) ?? null,
-    setItem: () => {
-      throw new Error('QuotaExceededError')
-    },
-    removeItem: () => {
-      throw new Error('QuotaExceededError')
-    },
-    clear: () => {},
-    key: (index: number) => Array.from(store.keys())[index] ?? null,
-    get length() {
-      return store.size
-    },
-  } as Storage
-}
-
 function loginAs(userId: string, perms: string[] = [], sessionId = '') {
   const auth = useAuthStore()
   auth.setAuth({
@@ -403,7 +385,7 @@ describe('usePdaPick 刷新恢复与隔离', () => {
 
   it('存储写入失败时不发送请求并明确报错', async () => {
     loginAs('1')
-    vi.stubGlobal('localStorage', createFailingStorage())
+    vi.spyOn(localStorage, 'setItem').mockImplementation(() => { throw new Error('QuotaExceededError') })
     mockedPick.mockResolvedValue(pickResult())
     const { pick } = usePdaPick()
 
@@ -430,7 +412,7 @@ describe('usePdaPick 刷新恢复与隔离', () => {
     const { stateOf, restoreForTasks, discardPick, pick } = usePdaPick()
 
     restoreForTasks(['1'])
-    discardPick('1')
+    discardPick('1', stateOf('1').pendingPick!.operationKey)
     expect(stateOf('1').pendingPick).toBeNull()
 
     await pick('1', { qty: 1, location_code: 'A-01' })

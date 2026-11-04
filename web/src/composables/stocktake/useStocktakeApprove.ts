@@ -10,7 +10,7 @@ import {
   isStale,
   loadPending,
   removePending,
-  markPendingOutcome, PENDING_CONFLICT_MESSAGE,
+  markPendingOutcome, PENDING_CONFLICT_MESSAGE, PENDING_CHANGED_MESSAGE,
   type PendingOperation,
 } from '@/utils/pendingOperations'
 
@@ -129,25 +129,26 @@ export function useStocktakeApprove() {
   }
 
   /** 核对后放弃未确认的审核记录：仅删除本地记录，不向服务端发送任何请求。 */
-  function discard(orderId: EntityID) {
+  function discard(orderId: EntityID, expectedKey: string): boolean {
     const st = stateOf(orderId)
-    if (st.submitting) return
+    if (st.submitting) return false
     const existing = findOp(orderId)
-    if (!existing) {
-      st.pending = null
-      return
+    if (!expectedKey || !existing || existing.operationKey !== expectedKey) {
+      st.lastError = PENDING_CHANGED_MESSAGE
+      return false
     }
     const c = currentContext()
-    if (!c.ctx) return
+    if (!c.ctx) return false
     const removed = removePending(c.ctx.identity, c.ctx.storage, APPROVE_SCOPE, orderId, existing.operationKey)
     if (!removed.ok) {
       storageError.value = removed.error
       st.lastError = removed.error
-      return
+      return false
     }
     st.pending = null
     st.blocked = false
     st.blockedReason = ''
+    return true
   }
 
   async function sendApprove(orderId: EntityID, operationKey: string): Promise<void> {

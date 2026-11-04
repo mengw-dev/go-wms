@@ -10,7 +10,7 @@ import {
   isStale,
   loadPending,
   removePending,
-  markPendingOutcome, PENDING_CONFLICT_MESSAGE,
+  markPendingOutcome, PENDING_CONFLICT_MESSAGE, PENDING_CHANGED_MESSAGE,
   type PendingOperation,
 } from '@/utils/pendingOperations'
 
@@ -165,25 +165,26 @@ export function usePutaway() {
   }
 
   /** 核对后放弃未确认的上架：仅删除本地记录，不向服务端发送任何请求。 */
-  function discardPutaway(taskId: EntityID) {
+  function discardPutaway(taskId: EntityID, expectedKey: string): boolean {
     const st = stateOf(taskId)
-    if (st.submitting) return
+    if (st.submitting) return false
     const existing = findOp(taskId)
-    if (!existing) {
-      st.pending = null
-      return
+    if (!expectedKey || !existing || existing.operationKey !== expectedKey) {
+      st.lastError = PENDING_CHANGED_MESSAGE
+      return false
     }
     const c = currentContext()
-    if (!c.ctx) return
+    if (!c.ctx) return false
     const removed = removePending(c.ctx.identity, c.ctx.storage, PUTAWAY_SCOPE, taskId, existing.operationKey)
     if (!removed.ok) {
       storageError.value = removed.error
       st.lastError = removed.error
-      return
+      return false
     }
     st.pending = null
     st.blocked = false
     st.blockedReason = ''
+    return true
   }
 
   async function sendPutaway(taskId: EntityID, operationKey: string, data: PutawayBusinessPayload): Promise<void> {

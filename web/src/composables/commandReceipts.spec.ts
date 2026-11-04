@@ -50,7 +50,7 @@ it('resolve validates its exception ID; new receipts and wave creation require v
   vi.mocked(sendClosureCommand).mockResolvedValueOnce({object_id:'99'})
   await flow.run({action:'resolve',order_id:'1',exception_id:'3',data:{close:true,reason:'关闭'}})
   expect(flow.pending.value).not.toBeNull()
-  flow.discard()
+  flow.discard(flow.pending.value!.operationKey)
   vi.mocked(sendClosureCommand).mockResolvedValueOnce({object_id:'9223372036854775800'})
   await flow.run({action:'return',order_id:'1',data:{allocation_id:'2',location_id:'3',good_qty:1,bad_qty:0,reason:'退货'}})
   expect(flow.pending.value).toBeNull()

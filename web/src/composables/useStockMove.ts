@@ -35,8 +35,9 @@ export function useStockMove() {
   }
   onOperationStorageChange(() => { if (!busy.value) restore() })
   function forget(item: PendingOperation) {
-    if (busy.value) return
+    if (!alive || busy.value) return
     const c = getOperationContext('移库'); if (!c.ctx) { error.value = c.error; return }
+    if (item.userId !== c.ctx.identity.userId || item.sessionNamespace !== c.ctx.identity.sessionNamespace) { error.value = '登录身份已变化，请重新核对原记录'; return }
     const removed = removePending(c.ctx.identity, c.ctx.storage, scope, item.objectId, item.operationKey)
     if (!removed.ok) error.value = removed.error; else restore()
   }

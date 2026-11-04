@@ -5,7 +5,7 @@ import {
   classifyOperationError, getOperationContext, onOperationStorageChange, operationErrorMessage,
   operationStateKey, prepareOperation,
 } from '@/composables/operationLifecycle'
-import { isStale, loadPending, removePending, markPendingOutcome, PENDING_CONFLICT_MESSAGE, type PendingOperation } from '@/utils/pendingOperations'
+import { isStale, loadPending, removePending, markPendingOutcome, PENDING_CONFLICT_MESSAGE, PENDING_CHANGED_MESSAGE, type PendingOperation } from '@/utils/pendingOperations'
 
 const scope = 'warehouse.closure'
 const object = 'closure-command'
@@ -91,14 +91,15 @@ export function useClosureCommands() {
     if (!op || error.value || !isClosureCommand(op.businessPayload)) return null
     return execute(op.businessPayload, op.operationKey)
   }
-  function discard() {
-    if (disposed || busy.value) return
+  function discard(expectedKey: string): boolean {
+    if (disposed || busy.value) return false
     refresh()
     const current = getOperationContext('库存与异常'), op = pending.value
-    if (!current.ctx || !op) return
+    if (!current.ctx || !op || !expectedKey || op.operationKey !== expectedKey) { error.value = current.error || PENDING_CHANGED_MESSAGE; return false }
     const removed = removePending(current.ctx.identity, current.ctx.storage, scope, object, op.operationKey)
-    if (!removed.ok) { error.value = removed.error; return }
+    if (!removed.ok) { error.value = removed.error; return false }
     refresh()
+    return true
   }
   return { pending, busy, error, run, recover, discard, refresh }
 }

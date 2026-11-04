@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, onScopeDispose, reactive, ref, watch } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import { getOutboundOrder } from '@/api/outbound'
 import type { EntityID, TaskItem } from '@/api/types'
 import { usePdaPick } from '@/composables/outbound/usePdaPick'
+import { useScopedConfirm } from '@/composables/useScopedConfirm'
 
 import ScanField from '@/components/common/ScanField.vue'
 import { useSkuScan } from '@/composables/useSkuScan'
@@ -64,6 +65,8 @@ const pendingTip = computed(() => {
 
 const skuScan = useSkuScan('outbound', () => orderId.value, () => `${visible.value}:${form.task_id}`, () => selectedTask.value?.sku_id || '')
 let loadSeq = 0, alive = true
+const confirmAction = useScopedConfirm(() => [visible.value, orderId.value, form.task_id, loadSeq,
+  pendingClaim.value?.operationKey, pendingPick.value?.operationKey])
 onScopeDispose(() => { alive = false; loadSeq++ })
 watch(visible, value => { if (!value) { loadSeq++; skuScan.reset() } })
 watch(() => operationStateKey('pick-view'), () => { loadSeq++; visible.value = false; tasks.value = [] })
@@ -165,30 +168,32 @@ async function handleRecoverPick() {
 }
 
 async function handleDiscardClaim() {
-  if (!form.task_id) return
+  const taskId = form.task_id, key = pendingClaim.value?.operationKey
+  if (!visible.value || !taskId || !key) return
   try {
     await confirmDiscard('请确认已核对任务领取状态：放弃后本次领取不会自动重试。')
+    if (picker.discardClaim(taskId, key)) ElMessage.success('已放弃待确认的领取操作')
+    else ElMessage.warning('记录已变化或操作仍在进行，请重新核对')
   } catch {
     return
   }
-  picker.discardClaim(form.task_id)
-  ElMessage.success('已放弃待确认的领取操作')
 }
 
 async function handleDiscardPick() {
-  if (!form.task_id) return
+  const taskId = form.task_id, key = pendingPick.value?.operationKey
+  if (!visible.value || !taskId || !key) return
   try {
     await confirmDiscard('请确认已核对任务进度：放弃后本次拣货不会自动重试。')
+    if (picker.discardPick(taskId, key)) ElMessage.success('已放弃待确认的拣货操作')
+    else ElMessage.warning('记录已变化或操作仍在进行，请重新核对')
   } catch {
     return
   }
-  picker.discardPick(form.task_id)
-  ElMessage.success('已放弃待确认的拣货操作')
 }
 
 async function confirmDiscard(message: string) {
   try {
-    await ElMessageBox.confirm(message, '核对并放弃待确认操作', {
+    await confirmAction(message, '核对并放弃待确认操作', {
       type: 'warning',
       confirmButtonText: '已核对，放弃',
       cancelButtonText: '取消',

@@ -73,6 +73,7 @@ export interface PendingWriteResult {
 const PENDING_STATES: readonly PendingState[] = ['prepared', 'sending', 'uncertain', 'conflict', 'succeeded', 'rejected']
 
 export const PENDING_CONFLICT_MESSAGE = '该请求编号存在内容冲突，请核对原操作后放弃重试'
+export const PENDING_CHANGED_MESSAGE = '待确认操作已变化，请重新核对当前记录'
 
 function emptyContainer(): Container {
   return { version: PENDING_CONTAINER_VERSION, items: [] }

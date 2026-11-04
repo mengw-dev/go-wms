@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onScopeDispose, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
+import { useScopedConfirm } from '@/composables/useScopedConfirm'
 import BusinessListPage from '@/components/common/BusinessListPage.vue'
 import BusinessPagination from '@/components/common/BusinessPagination.vue'
 import ResizableTableArea from '@/components/common/ResizableTableArea.vue'
@@ -14,6 +15,7 @@ import { formatTime } from '@/utils'
 import { mobileTableCellStyle } from '@/utils/mobileTable'
 
 const route = useRoute(), router = useRouter(), auth = useAuthStore()
+const confirmAction = useScopedConfirm()
 const canMove = computed(() => auth.hasPerm('wms:inventory:move'))
 const operation = useStockMove()
 const { pending, error: operationError, busy } = operation
@@ -81,7 +83,7 @@ async function recover(item: PendingOperation, retry: boolean) {
   completed(await (retry ? operation.retry(item) : operation.check(item)))
 }
 async function forget(item: PendingOperation) {
-  try { await ElMessageBox.confirm('请先核对移库记录和库存流水。清除只删除本机待确认记录，不会撤销库存变动；再次发起将使用新请求编号。确认已人工核对？', '清除本地待确认记录', { type: 'warning', confirmButtonText: '已核对，清除记录' }) } catch { return }
+  try { await confirmAction('请先核对移库记录和库存流水。清除只删除本机待确认记录，不会撤销库存变动；再次发起将使用新请求编号。确认已人工核对？', '清除本地待确认记录', { type: 'warning', confirmButtonText: '已核对，清除记录' }) } catch { return }
   if (alive) operation.forget(item)
 }
 function ledger(row: StockMove) { void router.push({ path: '/inventory', query: { order_no: row.move_no } }) }

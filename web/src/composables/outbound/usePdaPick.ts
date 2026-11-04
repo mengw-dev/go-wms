@@ -11,7 +11,7 @@ import {
   isStale,
   loadPending,
   removePending,
-  markPendingOutcome, PENDING_CONFLICT_MESSAGE,
+  markPendingOutcome, PENDING_CONFLICT_MESSAGE, PENDING_CHANGED_MESSAGE,
   type PendingOperation,
 } from '@/utils/pendingOperations'
 
@@ -214,25 +214,26 @@ export function usePdaPick() {
   }
 
   /** 核对后放弃未确认的领取操作：仅删除本地记录，不向服务端发送任何请求。 */
-  function discardClaim(taskId: EntityID) {
+  function discardClaim(taskId: EntityID, expectedKey: string): boolean {
     const st = stateOf(taskId)
-    if (st.claiming || st.submitting) return
+    if (st.claiming || st.submitting) return false
     const existing = findOp(taskId, CLAIM_SCOPE)
-    if (!existing) {
-      st.pendingClaim = null
-      return
+    if (!expectedKey || !existing || existing.operationKey !== expectedKey) {
+      st.lastError = PENDING_CHANGED_MESSAGE
+      return false
     }
     const c = currentContext()
-    if (!c.ctx) return
+    if (!c.ctx) return false
     const removed = removePending(c.ctx.identity, c.ctx.storage, CLAIM_SCOPE, taskId, existing.operationKey)
     if (!removed.ok) {
       storageError.value = removed.error
       st.lastError = removed.error
-      return
+      return false
     }
     st.pendingClaim = null
     st.blocked = false
     st.blockedReason = ''
+    return true
   }
 
   async function sendClaim(taskId: EntityID, operationKey: string): Promise<boolean> {
@@ -351,25 +352,26 @@ export function usePdaPick() {
   }
 
   /** 核对后放弃未确认的拣货操作：仅删除本地记录，不向服务端发送任何请求。 */
-  function discardPick(taskId: EntityID) {
+  function discardPick(taskId: EntityID, expectedKey: string): boolean {
     const st = stateOf(taskId)
-    if (st.claiming || st.submitting) return
+    if (st.claiming || st.submitting) return false
     const existing = findOp(taskId, PICK_SCOPE)
-    if (!existing) {
-      st.pendingPick = null
-      return
+    if (!expectedKey || !existing || existing.operationKey !== expectedKey) {
+      st.lastError = PENDING_CHANGED_MESSAGE
+      return false
     }
     const c = currentContext()
-    if (!c.ctx) return
+    if (!c.ctx) return false
     const removed = removePending(c.ctx.identity, c.ctx.storage, PICK_SCOPE, taskId, existing.operationKey)
     if (!removed.ok) {
       storageError.value = removed.error
       st.lastError = removed.error
-      return
+      return false
     }
     st.pendingPick = null
     st.blocked = false
     st.blockedReason = ''
+    return true
   }
 
   async function sendPick(taskId: EntityID, operationKey: string, data: PickBusinessPayload): Promise<PickResult> {

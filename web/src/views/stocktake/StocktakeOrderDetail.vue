@@ -136,6 +136,12 @@ async function saveActual(row: StocktakeDetailItem) {
 
 // ---------- 审核 / 取消 ----------
 async function onApprove() {
+  const state = approver.stateOf(orderId as EntityID)
+  if (state.pending && (state.pending.stale || state.blocked)) {
+    await reviewPending()
+    await load()
+    return
+  }
   try {
     await confirmAction('确定审核该盘点单吗？审核后将按差异自动调整库存。', '审核盘点单', {
       type: 'warning',
@@ -150,22 +156,27 @@ async function onApprove() {
     await approver.approve(orderId as EntityID)
     ElMessage.success('审核完成，库存调整流水已生成')
   } catch {
-    const st = approver.stateOf(orderId as EntityID)
-    if (st.pending && (st.pending.stale || st.blocked)) {
-      try {
-        await confirmAction(
-          st.blocked ? '该审核请求存在内容冲突，不能重试。请先核对单据和库存流水，确认后仅清除本地记录，不撤销业务。' : '该单据的上次审核已超过保留期仍未确认，请先核对单据状态。放弃后本地记录将被清除，可重新发起审核。',
-          '核对待确认审核',
-          { type: 'warning', confirmButtonText: '已核对，放弃', cancelButtonText: '保留记录' },
-        )
-      } catch {
-        return
-      }
-      approver.discard(orderId as EntityID)
-      ElMessage.success('已放弃待确认的审核记录')
-    }
+    await reviewPending()
   }
   await load()
+}
+
+async function reviewPending() {
+  const st = approver.stateOf(orderId as EntityID)
+  if (st.pending && (st.pending.stale || st.blocked)) {
+    const key = st.pending.operationKey
+    try {
+      await confirmAction(
+        st.blocked ? '该审核请求存在内容冲突，不能重试。请先核对单据和库存流水，确认后仅清除本地记录，不撤销业务。' : '该单据的上次审核已超过保留期仍未确认，请先核对单据状态。放弃后本地记录将被清除，可重新发起审核。',
+        '核对待确认审核',
+        { type: 'warning', confirmButtonText: '已核对，放弃', cancelButtonText: '保留记录' },
+      )
+    } catch {
+      return
+    }
+    if (approver.discard(orderId as EntityID, key)) ElMessage.success('已放弃待确认的审核记录')
+    else ElMessage.warning('记录已变化或操作仍在进行，请重新核对')
+  }
 }
 
 async function onCancel() {

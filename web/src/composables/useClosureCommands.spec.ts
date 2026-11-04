@@ -3,7 +3,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { sendClosureCommand, type ClosureAck, type ClosureCommand } from '@/api/closure'
 import { useAuthStore } from '@/stores/auth'
-import { loadPending, PENDING_RETENTION_MS } from '@/utils/pendingOperations'
+import { loadPending, upsertPending, removePending, PENDING_RETENTION_MS } from '@/utils/pendingOperations'
 import { useClosureCommands } from './useClosureCommands'
 
 vi.mock('@/api/closure', async original => ({ ...await original<typeof import('@/api/closure')>(), sendClosureCommand: vi.fn() }))
@@ -36,7 +36,23 @@ describe('库存与异常命令持久化与恢复', () => {
     expect(restored.pending.value?.operationKey).toBe(key)
     await restored.recover(); expect(sendClosureCommand).toHaveBeenCalledTimes(1)
     expect(restored.error.value).toContain('核对')
-    restored.discard(); expect(restored.pending.value).toBeNull()
+    restored.discard(key!); expect(restored.pending.value).toBeNull()
+  })
+  it('确认原key后不能删除另一页面的新记录', async () => {
+    const { flow } = setup(), identity = { userId: '1', sessionNamespace: '' }
+    vi.mocked(sendClosureCommand).mockRejectedValueOnce({ kind: 'network' })
+    await flow.run(command)
+    const original = flow.pending.value!
+    expect(removePending(identity, localStorage, original.scope, original.objectId, original.operationKey).ok).toBe(true)
+    const replacement = { ...original, operationKey: 'replacement-key' }
+    expect(upsertPending(identity, localStorage, replacement).ok).toBe(true)
+    expect(flow.discard(original.operationKey)).toBe(false)
+    expect(flow.pending.value).toEqual(replacement)
+    expect(flow.error.value).toContain('已变化')
+    expect(loadPending(identity, localStorage).items).toEqual([replacement])
+    expect(flow.discard(replacement.operationKey)).toBe(true)
+    expect(flow.pending.value).toBeNull()
+    expect(sendClosureCommand).toHaveBeenCalledTimes(1)
   })
   it('同会话续期保留进行中的命令，并接受原成功回执', async () => {
     login('1', 'session-a')

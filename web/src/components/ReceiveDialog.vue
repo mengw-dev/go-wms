@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { mobileTableCellStyle } from '@/utils/mobileTable'
 import { computed, onScopeDispose, reactive, ref, watch } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import { getInboundOrder } from '@/api/inbound'
 import type { EntityID, InboundOrderDetailRow } from '@/api/types'
 import { useReceive } from '@/composables/inbound/useReceive'
+import { useScopedConfirm } from '@/composables/useScopedConfirm'
 
 import ScanField from '@/components/common/ScanField.vue'
 import { useSkuScan } from '@/composables/useSkuScan'
@@ -22,6 +23,9 @@ const receiver = useReceive()
 const skuScan = useSkuScan('inbound', () => orderId.value, () => String(visible.value))
 const shownDetails = computed(() => skuScan.match.value ? details.value.filter(row => row.sku_id === skuScan.match.value!.id) : details.value)
 let loadSeq = 0, alive = true
+const discardDetailId = ref<EntityID>('')
+const confirmDiscard = useScopedConfirm(() => [visible.value, orderId.value, loadSeq,
+  discardDetailId.value, discardDetailId.value ? receiver.stateOf(discardDetailId.value).pending?.operationKey : null])
 onScopeDispose(() => { alive = false; loadSeq++ })
 watch(visible, value => { if (!value) { loadSeq++; skuScan.reset() } })
 watch(() => operationStateKey('receive-view'), () => { loadSeq++; visible.value = false; details.value = [] })
@@ -120,17 +124,20 @@ async function recover(row: InboundOrderDetailRow) {
 
 /** 核对后放弃未确认的收货：仅删除本地记录，不向服务端发送任何请求。 */
 async function discard(row: InboundOrderDetailRow) {
+  const key = receiver.stateOf(row.id).pending?.operationKey
+  if (!visible.value || !key) return
+  discardDetailId.value = row.id
   try {
-    await ElMessageBox.confirm(
+    await confirmDiscard(
       '请确认已核对该明细的已收数量：放弃后本次收货不会自动重试。',
       '核对并放弃待确认收货',
       { type: 'warning', confirmButtonText: '已核对，放弃', cancelButtonText: '取消' },
     )
+    if (receiver.discardReceive(row.id, key)) ElMessage.success('已放弃待确认的收货操作')
+    else ElMessage.warning('记录已变化或操作仍在进行，请重新核对')
   } catch {
     return
   }
-  receiver.discardReceive(row.id)
-  ElMessage.success('已放弃待确认的收货操作')
 }
 
 defineExpose({ open })

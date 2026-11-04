@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { nextTick, onMounted, onScopeDispose, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessageBox } from 'element-plus'
+import { useScopedConfirm } from '@/composables/useScopedConfirm'
 import BusinessListPage from '@/components/common/BusinessListPage.vue'
 import BusinessPagination from '@/components/common/BusinessPagination.vue'
 import WavePendingNotice from '@/components/outbound/WavePendingNotice.vue'
@@ -21,6 +21,7 @@ const warehouses = ref<IdOption[]>([])
 const optionsLoading = ref(false), optionsError = ref('')
 const query = reactive({ warehouse_id: '', keyword: '', page: 1, page_size: 10 })
 const createOpen = ref(false), previewLoading = ref(false)
+const confirmAction = useScopedConfirm(() => [createOpen.value, pending.value?.operationKey])
 const form = reactive({ warehouse_id: '', keyword: '', limit: 20, remark: '' })
 const candidates = ref<OutboundOrderItem[]>([]), selected = ref<OutboundOrderItem[]>([])
 const table = ref<{ toggleAllSelection: () => void; clearSelection: () => void }>()
@@ -59,9 +60,10 @@ async function recover() {
   const ack = await commands.recover()
   if (ack && alive) await router.push(`/outbound/waves/${ack.wave_id}`)
 }
-async function discard() {
-  try { await ElMessageBox.confirm('请先核对波次列表与业务结果。放弃只清除本机待确认记录，不会撤销已完成的业务。', '放弃待确认记录', { type: 'warning' }) } catch { return }
-  if (alive) commands.discard()
+async function discard(key: string) {
+  if (pending.value?.operationKey !== key) return
+  try { await confirmAction('请先核对波次列表与业务结果。放弃只清除本机待确认记录，不会撤销已完成的业务。', '放弃待确认记录', { type: 'warning' }) } catch { return }
+  if (alive) commands.discard(key)
 }
 async function loadWarehouses() {
   if (!auth.hasPerm('wms:basic')) return
