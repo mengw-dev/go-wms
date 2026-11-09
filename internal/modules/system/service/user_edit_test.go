@@ -10,7 +10,7 @@ import (
 
 func TestUserConcurrentEditorsHaveOneWinner(t *testing.T) {
 	s, _, ctx := userFixture(t)
-	actor := newAdminActor(t, s, ctx)
+	actor := newAdminActor(ctx, t, s)
 	start := make(chan struct{})
 	done := make(chan error, 2)
 	for _, nickname := range []string{"editor A", "editor B"} {
@@ -21,7 +21,9 @@ func TestUserConcurrentEditorsHaveOneWinner(t *testing.T) {
 	}
 	close(start)
 	first, second := <-done, <-done
-	if !((first == nil && errors.Is(second, errcode.StaleEdit)) || (second == nil && errors.Is(first, errcode.StaleEdit))) {
+	firstWon := first == nil && errors.Is(second, errcode.StaleEdit)
+	secondWon := second == nil && errors.Is(first, errcode.StaleEdit)
+	if !firstWon && !secondWon {
 		t.Fatalf("edit results: %v / %v", first, second)
 	}
 	user, err := s.repo.GetUserByID(ctx, 42)

@@ -26,9 +26,9 @@ func TestTenantRolePermissionBoundary(t *testing.T) {
 	}
 	db := testutil.OpenIsolatedMySQL(t, dsn, &model.SysRole{}, &model.SysUser{}, &model.SysUserRole{})
 	s := New(repository.New(db), "unused", 1)
-	platformID := newAdminActor(t, s, context.Background())
+	platformID := newAdminActor(context.Background(), t, s)
 	ctx := tenant.WithTenant(context.Background(), 11)
-	actorID := newAdminActor(t, s, ctx)
+	actorID := newAdminActor(ctx, t, s)
 
 	rejected := []struct {
 		name  string
@@ -105,7 +105,7 @@ func TestCreateRoleConflictMapsToBusinessError(t *testing.T) {
 	db := testutil.OpenIsolatedMySQL(t, dsn, &model.SysRole{}, &model.SysUser{}, &model.SysUserRole{})
 	s := New(repository.New(db), "unused", 1)
 	ctx := tenant.WithTenant(context.Background(), 11)
-	actorID := newAdminActor(t, s, ctx)
+	actorID := newAdminActor(ctx, t, s)
 
 	blocker := db.Begin()
 	if blocker.Error != nil {
@@ -157,7 +157,7 @@ func TestUpdateMissingRoleReturnsNotFound(t *testing.T) {
 	db := testutil.OpenIsolatedMySQL(t, dsn, &model.SysRole{}, &model.SysUser{}, &model.SysUserRole{})
 	s := New(repository.New(db), "unused", 1)
 	ctx := tenant.WithTenant(context.Background(), 11)
-	actorID := newAdminActor(t, s, ctx)
+	actorID := newAdminActor(ctx, t, s)
 
 	if err := s.UpdateRole(ctx, actorID, 999999, &dto.RoleUpdateReq{Name: "missing", Perms: "wms:basic"}); !errors.Is(err, errcode.RoleIDInvalid) {
 		t.Fatalf("update missing role: got %v, want %v", err, errcode.RoleIDInvalid)

@@ -18,7 +18,7 @@ import (
 
 func TestPermissionLoadCannotRefillAfterRevocation(t *testing.T) {
 	s, db, ctx := userFixture(t)
-	actorID := newAdminActor(t, s, ctx)
+	actorID := newAdminActor(ctx, t, s)
 	loaded, release := make(chan struct{}), make(chan struct{})
 	var once, unblock sync.Once
 	defer unblock.Do(func() { close(release) })
@@ -112,7 +112,7 @@ func TestUnknownLoginNamesSharePrelookupIPLimit(t *testing.T) {
 
 func TestPasswordByteLimitAcrossAllSetters(t *testing.T) {
 	s, db, ctx := userFixture(t)
-	actorID := newAdminActor(t, s, ctx)
+	actorID := newAdminActor(ctx, t, s)
 	valid := strings.Repeat("密", 24) // 72 bytes; within existing 32-character limit.
 	hash, err := hashPassword(valid)
 	if err != nil || !checkPassword(hash, valid) {

@@ -19,7 +19,7 @@ func TestChangePasswordRejectsStaleCredentialSnapshot(t *testing.T) {
 	for _, action := range []string{"administrator reset", "parallel self change", "disable and reenable", "delete"} {
 		t.Run(action, func(t *testing.T) {
 			s, db, base := userFixture(t)
-			actor := newAdminActor(t, s, base)
+			actor := newAdminActor(base, t, s)
 			hash, err := hashPassword("original-password")
 			if err != nil {
 				t.Fatal(err)

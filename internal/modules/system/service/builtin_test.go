@@ -28,7 +28,7 @@ func TestBuiltinAdminProtection(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := New(repository.New(db), "unused", 1)
-	platformID := newAdminActor(t, s, context.Background())
+	platformID := newAdminActor(context.Background(), t, s)
 	if err := s.ResetPassword(context.Background(), platformID, 1, &dto.ResetPwdReq{Password: "anything"}); !errors.Is(err, errcode.ModifyAdminForbidden) {
 		t.Fatalf("ResetPassword(1): %v", err)
 	}

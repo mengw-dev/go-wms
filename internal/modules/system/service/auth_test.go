@@ -95,8 +95,8 @@ func TestLoginSelectsTenantWithoutGuessing(t *testing.T) {
 
 func TestCreateUserChecksUsernameWithinTargetTenant(t *testing.T) {
 	s, _, ctx := userFixture(t)
-	platformID := newAdminActor(t, s, context.Background())
-	actorID := newAdminActor(t, s, ctx)
+	platformID := newAdminActor(context.Background(), t, s)
+	actorID := newAdminActor(ctx, t, s)
 	req := &dto.UserCreateReq{Username: "tester", Password: "new-password"}
 	if err := s.CreateUser(ctx, actorID, req); !errors.Is(err, errcode.UserExist) {
 		t.Fatalf("same tenant duplicate: %v", err)

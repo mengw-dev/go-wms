@@ -102,7 +102,9 @@ func TestInboundDraftHTTPRejectsStaleEditor(t *testing.T) {
 	}
 	close(start)
 	first, second := <-done, <-done
-	if !((first == nil && errors.Is(second, errcode.StaleEdit)) || (second == nil && errors.Is(first, errcode.StaleEdit))) {
+	firstWon := first == nil && errors.Is(second, errcode.StaleEdit)
+	secondWon := second == nil && errors.Is(first, errcode.StaleEdit)
+	if !firstWon && !secondWon {
 		t.Fatalf("competing editors: %v / %v", first, second)
 	}
 	final, err := s.in.Get(ctx, order.ID)

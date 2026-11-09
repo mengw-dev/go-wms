@@ -21,7 +21,7 @@ import (
 // Existing mutation tests now supply an actual authorized actor. This fixture
 // is separate from the user under test so disabling that user does not disable
 // the test's administrator, and it grants no production bypass.
-func newAdminActor(t *testing.T, s *Service, ctx context.Context) int64 {
+func newAdminActor(ctx context.Context, t *testing.T, s *Service) int64 {
 	t.Helper()
 	tid := tenant.FromContext(ctx)
 	exact := tenant.WithExactTenant(ctx, tid)
@@ -46,7 +46,7 @@ func newAdminActor(t *testing.T, s *Service, ctx context.Context) int64 {
 
 func TestAdministrationChecksRevocationAfterWaitingForRole(t *testing.T) {
 	s, db, base := userFixture(t)
-	actor := newAdminActor(t, s, base)
+	actor := newAdminActor(base, t, s)
 	ctx, cancel := context.WithTimeout(base, 5*time.Second)
 	defer cancel()
 	if !s.HasPerm(ctx, actor, PermSystemUser) {

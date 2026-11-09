@@ -45,8 +45,8 @@ func userFixture(t *testing.T) (*Service, *gorm.DB, context.Context) {
 
 func TestUserPartialUpdateAndTenantRoles(t *testing.T) {
 	s, db, ctx := userFixture(t)
-	platformID := newAdminActor(t, s, context.Background())
-	actorID := newAdminActor(t, s, ctx)
+	platformID := newAdminActor(context.Background(), t, s)
+	actorID := newAdminActor(ctx, t, s)
 	disabled := 0
 	if err := s.SetUserStatus(ctx, actorID, 42, disabled); err != nil {
 		t.Fatal(err)
@@ -138,7 +138,7 @@ func TestForeignRoleLinksCannotGrantPermissions(t *testing.T) {
 
 func TestRoleDeletionWaitsForConcurrentAssignment(t *testing.T) {
 	s, db, ctx := userFixture(t)
-	actorID := newAdminActor(t, s, ctx)
+	actorID := newAdminActor(ctx, t, s)
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	assignment := db.WithContext(ctx).Begin()
@@ -190,7 +190,7 @@ func TestRoleDeletionWaitsForConcurrentAssignment(t *testing.T) {
 // 并发窗口内两个请求都可能通过前置检查：用户名唯一索引兜底必须回查并返回 UserExist。
 func TestCreateUserConflictMapsToBusinessError(t *testing.T) {
 	s, db, ctx := userFixture(t)
-	actorID := newAdminActor(t, s, ctx)
+	actorID := newAdminActor(ctx, t, s)
 
 	blocker := db.Begin()
 	if blocker.Error != nil {
@@ -236,7 +236,7 @@ func TestCreateUserConflictMapsToBusinessError(t *testing.T) {
 // 删除/重置不存在的用户必须返回“用户不存在”，而不是把 0 行影响当成成功。
 func TestDeleteMissingUserReturnsNotFound(t *testing.T) {
 	s, _, ctx := userFixture(t)
-	actorID := newAdminActor(t, s, ctx)
+	actorID := newAdminActor(ctx, t, s)
 
 	if err := s.DeleteUser(ctx, actorID, 999999); !errors.Is(err, errcode.UserIDInvalid) {
 		t.Fatalf("delete missing user: got %v, want %v", err, errcode.UserIDInvalid)
