@@ -207,7 +207,8 @@ jobs:
 
   e2e:
     name: E2E (Playwright)
-    timeout-minutes: 20
+    # Includes browser installation, database setup, the serial suite and the demo stability run.
+    timeout-minutes: 30
     # Keep the runner on a platform supported by the locked Playwright version.
     runs-on: ubuntu-24.04
     needs: [changes, backend, frontend]
