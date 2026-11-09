@@ -208,7 +208,8 @@ jobs:
   e2e:
     name: E2E (Playwright)
     timeout-minutes: 20
-    runs-on: ubuntu-latest
+    # Keep the runner on a platform supported by the locked Playwright version.
+    runs-on: ubuntu-24.04
     needs: [changes, backend, frontend]
     if: >-
       ${{ !cancelled() && needs.changes.result == 'success' &&
