@@ -10,7 +10,7 @@ import {
   isStale,
   loadPending,
   removePending,
-  upsertPending,
+  markPendingOutcome, PENDING_CONFLICT_MESSAGE, PENDING_CHANGED_MESSAGE,
   type PendingOperation,
 } from '@/utils/pendingOperations'
 
@@ -76,12 +76,10 @@ export function usePutaway() {
     if (!removed.ok) storageError.value = removed.error
   }
 
-  function markUncertain(taskId: EntityID) {
+  function markOutcome(taskId: EntityID, operationKey: string, outcome: 'uncertain' | 'conflict') {
     const c = currentContext()
     if (!c.ctx) return
-    const existing = findPending(c.ctx.identity, c.ctx.storage, PUTAWAY_SCOPE, taskId)
-    if (!existing) return
-    const saved = upsertPending(c.ctx.identity, c.ctx.storage, { ...existing, state: 'uncertain' })
+    const saved = markPendingOutcome(c.ctx.identity, c.ctx.storage, PUTAWAY_SCOPE, taskId, operationKey, outcome)
     if (!saved.ok) storageError.value = saved.error
   }
 
@@ -121,6 +119,12 @@ export function usePutaway() {
     }
     const existing = findOp(taskId)
     if (existing) {
+      if (existing.state === 'conflict') {
+        st.pending = toPendingInfo(existing, isStale(existing))
+        st.blocked = true; st.blockedReason = PENDING_CONFLICT_MESSAGE
+        st.lastError = st.blockedReason
+        throw new Error(st.blockedReason)
+      }
       if (isStale(existing)) {
         st.pending = toPendingInfo(existing, true)
         st.lastError = '该任务的上次上架已超过保留期，请核对库存与任务进度后再操作'
@@ -161,25 +165,26 @@ export function usePutaway() {
   }
 
   /** 核对后放弃未确认的上架：仅删除本地记录，不向服务端发送任何请求。 */
-  function discardPutaway(taskId: EntityID) {
+  function discardPutaway(taskId: EntityID, expectedKey: string): boolean {
     const st = stateOf(taskId)
-    if (st.submitting) return
+    if (st.submitting) return false
     const existing = findOp(taskId)
-    if (!existing) {
-      st.pending = null
-      return
+    if (!expectedKey || !existing || existing.operationKey !== expectedKey) {
+      st.lastError = PENDING_CHANGED_MESSAGE
+      return false
     }
     const c = currentContext()
-    if (!c.ctx) return
+    if (!c.ctx) return false
     const removed = removePending(c.ctx.identity, c.ctx.storage, PUTAWAY_SCOPE, taskId, existing.operationKey)
     if (!removed.ok) {
       storageError.value = removed.error
       st.lastError = removed.error
-      return
+      return false
     }
     st.pending = null
     st.blocked = false
     st.blockedReason = ''
+    return true
   }
 
   async function sendPutaway(taskId: EntityID, operationKey: string, data: PutawayBusinessPayload): Promise<void> {
@@ -202,7 +207,7 @@ export function usePutaway() {
         endOperation(taskId, operationKey)
         st.pending = null
       } else if (outcome === 'conflict') {
-        markUncertain(taskId)
+        markOutcome(taskId, operationKey, 'conflict')
         const stored = findOp(taskId)
         st.pending = stored
           ? toPendingInfo(stored, false)
@@ -210,7 +215,7 @@ export function usePutaway() {
         st.blocked = true
         st.blockedReason = '该请求编号已被用于其他内容，请核对原上架操作后放弃重试'
       } else {
-        markUncertain(taskId)
+        markOutcome(taskId, operationKey, 'uncertain')
         const stored = findOp(taskId)
         st.pending = stored
           ? toPendingInfo(stored, isStale(stored))
@@ -244,7 +249,9 @@ export function usePutaway() {
     const idSet = new Set(taskIds.map(String))
     for (const item of loaded.items) {
       if (!idSet.has(String(item.objectId)) || item.scope !== PUTAWAY_SCOPE) continue
-      stateOf(item.objectId as EntityID).pending = toPendingInfo(item, isStale(item))
+      const st = stateOf(item.objectId)
+      st.pending = toPendingInfo(item, isStale(item))
+      if (item.state === 'conflict') { st.blocked = true; st.blockedReason = PENDING_CONFLICT_MESSAGE }
     }
     return ''
   }

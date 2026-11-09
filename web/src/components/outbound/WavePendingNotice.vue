@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { PendingOperation } from '@/utils/pendingOperations'
 defineProps<{ pending: PendingOperation | null; error: string; busy: boolean }>()
-defineEmits<{ recover: []; discard: [] }>()
+defineEmits<{ recover: []; discard: [operationKey: string] }>()
 </script>
 
 <template>
@@ -9,8 +9,8 @@ defineEmits<{ recover: []; discard: [] }>()
     <el-alert :title="error || '有一笔波次操作结果待确认，请恢复原操作后继续'" type="warning" :closable="false" show-icon />
     <div v-if="pending" class="wave-notice-actions">
       <span>刷新或关闭页面会保留原操作，重试不会新建一笔操作。</span>
-      <el-button type="primary" plain :loading="busy" @click="$emit('recover')">恢复原操作</el-button>
-      <el-button :disabled="busy" @click="$emit('discard')">已核对，放弃记录</el-button>
+      <el-button type="primary" plain :loading="busy" :disabled="pending.state === 'conflict'" @click="$emit('recover')">恢复原操作</el-button>
+      <el-button :disabled="busy" @click="$emit('discard', pending.operationKey)">已核对，放弃记录</el-button>
     </div>
   </div>
 </template>

@@ -11,7 +11,7 @@ import {
   isStale,
   loadPending,
   removePending,
-  upsertPending,
+  markPendingOutcome, PENDING_CONFLICT_MESSAGE, PENDING_CHANGED_MESSAGE,
   type PendingOperation,
 } from '@/utils/pendingOperations'
 
@@ -119,12 +119,10 @@ export function usePdaPick() {
     if (!removed.ok) storageError.value = removed.error
   }
 
-  function markUncertain(taskId: EntityID, scope: string) {
+  function markOutcome(taskId: EntityID, scope: string, operationKey: string, outcome: 'uncertain' | 'conflict') {
     const c = currentContext()
     if (!c.ctx) return
-    const existing = findPending(c.ctx.identity, c.ctx.storage, scope, taskId)
-    if (!existing) return
-    const saved = upsertPending(c.ctx.identity, c.ctx.storage, { ...existing, state: 'uncertain' })
+    const saved = markPendingOutcome(c.ctx.identity, c.ctx.storage, scope, taskId, operationKey, outcome)
     if (!saved.ok) storageError.value = saved.error
   }
 
@@ -175,6 +173,12 @@ export function usePdaPick() {
     }
     const existing = findOp(taskId, CLAIM_SCOPE)
     if (existing) {
+      if (existing.state === 'conflict') {
+        st.pendingClaim = { operationKey: existing.operationKey, createdAt: existing.createdAt, stale: isStale(existing) }
+        st.blocked = true; st.blockedReason = PENDING_CONFLICT_MESSAGE
+        st.lastError = st.blockedReason
+        return false
+      }
       if (isStale(existing)) {
         st.pendingClaim = { operationKey: existing.operationKey, createdAt: existing.createdAt, stale: true }
         st.lastError = '领取操作已超过保留期，请核对任务是否已被领取后再操作'
@@ -210,25 +214,26 @@ export function usePdaPick() {
   }
 
   /** 核对后放弃未确认的领取操作：仅删除本地记录，不向服务端发送任何请求。 */
-  function discardClaim(taskId: EntityID) {
+  function discardClaim(taskId: EntityID, expectedKey: string): boolean {
     const st = stateOf(taskId)
-    if (st.claiming || st.submitting) return
+    if (st.claiming || st.submitting) return false
     const existing = findOp(taskId, CLAIM_SCOPE)
-    if (!existing) {
-      st.pendingClaim = null
-      return
+    if (!expectedKey || !existing || existing.operationKey !== expectedKey) {
+      st.lastError = PENDING_CHANGED_MESSAGE
+      return false
     }
     const c = currentContext()
-    if (!c.ctx) return
+    if (!c.ctx) return false
     const removed = removePending(c.ctx.identity, c.ctx.storage, CLAIM_SCOPE, taskId, existing.operationKey)
     if (!removed.ok) {
       storageError.value = removed.error
       st.lastError = removed.error
-      return
+      return false
     }
     st.pendingClaim = null
     st.blocked = false
     st.blockedReason = ''
+    return true
   }
 
   async function sendClaim(taskId: EntityID, operationKey: string): Promise<boolean> {
@@ -261,12 +266,12 @@ export function usePdaPick() {
         endOperation(taskId, operationKey, CLAIM_SCOPE)
         st.pendingClaim = null
       } else if (outcome === 'conflict') {
-        markUncertain(taskId, CLAIM_SCOPE)
+        markOutcome(taskId, CLAIM_SCOPE, operationKey, 'conflict')
         st.pendingClaim = pendingClaimInfo(taskId, operationKey, new Date().toISOString())
         st.blocked = true
         st.blockedReason = '该请求编号已被用于不同内容，请核对原领取操作后放弃重试'
       } else {
-        markUncertain(taskId, CLAIM_SCOPE)
+        markOutcome(taskId, CLAIM_SCOPE, operationKey, 'uncertain')
         st.pendingClaim = pendingClaimInfo(taskId, operationKey, new Date().toISOString())
       }
       return false
@@ -301,6 +306,12 @@ export function usePdaPick() {
     }
     const existing = findOp(taskId, PICK_SCOPE)
     if (existing) {
+      if (existing.state === 'conflict') {
+        st.pendingPick = toPickInfo(existing, isStale(existing))
+        st.blocked = true; st.blockedReason = PENDING_CONFLICT_MESSAGE
+        st.lastError = st.blockedReason
+        throw new Error(st.blockedReason)
+      }
       if (isStale(existing)) {
         st.pendingPick = toPickInfo(existing, true)
         st.lastError = '上次拣货已超过保留期，请核对任务进度后再操作'
@@ -341,25 +352,26 @@ export function usePdaPick() {
   }
 
   /** 核对后放弃未确认的拣货操作：仅删除本地记录，不向服务端发送任何请求。 */
-  function discardPick(taskId: EntityID) {
+  function discardPick(taskId: EntityID, expectedKey: string): boolean {
     const st = stateOf(taskId)
-    if (st.claiming || st.submitting) return
+    if (st.claiming || st.submitting) return false
     const existing = findOp(taskId, PICK_SCOPE)
-    if (!existing) {
-      st.pendingPick = null
-      return
+    if (!expectedKey || !existing || existing.operationKey !== expectedKey) {
+      st.lastError = PENDING_CHANGED_MESSAGE
+      return false
     }
     const c = currentContext()
-    if (!c.ctx) return
+    if (!c.ctx) return false
     const removed = removePending(c.ctx.identity, c.ctx.storage, PICK_SCOPE, taskId, existing.operationKey)
     if (!removed.ok) {
       storageError.value = removed.error
       st.lastError = removed.error
-      return
+      return false
     }
     st.pendingPick = null
     st.blocked = false
     st.blockedReason = ''
+    return true
   }
 
   async function sendPick(taskId: EntityID, operationKey: string, data: PickBusinessPayload): Promise<PickResult> {
@@ -398,7 +410,7 @@ export function usePdaPick() {
           st.leaseExpireAt = ''
         }
       } else if (outcome === 'conflict') {
-        markUncertain(taskId, PICK_SCOPE)
+        markOutcome(taskId, PICK_SCOPE, operationKey, 'conflict')
         const stored = findOp(taskId, PICK_SCOPE)
         st.pendingPick = stored
           ? toPickInfo(stored, false)
@@ -406,7 +418,7 @@ export function usePdaPick() {
         st.blocked = true
         st.blockedReason = '该请求编号已被用于其他内容，请核对原拣货操作后放弃重试'
       } else {
-        markUncertain(taskId, PICK_SCOPE)
+        markOutcome(taskId, PICK_SCOPE, operationKey, 'uncertain')
         const stored = findOp(taskId, PICK_SCOPE)
         st.pendingPick = stored
           ? toPickInfo(stored, isStale(stored))
@@ -451,6 +463,9 @@ export function usePdaPick() {
         st.pendingPick = toPickInfo(item, stale)
       } else if (item.scope === CLAIM_SCOPE) {
         st.pendingClaim = { operationKey: item.operationKey, createdAt: item.createdAt, stale }
+      }
+      if ((item.scope === PICK_SCOPE || item.scope === CLAIM_SCOPE) && item.state === 'conflict') {
+        st.blocked = true; st.blockedReason = PENDING_CONFLICT_MESSAGE
       }
     }
     return ''

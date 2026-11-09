@@ -26,7 +26,7 @@ func (s *Service) runInboundDemo(ctx context.Context, refs *demoRefs) (*Scenario
 		ScenarioStep{Title: "审核入库单", Detail: "审核通过并生成收货任务"},
 		ScenarioStep{Title: "完成收货", Detail: "登记真实批次和收货数量"},
 		ScenarioStep{Title: "完成上架", Detail: fmt.Sprintf("上架到目标库位 %s", refs.Location.Code)},
-		ScenarioStep{Title: "库存入账", Detail: "核对上架事务写入的 RECEIVE 流水和三数量变化"},
+		ScenarioStep{Title: "库存入账", Detail: "核对上架事务写入的 RECEIVE 流水和四数量变化"},
 	)
 
 	var orderID int64
@@ -199,22 +199,26 @@ func inventoryStockChangeSummary(trans *inventorymodel.InventoryTrans) string {
 	if trans == nil {
 		return ""
 	}
-	allocatedBefore := trans.BeforeQuantity - trans.AvailableBefore
-	allocatedAfter := trans.AfterQuantity - trans.AvailableAfter
-	return fmt.Sprintf(
+	allocatedBefore := trans.BeforeQuantity - trans.AvailableBefore - trans.FrozenBefore
+	allocatedAfter := trans.AfterQuantity - trans.AvailableAfter - trans.FrozenAfter
+	summary := fmt.Sprintf(
 		"库存 %+d / 现存量 %d → %d / 可用量 %d → %d / 已分配 %d → %d",
 		trans.QuantityChange, trans.BeforeQuantity, trans.AfterQuantity,
 		trans.AvailableBefore, trans.AvailableAfter, allocatedBefore, allocatedAfter,
 	)
+	if trans.FrozenBefore != 0 || trans.FrozenAfter != 0 {
+		summary += fmt.Sprintf(" / 冻结 %d → %d", trans.FrozenBefore, trans.FrozenAfter)
+	}
+	return summary
 }
 
 func stockChangeFacts(trans *inventorymodel.InventoryTrans) []ScenarioFact {
 	if trans == nil {
 		return nil
 	}
-	allocatedBefore := trans.BeforeQuantity - trans.AvailableBefore
-	allocatedAfter := trans.AfterQuantity - trans.AvailableAfter
-	return []ScenarioFact{
+	allocatedBefore := trans.BeforeQuantity - trans.AvailableBefore - trans.FrozenBefore
+	allocatedAfter := trans.AfterQuantity - trans.AvailableAfter - trans.FrozenAfter
+	facts := []ScenarioFact{
 		{Label: "库存变化", Value: fmt.Sprintf("%+d", trans.QuantityChange)},
 		{Label: "现存量", Value: fmt.Sprintf("%d → %d", trans.BeforeQuantity, trans.AfterQuantity)},
 		{Label: "可用量", Value: fmt.Sprintf("%d → %d", trans.AvailableBefore, trans.AvailableAfter)},
@@ -222,4 +226,5 @@ func stockChangeFacts(trans *inventorymodel.InventoryTrans) []ScenarioFact {
 		{Label: "流水类型", Value: string(trans.TransType)},
 		{Label: "流水任务", Value: trans.TaskNo},
 	}
+	return append(facts, ScenarioFact{Label: "冻结量", Value: fmt.Sprintf("%d → %d", trans.FrozenBefore, trans.FrozenAfter)})
 }

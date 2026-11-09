@@ -31,24 +31,6 @@ function createStorage(): Storage {
   } as Storage
 }
 
-function createFailingStorage(): Storage {
-  const store = new Map<string, string>()
-  return {
-    getItem: (key: string) => store.get(key) ?? null,
-    setItem: () => {
-      throw new Error('QuotaExceededError')
-    },
-    removeItem: () => {
-      throw new Error('QuotaExceededError')
-    },
-    clear: () => {},
-    key: (index: number) => Array.from(store.keys())[index] ?? null,
-    get length() {
-      return store.size
-    },
-  } as Storage
-}
-
 function loginAs(userId: string) {
   const auth = useAuthStore()
   auth.setAuth({
@@ -209,7 +191,7 @@ describe('useReceive 刷新恢复与隔离', () => {
   })
 
   it('存储写入失败时不发送请求并明确报错', async () => {
-    vi.stubGlobal('localStorage', createFailingStorage())
+    vi.spyOn(localStorage, 'setItem').mockImplementation(() => { throw new Error('QuotaExceededError') })
     const { receive } = useReceive()
 
     await expect(receive('1', '10', payload)).rejects.toThrow('无法保存待确认操作记录')
@@ -222,7 +204,7 @@ describe('useReceive 刷新恢复与隔离', () => {
     const { stateOf, restoreForDetails, discardReceive, receive } = useReceive()
 
     restoreForDetails(['10'])
-    discardReceive('10')
+    discardReceive('10', stateOf('10').pending!.operationKey)
     expect(stateOf('10').pending).toBeNull()
 
     await receive('1', '10', payload)

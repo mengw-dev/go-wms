@@ -51,6 +51,7 @@ type BusinessStats struct {
 	StockTotal     int64 `json:"stock_total"`
 	AvailableTotal int64 `json:"available_total"`
 	AllocatedTotal int64 `json:"allocated_total"`
+	FrozenTotal    int64 `json:"frozen_total"`
 }
 
 // Performance 返回数据库、Redis、连接池、Go 运行时和业务数据快照。
@@ -123,15 +124,17 @@ func (s *Service) Performance(ctx context.Context) (*PerformanceSnapshot, error)
 		StockTotal     int64
 		AvailableTotal int64
 		AllocatedTotal int64
+		FrozenTotal    int64
 	}
 	if err := s.db.WithContext(ctx).Model(&invmodel.Inventory{}).
-		Select("COALESCE(SUM(stock_quantity), 0) AS stock_total, COALESCE(SUM(available_quantity), 0) AS available_total, COALESCE(SUM(allocated_quantity), 0) AS allocated_total").
+		Select("COALESCE(SUM(stock_quantity), 0) AS stock_total, COALESCE(SUM(available_quantity), 0) AS available_total, COALESCE(SUM(allocated_quantity), 0) AS allocated_total, COALESCE(SUM(frozen_quantity), 0) AS frozen_total").
 		Scan(&inventoryTotals).Error; err != nil {
 		return nil, err
 	}
 	snapshot.Business.StockTotal = inventoryTotals.StockTotal
 	snapshot.Business.AvailableTotal = inventoryTotals.AvailableTotal
 	snapshot.Business.AllocatedTotal = inventoryTotals.AllocatedTotal
+	snapshot.Business.FrozenTotal = inventoryTotals.FrozenTotal
 
 	return snapshot, nil
 }

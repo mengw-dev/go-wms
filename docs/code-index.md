@@ -48,7 +48,7 @@
 | 分布式锁 | `internal/pkg/lock` | 基于 Redis 的锁（`SET NX EX` + Lua 校验持有者释放） | — |
 | 事务与重试 | `internal/pkg/tx` | 事务管理器、死锁重试与退避及耗时/重试观测 | `tx_test.go`、`mysql_test.go`、`metrics_test.go` |
 | 请求幂等 | `internal/pkg/idempotency` | 幂等记录写入/查询及有批数/时间预算的过期清理（表 `wms_idempotency`） | `fingerprint_test.go`（版本/字节边界/旧格式安全兼容）、`cleanup_test.go`（分批/隔离/并发/超时/恢复/调度指标）、`internal/app/pick_race_test.go`（领取/拣货/清理集成测试） |
-| 数据库迁移 | `migrations/**` | 版本化 SQL 迁移，`embed.go` 内嵌 `versions/*.sql` | `migrations_test.go`、`quantity_test.go`、`checks_test.go` |
+| 数据库迁移 | `migrations/**` | 版本化 SQL 迁移，`embed.go` 内嵌 `versions/*.sql` | `migrations_test.go`、`quantity_test.go`、`checks_test.go`、`user_edit_test.go`（账号编辑修订号升级/回退及数据保留） |
 
 跨模块关键落点（仅记位置，细节以代码为准）：
 
@@ -62,17 +62,19 @@
 
 | 模块 | 目录 | 职责 | 对应测试 |
 | --- | --- | --- | --- |
-| 系统 system | `internal/modules/system` | 鉴权（登录/JWT）、权限、用户、角色、操作日志 | `service/{auth,permission,user,role,login_limiter,builtin,audit,response,p2_auth}_test.go`、`dto/dto_test.go`、`model/model_test.go` |
+| 系统 system | `internal/modules/system` | 鉴权（登录/JWT）、权限及委派上限、用户、角色、操作日志 | `service/{auth,password_concurrency,permission,user,role,administration,login_limiter,builtin,audit,response,p2_auth}_test.go`、`dto/dto_test.go`、`model/model_test.go`；跨层 `internal/app/{administration,password}_test.go`；前端 `Users.roles.spec.ts`、E2E `administration-delegation.spec.ts` |
 | 基础数据 basic | `internal/modules/basic` | 仓库、库位、SKU | `service/{sku,delete,rows_affected,conflict,response,location_limits}_test.go`、`dto/dto_test.go`、`handler/handler_test.go`、`repository/repository_test.go`、`model/model_json_test.go` |
 | 仪表盘 dashboard | `internal/modules/dashboard`，`web/src/views/dashboard` | 按业务权限/仓库汇总状态、创建趋势、待办、库存/库位、今日流水与历史导入异常，复用当前库存预警；见[运营信息](dashboard-operations.md) | `service/{overview,operations}_test.go`；前端 `useDashboardAlerts.spec.ts`、E2E `dashboard-layout.spec.ts` |
 | AI ai | `internal/modules/ai` | 库存问答、Redis 原子额度、整次预算及主备取消（智谱 BigModel） | `service/{service,low_stock,reliability}_test.go`；前端 E2E `ai-reliability.spec.ts` |
 
 应用装配与启动：
 
+跨模块业务租户契约回归：`internal/app/business_tenant_test.go`（真实迁移库、平台只读/精确写入、业务生命周期及事务回滚）；导入与任务内部接口分别见 `inbound/service/import_tenant_test.go`、`task/service/tenant_test.go`。
+
 | 路径 | 职责 | 对应测试 |
 | --- | --- | --- |
 | `internal/app` | 依赖组装与路由注册 | `router_test.go`、`integration_test.go`、`list_contract_test.go`（业务列表HTTP/SQL契约）、`race_cleanup_test.go`（门闩/取消/worker回收）、`pick_race_test.go`、`order_references_test.go`、`order_quantity_test.go`、`task_pagination_test.go`、`external_identity_test.go`、`schema_contract_test.go`、`fingerprint_compatibility_test.go`（领取/拣货旧记录回放及字段移位拒绝） |
-| `internal/bootstrap` | DB/Redis 初始化、迁移、种子（管理员/演示/体验账号）、演示数据重置 | `seed_test.go`、`personal_test.go`、`reset_test.go`、`quantity_test.go`、`checks_test.go` |
+| `internal/bootstrap` | DB/Redis 初始化、迁移、种子（管理员/演示/体验账号）、演示数据重置 | `seed_test.go`、`personal_test.go`、`account_credentials_test.go`、`reset_test.go`、`quantity_test.go`、`checks_test.go` |
 | `cmd/wms` | 服务入口、`.env` 加载、优雅关停、后台 worker 启动 | `dotenv_test.go`、`server_test.go` |
 | `cmd/migrate` | 迁移工具与管理员/应用账户初始化 | `preflight_test.go` |
 | `internal/testutil` | 测试用 MySQL/Redis 基础设施（临时 schema、租户回调、正式迁移入口、Redis 命名空间） | `mysql_test.go`、`redis_test.go`；应用结构契约见 `internal/app/schema_contract_test.go` |
@@ -106,7 +108,7 @@
 | --- | --- | --- |
 | `internal/modules/demo` | 演示账号会话与租约、场景编排、并发实验、活动证据、性能数据 | `handler/{handler,json}_test.go`、`service/{session,tenant_lock,scenario,activity,identity,experiment_allocation}_test.go`；种子 `internal/bootstrap/{seed_demo,reset}_test.go` |
 | `web/src/guide/**` | 引导定义、路由匹配、持久化、与业务事件的桥接 | `routeMatcher.spec.ts`、`businessBridge.spec.ts` |
-| `web/src/components/demo/**` | 演示/引导组件（`ManualGuide`、`DemoRunViewer`、`DemoTour`、`StagedDemoRunner`） | — |
+| `web/src/components/demo/**`、`web/src/components/DemoConsole.vue` | 演示/引导组件（`ManualGuide`、`DemoRunViewer`、`DemoTour`、`StagedDemoRunner`）及控制台 | `components/DemoConsole.confirm.spec.ts`、`composables/useScopedConfirm.spec.ts` |
 | `web/src/views/demo/**` | 演示页面（`index`、`Activity`、`Performance`） | E2E `web/tests/e2e/demo-console.spec.ts` |
 | `web/src/composables/demo/**` | 演示/引导组合式函数（会话、运行器、引导目标等） | `composables/demo/{useDemoRunner,useStagedDemoRunner}.spec.ts`、E2E `demo-scroll.spec.ts`、`api/demoExecution.spec.ts`、E2E `demo-console.spec.ts` |
 
@@ -117,14 +119,14 @@
 | 目录/文件 | 职责 | 对应测试 |
 | --- | --- | --- |
 | `api/` | 各业务模块 HTTP 客户端与类型（`api/*.ts`、`api/types/*.ts`） | — |
-| `stores/` | Pinia 状态（`auth` 登录态、`guide` 运行态、`theme`） | `stores/auth.spec.ts`、`stores/guide.spec.ts` |
+| `stores/` | Pinia 状态（`auth` 登录态及跨页同步、`guide` 运行态、`theme`） | `stores/{auth,authSync,guide}.spec.ts`；认证异步归属 `views/login/loginConcurrency.spec.ts`、`layouts/Layout.auth.spec.ts`、`composables/demo/useDemoSession.spec.ts`、`api/request.spec.ts`；E2E `auth-session-concurrency.spec.ts` |
 | `router/` | 路由与登录/权限守卫（`router/index.ts`） | — |
 | `layouts/` | 布局与导航（`Layout.vue`、`WmsNavigation.vue`）；业务路由独立启用 `business-layout.css`，仪表盘/演示保持原样 | E2E `ui-layout.spec.ts`、`business-layout.spec.ts`、`demo-home-layout.spec.ts` |
-| `composables/` | 组合式函数及幂等公共支持：`operationLifecycle`、`autoRefresh`、`demo/useDemoDock`、`inbound/*`、`stocktake/useStocktakeApprove`、`outbound/usePdaPick`、`demo/*` | `operationLifecycle.spec.ts`、`autoRefresh.spec.ts`、`inbound/useInboundOrders.spec.ts`（手动/后台查询交错）、`inbound/{useReceive,usePutaway,useInboundImport}.spec.ts`、`stocktake/useStocktakeApprove.spec.ts`、`outbound/usePdaPick.spec.ts` |
+| `composables/` | 组合式函数及幂等公共支持：`operationLifecycle`、`autoRefresh`、`demo/useDemoDock`、`inbound/*`、`stocktake/useStocktakeApprove`、`outbound/usePdaPick`、`demo/*` | `operationLifecycle.spec.ts`、`operationRecovery.spec.ts`、`utils/pendingOperations.spec.ts`、`autoRefresh.spec.ts`、`inbound/useInboundOrders.spec.ts`（手动/后台查询交错）、`inbound/{useReceive,usePutaway,useInboundImport}.spec.ts`、`stocktake/useStocktakeApprove.spec.ts`、`outbound/usePdaPick.spec.ts` |
 | `events/` | 业务页面与 Guide/Demo 的唯一契约（`businessEvents.ts`） | `businessEvents.spec.ts` |
 | `utils/` | 前端工具（事件、演示证据/操作、分步检查点、options、手机表格字段标签等） | `utils/{demoOperations,demoEvidence,index}.spec.ts`、`composables/demo/useStagedDemoRunner.spec.ts`；E2E `business-layout.spec.ts` |
 | `views/` | 业务页面（`login`、`dashboard`、`basic`、`system`、`task`、`ai`、`inventory`、`inbound`、`outbound`、`stocktake`、`demo`） | `adminListConcurrency.spec.ts`（基础/系统六列表真实SFC请求交错及销毁）；E2E 见 `web/tests/e2e/**` |
-| `components/` | 组件（`DemoConsole`、`demo/*`、`PickDialog`、`PutawayDialog`、`ReceiveDialog`、`common/{PageHeader,BusinessListPage,BusinessFilters,BusinessPagination,ResizableTableArea}`）；筛选/分页/可选高度只管理呈现，业务事件继续转发；见[表格高度](business-table-height.md) | `utils/tableHeight.spec.ts`；E2E `business-layout.spec.ts` |
+| `components/` | 组件（`DemoConsole`、`demo/*`、`PickDialog`、`PutawayDialog`、`ReceiveDialog`、`common/{PageHeader,BusinessListPage,BusinessFilters,BusinessPagination,ResizableTableArea}`）；筛选/分页/可选高度只管理呈现，业务事件继续转发；见[表格高度](business-table-height.md) | `components/OperationDialogs.confirm.spec.ts`、`utils/tableHeight.spec.ts`；E2E `business-layout.spec.ts` |
 | `views/printing`、`components/printing`、`utils/{documentPrint,barcodeLabels}` | 单据只读A4打印、基础资料Code128标签与显式分页；边界见[打印说明](document-printing.md) | `utils/{documentPrint,barcodeLabels}.spec.ts`、E2E `document-printing.spec.ts` |
 | `directives/` | `permission` 指令（按权限控制显示） | — |
 | `main.ts` / `App.vue` / `style.css` / `constants.ts` | 应用装配、根组件、全局样式与常量 | — |

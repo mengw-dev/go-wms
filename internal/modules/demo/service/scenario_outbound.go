@@ -315,13 +315,13 @@ func outboundPickTaskFacts(tasks []*taskmodel.Task) []ScenarioFact {
 func inventoryTransFacts(trans []*inventorymodel.InventoryTrans) []ScenarioFact {
 	facts := make([]ScenarioFact, 0, len(trans))
 	for index, item := range trans {
-		allocatedBefore := item.BeforeQuantity - item.AvailableBefore
-		allocatedAfter := item.AfterQuantity - item.AvailableAfter
+		allocatedBefore := item.BeforeQuantity - item.AvailableBefore - item.FrozenBefore
+		allocatedAfter := item.AfterQuantity - item.AvailableAfter - item.FrozenAfter
 		facts = append(facts, ScenarioFact{
 			Label: fmt.Sprintf("流水 %d", index+1),
-			Value: fmt.Sprintf("%s / 数量 %+d / 现有 %d → %d / 可用 %d → %d / 已分配 %d → %d / 任务 %s",
+			Value: fmt.Sprintf("%s / 数量 %+d / 现有 %d → %d / 可用 %d → %d / 已分配 %d → %d / 任务 %s / 冻结 %d → %d",
 				item.TransType, item.QuantityChange, item.BeforeQuantity, item.AfterQuantity,
-				item.AvailableBefore, item.AvailableAfter, allocatedBefore, allocatedAfter, item.TaskNo),
+				item.AvailableBefore, item.AvailableAfter, allocatedBefore, allocatedAfter, item.TaskNo, item.FrozenBefore, item.FrozenAfter),
 		})
 	}
 	return facts
@@ -347,13 +347,13 @@ func summarizeOutboundTrans(trans []*inventorymodel.InventoryTrans) outboundStoc
 			summary.AllocateCount++
 			summary.StockBefore += item.BeforeQuantity
 			summary.AvailableBefore += item.AvailableBefore
-			summary.AllocatedBefore += item.BeforeQuantity - item.AvailableBefore
+			summary.AllocatedBefore += item.BeforeQuantity - item.AvailableBefore - item.FrozenBefore
 		case inventorymodel.TransShip:
 			summary.ShipCount++
 			summary.StockChange += item.QuantityChange
 			summary.StockAfter += item.AfterQuantity
 			summary.AvailableAfter += item.AvailableAfter
-			summary.AllocatedAfter += item.AfterQuantity - item.AvailableAfter
+			summary.AllocatedAfter += item.AfterQuantity - item.AvailableAfter - item.FrozenAfter
 		}
 	}
 	return summary

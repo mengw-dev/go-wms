@@ -13,11 +13,26 @@ function storage(): Storage {
 }
 function login(id = '1') { useAuthStore().setAuth({token:'test', user_id:id, username:id, nickname:id, roles:[], perms:['wms:inventory', 'wms:inventory:move']}) }
 const payload = {source_inventory_id:'10', target_location_id:'20',quantity:3,reason:'整理'}
-const receipt = {...payload,id:'100',move_no:'YK100'} as StockMove
+const receipt = {...payload,id:'100',move_no:'YK100',target_inventory_id:'30'} as StockMove
 const scopes: ReturnType<typeof effectScope>[] = []
 function setup() {const s=effectScope();scopes.push(s);return s.run(useStockMove)!}
 beforeEach(() => { vi.resetAllMocks(); vi.stubGlobal('localStorage',storage()); vi.stubGlobal('sessionStorage',storage()); setActivePinia(createPinia());login() })
 afterEach(() => {scopes.splice(0).forEach(s=>s.stop());vi.unstubAllGlobals()})
+it('冲突经过恢复后不能发送，仍允许按原key只读核对移库记录', async () => {
+  const op = setup()
+  vi.mocked(moveStock).mockRejectedValueOnce({ code: 40901 })
+  await op.send(payload)
+  const oldItem = op.pending.value[0]!
+  op.restore(); await op.retry(oldItem)
+  const restored = setup(); restored.restore()
+  expect(restored.pending.value[0]?.state).toBe('conflict')
+  await restored.retry(restored.pending.value[0]!)
+  expect(moveStock).toHaveBeenCalledTimes(1)
+  expect(restored.error.value).toContain('核对')
+  vi.mocked(listStockMoves).mockResolvedValueOnce({ list: [receipt], total: 1 })
+  expect(await restored.check(restored.pending.value[0]!)).toEqual(receipt)
+  expect(restored.pending.value).toHaveLength(0)
+})
 it('saves before send, blocks simultaneous requests and reuses original payload/key after reload', async () => {
   const a=setup(); vi.mocked(moveStock).mockRejectedValueOnce(Error('network'))
   await a.send(payload)
@@ -69,4 +84,24 @@ it('will not resend requests older than seven days, but still allows record reco
   const saved=JSON.parse(localStorage.getItem('WMS_PENDING_OPS')!); const raw=JSON.stringify(saved).replace(/"createdAt":"[^"]+"/g,'"createdAt":"2020-01-01T00:00:00Z"');localStorage.setItem('WMS_PENDING_OPS',raw)
   op.restore();await op.retry(op.pending.value[0]!);expect(moveStock).toHaveBeenCalledTimes(1)
   vi.mocked(listStockMoves).mockResolvedValueOnce({list:[receipt],total:1});await op.check(op.pending.value[0]!);expect(op.pending.value).toHaveLength(0)
+})
+it.each(['0', '', 'abc', '9223372036854775808', 100])('retains pending when the move ID is invalid: %s', async id => {
+  const op = setup()
+  vi.mocked(moveStock).mockResolvedValueOnce({ ...receipt, id } as StockMove)
+  expect(await op.send(payload)).toBeUndefined()
+  const item = op.pending.value[0]!
+  expect(item.operationKey).toBeTruthy()
+  vi.mocked(listStockMoves).mockResolvedValueOnce({ list: [{ ...receipt, id } as StockMove], total: 1 })
+  expect(await op.check(item)).toBeUndefined()
+  expect(op.pending.value[0]!.operationKey).toBe(item.operationKey)
+  vi.mocked(listStockMoves).mockResolvedValueOnce({ list: [{ ...receipt, id: '9007199254740993' }], total: 1 })
+  expect((await op.check(item))?.id).toBe('9007199254740993')
+  expect(op.pending.value).toHaveLength(0)
+  expect(moveStock).toHaveBeenCalledTimes(1)
+})
+it('retains the original key when a target inventory ID cannot be verified', async () => {
+  const op = setup()
+  vi.mocked(moveStock).mockResolvedValueOnce({ ...receipt, target_inventory_id: '0' })
+  await op.send(payload)
+  expect(op.pending.value).toHaveLength(1)
 })

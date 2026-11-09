@@ -4,6 +4,7 @@ import type {
   EntityID,
   ImportTaskItem,
   InboundCreateParams,
+  InboundUpdateParams,
   InboundOrderDetail,
   InboundOrderItem,
   InboundOrderListQuery,
@@ -26,7 +27,7 @@ export function createInboundOrder(data: InboundCreateParams) {
   return post<InboundOrderItem>('/inbound/orders', data)
 }
 
-export function updateInboundOrder(id: EntityID, data: InboundCreateParams) {
+export function updateInboundOrder(id: EntityID, data: InboundUpdateParams) {
   return put<void>(`/inbound/orders/${id}`, data)
 }
 

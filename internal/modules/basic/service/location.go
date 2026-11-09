@@ -12,12 +12,14 @@ import (
 	"gowms/internal/pkg/errcode"
 	"gowms/internal/pkg/log"
 	"gowms/internal/pkg/quota"
+	"gowms/internal/pkg/tenant"
 	pkgtx "gowms/internal/pkg/tx"
 )
 
 // 库位业务。
 
 func (s *Service) BatchCreateLocations(ctx context.Context, req *dto.LocationBatchReq) (created int, err error) {
+	ctx = tenant.WithExactTenant(ctx, tenant.FromContext(ctx))
 	// 坐标统一为正 INT32；先校验端点再计算长度，避免差值本身溢出。
 	const maxCoordinate = 2147483647
 	if req.RowFrom < 1 || req.ColFrom < 1 || req.RowTo > maxCoordinate || req.ColTo > maxCoordinate ||
@@ -88,6 +90,7 @@ func (s *Service) BatchCreateLocations(ctx context.Context, req *dto.LocationBat
 }
 
 func (s *Service) DeleteLocation(ctx context.Context, id int64) error {
+	ctx = tenant.WithExactTenant(ctx, tenant.FromContext(ctx))
 	err := s.tm.TxRetry(ctx, pkgtx.MaxTxRetry, func(txDB *gorm.DB) error {
 		if _, err := s.repo.GetLocationForUpdate(ctx, txDB, id); err != nil {
 			return err
@@ -115,6 +118,7 @@ func (s *Service) DeleteLocation(ctx context.Context, id int64) error {
 }
 
 func (s *Service) UpdateLocationStatus(ctx context.Context, id int64, status int) error {
+	ctx = tenant.WithExactTenant(ctx, tenant.FromContext(ctx))
 	if status != model.LocationStatusIdle && status != model.LocationStatusDisabled && status != model.LocationStatusOccupied {
 		return errcode.ParamError
 	}
@@ -200,6 +204,7 @@ func (s *Service) GetLocation(ctx context.Context, id int64) (*model.Location, e
 }
 
 func (s *Service) UpdateLocationStatusInTx(ctx context.Context, tx *gorm.DB, id int64, status int) error {
+	tx = tx.WithContext(tenant.WithExactTenant(ctx, tenant.FromContext(ctx)))
 	if err := s.repo.UpdateLocationStatusInTx(tx, id, status); err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return errcode.LocationNotFound

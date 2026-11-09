@@ -11,8 +11,9 @@ import type { EntityID, InboundOrderItem } from '@/api/types'
 import { BUSINESS_EVENTS, emitBusinessEvent } from '@/events/businessEvents'
 
 export function useInboundOrderForm(onSaved: () => void | Promise<void>) {
-  const editDialog = reactive({ visible: false, loading: false, fetching: false, ready: false, editingId: '' as EntityID })
+  const editDialog = reactive({ visible: false, loading: false, fetching: false, ready: false, conflicted: false, editingId: '' as EntityID })
   let generation = 0
+  let editingVersion = 0
   const editForm = reactive({
     warehouse_id: undefined as EntityID | undefined,
     remark: '',
@@ -24,6 +25,8 @@ export function useInboundOrderForm(onSaved: () => void | Promise<void>) {
   }
 
   function resetForm() {
+    editingVersion = 0
+    editDialog.conflicted = false
     editForm.warehouse_id = undefined
     editForm.remark = ''
     editForm.details = [makeDetail()]
@@ -59,6 +62,11 @@ export function useInboundOrderForm(onSaved: () => void | Promise<void>) {
     try {
       const detail = await getInboundOrder(id)
       if (current !== generation || !editDialog.visible || editDialog.editingId !== id) return
+      if (!Number.isInteger(detail.order.version) || detail.order.version <= 0) {
+        ElMessage.error('入库单版本信息缺失，请关闭后刷新页面')
+        return
+      }
+      editingVersion = detail.order.version
       editForm.warehouse_id = detail.order.warehouse_id
       editForm.remark = detail.order.remark
       editForm.details = (detail.details ?? []).map((d) => makeDetail(d.sku_id, d.expected_qty))
@@ -80,7 +88,7 @@ export function useInboundOrderForm(onSaved: () => void | Promise<void>) {
   }
 
   async function submitEdit() {
-    if (editDialog.loading || editDialog.fetching || !editDialog.ready || !editDialog.visible) return
+    if (editDialog.loading || editDialog.fetching || !editDialog.ready || !editDialog.visible || editDialog.conflicted) return
     if (!editForm.warehouse_id) {
       ElMessage.warning('请选择仓库')
       return
@@ -100,7 +108,7 @@ export function useInboundOrderForm(onSaved: () => void | Promise<void>) {
     editDialog.loading = true
     try {
       if (editingId) {
-        await updateInboundOrder(editingId, payload)
+        await updateInboundOrder(editingId, { ...payload, expected_version: editingVersion })
         ElMessage.success('保存成功')
       } else {
         const created = await createInboundOrder(payload)
@@ -112,6 +120,12 @@ export function useInboundOrderForm(onSaved: () => void | Promise<void>) {
       }
       editDialog.visible = false
       await onSaved()
+    } catch (error) {
+      if (error && typeof error === 'object' && 'code' in error && error.code === 40902) {
+        editDialog.conflicted = true
+        return
+      }
+      throw error
     } finally {
       editDialog.loading = false
     }

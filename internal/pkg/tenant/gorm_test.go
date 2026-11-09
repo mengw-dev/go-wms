@@ -88,7 +88,7 @@ func TestTenantIsolation(t *testing.T) {
 		t.Fatalf("tenant B row must survive tenant A delete, got %d", nB)
 	}
 
-	// 租户请求不能通过显式字段跨租户创建；平台上下文仍支持代操作。
+	// 租户请求不能通过显式字段跨租户创建；底层平台旁路仍支持系统初始化/维护。
 	explicit := basicmodel.SKU{TenantID: 3003, Code: "SKU-T2", Barcode: "BC-T2", Name: "显式租户"}
 	if err := db.WithContext(ctxA).Create(&explicit).Error; !errors.Is(err, tenant.ErrMismatch) {
 		t.Fatalf("cross-tenant create: %v", err)

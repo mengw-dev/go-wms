@@ -2,7 +2,7 @@ import { AxiosError, CanceledError, type InternalAxiosRequestConfig } from 'axio
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAuthStore } from '@/stores/auth'
-import { get } from './request'
+import { del, get, getExcel, post, put, upload } from './request'
 import { aiChat } from './ai'
 
 const mocks = vi.hoisted(() => ({ adapter: vi.fn(), push: vi.fn(), error: vi.fn(), warning: vi.fn() }))
@@ -75,5 +75,44 @@ describe('request authentication ownership', () => {
     expect(await answer).toBeInstanceOf(Error)
     expect(mocks.error).not.toHaveBeenCalled()
     expect(useAuthStore().token).toBe('old')
+  })
+
+  it('另一页新登录后旧401不能删除共享凭据，即使storage事件尚未送达', async () => {
+    const aPinia = createPinia(), a = useAuthStore(aPinia)
+    a.setAuth({ token: 'old', user_id: '1', username: 'A', nickname: '', roles: [], perms: [] })
+    let reject!: (reason: unknown) => void, sent!: InternalAxiosRequestConfig
+    mocks.adapter.mockImplementation(config => { sent = config; return new Promise((_, fail) => { reject = fail }) })
+    const pending = get('/protected').catch((error: unknown) => error)
+    await vi.waitFor(() => expect(sent).toBeDefined())
+    useAuthStore(createPinia()).setAuth({ token: 'new', user_id: '2', username: 'B', nickname: '', roles: [], perms: [] })
+    setActivePinia(aPinia)
+    reject(new AxiosError('expired', undefined, sent, undefined, { status: 401, data: { code: 40100 }, config: sent, statusText: '', headers: {} }))
+    expect(await pending).toMatchObject({ kind: 'auth' })
+    expect(a.externalSessionChanged).toBe(true)
+    expect(useAuthStore(createPinia()).token).toBe('new')
+    expect(mocks.push).not.toHaveBeenCalled(); expect(mocks.error).not.toHaveBeenCalled()
+  })
+
+  it('未收到storage事件的旧页面也不能继续发请求或自动套用新账号', async () => {
+    const aPinia = createPinia(), a = useAuthStore(aPinia)
+    a.setAuth({ token: 'old', user_id: '1', username: 'A', nickname: '', roles: [], perms: [] })
+    useAuthStore(createPinia()).setAuth({ token: 'new', user_id: '2', username: 'B', nickname: '', roles: [], perms: [] })
+    setActivePinia(aPinia)
+    await expect(post('/inbound/orders', { oldForm: true })).rejects.toBeInstanceOf(CanceledError)
+    expect(mocks.adapter).not.toHaveBeenCalled(); expect(a.externalSessionChanged).toBe(true)
+    expect(mocks.error).not.toHaveBeenCalled()
+  })
+
+  it.each(['get', 'post', 'put', 'del', 'upload', 'excel'] as const)('%s 排队时身份变化，不得把旧请求以新身份发送', async method => {
+    const requests = {
+      get: () => get('/queued'), post: () => post('/queued', { oldForm: true }),
+      put: () => put('/queued', { oldForm: true }), del: () => del('/queued'),
+      upload: () => upload('/queued', new FormData()),
+      excel: () => getExcel('/queued', {}, new AbortController().signal),
+    }
+    const pending = requests[method]().catch((error: unknown) => error)
+    login('new')
+    expect(await pending).toBeInstanceOf(CanceledError)
+    expect(mocks.adapter).not.toHaveBeenCalled(); expect(mocks.error).not.toHaveBeenCalled()
   })
 })

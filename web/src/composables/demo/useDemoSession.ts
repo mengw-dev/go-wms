@@ -7,7 +7,7 @@
  * 倒计时表示"无操作剩余时间"，只有发生过用户交互才会向后端续期，
  * 挂机期间会话会随后端 TTL 到期自动释放。
  */
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useRouter } from 'vue-router'
 import { acquireDemoSession, heartbeatDemoSession, releaseDemoSession } from '@/api/demo'
@@ -34,6 +34,10 @@ export interface UseDemoSessionOptions {
 export function useDemoSession(options: UseDemoSessionOptions = {}) {
   const auth = useAuthStore()
   const router = useRouter()
+  let owner = auth.snapshot()
+  let disposed = false
+  const owns = (snapshot = owner) => !disposed && auth.isCurrent(snapshot)
+  watch(() => auth.sessionVersion, () => { if (!owns()) clearTimers() })
 
   const acquiring = ref(false)
   const exiting = ref(false)
@@ -69,7 +73,7 @@ export function useDemoSession(options: UseDemoSessionOptions = {}) {
    * 倒计时不本地乐观重置为完整 TTL，续期成功后按后端返回的真实 TTL 同步。
    */
   function markActivity() {
-    if (!auth.isDemo || !auth.demoSessionId) return
+    if (!owns() || !auth.isDemo || !auth.demoSessionId) return
     const now = Date.now()
     if (now - lastActivityAt < ACTIVITY_THROTTLE_MS) return
     lastActivityAt = now
@@ -90,6 +94,7 @@ export function useDemoSession(options: UseDemoSessionOptions = {}) {
     lastRenewAt = Date.now()
     renewPending = false
     countdownTimer = window.setInterval(() => {
+      if (!owns()) { clearTimers(); return }
       if (remaining.value <= 0) {
         void handleIdleTimeout()
         return
@@ -111,16 +116,20 @@ export function useDemoSession(options: UseDemoSessionOptions = {}) {
 
   /** 向后端续期演示会话（仅在最近有用户交互时调用）。 */
   async function refreshSession() {
-    if (refreshing || !auth.demoSessionId) return
+    if (!owns() || refreshing || exiting.value || redirectingToLogin || !auth.demoSessionId) return
+    const snapshot = owner
     refreshing = true
     try {
       const info = await heartbeatDemoSession()
+      if (!owns(snapshot)) return
       auth.setDemoSession(info)
+      owner = auth.snapshot()
       remaining.value = info.expires_in
       countdownWarningShown = false
       lastRenewAt = Date.now()
       renewPending = false
     } catch (error) {
+      if (!owns(snapshot)) return
       if (error instanceof ApiError && error.code === 70003) {
         if (redirectingToLogin) return
         redirectingToLogin = true
@@ -137,7 +146,8 @@ export function useDemoSession(options: UseDemoSessionOptions = {}) {
    * 若后端 TTL 已先到期，释放接口会返回失败，忽略即可。
    */
   async function handleIdleTimeout() {
-    if (redirectingToLogin) return
+    if (!owns() || redirectingToLogin) return
+    const snapshot = owner
     redirectingToLogin = true
     clearTimers()
     try {
@@ -145,6 +155,7 @@ export function useDemoSession(options: UseDemoSessionOptions = {}) {
     } catch {
       // 后端会话可能已随 TTL 过期，继续清理本地状态。
     }
+    if (!owns(snapshot)) return
     auth.clear()
     options.onSessionClosed?.()
     ElMessage.warning('长时间未操作，演示会话已自动释放（数据已恢复初始状态）')
@@ -152,16 +163,19 @@ export function useDemoSession(options: UseDemoSessionOptions = {}) {
   }
 
   async function acquire() {
-    if (acquiring.value) return
+    if (!owns() || !auth.isDemo || acquiring.value) return
+    const snapshot = owner
     acquiring.value = true
     try {
       const info = await acquireDemoSession()
+      if (!owns(snapshot)) return
       auth.setDemoSession(info)
+      owner = auth.snapshot()
       remaining.value = info.expires_in
       countdownWarningShown = false
       startTimers()
     } catch {
-      if (redirectingToLogin) return
+      if (!owns(snapshot) || redirectingToLogin) return
       redirectingToLogin = true
       auth.clear()
       await router.push('/login')
@@ -172,15 +186,19 @@ export function useDemoSession(options: UseDemoSessionOptions = {}) {
 
   /** 进入演示环境时初始化会话：复用已有会话，否则重新领取。 */
   async function initialize() {
-    if (!auth.isDemo) return
+    if (!owns() || !auth.isDemo) return
+    const snapshot = owner
     if (auth.demoSessionId) {
       try {
         const info = await heartbeatDemoSession()
+        if (!owns(snapshot)) return
         auth.setDemoSession(info)
+        owner = auth.snapshot()
         remaining.value = info.expires_in
         startTimers()
         return
       } catch {
+        if (!owns(snapshot)) return
         auth.clearDemoSession()
         return
       }
@@ -190,7 +208,8 @@ export function useDemoSession(options: UseDemoSessionOptions = {}) {
 
   /** 主动退出演示：释放后端会话并清理本地登录态。 */
   async function release() {
-    if (exiting.value) return
+    if (!owns() || !auth.isDemo || exiting.value) return
+    const snapshot = owner
     exiting.value = true
     try {
       try {
@@ -198,6 +217,7 @@ export function useDemoSession(options: UseDemoSessionOptions = {}) {
       } catch {
         // 会话可能已过期，仍需清理本地登录态并返回登录页。
       }
+      if (!owns(snapshot)) return
       auth.clear()
       clearTimers()
       options.onSessionClosed?.()
@@ -216,6 +236,7 @@ export function useDemoSession(options: UseDemoSessionOptions = {}) {
   })
 
   onBeforeUnmount(() => {
+    disposed = true
     clearTimers()
     for (const event of PASSIVE_ACTIVITY_EVENTS) {
       window.removeEventListener(event, markActivity)

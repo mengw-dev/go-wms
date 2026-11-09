@@ -33,6 +33,7 @@ export function getOperationContext(action: string): { ctx: OperationContext | n
   let storage: Storage
   try {
     storage = isDemo ? sessionStorage : localStorage
+    if (!auth.storageIsCurrent()) return { ctx: null, error: '登录身份已变化，请刷新页面后重新核对操作' }
   } catch {
     return { ctx: null, error: '浏览器存储不可用，无法记录待确认操作' }
   }

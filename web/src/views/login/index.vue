@@ -1,21 +1,62 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { login } from '@/api/auth'
 import { acquireDemoSession, claimDemoAccount } from '@/api/demo'
 import { claimPersonalAccount, listPersonalAccounts, type PersonalAccountInfo } from '@/api/personal'
 import { getVersion } from '@/api/version'
-import { useAuthStore } from '@/stores/auth'
+import { useAuthStore, type AuthSnapshot } from '@/stores/auth'
+import type { LoginResult } from '@/api/types'
 
 const router = useRouter()
 const route = useRoute()
 const auth = useAuthStore()
 
 const formRef = ref<FormInstance>()
-const loading = ref(false)
-const demoLoading = ref(false)
-const personalLoading = ref(false)
+const activeEntry = ref<'password' | 'demo' | 'personal' | null>(null)
+const busy = computed(() => activeEntry.value !== null)
+const loading = computed(() => activeEntry.value === 'password')
+const demoLoading = computed(() => activeEntry.value === 'demo')
+const personalLoading = computed(() => activeEntry.value === 'personal')
+type LoginAttempt = { snapshot: AuthSnapshot; installed: boolean; completed: boolean }
+let attempt: LoginAttempt | null = null
+let disposed = false
+
+function begin(entry: NonNullable<typeof activeEntry.value>): LoginAttempt | null {
+  if (disposed || busy.value) return null
+  activeEntry.value = entry
+  attempt = { snapshot: auth.snapshot(), installed: false, completed: false }
+  return attempt
+}
+function owns(current: LoginAttempt): boolean {
+  return !disposed && attempt === current && auth.isCurrent(current.snapshot)
+}
+function rollback(current: LoginAttempt) {
+  // 失败只能回收本次已经写入、尚未完成的登录，不能清掉此前或后来建立的会话。
+  if (current.installed && !current.completed && auth.isCurrent(current.snapshot)) auth.clear()
+}
+function finish(current: LoginAttempt) {
+  if (attempt === current) { attempt = null; activeEntry.value = null }
+}
+async function install(current: LoginAttempt, result: LoginResult): Promise<boolean> {
+  if (!owns(current)) return false
+  auth.setAuth(result)
+  current.installed = true
+  current.snapshot = auth.snapshot()
+  if (auth.isDemo) {
+    const session = await acquireDemoSession()
+    if (!owns(current)) return false
+    auth.setDemoSession(session)
+    current.snapshot = auth.snapshot()
+  }
+  current.completed = true
+  return true
+}
+onBeforeUnmount(() => {
+  disposed = true
+  if (attempt) rollback(attempt)
+})
 // 特性开关：后端 demo.enabled / personal.enabled 决定展示哪些快捷入口（生产部署可能两者都关闭）。
 const demoEnabled = ref(true)
 const personalEnabled = ref(false)
@@ -28,15 +69,18 @@ const form = reactive({ username: '', password: '', tenant_id: '' })
 onMounted(async () => {
   try {
     const version = await getVersion()
+    if (disposed) return
     demoEnabled.value = version.demo_enabled !== false
     personalEnabled.value = version.personal_enabled === true
   } catch {
     // /version 不可用时保持默认（演示开启），不影响登录功能
   }
+  if (disposed) return
   entry.value = demoEnabled.value ? 'demo' : 'personal'
   if (personalEnabled.value) {
     try {
-      personalAccounts.value = await listPersonalAccounts()
+      const accounts = await listPersonalAccounts()
+      if (!disposed) personalAccounts.value = accounts
     } catch {
       // 错误提示由 request.ts 拦截器统一弹出
     }
@@ -53,50 +97,43 @@ const rules: FormRules = {
 }
 
 async function submit() {
-  if (loading.value) return
-  const valid = await formRef.value?.validate().catch(() => false)
-  if (!valid) return
-  loading.value = true
+  const current = begin('password')
+  if (!current) return
   try {
+    const valid = await formRef.value?.validate().catch(() => false)
+    if (!valid || !owns(current)) return
     const result = await login({
       username: form.username,
       password: form.password,
       tenant_id: form.tenant_id || undefined,
     })
-    auth.setAuth(result)
-    if ((result.perms ?? []).includes('wms:demo')) {
-      const session = await acquireDemoSession()
-      auth.setDemoSession(session)
-    }
+    if (!await install(current, result) || !owns(current)) return
     ElMessage.success('登录成功')
     const redirect = route.query.redirect
     router.push(
       auth.isDemo ? '/demo' : typeof redirect === 'string' && redirect.startsWith('/') ? redirect : '/',
     )
   } catch {
-    auth.clear()
+    rollback(current)
   } finally {
-    loading.value = false
+    finish(current)
   }
 }
 
 // 在线体验：自动领取一个空闲演示账号（demo1~demoN，各占独立租户）并登录。
 // 多个访客同时点击会分配到不同账号，数据互不影响，退出后该账号数据自动重置。
 async function startDemo() {
-  if (demoLoading.value) return
-  demoLoading.value = true
+  const current = begin('demo')
+  if (!current) return
   try {
     const account = await claimDemoAccount()
+    if (!owns(current)) return
     const result = await login({
       username: account.username,
       password: account.password,
       tenant_id: account.tenant_id,
     })
-    auth.setAuth(result)
-    if ((result.perms ?? []).includes('wms:demo')) {
-      const session = await acquireDemoSession()
-      auth.setDemoSession(session)
-    }
+    if (!await install(current, result) || !owns(current)) return
     ElMessage({
       message: `已为你分配空闲演示账号 ${account.username}（共 ${account.total} 席，数据独立、退出自动重置）`,
       type: 'success',
@@ -104,26 +141,28 @@ async function startDemo() {
     })
     router.push('/demo')
   } catch {
-    auth.clear()
+    rollback(current)
     // 错误提示由 request.ts 拦截器统一弹出（如 70002 演示席位已满）
   } finally {
-    demoLoading.value = false
+    finish(current)
   }
 }
 
 // 个人空间：进入访客自己挑选的持久体验账号（user1..userN，各占独立租户）。
 // 数据长期保留：不重置、不占席位，退出后可用同一账号再次登录继续操作。
 async function startPersonal() {
-  if (personalLoading.value || !selectedAccount.value) return
-  personalLoading.value = true
+  if (!selectedAccount.value) return
+  const current = begin('personal')
+  if (!current) return
   try {
     const account = await claimPersonalAccount(selectedAccount.value)
+    if (!owns(current)) return
     const result = await login({
       username: account.username,
       password: account.password ?? '',
       tenant_id: account.tenant_id,
     })
-    auth.setAuth(result)
+    if (!await install(current, result) || !owns(current)) return
     ElMessage({
       message: `已进入 ${account.username}（${account.nickname}），数据长期保留，退出后可用同一账号再次登录`,
       type: 'success',
@@ -131,9 +170,9 @@ async function startPersonal() {
     })
     router.push('/')
   } catch {
-    auth.clear()
+    rollback(current)
   } finally {
-    personalLoading.value = false
+    finish(current)
   }
 }
 </script>
@@ -174,6 +213,7 @@ async function startPersonal() {
             <button
               type="button"
               class="entry-tab"
+              :disabled="busy"
               :class="{ active: entry === 'demo' }"
               @click="entry = 'demo'"
             >
@@ -182,6 +222,7 @@ async function startPersonal() {
             <button
               type="button"
               class="entry-tab"
+              :disabled="busy"
               :class="{ active: entry === 'personal' }"
               @click="entry = 'personal'"
             >
@@ -201,6 +242,7 @@ async function startPersonal() {
               size="large"
               class="login-btn"
               :loading="demoLoading"
+              :disabled="busy"
               @click="startDemo"
             >
               一键进入演示
@@ -216,6 +258,7 @@ async function startPersonal() {
                 :key="item.username"
                 type="button"
                 class="account-chip"
+                :disabled="busy"
                 :class="{ active: selectedAccount === item.username }"
                 @click="selectedAccount = item.username"
               >
@@ -227,7 +270,7 @@ async function startPersonal() {
               type="primary"
               size="large"
               class="login-btn"
-              :disabled="!selectedAccount"
+              :disabled="busy || !selectedAccount"
               :loading="personalLoading"
               @click="startPersonal"
             >
@@ -239,7 +282,7 @@ async function startPersonal() {
 
         <div v-if="showEntries" class="divider"><span>或使用账号密码登录</span></div>
 
-        <el-form ref="formRef" :model="form" :rules="rules" size="large" @keyup.enter="submit">
+        <el-form ref="formRef" :model="form" :rules="rules" :disabled="busy" size="large" @keyup.enter="submit">
           <el-form-item prop="username">
             <el-input v-model="form.username" placeholder="用户名">
               <template #prefix><el-icon><User /></el-icon></template>

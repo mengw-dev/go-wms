@@ -28,19 +28,20 @@ func TestBuiltinAdminProtection(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := New(repository.New(db), "unused", 1)
-	if err := s.ResetPassword(context.Background(), 1, &dto.ResetPwdReq{Password: "anything"}); !errors.Is(err, errcode.ModifyAdminForbidden) {
+	platformID := newAdminActor(t, s, context.Background())
+	if err := s.ResetPassword(context.Background(), platformID, 1, &dto.ResetPwdReq{Password: "anything"}); !errors.Is(err, errcode.ModifyAdminForbidden) {
 		t.Fatalf("ResetPassword(1): %v", err)
 	}
-	if err := s.UpdateUser(context.Background(), 1, &dto.UserUpdateReq{}); !errors.Is(err, errcode.ModifyAdminForbidden) {
+	if err := s.UpdateUser(context.Background(), platformID, 1, &dto.UserUpdateReq{}); !errors.Is(err, errcode.ModifyAdminForbidden) {
 		t.Fatalf("UpdateUser(1): got %v, want %v", err, errcode.ModifyAdminForbidden)
 	}
-	if err := s.DeleteUser(context.Background(), 1); !errors.Is(err, errcode.ModifyAdminForbidden) {
+	if err := s.DeleteUser(context.Background(), platformID, 1); !errors.Is(err, errcode.ModifyAdminForbidden) {
 		t.Fatalf("DeleteUser(1): got %v, want %v", err, errcode.ModifyAdminForbidden)
 	}
-	if err := s.UpdateRole(context.Background(), 1, &dto.RoleUpdateReq{}); !errors.Is(err, errcode.ModifyBuiltinRoleForbidden) {
+	if err := s.UpdateRole(context.Background(), platformID, 1, &dto.RoleUpdateReq{}); !errors.Is(err, errcode.ModifyBuiltinRoleForbidden) {
 		t.Fatalf("UpdateRole(1): got %v, want %v", err, errcode.ModifyBuiltinRoleForbidden)
 	}
-	if err := s.DeleteRole(context.Background(), 1); !errors.Is(err, errcode.ModifyBuiltinRoleForbidden) {
+	if err := s.DeleteRole(context.Background(), platformID, 1); !errors.Is(err, errcode.ModifyBuiltinRoleForbidden) {
 		t.Fatalf("DeleteRole(1): got %v, want %v", err, errcode.ModifyBuiltinRoleForbidden)
 	}
 }

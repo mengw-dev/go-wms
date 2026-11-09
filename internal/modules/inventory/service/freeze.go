@@ -24,6 +24,7 @@ func (s *Service) Freeze(ctx context.Context, db *gorm.DB, req *api.FreezeReq) e
 	if req == nil || req.Quantity <= 0 || req.Quantity > quantity.Max {
 		return errcode.ParamError
 	}
+	db = db.WithContext(tenant.WithExactTenant(ctx, tenant.FromContext(ctx)))
 	inv, e := s.repo.GetForUpdate(db, req.InventoryID)
 	if errors.Is(e, gorm.ErrRecordNotFound) {
 		return errcode.InventoryNotFound
@@ -66,6 +67,7 @@ func (s *Service) WriteOff(ctx context.Context, db *gorm.DB, req *api.FreezeReq)
 	if req == nil || req.Quantity <= 0 || req.Quantity > quantity.Max {
 		return errcode.ParamError
 	}
+	db = db.WithContext(tenant.WithExactTenant(ctx, tenant.FromContext(ctx)))
 	inv, e := s.repo.GetForUpdate(db, req.InventoryID)
 	if e != nil {
 		return e
@@ -86,6 +88,7 @@ func (s *Service) ReceiveReturn(ctx context.Context, db *gorm.DB, req *api.Retur
 	if req == nil || req.GoodQty < 0 || req.BadQty < 0 || req.GoodQty > quantity.Max-req.BadQty || req.GoodQty+req.BadQty <= 0 {
 		return errcode.ParamError
 	}
+	db = db.WithContext(tenant.WithExactTenant(ctx, tenant.FromContext(ctx)))
 	if e := s.Increase(ctx, db, &api.IncreaseReq{WarehouseID: req.WarehouseID, LocationID: req.LocationID, SKUID: req.SKUID, BatchNo: req.BatchNo, Quantity: req.GoodQty + req.BadQty, OrderNo: req.OrderNo, Operator: req.Operator}); e != nil {
 		return e
 	}

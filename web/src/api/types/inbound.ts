@@ -2,6 +2,7 @@ import type { EntityID, OrderDetailLine, PageQuery } from './common'
 import type { TaskItem } from './task'
 
 export interface InboundOrderItem {
+  version: number
   id: EntityID
   order_no: string
   warehouse_id: EntityID
@@ -34,6 +35,10 @@ export interface InboundCreateParams {
   warehouse_id: EntityID
   remark: string
   details: OrderDetailLine[]
+}
+
+export interface InboundUpdateParams extends InboundCreateParams {
+  expected_version: number
 }
 
 export interface InboundOrderDetail {

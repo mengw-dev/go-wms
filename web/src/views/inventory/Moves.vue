@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onScopeDispose, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
+import { useScopedConfirm } from '@/composables/useScopedConfirm'
 import BusinessListPage from '@/components/common/BusinessListPage.vue'
 import BusinessPagination from '@/components/common/BusinessPagination.vue'
 import ResizableTableArea from '@/components/common/ResizableTableArea.vue'
@@ -14,6 +15,7 @@ import { formatTime } from '@/utils'
 import { mobileTableCellStyle } from '@/utils/mobileTable'
 
 const route = useRoute(), router = useRouter(), auth = useAuthStore()
+const confirmAction = useScopedConfirm()
 const canMove = computed(() => auth.hasPerm('wms:inventory:move'))
 const operation = useStockMove()
 const { pending, error: operationError, busy } = operation
@@ -81,7 +83,7 @@ async function recover(item: PendingOperation, retry: boolean) {
   completed(await (retry ? operation.retry(item) : operation.check(item)))
 }
 async function forget(item: PendingOperation) {
-  try { await ElMessageBox.confirm('请先核对移库记录和库存流水。清除只删除本机待确认记录，不会撤销库存变动；再次发起将使用新请求编号。确认已人工核对？', '清除本地待确认记录', { type: 'warning', confirmButtonText: '已核对，清除记录' }) } catch { return }
+  try { await confirmAction('请先核对移库记录和库存流水。清除只删除本机待确认记录，不会撤销库存变动；再次发起将使用新请求编号。确认已人工核对？', '清除本地待确认记录', { type: 'warning', confirmButtonText: '已核对，清除记录' }) } catch { return }
   if (alive) operation.forget(item)
 }
 function ledger(row: StockMove) { void router.push({ path: '/inventory', query: { order_no: row.move_no } }) }
@@ -100,7 +102,7 @@ watch(() => route.query.source_inventory_id, id => { if (typeof id === 'string' 
       <p>响应未确认时，请先核对结果；重试使用原请求编号和原参数。</p>
       <div v-for="item in pending" :key="item.operationKey" class="pending-item">
         <span>来源库存 {{ item.objectId }} → 库位 {{ movePayload(item)?.target_location_id || '参数待核对' }} · 数量 {{ movePayload(item)?.quantity ?? '—' }}<br><small>请求编号 {{ item.operationKey }}</small></span>
-        <div><el-button :disabled="busy" @click="recover(item, false)">核对结果</el-button><el-button v-if="canMove" :disabled="busy" @click="recover(item, true)">按原请求重试</el-button><el-button :disabled="busy" link type="danger" @click="forget(item)">核对后清除</el-button></div>
+        <div><el-button :disabled="busy" @click="recover(item, false)">核对结果</el-button><el-button v-if="canMove" :disabled="busy || item.state === 'conflict'" @click="recover(item, true)">按原请求重试</el-button><el-button :disabled="busy" link type="danger" @click="forget(item)">核对后清除</el-button></div>
       </div>
     </section>
     <ResizableTableArea storage-key="stock-moves">

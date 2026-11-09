@@ -28,6 +28,7 @@ const putawayIdempotencyScope = "inbound.putaway"
 // idempotencyKey 非空时启用请求级幂等：同 key + 同内容重试回放空成功（data:null 契约不变），
 // 同 key 不同内容返回 409；未携带 key 保持旧契约但无请求级去重保证。
 func (s *Service) Putaway(ctx context.Context, taskID, locationID int64, qty int, operator, idempotencyKey string) error {
+	ctx = tenant.WithExactTenant(ctx, tenant.FromContext(ctx))
 	idempotencyKey = strings.TrimSpace(idempotencyKey)
 	if len(idempotencyKey) > 64 {
 		return errcode.ParamError

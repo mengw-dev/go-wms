@@ -10,7 +10,7 @@ import OperLogs from './system/OperLogs.vue'
 
 const api = vi.hoisted(() => ({
   listWarehouses: vi.fn(), listLocations: vi.fn(), listSkus: vi.fn(),
-  listUsers: vi.fn(), listRoles: vi.fn(), listOperLogs: vi.fn(), listAllRoles: vi.fn(),
+  listUsers: vi.fn(), listRoles: vi.fn(), listOperLogs: vi.fn(), listAssignableRoles: vi.fn(),
 }))
 vi.mock('@/api/basic', () => ({
   listWarehouses: api.listWarehouses, listLocations: api.listLocations, listSkus: api.listSkus,
@@ -19,7 +19,7 @@ vi.mock('@/api/basic', () => ({
   createSku: vi.fn(), updateSku: vi.fn(), deleteSku: vi.fn(),
 }))
 vi.mock('@/api/system', () => ({
-  listUsers: api.listUsers, listRoles: api.listRoles, listOperLogs: api.listOperLogs, listAllRoles: api.listAllRoles,
+  listUsers: api.listUsers, listRoles: api.listRoles, listOperLogs: api.listOperLogs, listAssignableRoles: api.listAssignableRoles,
   createUser: vi.fn(), updateUser: vi.fn(), deleteUser: vi.fn(), updateUserStatus: vi.fn(), resetUserPassword: vi.fn(),
   createRole: vi.fn(), updateRole: vi.fn(), deleteRole: vi.fn(),
 }))
@@ -86,7 +86,7 @@ beforeEach(() => {
   vi.stubGlobal('localStorage', { getItem: () => null })
   vi.stubGlobal('sessionStorage', { getItem: () => null })
   for (const request of Object.values(api)) request.mockReset().mockResolvedValue({ list: [], total: 0 })
-  api.listAllRoles.mockResolvedValue([])
+  api.listAssignableRoles.mockResolvedValue([])
 })
 afterEach(() => {
   unmounts.splice(0).forEach(unmount => unmount())

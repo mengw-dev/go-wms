@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onScopeDispose, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessageBox } from 'element-plus'
+import { useScopedConfirm } from '@/composables/useScopedConfirm'
 import { getWave, WAVE_STATUS_TEXT, type WaveDetail, type WaveCommand, type WaveLine, type WaveItem, type WaveOrder } from '@/api/wave'
 import WavePendingNotice from '@/components/outbound/WavePendingNotice.vue'
 import WaveAbortPanel from '@/components/outbound/WaveAbortPanel.vue'
@@ -18,6 +18,7 @@ const dialog = ref(false), selected = ref<{ action: 'collect' | 'sort'; id: stri
 const form = reactive({ sku_code: '', location_code: '', batch_no: '', slot_code: '', qty: 1 })
 let seq = 0, alive = true
 const waveID = computed(() => String(route.params.id))
+const confirmAction = useScopedConfirm(() => [waveID.value, dialog.value, pending.value?.operationKey])
 const terminal = computed(() => !data.value || ['COMPLETED', 'CANCELLED', 'ABORTED'].includes(data.value.wave.status))
 const leaseActive = useLeaseActive(() => data.value?.wave.lease_expire_at)
 const owner = computed(() => !!data.value && data.value.wave.claimed_by === auth.user?.username && leaseActive.value)
@@ -64,12 +65,12 @@ async function submitQuantity() {
 }
 async function ship(order: WaveOrder) {
   const id = waveID.value
-  try { await ElMessageBox.confirm(`确认槽位 ${order.slot_code} 的 ${order.order_no} 已核对并实际发货？确认后将扣减库存并完成原拣货任务。`, '确认发货', { type: 'warning' }) } catch { return }
+  try { await confirmAction(`确认槽位 ${order.slot_code} 的 ${order.order_no} 已核对并实际发货？确认后将扣减库存并完成原拣货任务。`, '确认发货', { type: 'warning' }) } catch { return }
   if (alive && id === waveID.value) await perform({ action: 'ship', wave_id: id, part_id: order.id })
 }
 async function cancel() {
   const id = waveID.value
-  try { await ElMessageBox.confirm('只能撤销尚未拣货的波次。撤销后订单恢复普通拣货，原订单和库存占用保持。', '撤销波次', { type: 'warning' }) } catch { return }
+  try { await confirmAction('只能撤销尚未拣货的波次。撤销后订单恢复普通拣货，原订单和库存占用保持。', '撤销波次', { type: 'warning' }) } catch { return }
   if (alive && id === waveID.value) await perform({ action: 'cancel', wave_id: id })
 }
 async function recover() {
@@ -78,9 +79,10 @@ async function recover() {
   if (ack.wave_id !== waveID.value) await router.push(`/outbound/waves/${ack.wave_id}`)
   else { dialog.value = false; await load() }
 }
-async function discard() {
-  try { await ElMessageBox.confirm('先核对波次和订单结果。此操作仅清除本机待确认记录，不会撤销业务。', '放弃待确认记录', { type: 'warning' }) } catch { return }
-  if (alive) commands.discard()
+async function discard(key: string) {
+  if (pending.value?.operationKey !== key) return
+  try { await confirmAction('先核对波次和订单结果。此操作仅清除本机待确认记录，不会撤销业务。', '放弃待确认记录', { type: 'warning' }) } catch { return }
+  if (alive) commands.discard(key)
 }
 function printList() { window.print() }
 </script>

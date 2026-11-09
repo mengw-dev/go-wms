@@ -24,7 +24,7 @@ export const PENDING_RETENTION_MS = 7 * 24 * 60 * 60 * 1000
 const STORAGE_KEY = 'WMS_PENDING_OPS'
 
 /** 操作状态：succeeded/rejected 为终态，确认后即删除记录；prepared/sending 刷新后按 uncertain 恢复。 */
-export type PendingState = 'prepared' | 'sending' | 'uncertain' | 'succeeded' | 'rejected'
+export type PendingState = 'prepared' | 'sending' | 'uncertain' | 'conflict' | 'succeeded' | 'rejected'
 
 /**
  * 一条待确认操作。ID 全部保持字符串，不转 JS number；
@@ -70,7 +70,10 @@ export interface PendingWriteResult {
   error: string
 }
 
-const PENDING_STATES: readonly PendingState[] = ['prepared', 'sending', 'uncertain', 'succeeded', 'rejected']
+const PENDING_STATES: readonly PendingState[] = ['prepared', 'sending', 'uncertain', 'conflict', 'succeeded', 'rejected']
+
+export const PENDING_CONFLICT_MESSAGE = '该请求编号存在内容冲突，请核对原操作后放弃重试'
+export const PENDING_CHANGED_MESSAGE = '待确认操作已变化，请重新核对当前记录'
 
 function emptyContainer(): Container {
   return { version: PENDING_CONTAINER_VERSION, items: [] }
@@ -201,6 +204,23 @@ export function removePending(identity: OperationIdentity, storage: Storage, sco
     (item) => !(sameIdentity(identity, item) && item.scope === scope && item.objectId === objectId && item.operationKey === operationKey),
   )
   return writeContainer(storage, { ...read.container, items })
+}
+
+/** 迟到回复只标记发出的原key；不得把同对象后来产生的记录改成冲突或复活已清理记录。 */
+export function markPendingOutcome(identity: OperationIdentity, storage: Storage, scope: string, objectId: EntityID,
+  operationKey: string, state: 'uncertain' | 'conflict'): PendingWriteResult {
+  const read = readContainer(storage)
+  if (!read.container) return { ok: false, error: read.error }
+  let found = false
+  const items = read.container.items.map(item => {
+    if (!sameIdentity(identity, item) || item.scope !== scope || item.objectId !== objectId || item.operationKey !== operationKey) return item
+    found = true
+    // 另一在途请求的网络错误不能将已确认的内容冲突降级为可重试。
+    return { ...item, state: item.state === 'conflict' ? item.state : state }
+  })
+  if (!found) return { ok: false, error: '原待确认操作记录已变化，请核对业务结果后处理' }
+  const saved = writeContainer(storage, { ...read.container, items })
+  return saved.ok ? saved : { ok: false, error: '无法保存本次操作结果，请保留原请求编号并核对，勿新建重试' }
 }
 
 /** 是否超过服务端幂等保留窗口：超期操作不允许自动重发，只能核对后处理。 */

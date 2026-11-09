@@ -26,7 +26,9 @@ func TestTenantRolePermissionBoundary(t *testing.T) {
 	}
 	db := testutil.OpenIsolatedMySQL(t, dsn, &model.SysRole{}, &model.SysUser{}, &model.SysUserRole{})
 	s := New(repository.New(db), "unused", 1)
+	platformID := newAdminActor(t, s, context.Background())
 	ctx := tenant.WithTenant(context.Background(), 11)
+	actorID := newAdminActor(t, s, ctx)
 
 	rejected := []struct {
 		name  string
@@ -40,7 +42,7 @@ func TestTenantRolePermissionBoundary(t *testing.T) {
 	}
 	for _, tc := range rejected {
 		t.Run(tc.name, func(t *testing.T) {
-			err := s.CreateRole(ctx, &dto.RoleCreateReq{Name: tc.name, Perms: tc.perms})
+			err := s.CreateRole(ctx, actorID, &dto.RoleCreateReq{Name: tc.name, Perms: tc.perms})
 			if !errors.Is(err, errcode.RolePermNotAllowed) {
 				t.Fatalf("CreateRole(%q): got %v, want %v", tc.perms, err, errcode.RolePermNotAllowed)
 			}
@@ -51,7 +53,7 @@ func TestTenantRolePermissionBoundary(t *testing.T) {
 	}
 
 	// 合法权限组合可以创建，更新路径受同样约束且失败时不改动原值。
-	if err := s.CreateRole(ctx, &dto.RoleCreateReq{Name: "ops", Perms: "wms:basic,wms:system:role"}); err != nil {
+	if err := s.CreateRole(ctx, actorID, &dto.RoleCreateReq{Name: "ops", Perms: "wms:basic,wms:system:role"}); err != nil {
 		t.Fatal(err)
 	}
 	role, err := s.repo.GetRoleByName(ctx, "ops")
@@ -59,7 +61,7 @@ func TestTenantRolePermissionBoundary(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, perms := range []string{"*", "wms:system:role,wms:not-exists"} {
-		if err := s.UpdateRole(ctx, role.ID, &dto.RoleUpdateReq{Name: "ops", Perms: perms}); !errors.Is(err, errcode.RolePermNotAllowed) {
+		if err := s.UpdateRole(ctx, actorID, role.ID, &dto.RoleUpdateReq{Name: "ops", Perms: perms}); !errors.Is(err, errcode.RolePermNotAllowed) {
 			t.Fatalf("UpdateRole(%q): got %v, want %v", perms, err, errcode.RolePermNotAllowed)
 		}
 	}
@@ -70,7 +72,7 @@ func TestTenantRolePermissionBoundary(t *testing.T) {
 	if unchanged.Perms != "wms:basic,wms:system:role" {
 		t.Fatalf("rejected update must not change perms: %q", unchanged.Perms)
 	}
-	if err := s.UpdateRole(ctx, role.ID, &dto.RoleUpdateReq{Name: "ops", Perms: "wms:inbound:view"}); err != nil {
+	if err := s.UpdateRole(ctx, actorID, role.ID, &dto.RoleUpdateReq{Name: "ops", Perms: "wms:inbound:view"}); err != nil {
 		t.Fatal(err)
 	}
 	updated, err := s.repo.GetRoleByID(ctx, role.ID)
@@ -83,13 +85,13 @@ func TestTenantRolePermissionBoundary(t *testing.T) {
 
 	// 精确租户 0（无平台旁路，如 API Key 入口）同样不能授予 *。
 	exact := tenant.WithExactTenant(context.Background(), 0)
-	if err := s.CreateRole(exact, &dto.RoleCreateReq{Name: "exact-zero", Perms: "*"}); !errors.Is(err, errcode.RolePermNotAllowed) {
+	if err := s.CreateRole(exact, platformID, &dto.RoleCreateReq{Name: "exact-zero", Perms: "*"}); !errors.Is(err, errcode.RolePermNotAllowed) {
 		t.Fatalf("exact tenant 0 with *: got %v, want %v", err, errcode.RolePermNotAllowed)
 	}
 
 	// 平台旁路保留超级管理员语义：平台角色由平台管理员维护。
 	platform := tenant.WithTenant(context.Background(), 0)
-	if err := s.CreateRole(platform, &dto.RoleCreateReq{Name: "platform-ops", Perms: "*"}); err != nil {
+	if err := s.CreateRole(platform, platformID, &dto.RoleCreateReq{Name: "platform-ops", Perms: "*"}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -103,6 +105,7 @@ func TestCreateRoleConflictMapsToBusinessError(t *testing.T) {
 	db := testutil.OpenIsolatedMySQL(t, dsn, &model.SysRole{}, &model.SysUser{}, &model.SysUserRole{})
 	s := New(repository.New(db), "unused", 1)
 	ctx := tenant.WithTenant(context.Background(), 11)
+	actorID := newAdminActor(t, s, ctx)
 
 	blocker := db.Begin()
 	if blocker.Error != nil {
@@ -130,7 +133,7 @@ func TestCreateRoleConflictMapsToBusinessError(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- s.CreateRole(ctx, &dto.RoleCreateReq{Name: "race-role", Perms: "wms:basic"})
+		done <- s.CreateRole(ctx, actorID, &dto.RoleCreateReq{Name: "race-role", Perms: "wms:basic"})
 	}()
 	select {
 	case <-creating:
@@ -154,8 +157,9 @@ func TestUpdateMissingRoleReturnsNotFound(t *testing.T) {
 	db := testutil.OpenIsolatedMySQL(t, dsn, &model.SysRole{}, &model.SysUser{}, &model.SysUserRole{})
 	s := New(repository.New(db), "unused", 1)
 	ctx := tenant.WithTenant(context.Background(), 11)
+	actorID := newAdminActor(t, s, ctx)
 
-	if err := s.UpdateRole(ctx, 999999, &dto.RoleUpdateReq{Name: "missing", Perms: "wms:basic"}); !errors.Is(err, errcode.RoleIDInvalid) {
+	if err := s.UpdateRole(ctx, actorID, 999999, &dto.RoleUpdateReq{Name: "missing", Perms: "wms:basic"}); !errors.Is(err, errcode.RoleIDInvalid) {
 		t.Fatalf("update missing role: got %v, want %v", err, errcode.RoleIDInvalid)
 	}
 }

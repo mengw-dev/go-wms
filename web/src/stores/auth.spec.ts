@@ -57,6 +57,19 @@ describe('auth store permissions', () => {
     expect(auth.hasPerm('wms:inbound:view')).toBe(true)
     expect(auth.hasPerm('wms:system:user')).toBe(false)
   })
+  it('same demo session renewal updates TTL without changing identity; replacement still does', () => {
+    const auth = useAuthStore()
+    auth.setDemoSession({ session_id: 'a', expires_in: 100 })
+    const version = auth.sessionVersion
+    auth.setDemoSession({ session_id: 'a', expires_in: 300 })
+    expect(auth.sessionVersion).toBe(version)
+    expect(auth.demoSessionExpiresIn).toBe(300)
+    auth.setDemoSession({ session_id: 'b', expires_in: 300 })
+    expect(auth.sessionVersion).toBeGreaterThan(version)
+    const replaced = auth.sessionVersion
+    auth.clearDemoSession()
+    expect(auth.sessionVersion).toBeGreaterThan(replaced)
+  })
 
   it('does not grant permissions based on user ID 1', () => {
     const auth = useAuthStore()
@@ -199,13 +212,15 @@ describe('auth store 登录态写入与清理', () => {
     const auth = useAuthStore()
     auth.setAuth(loginResult())
 
-    expect(localStorage.getItem(TOKEN_KEY)).toBe('token-1')
-    expect(localStorage.getItem(USER_KEY)).toContain('operator')
+    const restored = useAuthStore(createPinia())
+    expect(restored.token).toBe('token-1')
+    expect(restored.user?.username).toBe('operator')
+    expect(localStorage.getItem(TOKEN_KEY)).toBeNull()
     expect(sessionStorage.getItem(TOKEN_KEY)).toBeNull()
     expect(sessionStorage.getItem(USER_KEY)).toBeNull()
   })
 
-  it('演示账号写入 sessionStorage，并清掉 local 残留', () => {
+  it('演示账号写入 sessionStorage，保留共享普通登录', () => {
     localStorage.setItem(TOKEN_KEY, 'stale-token')
     localStorage.setItem(USER_KEY, userJSON())
 
@@ -214,7 +229,7 @@ describe('auth store 登录态写入与清理', () => {
 
     expect(sessionStorage.getItem(TOKEN_KEY)).toBe('token-1')
     expect(sessionStorage.getItem(USER_KEY)).toContain('operator')
-    expect(localStorage.getItem(TOKEN_KEY)).toBeNull()
+    expect(localStorage.getItem(TOKEN_KEY)).toBe('stale-token')
     expect(auth.isDemo).toBe(true)
   })
 
@@ -228,17 +243,17 @@ describe('auth store 登录态写入与清理', () => {
       nickname: '新昵称',
       roles: ['operator'],
       perms: ['wms:outbound:view'],
-    })
+    }, auth.snapshot())
 
     expect(auth.user?.nickname).toBe('新昵称')
-    expect(localStorage.getItem(TOKEN_KEY)).toBe('token-1')
-    expect(JSON.parse(localStorage.getItem(USER_KEY) ?? '{}').nickname).toBe('新昵称')
+    const restored = useAuthStore(createPinia())
+    expect(restored.token).toBe('token-1')
+    expect(restored.user?.nickname).toBe('新昵称')
   })
 
-  it('logout 清理两份存储', () => {
+  it('普通logout清理本次凭据，不清除其他会话的存储', () => {
     const auth = useAuthStore()
     auth.setAuth(loginResult())
-    sessionStorage.setItem(TOKEN_KEY, 'stale-token')
 
     auth.clear()
 
@@ -247,5 +262,6 @@ describe('auth store 登录态写入与清理', () => {
     expect(localStorage.getItem(TOKEN_KEY)).toBeNull()
     expect(localStorage.getItem(USER_KEY)).toBeNull()
     expect(sessionStorage.getItem(TOKEN_KEY)).toBeNull()
+    expect(useAuthStore(createPinia()).isLoggedIn).toBe(false)
   })
 })

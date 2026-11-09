@@ -21,6 +21,12 @@ func TestIsConflictRecognizesWrappedError(t *testing.T) {
 	}
 }
 
+func TestStaleEditRequiresUserReview(t *testing.T) {
+	if StaleEdit.HTTPStatus != 409 || IsConflict(fmt.Errorf("edit: %w", StaleEdit)) {
+		t.Fatal("stale form must be an HTTP conflict without automatic transaction retry")
+	}
+}
+
 func TestWrapPreservesCause(t *testing.T) {
 	cause := errors.New("deadlock")
 	err := Wrap(cause, Conflict)

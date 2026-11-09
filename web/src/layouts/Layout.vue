@@ -10,13 +10,16 @@ import { changePassword, getProfile } from '@/api/auth'
 import { releaseDemoSession } from '@/api/demo'
 import DemoConsole from '@/components/DemoConsole.vue'
 import ManualGuide from '@/components/demo/ManualGuide.vue'
-import { useAuthStore } from '@/stores/auth'
+import { useAuthStore, type AuthSnapshot } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
 
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 const theme = useThemeStore()
+let disposed = false
+onUnmounted(() => { disposed = true })
+const owns = (snapshot: AuthSnapshot) => !disposed && auth.isCurrent(snapshot)
 
 const compactMedia = window.matchMedia('(max-width: 900px)')
 const compact = ref(compactMedia.matches)
@@ -41,24 +44,29 @@ const isBusinessPage = computed(() => route.path !== '/dashboard' && !route.path
 const pageTitle = computed(() => (route.meta.title as string) || '')
 
 onMounted(async () => {
+  const snapshot = auth.snapshot()
   const profile = await getProfile().catch(() => null)
-  if (profile) auth.setProfile(profile)
+  if (profile && !disposed) auth.setProfile(profile, snapshot)
 })
 
 async function onCommand(command: string) {
   if (command === 'logout') {
+    const snapshot = auth.snapshot()
     try {
       await ElMessageBox.confirm('确定退出登录吗？', '提示', { type: 'warning' })
     } catch {
       return
     }
+    if (!owns(snapshot)) return
     if (auth.isDemo) {
       await releaseDemoSession().catch(() => undefined)
     }
+    if (!owns(snapshot)) return
     auth.clear()
     ElMessage.success('已退出登录')
     router.push('/login')
   } else if (command === 'password') {
+    passwordSession = auth.snapshot()
     pwdDialog.visible = true
   }
 }
@@ -67,6 +75,12 @@ async function onCommand(command: string) {
 const pwdDialog = reactive({ visible: false, loading: false })
 const pwdFormRef = ref<FormInstance>()
 const pwdForm = reactive({ old_password: '', new_password: '', confirm_password: '' })
+let passwordSession: AuthSnapshot | null = null
+watch(() => auth.sessionVersion, () => {
+  pwdDialog.visible = false
+  passwordSession = null
+  pwdForm.old_password = ''; pwdForm.new_password = ''; pwdForm.confirm_password = ''
+}, { flush: 'sync' })
 
 const pwdRules: FormRules = {
   old_password: [{ required: true, message: '请输入原密码', trigger: 'blur' }],
@@ -91,14 +105,17 @@ const pwdRules: FormRules = {
 }
 
 async function submitPassword() {
-  const valid = await pwdFormRef.value?.validate().catch(() => false)
-  if (!valid) return
+  const snapshot = passwordSession
+  if (pwdDialog.loading || !snapshot || !owns(snapshot)) return
   pwdDialog.loading = true
   try {
+    const valid = await pwdFormRef.value?.validate().catch(() => false)
+    if (!valid || !owns(snapshot)) return
     await changePassword({
       old_password: pwdForm.old_password,
       new_password: pwdForm.new_password,
     })
+    if (!owns(snapshot)) return
     ElMessage.success('密码修改成功，请重新登录')
     pwdDialog.visible = false
     auth.clear()

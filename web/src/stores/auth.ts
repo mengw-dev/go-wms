@@ -1,121 +1,27 @@
 import { defineStore } from 'pinia'
 import type { DemoSessionInfo, EntityID, LoginResult, ProfileResult } from '@/api/types'
+import { persistentAuthMarker, readStoredAuth, removeStoredAuth, writeStoredAuth, writeStoredProfile, type AuthUser } from './authStorage'
+export type { AuthUser } from './authStorage'
 
-const TOKEN_KEY = 'WMS_TOKEN'
-const USER_KEY = 'WMS_USER'
 const DEMO_SESSION_KEY = 'WMS_DEMO_SESSION'
-
-export interface AuthUser {
-  user_id: EntityID
-  username: string
-  nickname: string
-  roles: string[]
-  perms: string[]
-}
-
-interface AuthPair {
+/** 捕获请求发起时的身份；版本区分退出后以相同 token 再次登录的情况。 */
+export interface AuthSnapshot {
+  version: number
   token: string
-  user: AuthUser
-}
-
-function parseStringList(value: unknown): string[] {
-  if (!Array.isArray(value)) return []
-  return value.filter((item): item is string => typeof item === 'string')
-}
-
-/**
- * 解析 user 原始数据。JSON 损坏或缺少关键字段时返回 null，
- * 调用方据此把整份登录态视为无效。
- */
-function parseUser(raw: string | null): AuthUser | null {
-  if (!raw) return null
-  try {
-    const value = JSON.parse(raw) as Partial<AuthUser> | null
-    if (!value || typeof value !== 'object' || Array.isArray(value)) return null
-    if (typeof value.user_id !== 'string' || !value.user_id) return null
-    if (typeof value.username !== 'string' || !value.username) return null
-    return {
-      user_id: value.user_id,
-      username: value.username,
-      nickname: typeof value.nickname === 'string' ? value.nickname : '',
-      roles: parseStringList(value.roles),
-      perms: parseStringList(value.perms),
-    }
-  } catch {
-    return null
-  }
-}
-
-/**
- * 读取单个存储介质中的登录态。
- * token 与 user 必须同时存在且 user 可解析，否则清掉这份残留并返回 null，
- * 避免出现“有 token 无 user”或“有 user 无 token”的拼接结果。
- */
-function readAuthPair(storage: Storage): AuthPair | null {
-  const rawToken = storage.getItem(TOKEN_KEY) || ''
-  const rawUser = storage.getItem(USER_KEY)
-  const user = parseUser(rawUser)
-  if (rawToken && user) return { token: rawToken, user }
-  if (rawToken || rawUser) clearAuthPair(storage)
-  return null
-}
-
-function readSessionAuth(): AuthPair | null {
-  return readAuthPair(sessionStorage)
-}
-
-function readPersistentAuth(): AuthPair | null {
-  return readAuthPair(localStorage)
-}
-
-/**
- * 写入登录态。token 与 user 始终写进同一个存储介质，
- * 并先清掉另一份，避免两份存储混用。
- */
-function writeAuth(token: string, user: AuthUser, isDemo: boolean): void {
-  const storage = pickStorage(isDemo)
-  clearAuthPair(localStorage)
-  clearAuthPair(sessionStorage)
-  storage.setItem(TOKEN_KEY, token)
-  storage.setItem(USER_KEY, JSON.stringify(user))
-}
-
-function writeUser(user: AuthUser, isDemo: boolean): void {
-  pickStorage(isDemo).setItem(USER_KEY, JSON.stringify(user))
-}
-
-function clearAuthPair(storage: Storage): void {
-  storage.removeItem(TOKEN_KEY)
-  storage.removeItem(USER_KEY)
-}
-
-function clearAuth(): void {
-  clearAuthPair(localStorage)
-  clearAuthPair(sessionStorage)
-}
-
-/**
- * 初始化登录态：session 与 local 不能混拼。
- * 完整 session 登录态优先；否则取完整 local 登录态；都不完整即未登录。
- */
-function readInitialAuth(): AuthPair | null {
-  return readSessionAuth() ?? readPersistentAuth()
-}
-
-/**
- * 选择存储介质：演示账号使用 sessionStorage，关闭标签页即登出；
- * 普通账号使用 localStorage，保持登录状态。
- */
-function pickStorage(isDemo: boolean): Storage {
-  return isDemo ? sessionStorage : localStorage
+  userID: EntityID | undefined
+  demoSession: string
 }
 
 export const useAuthStore = defineStore('auth', {
   state: () => {
-    const auth = readInitialAuth()
+    const auth = readStoredAuth()
     return {
       token: auth?.token ?? '',
       user: auth?.user ?? null,
+      storageSource: auth.source,
+      persistentID: auth.id,
+      persistentMarker: auth.marker,
+      externalSessionChanged: false,
       demoSessionId: sessionStorage.getItem(DEMO_SESSION_KEY) || '',
       demoSessionExpiresIn: 0,
       sessionVersion: 0,
@@ -130,9 +36,29 @@ export const useAuthStore = defineStore('auth', {
       (state.user?.perms ?? []).some((p) => p === '*' || p === perm),
   },
   actions: {
+    snapshot(): AuthSnapshot {
+      return { version: this.sessionVersion, token: this.token, userID: this.user?.user_id, demoSession: this.demoSessionId }
+    },
+    isCurrent(snapshot: AuthSnapshot): boolean {
+      return this.storageIsCurrent() && snapshot.version === this.sessionVersion && snapshot.token === this.token &&
+        snapshot.userID === this.user?.user_id && snapshot.demoSession === this.demoSessionId
+    },
+    storageIsCurrent(): boolean {
+      return !this.externalSessionChanged &&
+        (this.storageSource === 'session' || this.persistentMarker === persistentAuthMarker())
+    },
+    /** 不把旧页面自动切成新身份继续提交；先失效旧工作，再由应用重载。 */
+    invalidateIfStorageChanged(): boolean {
+      if (this.storageIsCurrent()) return false
+      if (!this.externalSessionChanged) {
+        this.externalSessionChanged = true
+        this.sessionVersion++
+        this.token = ''
+        this.user = null
+      }
+      return true
+    },
     setAuth(result: LoginResult) {
-      this.sessionVersion++
-      this.clearDemoSession()
       const isDemo = (result.perms ?? []).includes('wms:demo')
       const user: AuthUser = {
         user_id: result.user_id,
@@ -141,12 +67,19 @@ export const useAuthStore = defineStore('auth', {
         roles: result.roles ?? [],
         perms: result.perms ?? [],
       }
-      writeAuth(result.token, user, isDemo)
+      const stored = writeStoredAuth(result.token, user, isDemo)
+      this.sessionVersion++
+      this.clearDemoSession()
+      this.storageSource = stored.source
+      this.persistentID = stored.id
+      this.persistentMarker = stored.marker
+      this.externalSessionChanged = false
       this.token = result.token
       this.user = user
     },
-    setProfile(profile: ProfileResult) {
-      const isDemo = (profile.perms ?? []).includes('wms:demo')
+    setProfile(profile: ProfileResult, snapshot: AuthSnapshot): boolean {
+      if (!this.isCurrent(snapshot) || !this.token || profile.user_id !== this.user?.user_id) return false
+      // 存储介质属于登录会话，不能由一次资料刷新迁移到另一份存储。
       const user: AuthUser = {
         user_id: profile.user_id,
         username: profile.username,
@@ -155,10 +88,12 @@ export const useAuthStore = defineStore('auth', {
         perms: profile.perms ?? [],
       }
       this.user = user
-      writeUser(user, isDemo)
+      writeStoredProfile(user, this.storageSource, this.persistentID)
+      return true
     },
     setDemoSession(info: DemoSessionInfo) {
-      this.sessionVersion++
+      // A heartbeat renews the same identity; only replacing the session invalidates work.
+      if (this.demoSessionId !== info.session_id) this.sessionVersion++
       this.demoSessionId = info.session_id
       this.demoSessionExpiresIn = info.expires_in
       sessionStorage.setItem(DEMO_SESSION_KEY, info.session_id)
@@ -170,11 +105,15 @@ export const useAuthStore = defineStore('auth', {
       sessionStorage.removeItem(DEMO_SESSION_KEY)
     },
     clear() {
+      this.persistentMarker = removeStoredAuth(this.storageSource, this.persistentID)
+      if (this.storageSource === 'session') {
+        this.storageSource = 'none'
+        this.persistentMarker = persistentAuthMarker()
+      }
       this.sessionVersion++
       this.clearDemoSession()
       this.token = ''
       this.user = null
-      clearAuth()
     },
   },
 })

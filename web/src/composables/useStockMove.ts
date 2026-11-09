@@ -1,9 +1,18 @@
 import { onScopeDispose, ref } from 'vue'
 import { moveStock, listStockMoves, type MovePayload, type StockMove } from '@/api/stockMoves'
 import { classifyOperationError, getOperationContext, onOperationStorageChange, operationErrorMessage, operationStateKey, prepareOperation } from '@/composables/operationLifecycle'
-import { isStale, loadPending, removePending, upsertPending, type PendingOperation } from '@/utils/pendingOperations'
+import { isStale, loadPending, removePending, upsertPending, markPendingOutcome, PENDING_CONFLICT_MESSAGE, type PendingOperation } from '@/utils/pendingOperations'
+import { isReceiptID } from '@/utils/commandReceipt'
 
 const scope = 'inventory.move'
+function matchesReceipt(result: StockMove | undefined, payload: MovePayload): result is StockMove {
+  return !!result && isReceiptID(result.id) && isReceiptID(result.source_inventory_id) &&
+    isReceiptID(result.target_inventory_id) && isReceiptID(result.target_location_id) &&
+    typeof result.move_no === 'string' && !!result.move_no.trim() &&
+    result.source_inventory_id === payload.source_inventory_id &&
+    result.target_location_id === payload.target_location_id && result.quantity === payload.quantity &&
+    result.reason === payload.reason.trim()
+}
 export function movePayload(item: PendingOperation): MovePayload | null {
   const p = item.businessPayload
   if (!p || typeof p.source_inventory_id !== 'string' || p.source_inventory_id !== item.objectId || !/^[1-9]\d*$/.test(p.source_inventory_id) || typeof p.target_location_id !== 'string' || !/^[1-9]\d*$/.test(p.target_location_id) || typeof p.quantity !== 'number' || !Number.isInteger(p.quantity) || p.quantity <= 0 || p.quantity > 2147483647 || typeof p.reason !== 'string' || !p.reason.trim() || [...p.reason].length > 255) return null
@@ -21,12 +30,14 @@ export function useStockMove() {
     pending.value = saved.items.filter(item => item.scope === scope)
     if (saved.error) error.value = saved.error
     else if (pending.value.some(item => !movePayload(item))) error.value = '移库待确认参数已损坏，请通过记录核对，已暂停新建与重试'
+    else if (pending.value.some(item => item.state === 'conflict')) error.value = PENDING_CONFLICT_MESSAGE
     else error.value = ''
   }
   onOperationStorageChange(() => { if (!busy.value) restore() })
   function forget(item: PendingOperation) {
-    if (busy.value) return
+    if (!alive || busy.value) return
     const c = getOperationContext('移库'); if (!c.ctx) { error.value = c.error; return }
+    if (item.userId !== c.ctx.identity.userId || item.sessionNamespace !== c.ctx.identity.sessionNamespace) { error.value = '登录身份已变化，请重新核对原记录'; return }
     const removed = removePending(c.ctx.identity, c.ctx.storage, scope, item.objectId, item.operationKey)
     if (!removed.ok) error.value = removed.error; else restore()
   }
@@ -47,15 +58,20 @@ export function useStockMove() {
       const result = await moveStock(payload, key)
       if (!alive || operationStateKey('stock-move') !== state) return
       // A malformed success is uncertain, never permission to issue another key.
-      if (!result?.id || !result.move_no || result.source_inventory_id !== payload.source_inventory_id || result.target_location_id !== payload.target_location_id || result.quantity !== payload.quantity || result.reason !== payload.reason.trim()) throw Error('移库响应无法核对，请保留原请求编号')
+      if (!matchesReceipt(result, payload)) throw Error('移库响应无法核对，请保留原请求编号')
       const removed = removePending(c.ctx.identity, c.ctx.storage, scope, payload.source_inventory_id, key)
       restore()
       if (!removed.ok) error.value = '移库已完成，但本地记录未能清除，请核对后处理'
       return result
     } catch (e) {
       if (!alive || operationStateKey('stock-move') !== state) return
-      if (classifyOperationError(e, scope) === 'rejected') removePending(c.ctx.identity, c.ctx.storage, scope, payload.source_inventory_id, key)
-      restore(); error.value = operationErrorMessage(e, '移库结果未确认，请保留原请求核对或重试')
+      const outcome = classifyOperationError(e, scope)
+      if (outcome === 'rejected') removePending(c.ctx.identity, c.ctx.storage, scope, payload.source_inventory_id, key)
+      else if (outcome === 'conflict') {
+        const saved = markPendingOutcome(c.ctx.identity, c.ctx.storage, scope, payload.source_inventory_id, key, 'conflict')
+        if (!saved.ok) { error.value = saved.error; return }
+      }
+      restore(); error.value = outcome === 'conflict' ? PENDING_CONFLICT_MESSAGE : operationErrorMessage(e, '移库结果未确认，请保留原请求核对或重试')
     } finally { if (alive) busy.value = false }
   }
   async function retry(item: PendingOperation) { const payload = movePayload(item); if (payload) return send(payload, item); error.value = '待确认参数已损坏，不能重试' }
@@ -71,7 +87,7 @@ export function useStockMove() {
       if (!alive || operationStateKey('stock-move') !== state) return
       const found = rows.list?.[0], p = movePayload(item)
       if (!found) { error.value = '未找到已提交记录；若仍无法确认，请按原请求重试或人工核对'; return }
-      if (!p || !found.id || !found.move_no || found.source_inventory_id !== p.source_inventory_id || found.target_location_id !== p.target_location_id || found.quantity !== p.quantity || found.reason !== p.reason.trim()) { error.value = '原请求与移库记录不一致，已保留本地记录，请人工核对'; return }
+      if (!p || !matchesReceipt(found, p)) { error.value = '原请求与移库记录不一致，已保留本地记录，请人工核对'; return }
       const removed = removePending(c.ctx.identity, c.ctx.storage, scope, item.objectId, item.operationKey)
       restore(); if (!removed.ok) error.value = removed.error
       return found

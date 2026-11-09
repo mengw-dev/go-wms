@@ -10,7 +10,7 @@ import {
   isStale,
   loadPending,
   removePending,
-  upsertPending,
+  markPendingOutcome, PENDING_CONFLICT_MESSAGE, PENDING_CHANGED_MESSAGE,
   type PendingOperation,
 } from '@/utils/pendingOperations'
 
@@ -80,12 +80,10 @@ export function useReceive() {
     if (!removed.ok) storageError.value = removed.error
   }
 
-  function markUncertain(detailId: EntityID) {
+  function markOutcome(detailId: EntityID, operationKey: string, outcome: 'uncertain' | 'conflict') {
     const c = currentContext()
     if (!c.ctx) return
-    const existing = findPending(c.ctx.identity, c.ctx.storage, RECEIVE_SCOPE, detailId)
-    if (!existing) return
-    const saved = upsertPending(c.ctx.identity, c.ctx.storage, { ...existing, state: 'uncertain' })
+    const saved = markPendingOutcome(c.ctx.identity, c.ctx.storage, RECEIVE_SCOPE, detailId, operationKey, outcome)
     if (!saved.ok) storageError.value = saved.error
   }
 
@@ -126,6 +124,12 @@ export function useReceive() {
     }
     const existing = findOp(detailId)
     if (existing) {
+      if (existing.state === 'conflict') {
+        st.pending = toPendingInfo(existing, isStale(existing))
+        st.blocked = true; st.blockedReason = PENDING_CONFLICT_MESSAGE
+        st.lastError = st.blockedReason
+        throw new Error(st.blockedReason)
+      }
       if (isStale(existing)) {
         st.pending = toPendingInfo(existing, true)
         st.lastError = '该明细的上次收货已超过保留期，请核对已收数量后再操作'
@@ -166,25 +170,26 @@ export function useReceive() {
   }
 
   /** 核对后放弃未确认的收货：仅删除本地记录，不向服务端发送任何请求。 */
-  function discardReceive(detailId: EntityID) {
+  function discardReceive(detailId: EntityID, expectedKey: string): boolean {
     const st = stateOf(detailId)
-    if (st.submitting) return
+    if (st.submitting) return false
     const existing = findOp(detailId)
-    if (!existing) {
-      st.pending = null
-      return
+    if (!expectedKey || !existing || existing.operationKey !== expectedKey) {
+      st.lastError = PENDING_CHANGED_MESSAGE
+      return false
     }
     const c = currentContext()
-    if (!c.ctx) return
+    if (!c.ctx) return false
     const removed = removePending(c.ctx.identity, c.ctx.storage, RECEIVE_SCOPE, detailId, existing.operationKey)
     if (!removed.ok) {
       storageError.value = removed.error
       st.lastError = removed.error
-      return
+      return false
     }
     st.pending = null
     st.blocked = false
     st.blockedReason = ''
+    return true
   }
 
   async function sendReceive(orderId: EntityID, detailId: EntityID, operationKey: string, data: ReceiveBusinessPayload): Promise<void> {
@@ -207,7 +212,7 @@ export function useReceive() {
         endOperation(detailId, operationKey)
         st.pending = null
       } else if (outcome === 'conflict') {
-        markUncertain(detailId)
+        markOutcome(detailId, operationKey, 'conflict')
         const stored = findOp(detailId)
         st.pending = stored
           ? toPendingInfo(stored, false)
@@ -215,7 +220,7 @@ export function useReceive() {
         st.blocked = true
         st.blockedReason = '该请求编号已被用于其他内容，请核对原收货操作后放弃重试'
       } else {
-        markUncertain(detailId)
+        markOutcome(detailId, operationKey, 'uncertain')
         const stored = findOp(detailId)
         st.pending = stored
           ? toPendingInfo(stored, isStale(stored))
@@ -249,7 +254,9 @@ export function useReceive() {
     const idSet = new Set(detailIds.map(String))
     for (const item of loaded.items) {
       if (!idSet.has(String(item.objectId)) || item.scope !== RECEIVE_SCOPE) continue
-      stateOf(item.objectId as EntityID).pending = toPendingInfo(item, isStale(item))
+      const st = stateOf(item.objectId)
+      st.pending = toPendingInfo(item, isStale(item))
+      if (item.state === 'conflict') { st.blocked = true; st.blockedReason = PENDING_CONFLICT_MESSAGE }
     }
     return ''
   }

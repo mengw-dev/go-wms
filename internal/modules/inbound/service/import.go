@@ -15,9 +15,11 @@ import (
 	"gowms/internal/pkg/log"
 	"gowms/internal/pkg/modelbase"
 	"gowms/internal/pkg/snowflake"
+	"gowms/internal/pkg/tenant"
 )
 
 func (s *Service) Import(ctx context.Context, fileName string, data []byte) (*dto.ImportResp, error) {
+	ctx = tenant.WithExactTenant(ctx, tenant.FromContext(ctx))
 	if err := os.MkdirAll(s.uploadDir, 0o750); err != nil {
 		return nil, err
 	}

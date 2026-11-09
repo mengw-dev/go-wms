@@ -1,4 +1,5 @@
 import type { InboundOrderDetail, OutboundOrderDetail, StocktakeOrderDetail } from '@/api/types'
+import { statusText } from '@/constants'
 
 export interface PrintSection {
   title: string
@@ -44,7 +45,8 @@ export function inboundPrint(data: InboundOrderDetail): PrintDocument {
 export function outboundPrint(data: OutboundOrderDetail): PrintDocument {
   const order = data.order
   const lines = data.details ?? []
-  const allocations = data.allocations ?? []
+  const allocations = (data.allocations ?? []).filter(row => row.status === 'ALLOCATED')
+  const history = (data.allocations ?? []).filter(row => row.status !== 'ALLOCATED')
   const details = new Map(lines.map(detail => [detail.id, detail]))
   const sections: PrintSection[] = [{
     title: '出库明细',
@@ -65,6 +67,17 @@ export function outboundPrint(data: OutboundOrderDetail): PrintDocument {
       ]),
     })
   }
+  if (history.length) {
+    sections.push({
+      title: '分配历史（仅追溯，不作为拣货指令）',
+      columns: ['货品', '来源库位', '批次', '状态', '原分配数量', '原已拣数量'],
+      rows: history.map(allocation => [
+        details.get(allocation.detail_id)?.sku_name || allocation.sku_id,
+        allocation.location_code, allocation.batch_no || '-', statusText(allocation.status),
+        allocation.allocated_qty, allocation.picked_qty,
+      ]),
+    })
+  }
   return {
     title: '出库单 / 拣货单',
     orderNo: order.order_no,
@@ -76,7 +89,7 @@ export function outboundPrint(data: OutboundOrderDetail): PrintDocument {
     notes: [
       allocations.length
         ? '请按原分配库位、批次及数量核对，不以本单另行分配或重复扣减库存。'
-        : '尚未分配库存，当前单据不能作为实际拣货指令。',
+        : '当前没有可执行分配，历史记录仅供追溯，不能作为实际拣货指令。',
       '本单为已保存数据的查询快照，数量按货品库存单位核对，打印不代表已发货。',
     ],
   }

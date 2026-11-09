@@ -7,6 +7,7 @@ import {
   isStale,
   loadPending,
   removePending,
+  markPendingOutcome,
   upsertPending,
   type OperationIdentity,
   type PendingOperation,
@@ -76,6 +77,30 @@ beforeEach(() => {
 })
 
 describe('pendingOperations', () => {
+  it('冲突持久化并保留原参数；迟到网络失败不得降级冲突', () => {
+    const original = makeOperation()
+    upsertPending(identityA, storage, original)
+    expect(markPendingOutcome(identityA, storage, original.scope, original.objectId, original.operationKey, 'conflict').ok).toBe(true)
+    expect(markPendingOutcome(identityA, storage, original.scope, original.objectId, original.operationKey, 'uncertain').ok).toBe(true)
+    expect(loadPending(identityA, storage).items).toEqual([{ ...original, state: 'conflict' }])
+  })
+  it('迟到冲突只能标记原key，不能覆盖新key或其他身份', () => {
+    const original = makeOperation(), later = makeOperation({ operationKey: 'later' })
+    upsertPending(identityA, storage, original); upsertPending(identityA, storage, later)
+    markPendingOutcome(identityA, storage, original.scope, original.objectId, original.operationKey, 'conflict')
+    const items = loadPending(identityA, storage).items
+    expect(items.find(i => i.operationKey === 'key-1')?.state).toBe('conflict')
+    expect(items.find(i => i.operationKey === 'later')?.state).toBe('uncertain')
+    expect(markPendingOutcome(identityB, storage, original.scope, original.objectId, 'later', 'conflict').ok).toBe(false)
+    removePending(identityA, storage, original.scope, original.objectId, original.operationKey)
+    expect(markPendingOutcome(identityA, storage, original.scope, original.objectId, original.operationKey, 'conflict').ok).toBe(false)
+    expect(loadPending(identityA, storage).items).toHaveLength(1)
+  })
+  it('冲突标记写失败明确报错，不能宣称已持久化', () => {
+    const original = makeOperation(); upsertPending(identityA, storage, original)
+    storage.setItem = () => { throw new Error('quota') }
+    expect(markPendingOutcome(identityA, storage, original.scope, original.objectId, original.operationKey, 'conflict')).toMatchObject({ ok: false })
+  })
   it('写入后可查找、加载并删除同一条操作', () => {
     const op = makeOperation()
     expect(upsertPending(identityA, storage, op)).toEqual({ ok: true, error: '' })

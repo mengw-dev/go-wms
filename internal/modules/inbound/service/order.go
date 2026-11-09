@@ -16,6 +16,7 @@ import (
 	"gowms/internal/pkg/quantity"
 	"gowms/internal/pkg/quota"
 	"gowms/internal/pkg/snowflake"
+	"gowms/internal/pkg/tenant"
 	"gowms/internal/pkg/tx"
 )
 
@@ -35,6 +36,7 @@ func (s *Service) CreateResponse(ctx context.Context, req *dto.CreateOrderReq, o
 }
 
 func (s *Service) createImportOrder(ctx context.Context, task *model.ImportTask, rowNo int, req *dto.CreateOrderReq, operator string) (*model.ReceiptOrder, error) {
+	ctx = tenant.WithExactTenant(ctx, tenant.FromContext(ctx))
 	// 幂等检查：该行已建单则直接复用（补偿重跑）
 	if o, err := s.repo.GetByImportRow(ctx, s.tm.DB(), task.TaskID, rowNo); err == nil {
 		return o, nil
@@ -61,6 +63,7 @@ func (s *Service) createImportOrder(ctx context.Context, task *model.ImportTask,
 }
 
 func (s *Service) createOrder(ctx context.Context, req *dto.CreateOrderReq, operator string, prepare func(*gorm.DB, *model.ReceiptOrder) error) (*model.ReceiptOrder, error) {
+	ctx = tenant.WithExactTenant(ctx, tenant.FromContext(ctx))
 	// 公开租户配额：手动建单与 Excel 导入建单都走这里，统一拦住无限写入。
 	if err := quota.Guard(ctx, s.tm.DB(), &model.ReceiptOrder{}, s.limits.MaxReceiptOrders, 1, "入库单"); err != nil {
 		return nil, err
@@ -100,7 +103,11 @@ func (s *Service) createOrder(ctx context.Context, req *dto.CreateOrderReq, oper
 	return nil, errcode.OrderNoDuplicate
 }
 
-func (s *Service) Update(ctx context.Context, id int64, req *dto.CreateOrderReq) error {
+func (s *Service) Update(ctx context.Context, id int64, req *dto.UpdateOrderReq) error {
+	if req == nil || req.ExpectedVersion <= 0 {
+		return errcode.ParamError
+	}
+	ctx = tenant.WithExactTenant(ctx, tenant.FromContext(ctx))
 	return s.tm.Tx(ctx, func(tx *gorm.DB) error {
 		o, err := s.repo.GetOrderForUpdate(tx, id)
 		if err != nil {
@@ -111,6 +118,9 @@ func (s *Service) Update(ctx context.Context, id int64, req *dto.CreateOrderReq)
 		}
 		if o.Status != model.OrderDraft {
 			return errcode.OrderStatusWrong
+		}
+		if o.Version != req.ExpectedVersion {
+			return errcode.StaleEdit
 		}
 		if err := s.basic.ValidateWarehouseInTx(ctx, tx, req.WarehouseID); err != nil {
 			return err
@@ -137,6 +147,7 @@ func (s *Service) Update(ctx context.Context, id int64, req *dto.CreateOrderReq)
 }
 
 func (s *Service) Delete(ctx context.Context, id int64) error {
+	ctx = tenant.WithExactTenant(ctx, tenant.FromContext(ctx))
 	return s.tm.Tx(ctx, func(tx *gorm.DB) error {
 		o, err := s.repo.GetOrderForUpdate(tx, id)
 		if err != nil {
@@ -157,6 +168,7 @@ func (s *Service) Submit(ctx context.Context, id int64) error {
 }
 
 func (s *Service) Approve(ctx context.Context, id int64, _ string) error {
+	ctx = tenant.WithExactTenant(ctx, tenant.FromContext(ctx))
 	return s.tm.Tx(ctx, func(tx *gorm.DB) error {
 		o, err := s.repo.GetOrderForUpdate(tx, id)
 		if err != nil {
@@ -194,6 +206,7 @@ func (s *Service) Approve(ctx context.Context, id int64, _ string) error {
 }
 
 func (s *Service) Cancel(ctx context.Context, id int64) error {
+	ctx = tenant.WithExactTenant(ctx, tenant.FromContext(ctx))
 	return s.tm.Tx(ctx, func(tx *gorm.DB) error {
 		o, err := s.repo.GetOrderForUpdate(tx, id)
 		if err != nil {
@@ -259,6 +272,7 @@ func (s *Service) BatchCancel(ctx context.Context, ids []int64) *dto.BatchOperRe
 
 // DeleteByImportTask 按导入批次删除 DRAFT 入库单，返回成功/失败明细。
 func (s *Service) DeleteByImportTask(ctx context.Context, taskID string) (*dto.BatchOperResp, error) {
+	ctx = tenant.WithExactTenant(ctx, tenant.FromContext(ctx))
 	ids, err := s.repo.ListIDsByImportTask(ctx, s.tm.DB(), taskID)
 	if err != nil {
 		return nil, err
@@ -270,6 +284,7 @@ func (s *Service) DeleteByImportTask(ctx context.Context, taskID string) (*dto.B
 }
 
 func (s *Service) transit(ctx context.Context, id int64, from, to model.OrderStatus) error {
+	ctx = tenant.WithExactTenant(ctx, tenant.FromContext(ctx))
 	return s.tm.Tx(ctx, func(tx *gorm.DB) error {
 		o, err := s.repo.GetOrderForUpdate(tx, id)
 		if err != nil {

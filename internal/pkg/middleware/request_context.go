@@ -13,10 +13,11 @@ import (
 type ctxKey string
 
 const (
-	ctxRequestID ctxKey = "request_id"
-	ctxUserID    ctxKey = "user_id"
-	ctxUsername  ctxKey = "username"
-	ctxTenantID  ctxKey = "tenant_id"
+	ctxRequestID    ctxKey = "request_id"
+	ctxUserID       ctxKey = "user_id"
+	ctxUsername     ctxKey = "username"
+	ctxTenantID     ctxKey = "tenant_id"
+	ctxTokenVersion ctxKey = "token_version"
 )
 
 func RequestID() gin.HandlerFunc {
@@ -37,6 +38,13 @@ func UserID(c *gin.Context) int64 {
 	value, _ := c.Get(string(ctxUserID))
 	userID, _ := value.(int64)
 	return userID
+}
+
+// TokenVersion returns the signed credential version stored by Auth.
+func TokenVersion(c *gin.Context) int {
+	value, _ := c.Get(string(ctxTokenVersion))
+	version, _ := value.(int)
+	return version
 }
 
 // Username returns the authenticated username stored by Auth.

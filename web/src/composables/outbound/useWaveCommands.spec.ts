@@ -3,7 +3,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { sendWaveCommand, type WaveAck, type WaveCommand } from '@/api/wave'
 import { useAuthStore } from '@/stores/auth'
-import { loadPending, PENDING_RETENTION_MS } from '@/utils/pendingOperations'
+import { loadPending, upsertPending, removePending, PENDING_RETENTION_MS } from '@/utils/pendingOperations'
 import { useWaveCommands } from './useWaveCommands'
 
 vi.mock('@/api/wave', async original => ({ ...await original<typeof import('@/api/wave')>(), sendWaveCommand: vi.fn() }))
@@ -25,6 +25,47 @@ beforeEach(() => { vi.resetAllMocks(); vi.stubGlobal('localStorage', storage());
 afterEach(() => { scopes.splice(0).forEach(s => s.stop()); vi.unstubAllGlobals() })
 
 describe('波次命令持久化与恢复', () => {
+  it('内容冲突刷新后仍保留原key且禁止重发，核对后仍能放弃', async () => {
+    const { flow, scope } = setup()
+    vi.mocked(sendWaveCommand).mockRejectedValueOnce({ code: 40901 })
+    await flow.run(command)
+    const key = flow.pending.value?.operationKey
+    flow.refresh(); await flow.recover(); scope.stop()
+    const restored = setup().flow
+    expect(restored.pending.value?.state).toBe('conflict')
+    expect(restored.pending.value?.operationKey).toBe(key)
+    await restored.recover(); expect(sendWaveCommand).toHaveBeenCalledTimes(1)
+    expect(restored.error.value).toContain('核对')
+    restored.discard(key!); expect(restored.pending.value).toBeNull()
+  })
+  it('确认原key后不能删除另一页面的新记录', async () => {
+    const { flow } = setup(), identity = { userId: '1', sessionNamespace: '' }
+    vi.mocked(sendWaveCommand).mockRejectedValueOnce({ kind: 'network' })
+    await flow.run(command)
+    const original = flow.pending.value!
+    expect(removePending(identity, localStorage, original.scope, original.objectId, original.operationKey).ok).toBe(true)
+    const replacement = { ...original, operationKey: 'replacement-key' }
+    expect(upsertPending(identity, localStorage, replacement).ok).toBe(true)
+    expect(flow.discard(original.operationKey)).toBe(false)
+    expect(flow.pending.value).toEqual(replacement)
+    expect(flow.error.value).toContain('已变化')
+    expect(loadPending(identity, localStorage).items).toEqual([replacement])
+    expect(flow.discard(replacement.operationKey)).toBe(true)
+    expect(flow.pending.value).toBeNull()
+    expect(sendWaveCommand).toHaveBeenCalledTimes(1)
+  })
+  it('同会话续期保留进行中的命令，并接受原成功回执', async () => {
+    login('1', 'session-a')
+    const { flow } = setup(), request = deferred()
+    vi.mocked(sendWaveCommand).mockReturnValueOnce(request.promise)
+    const result = flow.run(command)
+    useAuthStore().setDemoSession({ session_id: 'session-a', expires_in: 300 })
+    await nextTick()
+    expect(flow.busy.value).toBe(true)
+    request.resolve({ wave_id: command.wave_id })
+    expect(await result).toEqual({ wave_id: command.wave_id })
+    expect(flow.pending.value).toBeNull()
+  })
   it('成功才清除记录，ID不经过数字转换', async () => {
     const { flow } = setup(), request = deferred()
     vi.mocked(sendWaveCommand).mockReturnValueOnce(request.promise)

@@ -22,6 +22,7 @@ import (
 // 货品和条码业务。
 
 func (s *Service) CreateSKU(ctx context.Context, req *dto.SKUReq) error {
+	ctx = tenant.WithExactTenant(ctx, tenant.FromContext(ctx))
 	db := s.tm.DB()
 	// 公开租户配额：防止访客脚本批量建货品撑爆数据库。
 	if err := quota.Guard(ctx, db, &model.SKU{}, s.limits.MaxSKUs, 1, "货品"); err != nil {
@@ -59,6 +60,7 @@ func (s *Service) CreateSKU(ctx context.Context, req *dto.SKUReq) error {
 }
 
 func (s *Service) UpdateSKU(ctx context.Context, id int64, req *dto.SKUReq) error {
+	ctx = tenant.WithExactTenant(ctx, tenant.FromContext(ctx))
 	old, err := s.repo.GetSKU(ctx, s.tm.DB(), id)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -99,6 +101,7 @@ func (s *Service) UpdateSKU(ctx context.Context, id int64, req *dto.SKUReq) erro
 }
 
 func (s *Service) DeleteSKU(ctx context.Context, id int64) error {
+	ctx = tenant.WithExactTenant(ctx, tenant.FromContext(ctx))
 	var sku *model.SKU
 	err := s.tm.TxRetry(ctx, pkgtx.MaxTxRetry, func(txDB *gorm.DB) error {
 		current, err := s.repo.GetSKUForUpdate(ctx, txDB, id)

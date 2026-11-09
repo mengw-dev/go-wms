@@ -38,9 +38,10 @@ type UserCreateReq struct {
 }
 
 type UserUpdateReq struct {
-	Nickname *string         `json:"nickname" binding:"omitempty,max=64"`
-	Status   *int            `json:"status" binding:"omitempty,oneof=0 1"`
-	RoleIDs  typex.Int64List `json:"role_ids"`
+	ExpectedVersion int             `json:"expected_version" binding:"required,min=1"`
+	Nickname        *string         `json:"nickname" binding:"omitempty,max=64"`
+	Status          *int            `json:"status" binding:"omitempty,oneof=0 1"`
+	RoleIDs         typex.Int64List `json:"role_ids"`
 }
 
 type UserListQuery struct {
@@ -50,6 +51,7 @@ type UserListQuery struct {
 }
 
 type UserResp struct {
+	Version   int             `json:"version"`
 	ID        int64           `json:"id,string"`
 	TenantID  int64           `json:"tenant_id,string"`
 	Username  string          `json:"username"`
@@ -122,4 +124,9 @@ type OperLogResp struct {
 	Status    int       `json:"status"`
 	Result    string    `json:"result"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+// AssignableRoleQuery omits UserID for creation in the current tenant.
+type AssignableRoleQuery struct {
+	UserID int64 `form:"user_id" binding:"gte=0"`
 }

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import { Document, HomeFilled, Refresh } from '@element-plus/icons-vue'
 import { resetDemoData } from '@/api/demo'
 import DemoRunViewer from '@/components/demo/DemoRunViewer.vue'
@@ -10,6 +10,7 @@ import { useDemoRunner } from '@/composables/demo/useDemoRunner'
 import { useDemoSession } from '@/composables/demo/useDemoSession'
 import { useDemoDock } from '@/composables/demo/useDemoDock'
 import { useAuthStore } from '@/stores/auth'
+import { useScopedConfirm } from '@/composables/useScopedConfirm'
 import { clearStagedDemo, executionSteps, loadStagedDemo } from '@/utils/stagedDemoState'
 import { GUIDE_SCENARIO_LABELS, useGuideStore } from '@/stores/guide'
 import {
@@ -23,6 +24,8 @@ import {
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
+const confirmAction = useScopedConfirm()
+let alive = true
 const guide = useGuideStore()
 const ARCHITECTURE_URL = '/overview.html'
 const visible = ref(false)
@@ -196,8 +199,11 @@ async function navigateTo(path: string) {
 }
 
 async function resetData() {
+  if (!alive || resetUnavailable.value) return
+  const owner = auth.snapshot()
+  const resetIdentity = { userId: String(auth.user?.user_id || ''), sessionId: auth.demoSessionId }
   try {
-    await ElMessageBox.confirm(
+    await confirmAction(
       '将重新开始当前演示并恢复仓库、货品、库存和单据，确定继续吗？',
       '重置演示数据',
       {
@@ -210,12 +216,12 @@ async function resetData() {
   } catch {
     return
   }
+  if (!alive || !auth.isCurrent(owner)) return
   resetting.value = true
   stagedRunnerRef.value?.pause()
-  const resetIdentity = { userId: String(auth.user?.user_id || ''), sessionId: auth.demoSessionId }
   try {
     await resetDemoData()
-    if (String(auth.user?.user_id || '') !== resetIdentity.userId || auth.demoSessionId !== resetIdentity.sessionId) return
+    if (!alive || !auth.isCurrent(owner)) return
     try {
       clearStagedDemo(resetIdentity)
     } catch {
@@ -233,8 +239,9 @@ async function resetData() {
 }
 
 async function releaseAndExit() {
+  if (!alive || busy.value) return
   try {
-    await ElMessageBox.confirm(
+    await confirmAction(
       '退出后当前演示数据会立即恢复初始状态，确定退出吗？',
       '退出演示',
       {
@@ -258,6 +265,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  alive = false
   window.removeEventListener(OPEN_DEMO_CONSOLE_EVENT, onOpenDemoConsole)
   window.removeEventListener(RUN_DEMO_SCENARIO_EVENT, onRunDemoScenario)
   window.removeEventListener(RUN_DEMO_STAGED_EVENT, onOpenStagedDemo)

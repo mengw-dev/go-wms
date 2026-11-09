@@ -13,11 +13,13 @@ import (
 	"gowms/internal/pkg/modelbase"
 	"gowms/internal/pkg/quota"
 	"gowms/internal/pkg/snowflake"
+	"gowms/internal/pkg/tenant"
 )
 
 // 盘点单创建与取消。
 
 func (s *Service) Create(ctx context.Context, req *dto.CreateOrderReq, operator string) (*model.StocktakeOrder, error) {
+	ctx = tenant.WithExactTenant(ctx, tenant.FromContext(ctx))
 	// 公开租户配额：盘点单明细数由当前库存行数决定，防访客反复建单堆积。
 	if err := quota.Guard(ctx, s.tm.DB(), &model.StocktakeOrder{}, s.limits.MaxStocktakeOrders, 1, "盘点单"); err != nil {
 		return nil, err
@@ -60,6 +62,7 @@ func (s *Service) CreateResponse(ctx context.Context, req *dto.CreateOrderReq, o
 	return orderResponse(order), nil
 }
 func (s *Service) Cancel(ctx context.Context, orderID int64) error {
+	ctx = tenant.WithExactTenant(ctx, tenant.FromContext(ctx))
 	return s.tm.Tx(ctx, func(tx *gorm.DB) error {
 		o, err := s.repo.GetOrderForUpdate(tx, orderID)
 		if err != nil {

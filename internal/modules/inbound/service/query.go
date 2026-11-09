@@ -124,6 +124,7 @@ func (s *Service) ListResponses(ctx context.Context, q *dto.OrderQuery) ([]*dto.
 
 func orderResponse(order *model.ReceiptOrder) *dto.OrderResp {
 	return &dto.OrderResp{
+		Version:      order.Version,
 		ID:           order.ID,
 		TenantID:     order.TenantID,
 		OrderNo:      order.OrderNo,

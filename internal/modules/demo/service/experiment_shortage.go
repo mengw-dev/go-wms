@@ -25,6 +25,7 @@ type ConcurrentShortageResult struct {
 	StockTotal           int64          `json:"stock_total"`
 	AvailableTotal       int64          `json:"available_total"`
 	AllocatedTotal       int64          `json:"allocated_total"`
+	FrozenTotal          int64          `json:"frozen_total"`
 	NegativeRows         int64          `json:"negative_rows"`
 	LimitRespected       bool           `json:"limit_respected"`
 	InvariantOK          bool           `json:"invariant_ok"`
@@ -135,18 +136,18 @@ func (s *Service) RunConcurrentShortageValidation(ctx context.Context, sessionID
 	limitRespected := allocatedQuantity <= statsBefore.AvailableTotal
 	invariantOK := limitRespected && concurrentInventoryInvariantOK(statsAfter)
 	invariantMessage := fmt.Sprintf(
-		"成功分配 %d ≤ 初始可用 %d；stock = available + allocated，且三个数量均非负",
+		"成功分配 %d ≤ 初始可用 %d；stock = available + allocated + frozen，且四个数量均非负",
 		allocatedQuantity, statsBefore.AvailableTotal,
 	)
 	if !invariantOK {
 		invariantMessage = fmt.Sprintf(
-			"校验失败：成功分配=%d，初始可用=%d，结束 stock=%d available=%d allocated=%d，负数行=%d",
+			"校验失败：成功分配=%d，初始可用=%d，结束 stock=%d available=%d allocated=%d frozen=%d，负数行=%d",
 			allocatedQuantity, statsBefore.AvailableTotal,
-			statsAfter.StockTotal, statsAfter.AvailableTotal, statsAfter.AllocatedTotal, statsAfter.NegativeRows,
+			statsAfter.StockTotal, statsAfter.AvailableTotal, statsAfter.AllocatedTotal, statsAfter.FrozenTotal, statsAfter.NegativeRows,
 		)
 	}
 
-	validationScope := "总需求大于初始可用库存时，并发执行真实出库创建、提交和审核，核对成功分配量、库存不足拒绝与最终三数量。"
+	validationScope := "总需求大于初始可用库存时，并发执行真实出库创建、提交和审核，核对成功分配量、库存不足拒绝与最终四数量。"
 	notValidated := "该实验只反映本次受限并发输入下的真实结果，不用于宣称“绝对不会超卖”或证明生产环境容量。"
 	result := &ConcurrentShortageResult{
 		Concurrency:          concurrency,
@@ -163,6 +164,7 @@ func (s *Service) RunConcurrentShortageValidation(ctx context.Context, sessionID
 		StockTotal:           statsAfter.StockTotal,
 		AvailableTotal:       statsAfter.AvailableTotal,
 		AllocatedTotal:       statsAfter.AllocatedTotal,
+		FrozenTotal:          statsAfter.FrozenTotal,
 		NegativeRows:         statsAfter.NegativeRows,
 		LimitRespected:       limitRespected,
 		InvariantOK:          invariantOK,

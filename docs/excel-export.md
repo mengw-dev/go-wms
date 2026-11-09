@@ -16,7 +16,7 @@
 | GET路径（前缀/api/v1） | 权限 | 筛选参数 |
 | --- | --- | --- |
 | `/inventory/export` | `wms:inventory` | warehouse_id、location_id、sku_id（非负ID）、sku_keyword（最多128字符）、in_stock_only（含显式false） |
-| `/inventory/trans/export` | `wms:inventory` | inventory_id、order_no（包含匹配，最多64字符）、trans_type（OPENING/RECEIVE/ALLOCATE/SHIP/RELEASE/ADJUST） |
+| `/inventory/trans/export` | `wms:inventory` | inventory_id、order_no（包含匹配，最多64字符）、trans_type（OPENING/RECEIVE/ALLOCATE/SHIP/RELEASE/ADJUST/MOVE_IN/MOVE_OUT/FREEZE/UNFREEZE/SHORTAGE） |
 | `/stocktake/orders/export` | `wms:stocktake:view` | warehouse_id、order_id、status（DRAFT/COMPLETED/CANCELLED）、keyword（单号包含，最多64字符）、differences_only（默认false） |
 
 前端移除page/page_size，服务端不以分页参数截断导出。非法ID、布尔值、状态和类型返回JSON错误。成功响应为XLSX附件，`Cache-Control: private, no-store`，失败走原HTTP/JSON业务错误，不用200假装成功；前端同时拒绝把200 JSON错误保存为.xlsx，并保留401登录失效处理。
@@ -25,8 +25,8 @@
 
 ## 对账口径
 
-- 库存包含库存/仓库/库位/货品ID、可见名称与编码、条码、单位、批次和三数量。基础资料缺失时辅助字段留空，主记录和原ID仍在；停用资料不隐藏。
-- 流水保留原变化量、现存量与可用量前后值、单据、任务、操作员、发生时间。辅助名称来自当前关联资料，不宣称是发生时的名称快照。
+- 库存包含库存/仓库/库位/货品ID、可见名称与编码、条码、单位、批次和现存/可用/已分配/冻结四数量。货品ID按 `sku_id` 显式映射并以字符串写入，保留大ID；基础资料缺失时辅助字段留空，主记录和原ID仍在；停用资料不隐藏。
+- 流水保留原变化量、现存量/可用量/冻结量前后值、原因、单据、任务、操作员、发生时间。辅助名称来自当前关联资料，不宣称是发生时的名称快照。
 - 盘点编码/名称/库位/批次取自盘点快照。未录入实盘留空，已录入0为数值0；未保存输入不参与导出。
 - “实盘较快照差异”=已保存实盘数-创建时快照账面；“审核调整量”使用已完成单据保存的diff_qty，针对审核时库存，两者可不同。未审核/取消单据的审核调整量留空，不将其当作已调账。
 - “仅差异行”包括实盘与快照不等，或已完成单据审核调整量非零；未盘不推断为差异。若两者都为零则不列入。

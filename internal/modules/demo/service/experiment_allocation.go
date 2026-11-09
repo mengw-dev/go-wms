@@ -33,6 +33,7 @@ type ConcurrentResult struct {
 	StockTotal        int64          `json:"stock_total"`
 	AvailableTotal    int64          `json:"available_total"`
 	AllocatedTotal    int64          `json:"allocated_total"`
+	FrozenTotal       int64          `json:"frozen_total"`
 	NegativeRows      int64          `json:"negative_rows"`
 	InvariantOK       bool           `json:"invariant_ok"`
 	InvariantMessage  string         `json:"invariant_message"`
@@ -130,15 +131,15 @@ func (s *Service) RunConcurrentAllocation(ctx context.Context, sessionID string,
 		return nil, err
 	}
 	invariantOK := concurrentInventoryInvariantOK(statsAfter)
-	invariantMessage := "stock = available + allocated，且三个数量均非负"
+	invariantMessage := "stock = available + allocated + frozen，且四个数量均非负"
 	if !invariantOK {
 		invariantMessage = fmt.Sprintf(
-			"不变量异常：stock=%d available=%d allocated=%d，负数行=%d",
-			statsAfter.StockTotal, statsAfter.AvailableTotal, statsAfter.AllocatedTotal, statsAfter.NegativeRows,
+			"不变量异常：stock=%d available=%d allocated=%d frozen=%d，负数行=%d",
+			statsAfter.StockTotal, statsAfter.AvailableTotal, statsAfter.AllocatedTotal, statsAfter.FrozenTotal, statsAfter.NegativeRows,
 		)
 	}
 
-	validationScope := "库存充足条件下，多张出库单并发创建、提交和审核后，FIFO 分配结果与库存三数量仍保持一致。"
+	validationScope := "库存充足条件下，多张出库单并发创建、提交和审核后，FIFO 分配结果与库存四数量仍保持一致。"
 	notValidated := "不验证库存不足时的并发超卖防护，也不形成生产容量或高并发性能结论。"
 	taskStatsScope := "PICK 任务和实际分配数量仅统计本次实验成功创建的出库单 ID。"
 	testFocus := "并发创建/提交/审核、库存行锁、FIFO 分配、事务重试，以及库存充足场景下的一致性不变量"
@@ -147,7 +148,7 @@ func (s *Service) RunConcurrentAllocation(ctx context.Context, sessionID string,
 		{Title: "并发输入", Detail: fmt.Sprintf("订单数=%d，并发数=%d，每单需求=%d，总需求=%d", concurrency, concurrency, qtyPerOrder, totalDemand), Status: ScenarioStepCompleted},
 		{Title: "单据阶段", Detail: fmt.Sprintf("创建成功=%d，提交成功=%d，审核成功=%d", createdOrders, submittedOrders, approvedOrders), Status: ScenarioStepCompleted},
 		{Title: "审核结果", Detail: fmt.Sprintf("审核失败=%d，其他阶段失败=%d，实际分配=%d 件，PICK 任务=%d", approvalFailed, otherFailed, allocatedQuantity, pickTaskCount), Status: ScenarioStepCompleted},
-		{Title: "库存不变量", Detail: fmt.Sprintf("结束 stock=%d available=%d allocated=%d；%s", statsAfter.StockTotal, statsAfter.AvailableTotal, statsAfter.AllocatedTotal, invariantMessage), Status: ScenarioStepCompleted},
+		{Title: "库存不变量", Detail: fmt.Sprintf("结束 stock=%d available=%d allocated=%d frozen=%d；%s", statsAfter.StockTotal, statsAfter.AvailableTotal, statsAfter.AllocatedTotal, statsAfter.FrozenTotal, invariantMessage), Status: ScenarioStepCompleted},
 		{Title: "验证边界", Detail: notValidated, Status: ScenarioStepCompleted},
 	}
 	if len(failReasons) > 0 {
@@ -176,6 +177,7 @@ func (s *Service) RunConcurrentAllocation(ctx context.Context, sessionID string,
 		StockTotal:        statsAfter.StockTotal,
 		AvailableTotal:    statsAfter.AvailableTotal,
 		AllocatedTotal:    statsAfter.AllocatedTotal,
+		FrozenTotal:       statsAfter.FrozenTotal,
 		NegativeRows:      statsAfter.NegativeRows,
 		InvariantOK:       invariantOK,
 		InvariantMessage:  invariantMessage,
@@ -287,6 +289,7 @@ type concurrentInventoryStats struct {
 	StockTotal     int64
 	AvailableTotal int64
 	AllocatedTotal int64
+	FrozenTotal    int64
 	NegativeRows   int64
 }
 
@@ -294,19 +297,21 @@ func concurrentInventoryInvariantOK(stats *concurrentInventoryStats) bool {
 	if stats == nil {
 		return false
 	}
-	return stats.NegativeRows == 0 && stats.StockTotal == stats.AvailableTotal+stats.AllocatedTotal
+	return stats.NegativeRows == 0 && stats.StockTotal >= 0 && stats.AvailableTotal >= 0 &&
+		stats.AllocatedTotal >= 0 && stats.FrozenTotal >= 0 &&
+		stats.StockTotal == stats.AvailableTotal+stats.AllocatedTotal+stats.FrozenTotal
 }
 
 func (s *Service) concurrentInventoryStats(ctx context.Context, skuID int64) (*concurrentInventoryStats, error) {
 	var stats concurrentInventoryStats
 	if err := s.db.WithContext(ctx).Model(&invmodel.Inventory{}).
 		Where("sku_id = ?", skuID).
-		Select("COALESCE(SUM(stock_quantity), 0) AS stock_total, COALESCE(SUM(available_quantity), 0) AS available_total, COALESCE(SUM(allocated_quantity), 0) AS allocated_total").
+		Select("COALESCE(SUM(stock_quantity), 0) AS stock_total, COALESCE(SUM(available_quantity), 0) AS available_total, COALESCE(SUM(allocated_quantity), 0) AS allocated_total, COALESCE(SUM(frozen_quantity), 0) AS frozen_total").
 		Scan(&stats).Error; err != nil {
 		return nil, err
 	}
 	if err := s.db.WithContext(ctx).Model(&invmodel.Inventory{}).
-		Where("sku_id = ? AND (stock_quantity < 0 OR available_quantity < 0 OR allocated_quantity < 0)", skuID).
+		Where("sku_id = ? AND (stock_quantity < 0 OR available_quantity < 0 OR allocated_quantity < 0 OR frozen_quantity < 0)", skuID).
 		Count(&stats.NegativeRows).Error; err != nil {
 		return nil, err
 	}

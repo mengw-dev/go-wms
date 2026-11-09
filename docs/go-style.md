@@ -15,7 +15,7 @@
 - `handler → service → repository` 表示主要调用方向，不要求 DTO、model、错误码也逐层转发。handler 不直接操作 Repository 或数据库；Repository 不反向依赖 service/handler。
 - `api` 可以使用稳定的请求/结果类型、状态枚举及现有事务参数，不依赖 service/repository/handler。跨模块优先复用既有 api；当前库存锁定基础资料等跨 model 访问是已存在的单库协作，修改前查调用链，不机械消除。
 - `internal/pkg` 不依赖业务模块；业务模块不依赖 demo；demo 允许编排业务 Service，依赖组装集中在 `internal/app`。这些直接导入边界已由 `scripts/check-dependencies` 全量检查和前端 ESLint 规则守护，入口及例外见下节。
-- 库存等跨模块写入由 Service 开事务，向 Repository 和跨模块 API 传递同一个 tx。system 的 `CreateUser`、`UpdateUser`、`DeleteUser`、`DeleteRole` 是既有聚合短事务例外；保留用户角色的原子性和共同锁协议。若新用例需要外层事务，再单独迁移，不把移动事务当作格式整理。
+- 库存等跨模块写入由 Service 开事务，向 Repository 和跨模块 API 传递同一个 tx。system 管理 Service 通过 Repository.Transaction 组织短事务，先锁用户、再锁角色，在同一事务内核对当前权限和写入；内部使用 InTx 方法，避免嵌套事务。Repository 独立事务包装保留给可信初始化/测试，外部管理入口必须经过 Service 的显式操作者校验。
 - 新增 `Raw` / `Table` / `Exec` / `Scan` 要逐表检查租户与软删范围。系统级旁路说明用途和调用入口；覆盖精确租户 0、普通租户和关联条件，不能只靠 GORM 回调推定安全。
 - 需要调用前先锁行的 API，应注明锁对象、顺序、事务归属和失败语义，例如 `TaskAPI.AddProgress`。重构不能使调用方忘记这些前置条件。
 
@@ -80,6 +80,7 @@
 - 部分更新的 DTO 中，`Nickname *string` 表示是否提交该字段：nil 保留原值，指向空字符串则清空。`Status *int` 同样能区分未提交与明确设置为 0。不要让 Go 零值意外覆盖数据库值；普通非可选字段仍使用值类型。
 - 多个字段共同维护一个不变量时，用一个互斥锁保护整组状态。雪花生成器的时间、序列、节点号必须一起看待，分别加 atomic 不能自动保证组合操作正确。
 - 先校验关联对象，再修改关联；检查和写入之间有并发风险时放进同一事务并采用共同的锁协议。用户角色分配与删除角色是实际例子。
+- 多人编辑提交打开表单时的 expected_version，在原聚合锁内核对；保存时新读到的版本不能代替客户端版本。40902表示需人工核对的陈旧表单，不自动换版本重试。用户编辑版本与登录撤销版本分开维护，昵称修改不应导致注销。
 - 生成任务号不需要为了复用单号生成器而访问 Redis：直接复用已有任务 ID，使事务依赖更少、代码更容易解释。
 - 限流的“检查次数 + 预占次数”应在同一临界区完成，慢查询和密码校验放在锁外。给 map 加 mutex 只能防止数据竞争，还要明确容量和过期清理；本项目采用请求触发清理，没有另起 goroutine。
 - `*redis.Client` 作为 interface 传递时要注意 typed nil：一个值为 nil 的具体指针放进 interface 后，interface 本身不为 nil，调用方法仍可能 panic。构造函数接收可选客户端时，在进入 interface 前显式判断；本项目的 App 组装对 nil Redis 做了单独处理。
@@ -108,7 +109,7 @@
 - 缓存命中时校验租户；平台旁路查询不使用条码缓存。更新 SKU 的名称等字段也需要失效缓存。
 - 当前缓存采用 TTL 和更新后删除，属于最终一致性，尚不保证并发读写时的强一致性。
 - GORM 回调有适用范围：原生 SQL、裸表查询、关联查询及平台旁路要单独检查，不能宣称自动覆盖全部访问路径。
-- 请求有正租户 ID 时，Create 中显式指定其他租户会报错。后台跨租户工作领取任务后，应把任务租户写入执行 context。
+- 业务写入口先使用 `tenant.WithExactTenant(ctx, tenant.FromContext(ctx))`，包括租户 0；读旁路不能继承为跨租户业务代办权限。事务 API 将显式 ctx 绑定到调用方同一 tx，不能重新开连接。后台跨租户工作领取任务后，以任务租户建立精确执行 context，租户 0 也不例外。
 
 ## 验证和学习顺序
 
