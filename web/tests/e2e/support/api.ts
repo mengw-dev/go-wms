@@ -115,13 +115,17 @@ export async function requestApi<T>(
   return body.data
 }
 
-export async function loginByApi(request: APIRequestContext): Promise<string> {
+export async function loginByApi(
+  request: APIRequestContext,
+  username = adminAccount.username,
+  password = adminAccount.password,
+): Promise<string> {
   const data = await requestApi<{ token: string }>(
     request,
     undefined,
     'POST',
     '/login',
-    adminAccount,
+    { username, password },
   )
   return data.token
 }

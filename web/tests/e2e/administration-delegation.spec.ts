@@ -4,6 +4,11 @@ import { loginByApi, loginByUi, requestApi, uniqueSuffix } from './support/api'
 test('user manager assigns permitted roles without role-management permission', async ({ page, request }) => {
   const suffix = uniqueSuffix().toLowerCase()
   const admin = await loginByApi(request)
+  const { list: adminRoles } = await requestApi<{ list: { id: string; name: string; perms: string }[] }>(
+    request, admin, 'GET', '/system/roles?keyword=admin&page=1&page_size=100',
+  )
+  const adminRole = adminRoles.find(role => role.name === 'admin' && role.perms === '*')
+  expect(adminRole, 'bootstrap administrator role').toBeDefined()
   const managerName = `mgr_${suffix}`
   const childName = `child_${suffix}`
   const roleName = `basic_${suffix}`
@@ -44,7 +49,7 @@ test('user manager assigns permitted roles without role-management permission', 
     users.push(child!.id)
     const managerToken = await loginByApi(request, managerName, password)
     const forged = await request.put(`/api/v1/system/users/${child!.id}`, {
-      headers: { Authorization: `Bearer ${managerToken}` }, data: { expected_version: 1, role_ids: ['1'] },
+      headers: { Authorization: `Bearer ${managerToken}` }, data: { expected_version: 1, role_ids: [adminRole!.id] },
     })
     expect(forged.status()).toBe(403)
     expect((await forged.json()).code).toBe(40300)
