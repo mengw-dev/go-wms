@@ -39,7 +39,8 @@ func (s *Service) Import(ctx context.Context, fileName string, data []byte) (*dt
 		}
 		return nil, err
 	}
-	// 任务落库后由 RunImports 领取，HTTP 请求不负责创建工作 goroutine。
+	// CreateImportTask 已提交，worker 此时可以从数据库看到任务。
+	s.wakeImports()
 	return &dto.ImportResp{TaskID: taskID}, nil
 }
 

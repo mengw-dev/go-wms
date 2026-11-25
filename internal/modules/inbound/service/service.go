@@ -15,14 +15,15 @@ import (
 )
 
 type Service struct {
-	repo      *repository.Repository
-	tm        *tx.Manager
-	no        *orderno.Generator
-	basic     basicapi.BasicAPI
-	inv       invapi.InventoryAPI
-	taskAPI   taskapi.TaskAPI
-	uploadDir string
-	metrics   *observability.Metrics
+	repo       *repository.Repository
+	tm         *tx.Manager
+	no         *orderno.Generator
+	basic      basicapi.BasicAPI
+	inv        invapi.InventoryAPI
+	taskAPI    taskapi.TaskAPI
+	uploadDir  string
+	metrics    *observability.Metrics
+	importWake chan struct{} // 每实例合并唤醒，任务本身存放在 MySQL
 
 	failedFileRetention time.Duration       // 失败导入文件保留期，到期由后台清理删除
 	limits              config.LimitsConfig // 公开租户数据量配额（防止访客无限建单）
@@ -36,5 +37,5 @@ func New(repo *repository.Repository, tm *tx.Manager, no *orderno.Generator,
 		retention = defaultFailedFileRetention
 	}
 	return &Service{repo: repo, tm: tm, no: no, basic: basic, inv: inv, taskAPI: taskAPI,
-		uploadDir: upload.Dir, failedFileRetention: retention, limits: limits}
+		uploadDir: upload.Dir, importWake: make(chan struct{}, 1), failedFileRetention: retention, limits: limits}
 }

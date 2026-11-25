@@ -14,7 +14,8 @@ import (
 )
 
 const (
-	importPollInterval       = 2 * time.Second
+	importFallbackInterval   = 30 * time.Second
+	importErrorRetryInterval = 2 * time.Second
 	importHeartbeatInterval  = 30 * time.Second
 	importTimeout            = 10 * time.Minute
 	compensateScanInterval   = 2 * time.Minute
@@ -22,24 +23,49 @@ const (
 	staleScanLimit           = 10
 )
 
-// RunImports 每个实例运行一个 worker，串行处理文件；多实例用数据库条件更新竞争任务。
-// 请求仅落库，服务重启后仍可领取 PENDING 任务。调用方取消并等待本方法退出后才能关闭数据库。
+func (s *Service) wakeImports() {
+	select {
+	case s.importWake <- struct{}{}:
+	default:
+	}
+}
+
+// RunImports 启动时先检查积压，查空后等待本地唤醒或兜底扫描。
+// 每个实例串行处理文件，多实例由数据库条件更新竞争任务。
 func (s *Service) RunImports(ctx context.Context) {
+	s.runImports(ctx, importFallbackInterval)
+}
+
+func (s *Service) runImports(ctx context.Context, fallbackInterval time.Duration) {
 	for ctx.Err() == nil {
+		// 读库前清掉已有提示。扫描期间到达的新提示仍可唤醒下一轮，
+		// 包括 SELECT 已查空、worker 尚未进入等待的间隙。
+		select {
+		case <-s.importWake:
+		default:
+		}
 		task, err := s.repo.NextPendingImport(ctx, s.tm.DB())
+		delay, wake := fallbackInterval, s.importWake
 		if err == nil {
 			err = s.processImport(ctx, task)
 			if err == nil {
 				continue
 			}
+		} else if errors.Is(err, gorm.ErrRecordNotFound) {
+			err = nil
 		}
-		if !errors.Is(err, gorm.ErrRecordNotFound) && ctx.Err() == nil {
-			log.L().Error("import worker failed", "err", err)
+		if err != nil {
+			if ctx.Err() == nil {
+				log.L().Error("import worker failed", "err", err)
+			}
+			// 故障期间按原间隔重试，上传通知不会绕过等待。
+			delay, wake = importErrorRetryInterval, nil
 		}
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(importPollInterval):
+		case <-wake:
+		case <-time.After(delay):
 		}
 	}
 }
@@ -156,6 +182,7 @@ func (s *Service) compensateOnce(ctx context.Context) {
 			continue
 		}
 		if reset {
+			s.wakeImports()
 			s.metrics.RecordImportRecovery()
 			log.L().Warn("stale import returned to pending", "task_id", task.TaskID)
 		}
