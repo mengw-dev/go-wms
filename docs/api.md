@@ -269,6 +269,10 @@ API Key 在服务端配置中绑定 `WMS_INTEGRATION_TENANT_ID`，请求体、�
 | 方法 | 路径 | 认证 | 说明 |
 | --- | --- | --- | --- |
 | POST | `/integration/outbound-orders` | `X-API-Key` | 按固定租户的仓库/货品编码创建草稿出库单，`biz_order_no` 幂等 |
+| GET | `/integration/outbound-orders/by-biz-no/:bizNo` | `X-API-Key` | 按业务单号查询状态与预计/已分配/已拣数量；手工单按不存在返回 |
+| POST | `/integration/outbound-orders/by-biz-no/:bizNo/cancel` | `X-API-Key` | 按业务单号取消集成单，重复取消返回当前单据 |
+
+集成入口创建的单据来源标记为 `INTEGRATION`，来源由服务端写入，请求体不能指定；此类单据不允许物理删除（业务码 `50014`，HTTP 409），只能取消，以保证业务单号身份随生命周期保留。手工入口创建的单据来源为 `MANUAL`，同号重放时按内容冲突处理，不会与集成单混用。业务单号首尾空白会被去除，长度上限 64 个字符。
 
 请求示例：
 

@@ -43,6 +43,12 @@ func CanTransit(from, to OrderStatus) bool {
 	return false
 }
 
+// 出库来源由服务端指定，集成单据不可删除。
+const (
+	SourceManual      = "MANUAL"
+	SourceIntegration = "INTEGRATION"
+)
+
 // ShipmentOrder 出库单以 BizOrderNo 作为租户内幂等业务键。
 type ShipmentOrder struct {
 	modelbase.Base
@@ -56,6 +62,7 @@ type ShipmentOrder struct {
 	ExpectedQty  int         `json:"expected_qty" gorm:"type:int;size:32;not null;default:0"`
 	AllocatedQty int         `json:"allocated_qty" gorm:"type:int;size:32;not null;default:0"`
 	PickedQty    int         `json:"picked_qty" gorm:"type:int;size:32;not null;default:0"`
+	Source       string      `json:"source" gorm:"size:16;not null;default:MANUAL"`
 	CreatedBy    string      `json:"created_by" gorm:"size:64"`
 }
 

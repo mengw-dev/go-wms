@@ -77,12 +77,12 @@ func (s *Service) CreateExternal(ctx context.Context, req *dto.ExternalCreateOrd
 	for _, d := range content.details {
 		items = append(items, dto.OrderDetailItem{SKUID: d.skuID, ExpectedQty: d.qty})
 	}
-	order, err := s.Create(ctx, &dto.CreateOrderReq{
+	order, err := s.createWithSource(ctx, &dto.CreateOrderReq{
 		WarehouseID: content.warehouseID,
 		BizOrderNo:  req.BizOrderNo,
 		Remark:      content.remark,
 		Details:     items,
-	}, operator)
+	}, operator, model.SourceIntegration)
 	if errors.Is(err, errcode.BizOrderDuplicate) {
 		// 路径 2：并发请求撞唯一键后回查，同样核对内容。
 		existing, getErr := s.repo.GetOrderByBizNo(ctx, s.tm.DB(), req.BizOrderNo)
@@ -130,6 +130,9 @@ func (s *Service) resolveExternalContent(ctx context.Context, req *dto.ExternalC
 // 历史明细缺少 SKU 编码快照、无法可靠重建原始内容时报告待人工核对，
 // 绝不把无法证明一致的历史订单当成重复成功放行。
 func (s *Service) replayExternalOrder(ctx context.Context, existing *model.ShipmentOrder, content *externalOrderContent) (*model.ShipmentOrder, bool, error) {
+	if existing.Source != model.SourceIntegration {
+		return nil, false, errcode.BizOrderContentConflict
+	}
 	if existing.WarehouseID != content.warehouseID || existing.Remark != content.remark {
 		return nil, false, errcode.BizOrderContentConflict
 	}
@@ -158,4 +161,44 @@ func (s *Service) replayExternalOrder(ctx context.Context, existing *model.Shipm
 		}
 	}
 	return existing, true, nil
+}
+
+// GetExternal 只查询凭据所绑定租户的集成单据，不重新校验可能已停用的主数据。
+func (s *Service) GetExternal(ctx context.Context, bizNo string) (*model.ShipmentOrder, error) {
+	ctx = tenant.WithExactTenant(ctx, tenant.FromContext(ctx))
+	order, err := s.repo.GetOrderByBizNo(ctx, s.tm.DB(), bizNo)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, errcode.ShipOrderNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	if order.Source != model.SourceIntegration {
+		return nil, errcode.ShipOrderNotFound
+	}
+	return order, nil
+}
+
+// CancelExternal 复用仓库取消规则。重复取消及并发取消仅在查到 CANCELLED 时转为成功。
+func (s *Service) CancelExternal(ctx context.Context, bizNo string) (*model.ShipmentOrder, error) {
+	ctx = tenant.WithExactTenant(ctx, tenant.FromContext(ctx))
+	order, err := s.GetExternal(ctx, bizNo)
+	if err != nil {
+		return nil, err
+	}
+	if order.Status == model.OrderCancelled {
+		return order, nil
+	}
+	cancelErr := s.Cancel(ctx, order.ID, "integration")
+	current, readErr := s.GetExternal(ctx, bizNo)
+	if readErr != nil {
+		return nil, readErr
+	}
+	if current.Status == model.OrderCancelled {
+		return current, nil
+	}
+	if cancelErr != nil {
+		return nil, cancelErr
+	}
+	return current, nil
 }

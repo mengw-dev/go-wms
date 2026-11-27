@@ -34,6 +34,11 @@ func (s *Service) CreateResponse(ctx context.Context, req *dto.CreateOrderReq, o
 }
 
 func (s *Service) Create(ctx context.Context, req *dto.CreateOrderReq, operator string) (*model.ShipmentOrder, error) {
+	return s.createWithSource(ctx, req, operator, model.SourceManual)
+}
+
+// createWithSource 来源由服务端入口指定，不接受请求体指定。
+func (s *Service) createWithSource(ctx context.Context, req *dto.CreateOrderReq, operator, source string) (*model.ShipmentOrder, error) {
 	ctx = tenant.WithExactTenant(ctx, tenant.FromContext(ctx))
 	if err := s.checkDetailCount(len(req.Details)); err != nil {
 		return nil, err
@@ -52,7 +57,7 @@ func (s *Service) Create(ctx context.Context, req *dto.CreateOrderReq, operator 
 		order = &model.ShipmentOrder{
 			Base: modelbase.Base{ID: snowflake.Next()}, OrderNo: s.no.Next(ctx, model.OrderNoPrefix),
 			BizOrderNo: req.BizOrderNo, WarehouseID: req.WarehouseID,
-			Status: model.OrderDraft, Remark: req.Remark, CreatedBy: operator,
+			Source: source, Status: model.OrderDraft, Remark: req.Remark, CreatedBy: operator,
 		}
 		err := s.tm.Tx(ctx, func(tx *gorm.DB) error {
 			if err := s.basic.ValidateWarehouseInTx(ctx, tx, req.WarehouseID); err != nil {
@@ -91,6 +96,9 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 				return errcode.ShipOrderNotFound
 			}
 			return err
+		}
+		if o.Source == model.SourceIntegration {
+			return errcode.ExternalOrderProtected
 		}
 		if o.Status != model.OrderDraft {
 			return errcode.ShipOrderStatusWrong

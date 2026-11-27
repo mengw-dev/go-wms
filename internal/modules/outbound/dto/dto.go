@@ -170,3 +170,15 @@ type OrderTaskResp struct {
 	CreatedAt     time.Time  `json:"created_at"`
 	UpdatedAt     time.Time  `json:"updated_at"`
 }
+
+// ExternalOrderResp 保留字符串 ID，数量用于调用方核对，不包含其他租户信息。
+type ExternalOrderResp struct {
+	OrderID      int64     `json:"order_id,string"`
+	OrderNo      string    `json:"order_no"`
+	BizOrderNo   string    `json:"biz_order_no"`
+	Status       string    `json:"status"`
+	ExpectedQty  int       `json:"expected_qty"`
+	AllocatedQty int       `json:"allocated_qty"`
+	PickedQty    int       `json:"picked_qty"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}

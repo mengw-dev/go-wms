@@ -30,6 +30,7 @@
 - [需求与已知边界](requirements.md)：功能范围、已知限制与当前迭代顺序。
 - [迭代记录与路线图](iterations.md)：已完成的修复、待完成的迭代事项与工程约定。
 - [仓储作业流程与性能优化计划](warehouse-optimization.md)：导入等待、查询成本、作业状态与后续验收。
+- [业务能力扩展计划](business-extension-plan.md)：不新增中间件的打印/扫码、导出、异常处理、波次与设备监控分阶段计划。
 - [架构说明](architecture.md)：调用关系、事务、库存、异步任务与租户。
 - [数据库设计](database.md)：表、索引与迁移。
 - [引用完整性取舍](database-design.md)：应用层引用检查的职责与边界。
