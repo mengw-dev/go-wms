@@ -11,7 +11,7 @@ WMS 是一个前后端分离的轻量级 WMS，覆盖仓库、库位、货品、
 
 基础功能进入收尾维护阶段，使用流程见[仓储操作手册](docs/warehouse-operations.md)，本地验证与分支交付范围见[收尾验收](docs/release-acceptance.md)。文档中的能力以所检出版本为准，本地实现不代表公网已经部署。
 
-**公网地址**：<https://mengw21.cn> （演示使用说明见 [演示指南](docs/demo.md)）
+**公网地址**：<https://mengw21.cn> （演示使用说明见 [演示指南](docs/demo.md)(云服务器到期了，暂时不续费了)）
 
 **在线架构图**：<https://mengw21.cn/overview.html>
 
